@@ -1,4 +1,3 @@
-import json
 import random
 import re
 import time
@@ -61,9 +60,21 @@ class RaidPhysicalDriveStruct(object):
         self.driveType = None
         self.mediaType = None
         self.rotationRate = None
-        self.raidControllerSasAddreess = None
+        self.raidTool = None
+        self.raidControllerSasAddress = None
         self.raidControllerProductName = None
         self.raidControllerNumber = None
+
+
+class RaidLogicalDriveStruct(object):
+    def __int__(self):
+        self.raidControllerNumber = None
+        self.raidLevel = None
+        self.wwn = None
+        self.size = None
+        self.writePolicy = None
+        self.id = None
+        self.raidControllerSasAddress = None
 
 
 class SmartDataStruct(object):
@@ -103,9 +114,12 @@ class RaidPhysicalDriveSmartTestRsp(object):
 
 class RaidScanRsp(object):
     raidPhysicalDriveStructs = None  # type: list[RaidPhysicalDriveStruct]
+    raidLogicalDriveStructs = None  # type: list[RaidLogicalDriveStruct]
 
     def __init__(self):
         self.raidPhysicalDriveStructs = []
+        self.raidLogicalDriveStructs = []
+
 
 class ScsiLunStruct(object):
     def __init__(self):
@@ -119,6 +133,31 @@ class ScsiLunStruct(object):
         self.size = ""
         self.hctl = ""
         self.multipathDeviceUuid = ""
+
+
+class LocalScsiDriveStruct(object):
+    def __int__(self):
+        self.name = None
+        self.wwn = None
+        self.path = None
+        self.model = None
+        self.mediaType = None
+        self.mountPaths = None
+        self.serial = None
+        self.size = None
+        self.vendor = None
+
+
+class HBAStruct(object):
+    def __int__(self):
+        self.nodeName = ""
+        self.portName = ""
+        self.maxSupportedSpeed = -1
+        self.speed = -1
+        self.manufacturer = ""
+        self.model = ""
+        self.firmwareVersion = ""
+        self.driverVersion = ""
 
 
 class FiberChannelLunStruct(ScsiLunStruct):
@@ -188,6 +227,18 @@ class IscsiLoginCmd(AgentCmd):
         self.iscsiTargets = []
 
 
+class HBAScanRsp(AgentRsp):
+    def __init__(self):
+        super(HBAScanRsp, self).__init__()
+        self.hbaStructs = []
+
+
+class LocalScsiScanRsp(AgentRsp):
+    def __init__(self):
+        super(LocalScsiScanRsp, self).__init__()
+        self.diskStructs = []
+
+
 class IscsiLoginRsp(AgentRsp):
     iscsiTargetStructList = None  # type: list[IscsiTargetStruct]
 
@@ -222,6 +273,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     RAID_SMART_PATH = "/storagedevice/raid/smart"
     RAID_LOCATE_PATH = "/storagedevice/raid/locate"
     RAID_SELF_TEST_PATH = "/storagedevice/raid/selftest"
+    HBA_SCAN_PATH = "/storagedevice/hba/scan"
+    LOCAL_SCSI_SCAN_PATH = "/storagedevice/local/scsi/scan"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -238,6 +291,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RAID_SMART_PATH, self.raid_smart)
         http_server.register_async_uri(self.RAID_LOCATE_PATH, self.raid_locate)
         http_server.register_async_uri(self.RAID_SELF_TEST_PATH, self.drive_self_test)
+        http_server.register_async_uri(self.HBA_SCAN_PATH, self.hba_scan)
+        http_server.register_async_uri(self.LOCAL_SCSI_SCAN_PATH, self.scan_local_scsi)
 
     def stop(self):
         pass
@@ -544,6 +599,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @bash.in_bash
     def raid_smart(self, req):
+        # don't use megacli!
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RaidPhysicalDriveSmartRsp()
 
@@ -612,29 +668,15 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        if misc.isHyperConvergedHost():
-            r, o, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-            if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
-                self.mega_raid_locate_storcli(cmd, o)
-                return jsonobject.dumps(rsp)
-        else:
-            r, o, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
-            if r == 0 and "Adapter #" in o:
-                self.mega_raid_locate_megacli(cmd, o)
-                return jsonobject.dumps(rsp)
-
-        r, o, e = bash.bash_roe("arcconf list")
-        if r == 0 and "Controller ID" in o:
+        if cmd.raidTool == "STORCLI":
+            self.mega_raid_locate_storcli(cmd)
+        elif cmd.raidTool == "ARCCONF":
             self.arcconf_raid_locate(cmd)
-            return jsonobject.dumps(rsp)
-
-        r, o, e = bash.bash_roe("sas3ircu list")
-        if r == 0 and "Index" in o:
+        elif cmd.raidTool == "SAS3IRCU":
             self.sas_raid_locate(cmd)
-            return jsonobject.dumps(rsp)
-
-        raise Exception("Failed to locate device[wwn: %s, enclosureDeviceID: %s, slotNumber: %s]" % (
-            cmd.wwn, cmd.enclosureDeviceID, cmd.slotNumber,))
+        else:
+            raise Exception("Unsupported raid command %s" % cmd.raidTool)
+        return jsonobject.dumps(rsp)
 
     @bash.in_bash
     def sas_raid_locate(self, cmd):
@@ -663,6 +705,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def mega_raid_locate_megacli(self, cmd, raid_info):
+        # don't use megacli!
         bus_number = self.get_bus_number()
         drive = self.get_megaraid_device_info_megacli("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
         if drive.wwn != cmd.wwn:
@@ -677,12 +720,15 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             command, cmd.enclosureDeviceID, cmd.slotNumber))
 
     @bash.in_bash
-    def mega_raid_locate_storcli(self, cmd, raid_info):
+    def mega_raid_locate_storcli(self, cmd):
         # when disk status is abnormal, this command will return no 0.
-        pd_info = bash.bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
+        _, pd_info, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
+        if jsonobject.loads(pd_info)['Controllers'][0]['Command Status']['Status'] != "Success":
+            raise Exception("Failed to get raid pd info, stderr: %s" % e)
+
         bus_number = self.get_bus_number()
-        drive = self.get_megaraid_device_info_storcli("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber),
-                                                      raid_info, pd_info)
+        drive = self.get_megaraid_physical_drive_info_storcli("/dev/bus/%d -d megaraid,%d"
+                                                                 % (bus_number, cmd.deviceNumber), None, pd_info)
         if drive.wwn != cmd.wwn:
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
                             (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
@@ -706,6 +752,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @bash.in_bash
     def drive_self_test(self, req):
+        # don't use megacli!
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RaidPhysicalDriveSmartTestRsp()
 
@@ -772,31 +819,30 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         # 1. find raid device
         # 2. get each device info
 
-        # TODO: host has different types of raid cards at the same time.
         rsp = RaidScanRsp()
-        r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
-        if r == 0 and o.strip() != "":
-            if misc.isHyperConvergedHost():
-                rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_storcli(o)
-            else:
-                rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_megacli(o)
-            return jsonobject.dumps(rsp)
+        raid_physical_drive_lists = []
+        raid_logic_drive_lists = []
 
-        r, o, e = bash.bash_roe("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
-        if r == 0 and o.strip() != "":
-            rsp.raidPhysicalDriveStructs = self.get_arcconf_device(o)
-            return jsonobject.dumps(rsp)
+        pds, vds = self.get_megaraid_devices_storcli()
+        raid_physical_drive_lists.extend(pds)
+        raid_logic_drive_lists.extend(vds)
 
-        r, o, e = bash.bash_roe("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
-        if r == 0 and o.strip() != "":
-            rsp.raidPhysicalDriveStructs = self.get_sas_device(o)
-            return jsonobject.dumps(rsp)
+        pds, vds = self.get_arcconf_devices()
+        raid_physical_drive_lists.extend(pds)
+        raid_logic_drive_lists.extend(vds)
 
+        pds, vds = self.get_sas_devices()
+        raid_physical_drive_lists.extend(pds)
+        raid_logic_drive_lists.extend(vds)
+
+        rsp.raidPhysicalDriveStructs = raid_physical_drive_lists
+        rsp.raidLogicalDriveStructs = raid_logic_drive_lists
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
     def get_megaraid_devices_megacli(self, smart_scan_result):
         # type: (str) -> list[RaidPhysicalDriveStruct]
+        # don't use megacli!
         result = []
         r1, raid_info = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
         r2, device_info = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -PDList -aAll")
@@ -806,12 +852,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if line.strip() == "":
                 continue
             d = self.get_megaraid_device_info_megacli(line, raid_info)
-            if d.wwn is None or d.raidControllerSasAddreess is None:
+            if d.wwn is None or d.raidControllerSasAddress is None:
                 d = self.get_megaraid_device_info_megacli(line, device_info)
-            if d.wwn is not None and d.raidControllerSasAddreess is not None:
+            if d.wwn is not None and d.raidControllerSasAddress is not None:
                 result.append(d)
 
-        result.extend(self.get_nvme_device_info(result))
         if misc.isMiniHost():
             result.extend(self.get_missing(result))
         return result
@@ -819,6 +864,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def get_missing(self, normal_devices):
         # type: (list[RaidPhysicalDriveStruct]) -> list[RaidPhysicalDriveStruct]
+        # don't use megacli!
         result = []
         r, o = bash.bash_ro("/opt/MegaRAID/MegaCli/MegaCli64 -PdGetMissing -aALL")
         if r != 0:
@@ -846,7 +892,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.enclosureDeviceId = normal_devices[0].enclosureDeviceId
                 d.raidControllerNumber = normal_devices[0].raidControllerNumber
                 d.raidControllerProductName = normal_devices[0].raidControllerProductName
-                d.raidControllerSasAddreess = normal_devices[0].raidControllerSasAddreess
+                d.raidControllerSasAddreess = normal_devices[0].raidControllerSasAddress
                 d.wwn = "5FFFFFF%s" % "".join(random.sample(string.ascii_letters + string.digits, 8))
                 d.wwn = d.wwn.upper()
                 result.append(d)
@@ -900,7 +946,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 in_correct_pd = True
                 continue
             elif "wwn" in k and d.wwn is None:
-                wwn = v.lower()
+                wwn = v.upper()
                 continue
             elif "raw size" in k and d.size == 0:
                 if "TB" in v:
@@ -955,9 +1001,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             if "device model" in k:
                 d.deviceModel = v
             elif "serial number" in k:
-                d.serialNumber = v
+                d.serialNumber = v.upper()
             elif "lu wwn device id" in k:
-                d.wwn = v.replace(" ", "")
+                d.wwn = v.replace(" ", "").upper()
             elif "user capacity" in k:
                 d.size = int(v.split(" bytes")[0].strip().replace(",", ""))
             elif "rotation rate" in k and "solid state device" not in v.strip().lower():
@@ -1010,6 +1056,28 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return "raid6"
         else:
             return origin.strip()
+
+    @staticmethod
+    def convert_raid_write_policy(origin):
+        # type: (str) -> str
+        origin = origin.lower()
+        if origin in ["writethrough", "disable"]:
+            return "WT"
+        elif origin in ["writeback", "enable"]:
+            return "WB"
+        return origin
+
+    @staticmethod
+    def convert_size_in_bytes(origin):
+        origin.replace(" ", "").upper()
+        if "T" in origin:
+            return int(float(origin.split("T")[0].strip()) * 1024 * 1024 * 1024 * 1024)
+        elif "G" in origin:
+            return int(float(origin.split("G")[0].strip()) * 1024 * 1024 * 1024)
+        elif "M" in origin:
+            return int(float(origin.split("M")[0].strip()) * 1024 * 1024)
+        else:
+            return 0
 
     @bash.in_bash
     def get_fc_luns(self, rescan):
@@ -1154,53 +1222,68 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return ret
 
     @bash.in_bash
-    def get_megaraid_devices_storcli(self, smart_scan_result):
-        result = []
-        r1, vd_info = bash.bash_ro("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-        if r1 != 0:
-            return result
+    def get_megaraid_devices_storcli(self):
+        pd_lists = vd_lists = []
+        r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
+        if r != 0 or o.strip() == "":
+            return pd_lists, vd_lists
 
-        # If a RAID-built disk is pulled out, this cmd will return 45.
-        pd_info = bash.bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
-        for line in smart_scan_result.splitlines():
+        r1, vd_info = bash.bash_ro("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
+        if r1 != 0 or jsonobject.loads(vd_info)['Controllers'][0]['Command Status']['Status'] != "Success":
+            return pd_lists, vd_lists
+
+        # when a RAID-built disk is pulled out, this cmd's return code is 45.
+        r2, pd_info = bash.bash_ro("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
+        if jsonobject.loads(pd_info)['Controllers'][0]['Command Status']['Status'] != "Success":
+            return pd_lists, vd_lists
+
+        for line in o.splitlines():
             if line.strip() == "":
                 continue
-            d = self.get_megaraid_device_info_storcli(line, vd_info, pd_info)
-            if d.wwn is not None and d.raidControllerSasAddreess is not None:
-                result.append(d)
+            d = self.get_megaraid_physical_drive_info_storcli(line, vd_info, pd_info)
+            if d.wwn is not None and d.raidControllerSasAddress is not None:
+                pd_lists.append(d)
 
-        result.extend(self.get_nvme_device_info(result))
-        return result
+        vd_lists = self.get_megaraid_logical_drive_info_storcli(vd_info)
+
+        return pd_lists, vd_lists
 
     @bash.in_bash
-    def get_megaraid_device_info_storcli(self, line, vd_info, pd_info):
-        # type: (str, str, str) -> RaidPhysicalDriveStruct
+    def get_megaraid_physical_drive_info_storcli(self, line, vd_info, pd_info):
+        # type: (str, any, str) -> RaidPhysicalDriveStruct
 
         # cannot get disk rotation from storcli
         d = self.get_megaraid_device_disk_info_smartctl(line)
 
-        # get disk raid info
-        vd_infos = jsonobject.loads(vd_info.strip())
-        for controller in vd_infos["Controllers"]:
-            controller_id = controller["Command Status"]["Controller"]
-            data = controller["Response Data"]
-            for attr in dir(data):
-                match = re.match(r"^PDs for VD (\d+)", attr)
-                if match:
-                    vid = match.group(1)
-                    vd_path = "/c%s/v%s" % (controller_id, vid)
-                    for pd in data[attr]:
-                        if pd["DID"] != d.deviceId:
+        def get_logic_disk_related_info(d_):
+            if vd_info is None:
+                return
+            vd_infos = jsonobject.loads(vd_info.strip())
+            for controller_ in vd_infos["Controllers"]:
+                controller_id_ = controller_["Command Status"]["Controller"]
+
+                data_ = controller["Response Data"]
+                for attr_ in dir(data):
+                    match_ = re.match(r"^PDs for VD (\d+)", attr)
+                    if not match_:
+                        continue
+                    vid = match_.group(1)
+                    vd_path = "/c%s/v%s" % (controller_id_, vid)
+                    raid_level = data_[vd_path][0]["TYPE"]
+                    for pd in data_[attr_]:
+                        if pd["DID"] != d_.deviceId:
                             continue
-                        d.diskGroup = int(data[vd_path][0]["DG/VD"].split("/")[0])
-                        d.raidLevel = data[vd_path][0]["TYPE"].lower()
+                        d_.diskGroup = int(data[vd_path][0]["DG/VD"].split("/")[0])
+                        d_.raidLevel = raid_level
+
+        # get raid logic disk info
+        get_logic_disk_related_info(d)
 
         # get disk info
         pd_infos = jsonobject.loads(pd_info.strip())
         for controller in pd_infos["Controllers"]:
             controller_id = controller["Command Status"]["Controller"]
-            raid_controller_product_name, raid_controller_sas_address = \
-                self.get_megaraid_controller_info_storcli(controller_id)
+            raid_controller_product_name, raid_controller_sas_address = self.get_megaraid_controller_info_storcli(controller_id)
             data = controller["Response Data"]
             for attr in dir(data):
                 match = re.match(r"^Drive /c%s/e(\d+)/s(\d+)$" % controller_id, attr)
@@ -1219,17 +1302,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 drive_type = data[attr][0]["Intf"]
                 media_type = data[attr][0]["Med"]
                 drive_state = data[attr][0]["State"]
-                wwn = pd_attributes["WWN"].lower()
+                wwn = pd_attributes["WWN"].upper()
                 raw_size = pd_attributes["Raw size"]
-
-                if "TB" in raw_size:
-                    size = int(float(raw_size.split(" TB")[0].strip()) * 1024 * 1024 * 1024 * 1024)
-                elif "GB" in raw_size:
-                    size = int(float(raw_size.split(" GB")[0].strip()) * 1024 * 1024 * 1024)
-                elif "MB" in raw_size:
-                    size = int(float(raw_size.split(" MB")[0].strip()) * 1024 * 1024)
-                else:
-                    size = 0
+                size = self.convert_size_in_bytes(raw_size)
 
                 d.raidControllerNumber = int(controller_id)
                 d.enclosureDeviceId = int(enclosure_id)
@@ -1239,15 +1314,46 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.driveState = drive_state
                 d.driveType = drive_type
                 d.mediaType = media_type
+                d.raidTool = "STORCLI"
                 d.raidControllerSasAddreess = raid_controller_sas_address
                 d.raidControllerProductName = raid_controller_product_name
 
         return d
 
     @bash.in_bash
-    def get_arcconf_device(self, adapter_info):
-        result = []
-        for adapter in adapter_info.splitlines():
+    def get_megaraid_logical_drive_info_storcli(self, vd_info):
+        logical_drive_list = []
+        vd_infos = jsonobject.loads(vd_info.strip())
+        for controller in vd_infos["Controllers"]:
+            controller_id = controller["Command Status"]["Controller"]
+            _, raid_controller_sas_address = self.get_megaraid_controller_info_storcli(controller_id)
+            data = controller["Response Data"]
+            for attr in dir(data):
+                match = re.match(r"^PDs for VD (\d+)", attr)
+                if not match:
+                    continue
+                vid = match.group(1)
+                vd_path = "/c%s/v%s" % (controller_id, vid)
+                vd_properties = data["VD%s Properties" % vid]
+
+                v = RaidLogicalDriveStruct()
+                v.id = int(data[vd_path][0]["DG/VD"].split("/")[0])
+                v.size = self.convert_size_in_bytes(vd_properties["Size"])
+                v.raidLevel = data[vd_path][0]["TYPE"]
+                v.raidControllerSasAddress = raid_controller_sas_address
+                v.raidControllerNumber = controller_id
+                v.writePolicy = self.convert_raid_write_policy(vd_properties["Write Cache(initial setting)"])
+                v.wwn = vd_properties["SCSI NAA Id"].upper()
+                logical_drive_list.append(v)
+        return logical_drive_list
+
+    @bash.in_bash
+    def get_arcconf_devices(self):
+        pd_list = vd_lists = []
+        r, o, e = bash.bash_roe("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
+        if r != 0 or o.strip() == "":
+            return pd_list, vd_lists
+        for adapter in o.splitlines():
             if adapter.strip() == "":
                 continue
 
@@ -1263,24 +1369,27 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             device_arr = device_info.split("Device #")
             if len(device_arr) < 3:
                 continue
+            vd_lists = self.get_arcconf_logical_drive_info(device_info, adapter)
+            raid_produce_name, raid_sas_address, raid_level_map, disk_group_map = \
+                self.get_arcconf_raid_info(device_arr[0])
 
-            productName, sasAddress , raidLevelMap, diskGroupMap = self.get_arcconf_raid_info(device_arr[0])
+            for v in vd_lists:
+                v.raidControllerSasAddress = raid_sas_address
 
             for infos in device_arr[1:]:
-                d = self.get_arcconf_device_info(infos)
+                d = self.get_arcconf_physical_drive_info(infos)
                 if d.serialNumber is not None and d.deviceModel is not None and d.enclosureDeviceId is not None and d.slotNumber is not None:
-                    d.raidLevel = raidLevelMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
-                    d.diskGroup = diskGroupMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
+                    d.raidLevel = raid_level_map.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
+                    d.diskGroup = disk_group_map.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.raidControllerNumber = adapter
-                    d.raidControllerProductName = productName
-                    d.raidControllerSasAddreess = sasAddress
-                    result.append(d)
+                    d.raidControllerProductName = raid_produce_name
+                    d.raidControllerSasAddress = raid_sas_address
+                    pd_list.append(d)
 
-        result.extend(self.get_nvme_device_info(result))
-        return result
+        return pd_list, vd_lists
 
     @bash.in_bash
-    def get_arcconf_device_info(self, infos):
+    def get_arcconf_physical_drive_info(self, infos):
         d = RaidPhysicalDriveStruct()
 
         if not infos.splitlines()[0].strip().isdigit():
@@ -1328,14 +1437,47 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.enclosureDeviceId = enclosure_device_id
                 d.slotNumber = slot_number
                 d.deviceModel = device_model
-                d.wwn = wwn
+                d.wwn = wwn.upper()
                 d.size = size
                 d.mediaType = media_type
                 d.rotationRate = rotation_rate
-                d.serialNumber = serial_number
+                d.serialNumber = serial_number.upper()
+                d.raidTool = "ARCCONF"
                 return d
 
         return d
+
+    @bash.in_bash
+    def get_arcconf_logical_drive_info(self, infos, adapter):
+        res = []
+        logical_pattern = r"Logical device information(.*?)(?=Array Physical Device Information|$)"
+        logical_match = re.search(logical_pattern, infos, re.S)
+        logical_info = logical_match.group(1).strip() if logical_match else ""
+        if logical_info == "":
+            return res
+        logical_device_pattern = r"Logical Device number (\d+)(.*?)(?=Logical Device number|$)"
+        logical_device_matches = re.findall(logical_device_pattern, logical_info, re.S)
+        var_pattern = r"(.*?)(?:\s*:\s*)(.*?)(?=\n|$)"
+
+        # # only get the first port sas address of the raid controller
+        # pattern = r"Connector information.*?SAS Address\s*:\s*(.*?)\n"
+        # sas_address_match = re.search(pattern, infos, re.S)
+        # raid_controller_sas_address = sas_address_match.group(1).strip() if sas_address_match else None
+
+        for logical_device_match in logical_device_matches:
+            logical_id = logical_device_match[0]
+            logical_device_info = logical_device_match[1].strip()
+            variables = {key.strip(): value.strip() for key, value in re.findall(var_pattern, logical_device_info, re.S)}
+            v = RaidLogicalDriveStruct()
+            v.raidControllerNumber = adapter
+            v.raidLevel = "RAID%s" % variables["RAID level"]
+            v.size = self.convert_size_in_bytes(variables["Size"])
+            v.wwn = variables["Volume Unique Identifier"].upper()
+            v.id = int(logical_id)
+            v.writePolicy = self.convert_raid_write_policy(variables["Caching"])
+            # v.raidControllerSasAddress = raid_controller_sas_address
+            res.append(v)
+        return res
 
     @staticmethod
     @bash.in_bash
@@ -1344,6 +1486,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         raid_levels = {}
         disk_groups = {}
 
+        # only read connector 0's sas address
         disk_group = level = None
         for l in raid_info.splitlines():
             if l.strip() == "":
@@ -1368,9 +1511,12 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return produce_name, sas_address, raid_levels, disk_groups
 
     @bash.in_bash
-    def get_sas_device(self, adapter_info):
-        result = []
-        for adapter in adapter_info.splitlines():
+    def get_sas_devices(self):
+        pd_lists = vd_lists = []
+        r, o, e = bash.bash_roe("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
+        if r != 0 or o.strip() == "":
+            return pd_lists, vd_lists
+        for adapter in o.splitlines():
             if not adapter.strip().isdigit():
                 continue
 
@@ -1384,22 +1530,24 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 continue
 
             productName, sasAddress, raidLevelMap, diskGroupMap = self.get_sas_raid_info(device_arr[0], adapter.strip())
+            vd_lists = self.get_sas_logical_drive_info(device_arr[0], adapter.strip())
+            for v in vd_lists:
+                v.raidControllerSasAddress = sasAddress
 
             for infos in device_arr[1:]:
-                d = self.get_sas_device_info(infos)
+                d = self.get_sas_physical_drive_info(infos)
                 if d.serialNumber is not None and d.deviceModel is not None and d.enclosureDeviceId is not None and d.slotNumber is not None:
                     d.raidLevel = raidLevelMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.diskGroup = diskGroupMap.get("%s:%s" % (d.enclosureDeviceId, d.slotNumber))
                     d.raidControllerNumber = adapter.strip()
                     d.raidControllerProductName = productName
                     d.raidControllerSasAddreess = sasAddress
-                    result.append(d)
+                    pd_lists.append(d)
 
-        result.extend(self.get_nvme_device_info(result))
-        return result
+        return pd_lists, vd_lists
 
     @bash.in_bash
-    def get_sas_device_info(self, infos):
+    def get_sas_physical_drive_info(self, infos):
         d = RaidPhysicalDriveStruct()
 
         wwn = serial_number = model_number = size = drive_type = enclosure_device_id = slot_number = drive_state = None
@@ -1437,13 +1585,38 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.driveState = drive_state
                 d.size = size
                 d.deviceModel = model_number
-                d.serialNumber = serial_number
-                d.wwn = wwn
+                d.serialNumber = serial_number.upper()
+                d.wwn = wwn.upper()
                 d.driveType = drive_type
                 d.mediaType = "SSD" if "sata_ssd" in v.strip().lower() else "HDD"
                 return d
 
         return d
+
+    @bash.in_bash
+    def get_sas_logical_drive_info(self, infos, adapter):
+        res = []
+        logical_pattern = r"IR Volume information(.*?)(?=Physical device information|$)"
+        logical_match = re.search(logical_pattern, infos, re.S)
+        logical_info = logical_match.group(1).strip() if logical_match else ""
+        if logical_info == "":
+            return res
+        logical_device_pattern = r"IR volume (\d+)(.*?)(?=IR volume|$)"
+        logical_device_matches = re.findall(logical_device_pattern, logical_info, re.S)
+        var_pattern = r"(.*?)(?:\s*:\s*)(.*?)(?=\n|$)"
+
+        for logical_device_match in logical_device_matches:
+            logical_id = logical_device_match[0]
+            logical_device_info = logical_device_match[1].strip()
+            variables = {key.strip(): value.strip() for key, value in re.findall(var_pattern, logical_device_info, re.S)}
+            v = RaidLogicalDriveStruct()
+            v.raidControllerNumber = adapter
+            v.raidLevel = variables["RAID level"]
+            v.size = self.convert_size_in_bytes(variables["Size (in MB)"])
+            v.wwn = variables["Volume wwid"].upper()
+            v.id = int(logical_id)
+            res.append(v)
+        return res
 
     @staticmethod
     @bash.in_bash
@@ -1479,17 +1652,17 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def get_nvme_device_info(self, normal_devices):
         result = []
-        
+
         if not misc.isHyperConvergedHost():
             return result
-    
+
         r, o = bash.bash_ro("nvme list | grep '/dev/' | awk '{print $1}'")
         if r != 0 or o.strip() == "":
             return []
-        
+
         for l in o.splitlines():
             d = RaidPhysicalDriveStruct()
-            
+
             r, wwn_info = bash.bash_ro("udevadm info --name=%s | grep -i 'id_wwn'" % l.strip())
             if r != 0 or wwn_info.strip() == "":
                 continue
@@ -1504,14 +1677,14 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     continue
                 k = info.split(":")[0].lower()
                 v = ":".join(info.split(":")[1:]).strip()
-                
+
                 if "model number" in k:
                     d.deviceModel = v
                 elif "serial number" in k:
                     d.serialNumber = v
                 elif "total nvm capacity" in k:
                     d.size = int(v.split()[0].strip().replace(",", ""))
-            
+
             if d.wwn is not None and d.deviceModel is not None and d.serialNumber is not None and d.size is not None:
                 d.enclosureDeviceId = -1
                 d.slotNumber = -1
@@ -1521,5 +1694,150 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.raidControllerProductName = normal_devices[0].raidControllerProductName
                 d.raidControllerSasAddreess = normal_devices[0].raidControllerSasAddreess
                 result.append(d)
-       
+
         return result
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def hba_scan(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = HBAScanRsp()
+        rsp.hbaStructs = self.get_hba_devices()
+        return jsonobject.dumps(rsp)
+
+    @bash.in_bash
+    def get_hba_devices(self):
+        def get_speed_number(speed):
+            digits = re.findall(r'\d+', speed)
+            if digits:
+                return int(digits[0])
+            return 0
+
+        def get_hba_max_supported_speed(speeds):
+            max_speed_number = -1
+            max_speed = ""
+            for speed in speeds.split(","):
+                speed_number = get_speed_number(speed)
+                if speed_number > max_speed_number:
+                    max_speed_number = speed_number
+                    max_speed = speed
+            return max_speed
+
+        def decode_symbolic_name(symbolic_name):
+            manufacturer = ""
+            model = ""
+            firm_version = ""
+            driver_version = ""
+
+            values = symbolic_name.strip().split(" ")
+            if symbolic_name.lower().startswith("qle"):
+                # QLE2562 FW:v8.07.00 DVR:v10.02.00.106-k
+                manufacturer = "Qlogic"
+                model = values[0]
+                firm_version = values[1][3:]
+                driver_version = values[2][4:]
+            elif symbolic_name.lower().startswith("emulex"):
+                # Emulex LPe16002B-M6 FV12.2.299.27 DV12.8.0.10 HN:172-25-200-214 OS:Linux
+                manufacturer = "Emulex"
+                model = values[1]
+                firm_version = values[2][2:]
+                driver_version = values[3][2:]
+
+            return manufacturer, model, firm_version, driver_version
+        ret = []
+        r, o, e = bash.bash_roe("systool -c fc_host -v")
+        if r != 0:
+            return ret
+
+        h = HBAStruct()
+        node_name_ = port_name_ = speed_ = max_supported_speed_ = manufacturer_ = model_ = firmware_version_ = driver_version_ = None
+        for line in o.strip().split("\n"):
+            infos = line.split("=")
+            k = infos[0].lower().strip()
+            v = "=".join(infos[1:]).strip().strip('"')
+            if k == "node_name":
+                node_name_ = v[2:]
+            if k == "port_name":
+                port_name_ = v[2:]
+            if k == "speed":
+                speed_ = v
+            if k == "supported_speeds":
+                max_supported_speed_ = get_hba_max_supported_speed(v)
+            if k == "symbolic_name":
+                manufacturer_, model_, firmware_version_, driver_version_ = decode_symbolic_name(v)
+            if k == "device path":
+                h.nodeName = node_name_
+                h.portName = port_name_
+                h.speed = speed_
+                h.maxSupportedSpeed = max_supported_speed_
+                h.manufacturer = manufacturer_
+                h.firmwareVersion = firmware_version_
+                h.driverVersion = driver_version_
+                h.model = model_
+                ret.append(h)
+                h = HBAStruct()
+        return ret
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def scan_local_scsi(self, req):
+        # only scan local scsi disks
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = LocalScsiScanRsp()
+        rsp.diskStructs = self.get_local_scsi_block_devices()
+        return jsonobject.dumps(rsp)
+
+    @bash.in_bash
+    def get_local_scsi_block_devices(self):
+        # type: (str) -> list[LocalScsiDriveStruct]
+        # raid logical disk will be collected
+
+        devices = []
+        cmd = "lsblk -P -p -o name,size,wwn,tran,model,serial,rota,vendor,mountpoint,type,pkname"
+        r1, devices_info = bash.bash_ro(cmd)
+
+        scsi_infos = lvm.run_lsscsi_i()
+        if r1 != 0:
+            return devices
+
+        pattern = r'(\w+)="([^"]*)"'
+
+        def get_mount_paths(path):
+            mount_paths = []
+            for device_ in devices_info.splitlines():
+                matches_ = re.findall(pattern, device_)
+                variables_ = {key.strip(): value.strip() for key, value in matches_}
+                if path not in variables_["PKNAME"]:
+                    continue
+                if variables_["MOUNTPOINT"] == "":
+                    continue
+                mount_paths.append(variables_["MOUNTPOINT"])
+            return mount_paths
+
+        for device in devices_info.splitlines():
+            matches = re.findall(pattern, device)
+            variables = {key.strip(): value.strip() for key, value in matches}
+            if variables["TYPE"] != "disk":
+                continue
+            if variables["PKNAME"] != "":
+                continue
+            if not any(variables["NAME"] in a for a in scsi_infos):
+                continue
+            tran = variables["TRAN"].lower()
+            if tran == "fc" or tran == "iscsi" or tran == "usb":
+                continue
+            d = LocalScsiDriveStruct()
+            d.name = variables["NAME"].split("/dev/")[1]
+            d.path = variables["NAME"]
+            # wwn: 0x5000c500c85f2899
+            d.wwn = variables["WWN"] if len(variables["WWN"]) <= 2 else variables["WWN"][2:].upper()
+            d.size = self.convert_size_in_bytes(variables["SIZE"])
+            d.serial = variables["SERIAL"]
+            d.model = variables["MODEL"]
+            d.mediaType = "HDD" if int(variables["ROTA"]) == 0 else "SSD"
+            d.vendor = variables["VENDOR"]
+            d.mountPaths = get_mount_paths(d.path)
+            devices.append(d)
+
+        return devices
+
