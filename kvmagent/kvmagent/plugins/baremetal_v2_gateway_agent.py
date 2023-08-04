@@ -1620,7 +1620,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         for accessInfo in rsp.infos:
             targets = volume_driver.get_targets_by_access_path_id(accessInfo.accessPathId)
             accessInfo.targetCount = len(targets)
-            accessInfo.gatewayIps = [target.gateway_ips for target in targets]
+            accessInfo.gatewayIps = [target.gateway_ips if target.gateway_ips else target.host.admin_ip for target in
+                                     targets]
 
         return jsonobject.dumps(rsp)
 
