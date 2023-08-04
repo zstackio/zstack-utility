@@ -2103,6 +2103,8 @@ get_mysql_conf_file(){
     elif [ -f /etc/mysql/my.cnf ]; then
         # Ubuntu 14.04
         MYSQL_CONF_FILE=/etc/mysql/my.cnf
+    elif [ -f /etc/my.cnf.d/mariadb-server.cnf ];then
+        MYSQL_CONF_FILE=/etc/my.cnf.d/mariadb-server.cnf
     elif [ -f /etc/my.cnf ]; then
         # centos
         MYSQL_CONF_FILE=/etc/my.cnf
@@ -2126,6 +2128,27 @@ upgrade_mysql_configuration(){
     if [ $? -ne 0 ]; then
         echo "max_allowed_packet=2M" >>$ZSTACK_INSTALL_LOG 2>&1
         sed -i '/\[mysqld\]/a max_allowed_packet=2M\' $MYSQL_CONF_FILE
+    fi
+
+    grep 'interactive_timeout' $MYSQL_CONF_FILE >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        sed -i '/\[mysqld\]/a interactive_timeout=600\' $MYSQL_CONF_FILE
+    else
+        sed -i 's/interactive_timeout.*/interactive_timeout=600/g' $MYSQL_CONF_FILE
+    fi
+
+    grep 'wait_timeout' $MYSQL_CONF_FILE >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "wait_timeout=600" >>$ZSTACK_INSTALL_LOG 2>&1
+        sed -i '/\[mysqld\]/a wait_timeout=600\' $MYSQL_CONF_FILE
+    else
+        sed -i 's/wait_timeout.*/wait_timeout=600/g' $MYSQL_CONF_FILE
+    fi
+
+    grep 'TimeoutStartSec' /usr/lib/systemd/system/mariadb.service >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        sed -i '/\[Service\]/a TimeoutStartSec=300' /usr/lib/systemd/system/mariadb.service
+        systemctl daemon-reload
     fi
 
     [ x`systemctl is-enabled zstack-ha 2>/dev/null` == x"enabled" ] && systemctl stop keepalived.service
