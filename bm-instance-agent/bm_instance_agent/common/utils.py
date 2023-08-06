@@ -123,6 +123,31 @@ def get_interfaces():
     return interfaces
 
 
+def get_phy_ifs_from_sys_class():
+    interfaces = {}
+    for net_dev in os.listdir('/sys/class/net'):
+        abspath = os.path.join('/sys/class/net', net_dev)
+        realpath = os.path.realpath(abspath)
+        if 'virtual' in realpath or (net_dev == 'lo'):
+            continue
+
+        mac_path = os.path.join(abspath, 'address')
+        if not os.path.exists(mac_path):
+            continue
+
+        with open(mac_path, 'r') as f:
+            mac_address = f.read().strip()
+        if len(mac_address) > 32:
+            continue
+        perm_mac = _get_bond_slave_mac(net_dev)
+        if perm_mac:
+            interfaces[perm_mac] = net_dev
+        elif mac_address not in interfaces:
+            interfaces[mac_address] = net_dev
+
+    return interfaces
+
+
 def get_phy_interfaces():
     """ Get physical interfaces on local system
 
@@ -133,6 +158,11 @@ def get_phy_interfaces():
     }
     :rtype: dict
     """
+    distro_id = distro.id()
+    major_version = distro.major_version()
+    if distro_id in ['centos', 'rhel'] and major_version == '6':
+        return get_phy_ifs_from_sys_class()
+
     interfaces = {}
     iface_name_list = netifaces.interfaces()
     LOG.info("get iface list: %s" % iface_name_list)
