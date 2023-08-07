@@ -141,6 +141,14 @@ def populate_vxlan_fdb(peers=None, vni=None):
         })
     )
 
+@checkParamNotNone
+def delete_vxlan_fdbs(networkUuids=None, peers=None):
+    return NETWORK_PLUGIN.delete_vxlan_fdbs(
+        misc.make_a_request({
+            "networkUuids": networkUuids, #[] string
+            "peers": peers
+        })
+    )
 
 @checkParamNotNone
 def populate_vxlan_fdbs(networkUuids=None, peers=None):
