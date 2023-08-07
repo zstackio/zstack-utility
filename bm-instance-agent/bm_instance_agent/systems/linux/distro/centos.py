@@ -24,6 +24,7 @@ class CentOSDriver(linux_driver.LinuxDriver):
                 self._attach_port(nic)
 
     def _attach_bond_port(self, port):
+        config.if_down_up(port.iface_name)
         parasObj = objects.BondPortParasObj.from_json(port.paras)
         for slave in parasObj.slave_list:
             config.if_down_up(slave["iface_name"], config.PORT_OPT_DOWNUP)
