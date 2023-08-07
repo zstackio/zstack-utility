@@ -72,6 +72,7 @@ class RaidLogicalDriveStruct(object):
         self.raidLevel = None
         self.wwn = None
         self.size = None
+        self.driveState = None
         self.writePolicy = None
         self.id = None
         self.raidControllerSasAddress = None
@@ -119,6 +120,7 @@ class RaidScanRsp(object):
     def __init__(self):
         self.raidPhysicalDriveStructs = []
         self.raidLogicalDriveStructs = []
+
 
 
 class ScsiLunStruct(object):
@@ -236,7 +238,9 @@ class HBAScanRsp(AgentRsp):
 class LocalScsiScanRsp(AgentRsp):
     def __init__(self):
         super(LocalScsiScanRsp, self).__init__()
-        self.diskStructs = []
+        self.localScsiDriveStructs = []
+        self.raidPhysicalDriveStructs = []
+        self.raidLogicalDriveStructs = []
 
 
 class IscsiLoginRsp(AgentRsp):
@@ -813,13 +817,53 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         self_test_is_running(busNumber, deviceNumber)
         return get_self_test_result(busNumber, deviceNumber)
 
+    @staticmethod
+    def convert_raid_state(state):
+        """
+        :type state: str
+        """
+        state = state.lower().strip()
+        if "optimal" in state or "optl" == state or "okay" in state:
+            return "online"
+        # dgrd and pdgd
+        elif "degraded" in state or "dgrd" == state or "pdgd" == state or "interim recovery" in state:
+            return "degraded"
+        elif "ready for recovery" in state or "rebuilding" in state or "rec" == state:
+            return "rebuild"
+        else:
+            return "unknown"
+
+    @staticmethod
+    def convert_disk_state(state):
+        """
+        :type state: str
+        """
+        state = state.lower().strip()
+        if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state \
+                or "hot spare" in state or "raw" in state or "onln" == state or "ghs" == state or "dhs" == state \
+                or "ugood" == state:
+            return "online"
+        elif "rebuild" in state or "rbld" == state:
+            return "rebuild"
+        elif "failed" in state or "offline" in state or "missing" in state or "offln" == state:
+            return "offline"
+        else:
+            return "unknown"
+
     @kvmagent.replyerror
-    @bash.in_bash
     def raid_scan(self, req):
         # 1. find raid device
         # 2. get each device info
 
         rsp = RaidScanRsp()
+        raid_physical_drive_lists, raid_logic_drive_lists = self.get_raid_devices()
+
+        rsp.raidPhysicalDriveStructs = raid_physical_drive_lists
+        rsp.raidLogicalDriveStructs = raid_logic_drive_lists
+        return jsonobject.dumps(rsp)
+
+    @bash.in_bash
+    def get_raid_devices(self):
         raid_physical_drive_lists = []
         raid_logic_drive_lists = []
 
@@ -835,9 +879,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         raid_physical_drive_lists.extend(pds)
         raid_logic_drive_lists.extend(vds)
 
-        rsp.raidPhysicalDriveStructs = raid_physical_drive_lists
-        rsp.raidLogicalDriveStructs = raid_logic_drive_lists
-        return jsonobject.dumps(rsp)
+        return raid_physical_drive_lists, raid_logic_drive_lists
 
     @bash.in_bash
     def get_megaraid_devices_megacli(self, smart_scan_result):
@@ -1301,7 +1343,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
                 drive_type = data[attr][0]["Intf"]
                 media_type = data[attr][0]["Med"]
-                drive_state = data[attr][0]["State"]
+                drive_state = self.convert_disk_state(data[attr][0]["State"])
                 wwn = pd_attributes["WWN"].upper()
                 raw_size = pd_attributes["Raw size"]
                 size = self.convert_size_in_bytes(raw_size)
@@ -1339,6 +1381,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 v = RaidLogicalDriveStruct()
                 v.id = int(data[vd_path][0]["DG/VD"].split("/")[0])
                 v.size = self.convert_size_in_bytes(vd_properties["Size"])
+                v.driveState = self.convert_raid_state(data[vd_path][0]["State"])
                 v.raidLevel = data[vd_path][0]["TYPE"]
                 v.raidControllerSasAddress = raid_controller_sas_address
                 v.raidControllerNumber = controller_id
@@ -1403,7 +1446,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             k = l.split(":")[0].strip().lower()
             v = ":".join(l.split(":")[1:]).strip()
             if "state" in k:
-                drive_state = v.split(" ")[0].strip()
+                drive_state = self.convert_disk_state(v.split(" ")[0].strip())
             elif "transfer speed" in k:
                 drive_type = v.split(" ")[0].strip()
             elif "reported location" in k and "Enclosure" in v and "Slot" in v:
@@ -1471,6 +1514,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             v = RaidLogicalDriveStruct()
             v.raidControllerNumber = adapter
             v.raidLevel = "RAID%s" % variables["RAID level"]
+            v.driveState = self.convert_raid_state(variables["Status of Logical Device"])
             v.size = self.convert_size_in_bytes(variables["Size"])
             v.wwn = variables["Volume Unique Identifier"].upper()
             v.id = int(logical_id)
@@ -1561,7 +1605,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             elif "slot" in k:
                 slot_number = int(v)
             elif "state" == k:
-                drive_state = v.split(" ")[0].strip()
+                drive_state = self.convert_disk_state(v.split(" ")[0].strip())
             elif "size" in k:
                 if "mb" in k:
                     size = int(v.split("/")[0].strip()) * 1024 * 1024
@@ -1595,6 +1639,13 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def get_sas_logical_drive_info(self, infos, adapter):
+        def get_logical_drive_status():
+            r, o = bash.bash_ro("sas3ircu %s status" % adapter)
+            if r != 0:
+                return None
+            logical_state_pattern = r"IR volume (\d+).*?Volume state(?:\s*:\s*)(.*?)(?=\n|$)"
+            return {key.strip(): value.strip() for key, value in re.findall(logical_state_pattern, o, re.S)}
+
         res = []
         logical_pattern = r"IR Volume information(.*?)(?=Physical device information|$)"
         logical_match = re.search(logical_pattern, infos, re.S)
@@ -1605,16 +1656,22 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         logical_device_matches = re.findall(logical_device_pattern, logical_info, re.S)
         var_pattern = r"(.*?)(?:\s*:\s*)(.*?)(?=\n|$)"
 
+        logical_states = get_logical_drive_status()
+
         for logical_device_match in logical_device_matches:
             logical_id = logical_device_match[0]
             logical_device_info = logical_device_match[1].strip()
             variables = {key.strip(): value.strip() for key, value in re.findall(var_pattern, logical_device_info, re.S)}
             v = RaidLogicalDriveStruct()
+            v.id = int(logical_id)
             v.raidControllerNumber = adapter
             v.raidLevel = variables["RAID level"]
+            state = "unknown" if logical_states is None or logical_id not in logical_states.keys() \
+                else logical_states[logical_id]
+            v.driveState = self.convert_raid_state(state)
             v.size = self.convert_size_in_bytes(variables["Size (in MB)"])
             v.wwn = variables["Volume wwid"].upper()
-            v.id = int(logical_id)
+
             res.append(v)
         return res
 
@@ -1784,11 +1841,12 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         # only scan local scsi disks
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = LocalScsiScanRsp()
-        rsp.diskStructs = self.get_local_scsi_block_devices()
+        rsp.localScsiDriveStructs = self.get_local_scsi_devices()
+        rsp.raidPhysicalDriveStructs, rsp.raidLogicalDriveStructs = self.get_raid_devices()
         return jsonobject.dumps(rsp)
 
     @bash.in_bash
-    def get_local_scsi_block_devices(self):
+    def get_local_scsi_devices(self):
         # type: (str) -> list[LocalScsiDriveStruct]
         # raid logical disk will be collected
 
