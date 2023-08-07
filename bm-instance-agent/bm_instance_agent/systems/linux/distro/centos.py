@@ -25,11 +25,11 @@ class CentOSDriver(linux_driver.LinuxDriver):
 
     def _attach_bond_port(self, port):
         parasObj = objects.BondPortParasObj.from_json(port.paras)
-        config.if_down_up(port.iface_name)
         for slave in parasObj.slave_list:
             config.if_down_up(slave["iface_name"], config.PORT_OPT_DOWNUP)
         if port.vlan_if_name:
             config.if_down_up(port.vlan_if_name)
+        config.if_down_up(port.iface_name)
 
     def _attach_phy_port(self, port):
         if_name = port.iface_name
@@ -72,6 +72,14 @@ class CentOSDriver(linux_driver.LinuxDriver):
         else:
             self._detach_phy_port(port)
         config.remove_network_config(port)
+        if port.vlan_if_name:
+            agent_utils.ip_link_del(port.vlan_if_name)
+
+        if port.type != port.PORT_TYPE_PHY:
+            agent_utils.ip_link_del(port.iface_name)
+        else:
+            cmd = ['ip', 'address', 'flush', 'dev', port.iface_name]
+            processutils.execute(*cmd)
 
     def detach_port(self, instance_obj, network_obj):
         for port in network_obj.ports:
