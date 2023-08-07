@@ -89,3 +89,18 @@ class TestVxlanNetworkApi(TestCase):
         self.assertEqual(0, r, "[check] host not add fdb entry")
         r, _ = bash.bash_ro('bridge fdb|grep vxlan1000|grep dst|grep 192.168.100.56')
         self.assertEqual(0, r, "[check] host not add fdb entry")
+
+        rsp = network_plugin_utils.delete_vxlan_fdbs(
+            peers=["192.168.100.15", "192.168.100.56"],
+            networkUuids=[global_l2_uuid]
+        )
+        rspO = jsonobject.loads(rsp)
+        self.assertEqual(True, rspO.success, rspO.error)
+        # check in host
+        r,_ = bash.bash_ro('bridge fdb|grep vxlan1000|grep dst|grep 192.168.100.15')
+        self.assertNotEqual(0, r, "[check] host not delete fdb entry")
+        r, _ = bash.bash_ro('bridge fdb|grep vxlan1000|grep dst|grep 192.168.100.56')
+        self.assertNotEqual(0, r, "[check] host not delete fdb entry")
+
+
+
