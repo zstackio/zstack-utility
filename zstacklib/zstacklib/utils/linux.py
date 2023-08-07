@@ -1757,18 +1757,29 @@ def int_to_ip_string(ip):
             str((ip & 0x000000ff))
             )
 
+def vlan_eth_exists(ethname, vlan):
+    vlan = int(vlan)
+    if not is_network_device_existing(ethname):
+        raise LinuxError('cannot find ethernet device %s' % ethname)
+    vlan_dev_name = make_vlan_eth_name(ethname, vlan)
+    return is_network_device_existing(vlan_dev_name)
+
+
 def delete_vlan_eth(vlan_dev_name):
     if not is_network_device_existing(vlan_dev_name):
         return
     shell.call('ip link set dev %s down' % vlan_dev_name)
     iproute.delete_link_no_error(vlan_dev_name)
 
+def make_vlan_eth_name(ethname, vlan):
+    return '%s.%s' % (ethname, vlan)
+
 def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
     if not is_network_device_existing(ethname):
         raise LinuxError('cannot find ethernet device %s' % ethname)
 
-    vlan_dev_name = '%s.%s' % (ethname, vlan)
+    vlan_dev_name = make_vlan_eth_name(ethname, vlan)
     if not is_network_device_existing(vlan_dev_name):
         shell.call('ip link add link %s name %s type vlan id %s' % (ethname, vlan_dev_name, vlan))
         if ip:
