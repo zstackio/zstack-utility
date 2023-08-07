@@ -93,6 +93,22 @@ class RetryException(Exception):
     pass
 
 
+# vm memory stat in bytes
+class DomainMemoryStats(object):
+    def __init__(self):
+        self.max = None
+        self.swap_out = None
+        self.swap_in = None
+        self.available = None
+        self.usable = None
+        self.actual = None
+        self.unused = None
+        self.major_fault = None
+        self.minor_fault = None
+        self.last_update = None
+        self.rss = None
+
+
 class NicTO(object):
     def __init__(self):
         self.mac = None
@@ -2277,6 +2293,30 @@ class Vm(object):
         else:
             # TODO: return system cpu capacity
             return 512
+
+
+    def get_memory_stats(self):
+        # type: () -> dict[str, int]
+        memory_stats_dict = self.domain.memoryStats()
+        memory_stats = DomainMemoryStats()
+        memory_stats.swap_out = memory_stats_dict.get('swap_out', None)
+        memory_stats.available = memory_stats_dict.get('available', None)
+        memory_stats.usable = memory_stats_dict.get('usable', None)
+        memory_stats.actual = memory_stats_dict.get('actual', None)
+        memory_stats.major_fault = memory_stats_dict.get('major_fault', None)
+        memory_stats.swap_in = memory_stats_dict.get('swap_in', None)
+        memory_stats.last_update = memory_stats_dict.get('last_update', None)
+        memory_stats.unused = memory_stats_dict.get('unused', None)
+        memory_stats.minor_fault = memory_stats_dict.get('minor_fault', None)
+        memory_stats.rss = memory_stats_dict.get('rss', None)
+
+        max_memory = self.domain.maxMemory()
+        memory_stats.max = max_memory
+
+        return memory_stats
+
+    def set_memory(self, memory_size_in_bytes):
+        self.domain.setMemoryFlags(memory_size_in_bytes / 1024)
 
     def get_memory(self):
         return long(self.domain_xmlobject.currentMemory.text_) * 1024
@@ -5961,6 +6001,7 @@ class VmPlugin(kvmagent.KvmAgent):
     SET_SYNC_VM_CLOCK_TASK_PATH = "/vm/clock/sync/task"
     KVM_SYNC_VM_DEVICEINFO_PATH = "/sync/vm/deviceinfo"
     CLEAN_FIRMWARE_FLASH = "/clean/firmware/flash"
+    APPLY_MEMORY_BALLOON_PATH = "/vm/apply/memory/balloon"
 
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
@@ -8822,6 +8863,62 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def apply_memory_balloon(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        for vm_uuid in cmd.vmUuids:
+            self.do_apply_memory_balloon_to_vm(vm_uuid, cmd.direction, cmd.adjustPercent)
+
+        return jsonobject.dumps(rsp)
+
+    def do_apply_memory_balloon_to_vm(self, vm_uuid, direction, precentage):
+        vm = get_vm_by_uuid_no_retry(vm_uuid, False)
+        if not vm:
+            logger.debug("vm[uuid:%s] is not running, skip memory balloon" % vm_uuid)
+            return
+
+        if vm.state != Vm.VM_STATE_RUNNING:
+            logger.debug("vm[uuid:%s] is not running, skip memory balloon" % vm_uuid)
+            return
+
+        mem = vm.get_memory_stats()
+        if not mem.unused:
+            logger.debug("vm[uuid:%s] do not support virtio memory balloon, skip it" % vm_uuid)
+            return
+
+        actual_mem = mem.actual
+        if direction == 'Decrease':
+            # do not decrease memory over unuse memory
+            changed_to = actual_mem - actual_mem * precentage / 100
+            changed_to = changed_to if changed_to < mem.unused else mem.unused
+        elif direction == 'Increase':
+            # do not increase memory over max memory
+            changed_to = actual_mem + actual_mem * precentage / 100
+            changed_to = changed_to if changed_to < mem.max else mem.max
+        else:
+            raise Exception('unknown direction[%s]' % direction)
+
+        logger.debug("change vm[uuid:%s] memory from %s to %s" % (vm_uuid, mem.actual, changed_to))
+        vm.set_memory(changed_to)
+        self.wait_memory_changed(vm_uuid, changed_to)
+
+
+    def wait_memory_changed(self, vm_uuid, changed_to):
+        def wait_for_actual_memory_change(_):
+            vm = get_vm_by_uuid_no_retry(vm_uuid, False)
+            if not vm:
+                raise Exception('vm[uuid:%s] not exists, failed' % vm_uuid)
+
+            mem = vm.get_memory_stats()
+            return mem.actual == changed_to
+
+        if not linux.wait_callback_success(wait_for_actual_memory_change, None, interval=3, timeout=24):
+            raise Exception('unable to wait vm[uuid:%s] memory changed, after %s seconds'
+                            % (vm_uuid, 24))
+
+
+    @kvmagent.replyerror
     @in_bash
     def rollback_quorum_config(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -9562,6 +9659,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SET_VM_SCSI_CONTROLLER, self.set_scsi_controller)
         http_server.register_async_uri(self.DEL_VM_SCSI_CONTROLLER, self.del_scsi_controller)
         http_server.register_async_uri(self.CLEAN_FIRMWARE_FLASH, self.clean_firmware_flash)
+        http_server.register_async_uri(self.APPLY_MEMORY_BALLOON_PATH, self.apply_memory_balloon)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
