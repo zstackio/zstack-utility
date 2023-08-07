@@ -2362,6 +2362,14 @@ def populate_vxlan_fdbs(interf, ips):
 
     return True
 
+def delete_vxlan_fdbs(interf, ips):
+    try:
+        iproute.batch_delete_vxlan_fdbs(interf, "00:00:00:00:00:00", ips)
+    except Exception as e:
+        logger.debug(e)
+        return False
+
+    return True
 
 def bridge_fdb_has_self_rule(mac, dev):
     return shell.run("bridge fdb show dev %s | grep -m 1 '%s dev %s self permanent'" % (dev, mac, dev)) == 0
