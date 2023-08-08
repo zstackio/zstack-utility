@@ -81,8 +81,8 @@ def _check_multi_path_config():
     cmd = 'multipath -v3'
     processutils.execute(cmd, shell=True)
 
-class LinuxDriver(base.SystemDriverBase):
 
+class LinuxDriver(base.SystemDriverBase):
     driver_name = 'linux'
 
     def __init__(self):
@@ -120,7 +120,7 @@ class LinuxDriver(base.SystemDriverBase):
         stdout, stderr = processutils.trycmd(cmd, shell=True)
         if not stderr:
             LOG.info("iscsi target:%s has logged" % target_name)
-            return
+            return target_name
 
         discovery_cmd = 'iscsiadm -m discovery -t sendtargets -p {address}:{port}'.format(
                                     address=instance_obj.gateway_ip,
@@ -140,9 +140,10 @@ class LinuxDriver(base.SystemDriverBase):
                 processutils.execute(target_login_cmd, shell=True)
             else:
                 LOG.info("discovered targets not contains %s, skip login" % target_name)
+            return target_name
         except processutils.ProcessExecutionError:
             LOG.info("no iscsi target found, skip login")
-            return
+            return None
 
     def discovery_volume_target(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
         if not volume_obj.iscsi_path:
@@ -195,15 +196,24 @@ class LinuxDriver(base.SystemDriverBase):
         First check the /etc/iscsi/initiatorname.iscsi whether corrent, if
         not, corrent the configuration, then rescan the iscsi session.
         """
-        self.discovery_target(instance_obj)
+        target_name = self.discovery_target(instance_obj)
         self.discovery_volume_target(instance_obj, volume_obj, volume_access_path_gateway_ips)
         _check_initiator_config(instance_obj.uuid)
         _check_multi_path_config()
 
-        cmd = ['iscsiadm', '-m', 'session', '--rescan']
-        # parameter[delay_on_retry] of func[processutils.execute] will not verify exit_code
-        with bm_utils.transcantion(retries=5, sleep_time=10) as cursor:
-            cursor.execute(processutils.execute, *cmd)
+        if not target_name:
+            raise Exception("instance[%s] target name is not exist, can not rescan session" % instance_obj)
+        cmd = "iscsiadm -m session | grep {} | awk '{{print $2}}' | tr -d '[]'".format(target_name)
+        LOG.info(cmd)
+        stdout, stderr = processutils.trycmd(cmd, shell=True)
+        if stderr:
+            LOG.info("iscsiadm -m session grep %s failed, because %s" % (target_name, stderr))
+            return
+        rescan_cmd = 'iscsiadm -m session -r %s --rescan' % stdout.strip()
+        LOG.info(rescan_cmd)
+        stdout, stderr = processutils.trycmd(rescan_cmd, shell=True)
+        if stderr:
+            LOG.info("iscsiadm -m session --rescan fail, because %s" % stderr)
 
     def detach_volume(self, instance_obj, volume_obj, volume_access_path_gateway_ips):
         """ Detach a given iSCSI lun
