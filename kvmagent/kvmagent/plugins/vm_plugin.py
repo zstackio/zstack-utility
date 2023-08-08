@@ -1167,6 +1167,10 @@ def user_specify_driver():
 def file_type_support_block_device():
     return LooseVersion(QEMU_VERSION) < LooseVersion("6.0.0")
 
+def is_qemu_support_migrate_with_bitmap(version):
+    return LooseVersion(version) >= LooseVersion("4.2.0-640")
+
+
 def block_device_use_block_type():
     return user_specify_driver() or not file_type_support_block_device()
 
@@ -3538,9 +3542,8 @@ class Vm(object):
                         raise kvmagent.KvmError(err)
 
         self._is_vm_paused_with_readonly_flag_on_disk()
-        # is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
-        # migrate bitmap is not safe for now
-        check_mirror_jobs(cmd.vmUuid, migrate_without_bitmaps=True)
+        is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
+        check_mirror_jobs(cmd.vmUuid, is_migrate_without_bitmaps)
 
         with MigrateDaemon(self.domain):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
@@ -3595,6 +3598,13 @@ class Vm(object):
         return [line.split()[3] for line in lines]
 
     def _is_vm_migrate_without_dirty_bitmap(self):
+        # From ZSTAC-57974, qemu version like '6.2.0-201.gca43b80.el7'
+        qemu_version = qemu.get_running_version(self.uuid)
+        if qemu_version == "":
+            qemu_version = QEMU_VERSION
+        if not is_qemu_support_migrate_with_bitmap(qemu_version):
+            return True
+
         libvirt_version = linux.get_libvirt_version()
         if LooseVersion(libvirt_version) < LooseVersion('6.0.0') or LooseVersion(libvirt_version) >= LooseVersion('8.0.0'):
             return False
