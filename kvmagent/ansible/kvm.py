@@ -280,13 +280,13 @@ def install_kvm_pkg():
             if output:
                 dep_list =' '.join([pkg for pkg in dep_list.split() if pkg == 'libvirt-python' or not pkg.startswith("libvirt")])
             
-            	# libvirt-python is not dependent can be installed and upgraded
-            	command = ("yum --disablerepo=* --enablerepo={0} deplist libvirt-python | grep libvirt").format(zstack_repo)
+            	# libvirt-python installation does not affect the libvirt installation
+            	command = ("yum --disablerepo=* --enablerepo={0} --assumeno install libvirt-python |awk '{{print $1}}' | grep -Ew '^\s*libvirt\s*$'").format(zstack_repo)
             	host_post_info.post_label = "ansible.shell.install.pkg"
             	host_post_info.post_label_param = "libvirt-python"
             	(status, output) = run_remote_command(command, host_post_info, True, True)
             	if status is True:
-                    error("libvirt-python should not have any dependent!")
+                    error("libvirt-python should not install!")
 
             # skip these packages when connect host
             _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
