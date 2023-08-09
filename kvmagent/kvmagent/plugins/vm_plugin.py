@@ -1532,7 +1532,7 @@ class BlkCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -1555,13 +1555,11 @@ class VirtioCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none'}
+        driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
         if self.volume.hasattr("multiQueues") and self.volume.multiQueues:
             driver_elements["queues"] = self.volume.multiQueues
         if self.volume.hasattr("ioThreadId") and self.volume.ioThreadId:
             driver_elements["iothread"] = str(self.volume.ioThreadId)
-        if self.volume.useVirtioSCSI:
-            driver_elements["discard"] = "unmap"
 
         e(disk, 'driver', None, driver_elements)
         source = e(disk, 'source', None,
@@ -2625,13 +2623,11 @@ class Vm(object):
 
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
-            driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode}
+            driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode, 'discard': 'unmap'}
             if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
                 driver_elements["queues"] = volume.multiQueues
             if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
                 driver_elements["iothread"] = str(volume.ioThreadId)
-            if volume.useVirtioSCSI:
-                driver_elements["discard"] = "unmap"
             e(disk, 'driver', None, driver_elements)
             e(disk, 'source', None, {'file': volume.installPath})
 
@@ -4919,7 +4915,7 @@ class Vm(object):
 
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode}
+                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'discard': 'unmap'}
                 if cmd.addons and cmd.addons['useDataPlane'] is True:
                     driver_elements['dataplane'] = 'on'
                     driver_elements['queues'] = 1
@@ -4927,8 +4923,6 @@ class Vm(object):
                     driver_elements["queues"] = _v.multiQueues
                 if (not _v.useVirtioSCSI) and _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
                     driver_elements["iothread"] = str(_v.ioThreadId)
-                if _v.useVirtioSCSI:
-                    driver_elements["discard"] = "unmap"
 
                 e(disk, 'driver', None, driver_elements)
                 # if cmd.addons and cmd.addons['useDataPlane'] is True:
@@ -5968,6 +5962,7 @@ class VmPlugin(kvmagent.KvmAgent):
     SET_SYNC_VM_CLOCK_TASK_PATH = "/vm/clock/sync/task"
     KVM_SYNC_VM_DEVICEINFO_PATH = "/sync/vm/deviceinfo"
     CLEAN_FIRMWARE_FLASH = "/clean/firmware/flash"
+    FSTRIM_VM_PATH = "/vm/fstrim"
 
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
@@ -7054,7 +7049,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def _get_new_disk(old_disk, volume=None):
         def filebased_volume(_v):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode, 'discard': 'unmap'})
             e(disk, 'source', None, {'file': _v.installPath})
             return disk
 
@@ -8859,6 +8854,19 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def fstrim_vm(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        r, o, err = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-fstrim\"}'" % cmd.vmUuid)
+        if r != 0:
+            logger.warn("vm[uuid:%s] failed to fstrim : %s, %s" % (self.uuid, o, err))
+            rsp.success = False
+            rsp.error = err
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     @in_bash
     def wait_secondary_vm_ready(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -9569,6 +9577,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SET_VM_SCSI_CONTROLLER, self.set_scsi_controller)
         http_server.register_async_uri(self.DEL_VM_SCSI_CONTROLLER, self.del_scsi_controller)
         http_server.register_async_uri(self.CLEAN_FIRMWARE_FLASH, self.clean_firmware_flash)
+        http_server.register_async_uri(self.FSTRIM_VM_PATH, self.fstrim_vm)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
