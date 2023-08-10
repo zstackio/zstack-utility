@@ -859,22 +859,13 @@ def _get_free_memory():
 def _get_used_memory():
     return _get_total_memory() - _get_free_memory()
 
-
+@in_bash
 def apply_memory_reserve(reserved_memory_capacity):
     machine_limit_memory = _get_total_memory() - reserved_memory_capacity
-    machine_memory_limit_path = '/sys/fs/cgroup/memory/machine.slice/memory.limit_in_bytes'
-    if not os.path.exists(machine_memory_limit_path):
-        try:
-            os.makedirs(os.path.dirname(machine_memory_limit_path))
-        except Exception as e:
-            raise Exception('cannot create memory reserve file: %s' % e)
-    if not os.path.exists(machine_memory_limit_path):
-        raise Exception('cannot create memory reserve file: %s' % machine_memory_limit_path)
-    ret = bash_r('echo %d > %s' % (machine_limit_memory, machine_memory_limit_path))
-    if ret == 0:
-        return
-    else:
-        raise Exception('cannot set memory reserve: %s' % reserved_memory_capacity)
+    ret = bash_r("systemctl set-property machine.slice MemoryLimit=%s" % machine_limit_memory)
+    if ret != 0:
+        raise Exception("unable to set machine.slice MemoryLimit")
+
 
 
 class HostPlugin(kvmagent.KvmAgent):
