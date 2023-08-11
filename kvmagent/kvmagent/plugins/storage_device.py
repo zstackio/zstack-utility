@@ -1345,6 +1345,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 media_type = data[attr][0]["Med"]
                 drive_state = self.convert_disk_state(data[attr][0]["State"])
                 wwn = pd_attributes["WWN"].upper()
+                serial_name = pd_attributes["SN"].strip().upper()
                 raw_size = pd_attributes["Raw size"]
                 size = self.convert_size_in_bytes(raw_size)
 
@@ -1356,6 +1357,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 d.driveState = drive_state
                 d.driveType = drive_type
                 d.mediaType = media_type
+                d.serialNumber = serial_name
                 d.raidTool = "STORCLI"
                 d.raidControllerSasAddreess = raid_controller_sas_address
                 d.raidControllerProductName = raid_controller_product_name

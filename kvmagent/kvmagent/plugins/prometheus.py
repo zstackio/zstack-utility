@@ -121,13 +121,12 @@ def send_physical_fan_status_alarm_to_mn(fan_name, status):
 
 
 @thread.AsyncThread
-def send_physical_disk_status_alarm_to_mn(wwn, drive_state):
+def send_physical_disk_status_alarm_to_mn(serial_number, drive_state):
     class PhysicalDiskStatusAlarm(object):
         def __init__(self):
             self.host = None
-            self.wwn = None
-            self.drive_state = None
-            self.serial_number = None
+            self.serialNumber = None
+            self.driveState = None
     
     if ALARM_CONFIG is None:
         return
@@ -139,22 +138,22 @@ def send_physical_disk_status_alarm_to_mn(wwn, drive_state):
         return
 
     global disk_status_abnormal_list_record
-    if (wwn not in disk_status_abnormal_list_record.keys()) \
-            or (wwn in disk_status_abnormal_list_record.keys()
-                and disk_status_abnormal_list_record[wwn] != drive_state):
+    if (serial_number not in disk_status_abnormal_list_record.keys()) \
+            or (serial_number in disk_status_abnormal_list_record.keys()
+                and disk_status_abnormal_list_record[serial_number] != drive_state):
         physical_disk_status_alarm = PhysicalDiskStatusAlarm()
         physical_disk_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_disk_status_alarm.wwn = wwn
+        physical_disk_status_alarm.serialNumber = serial_number
         physical_disk_status_alarm.drive_state = drive_state
         http.json_dump_post(url, physical_disk_status_alarm, {'commandpath': '/host/physical/disk/status/alarm'})
-        disk_status_abnormal_list_record[wwn] = drive_state
+        disk_status_abnormal_list_record[serial_number] = drive_state
 
 
-def send_physical_disk_insert_alarm_to_mn(wwn):
+def send_physical_disk_insert_alarm_to_mn(serial_number):
     class PhysicalDiskInsertAlarm(object):
         def __init__(self):
             self.host = None
-            self.wwn = None
+            self.serialNumber = None
             
     if ALARM_CONFIG is None:
         return
@@ -167,15 +166,15 @@ def send_physical_disk_insert_alarm_to_mn(wwn):
 
     physical_disk_insert_alarm = PhysicalDiskInsertAlarm()
     physical_disk_insert_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-    physical_disk_insert_alarm.wwn = wwn
+    physical_disk_insert_alarm.serialNumber = serial_number
     http.json_dump_post(url, physical_disk_insert_alarm, {'commandpath': '/host/physical/disk/insert/alarm'})
 
 
-def send_physical_disk_remove_alarm_to_mn(wwn):
+def send_physical_disk_remove_alarm_to_mn(serical_number):
     class PhysicalDiskRemoveAlarm(object):
         def __init__(self):
             self.host = None
-            self.wwn = None
+            self.serialNumber = None
     
     if ALARM_CONFIG is None:
         return
@@ -188,7 +187,7 @@ def send_physical_disk_remove_alarm_to_mn(wwn):
 
     physical_disk_remove_alarm = PhysicalDiskRemoveAlarm()
     physical_disk_remove_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-    physical_disk_remove_alarm.wwn = wwn
+    physical_disk_remove_alarm.serialNumber = serical_number
     http.json_dump_post(url, physical_disk_remove_alarm, {'commandpath': '/host/physical/disk/remove/alarm'})
 
 def collect_memory_locator():
@@ -220,14 +219,14 @@ def do_check_disk_insert_and_remove(disk_list):
         return
     
     # check disk insert
-    for wwn in disk_list:
-        if wwn not in disk_list_record:
-            send_physical_disk_insert_alarm_to_mn(wwn)
+    for serial_number in disk_list:
+        if serial_number not in disk_list_record:
+            send_physical_disk_insert_alarm_to_mn(serial_number)
     
     # check disk remove
-    for wwn in disk_list_record:
-        if wwn not in disk_list:
-            send_physical_disk_remove_alarm_to_mn(wwn)
+    for serial_number in disk_list_record:
+        if serial_number not in disk_list:
+            send_physical_disk_remove_alarm_to_mn(serial_number)
             
     disk_list_record = disk_list
 
@@ -497,9 +496,9 @@ def convert_disk_state_to_int(state):
 def collect_host_disk_state():
     metrics = {
         'raid_logical_disk_state': GaugeMetricFamily('raid_logical_disk_state',
-                                        'raid logical disk state', None, ['wwn']),
+                                        'raid logical disk state', None, ['serial_number']),
         'raid_physical_disk_state': GaugeMetricFamily('raid_physical_disk_state',
-                                        'raid physical disk state', None,['wwn']),
+                                        'raid physical disk state', None,['serial_number']),
     }
     global raid_cmd_list
     global disk_list
@@ -533,7 +532,7 @@ def collect_host_disk_state():
 def check_disk_insert_and_remove():
     global disk_list
     def check_no_raid_disk():
-        cmd = "lsblk -d -P -p -o wwn,tran,pkname"
+        cmd = "lsblk -d -P -p -o serial,tran,pkname"
         pattern = r'(\w+)="([^"]*)"'
         r1, devices_info = bash.bash_ro(cmd)
 
@@ -547,10 +546,10 @@ def check_disk_insert_and_remove():
             tran = variables["TRAN"].lower()
             if tran == "fc" or tran == "iscsi" or tran == "usb":
                 continue
-            if len(variables["WWN"]) <= 2:
+            if len(variables["SERIAL"]) == 0:
                 continue
 
-            disk_list.add(variables["WWN"][2:].upper())
+            disk_list.add(variables["SERIAL"].upper())
 
     check_no_raid_disk()
     do_check_disk_insert_and_remove(disk_list)
@@ -585,11 +584,11 @@ def collect_arcconf_raid_state(metrics):
             if "Status of Logical Device" in l:
                 state = l.strip().split(":")[-1].strip()
             elif "Volume Unique Identifier" in l:
-                wwn = l.strip().split(":")[-1].strip()
-                metrics['raid_logical_disk_state'].add_metric([wwn], convert_raid_state_to_int(state))
+                serial_number = l.strip().split(":")[-1].strip()
+                metrics['raid_logical_disk_state'].add_metric([serial_number], convert_raid_state_to_int(state))
 
         for infos in device_arr[1:]:
-            drive_state = wwn = "unknown"
+            drive_state = serial_number = "unknown"
             is_hard_drive = False
             for l in infos.splitlines():
                 if l.strip() == "":
@@ -601,17 +600,17 @@ def collect_arcconf_raid_state(metrics):
                 v = ":".join(l.split(":")[1:]).strip()
                 if "state" == k:
                     drive_state = v.split(" ")[0].strip()
-                elif "world-wide name" in k:
-                    wwn = v.upper()
-            if not is_hard_drive or wwn.lower() == "unknown":
+                elif "serial number" in k:
+                    serial_number = v.upper()
+            if not is_hard_drive or serial_number.lower() == "unknown":
                 continue
             disk_status = convert_disk_state_to_int(drive_state)
-            metrics['raid_physical_disk_state'].add_metric([wwn], disk_status)
-            disk_list.add(wwn)
-            if disk_status == 0 and (wwn in disk_status_abnormal_list_record.keys()):
-                disk_status_abnormal_list_record.pop(wwn)
+            metrics['raid_physical_disk_state'].add_metric([serial_number], disk_status)
+            disk_list.add(serial_number)
+            if disk_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
+                disk_status_abnormal_list_record.pop(serial_number)
             elif disk_status != 0:
-                send_physical_disk_status_alarm_to_mn(wwn, drive_state)
+                send_physical_disk_status_alarm_to_mn(serial_number, drive_state)
 
     return metrics.values()
 
@@ -631,29 +630,31 @@ def collect_sas_raid_state(metrics):
             if "Volume state" in info:
                 state = info.strip().split(":")[-1].strip()
             elif "Volume wwid" in info:
-                wwn = info.strip().split(":")[-1].strip()
+                wwid = info.strip().split(":")[-1].strip()
                 if "Inactive" in state:
                     continue
-                metrics['raid_logical_disk_state'].add_metric(wwn, convert_raid_state_to_int(state))
+                metrics['raid_logical_disk_state'].add_metric(wwid, convert_raid_state_to_int(state))
         
         disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State|Serial No|Drive Type'" % line.strip())
-        wwn = state = "unknown"
+        serial_number = state = "unknown"
         for info in disk_info.splitlines():
             k = info.split(":")[0].strip()
             v = info.split(":")[1].strip()
             if "State" == k:
                 state = v.split(" ")[0].strip()
-            elif "GUID" == k:
-                wwn = v.upper()
+            elif "Unit Serial No(VPD)" == k:
+                serial_number = v.upper()
             elif "Drive Type" == k:
+                if serial_number == "unknown" or state == "unknown":
+                    continue
                 drive_status = convert_disk_state_to_int(state)
-                metrics['raid_physical_disk_state'].add_metric([wwn], drive_status)
+                metrics['raid_physical_disk_state'].add_metric([serial_number], drive_status)
                 if drive_status != 20:
-                    disk_list.add(wwn)
-                if drive_status == 0 and (wwn in disk_status_abnormal_list_record.keys()):
-                    disk_status_abnormal_list_record.pop(wwn)
+                    disk_list.add(serial_number)
+                if drive_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
+                    disk_status_abnormal_list_record.pop(serial_number)
                 elif drive_status != 0:
-                    send_physical_disk_status_alarm_to_mn(wwn, state)
+                    send_physical_disk_status_alarm_to_mn(serial_number, state)
 
     return metrics.values()
 
@@ -683,9 +684,9 @@ def collect_mega_raid_state(metrics):
             vid = match.group(1)
             vd_state = data[attr][0]["State"]
             vd_properties = data["VD%s Properties" % vid]
-            wwn = vd_properties["SCSI NAA Id"].upper()
+            naa_id = vd_properties["SCSI NAA Id"].upper() # vd's sn is the same as wwn
             converted_vd_state = convert_raid_state_to_int(vd_state)
-            metrics['raid_logical_disk_state'].add_metric([wwn], converted_vd_state)
+            metrics['raid_logical_disk_state'].add_metric([naa_id], converted_vd_state)
 
     # collect pd state
     for controller in pd_infos["Controllers"]:
@@ -701,14 +702,14 @@ def collect_mega_raid_state(metrics):
 
             pd_path = "/c%s/e%s/s%s" % (controller_id, enclosure_id, slot_id)
             pd_attributes = data["Drive %s - Detailed Information" % pd_path]["Drive %s Device attributes" % pd_path]
-            wwn = pd_attributes["WWN"].upper()
+            serial_number = pd_attributes["SN"].strip().upper()
             converted_pd_status = convert_disk_state_to_int(pd_state)
-            metrics['raid_physical_disk_state'].add_metric([wwn], converted_pd_status)
-            disk_list.add(wwn)
-            if converted_pd_status == 0 and (wwn in disk_status_abnormal_list_record.keys()):
-                disk_status_abnormal_list_record.pop(wwn)
+            metrics['raid_physical_disk_state'].add_metric([serial_number], converted_pd_status)
+            disk_list.add(serial_number)
+            if converted_pd_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
+                disk_status_abnormal_list_record.pop(serial_number)
             elif converted_pd_status != 0:
-                send_physical_disk_status_alarm_to_mn(wwn, converted_pd_status)
+                send_physical_disk_status_alarm_to_mn(serial_number, converted_pd_status)
 
     return metrics.values()
 
@@ -1225,7 +1226,7 @@ def collect_hba_port_device_state():
     if r != 0:
         return ret
     port_name = None
-    state_ = 100
+    state_ = "unknown"
     for line in o.strip().split("\n"):
         infos = line.split("=")
         k = infos[0].lower().strip()
@@ -1233,15 +1234,16 @@ def collect_hba_port_device_state():
         if k == "port_name":
             port_name = v[2:]
         if k == "port_state":
-            state_ = convert_hba_port_state_to_int(v)
+            state_ = v
         if k == "device path":
-            metrics['hba_port_state'].add_metric([port_name], float(state_))
-            if state_ != 0:
+            new_state = float(convert_hba_port_state_to_int(v))
+            metrics['hba_port_state'].add_metric([port_name], new_state)
+            if new_state != 0:
                 send_hba_port_state_abnormal_alarm_to_mn(port_name, state_)
             elif port_name in hba_port_abnormal_list_record_map.keys():
                 hba_port_abnormal_list_record_map.pop(port_name)
             port_name = None
-            state_ = 100
+            state_ = "unknown"
     return metrics.values()
 
 
