@@ -9812,6 +9812,15 @@ class ConfigUiCmd(Command):
             #     args.webhook_port = '5443'
             if args.server_port == '5000':
                 args.server_port = '5443'
+            if args.server_port:
+                distro = platform.dist()[0]
+                if distro in RPM_BASED_OS:
+                    shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
+                elif distro in DEB_BASED_OS:
+                    shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
+                else:
+                    shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
+
 
         # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
         if args.ssl_keystore and args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
