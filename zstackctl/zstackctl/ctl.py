@@ -9865,6 +9865,13 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("webhook_port", args.webhook_port.strip())
         if args.server_port or args.server_port == '':
             ctl.write_ui_property("server_port", args.server_port.strip())
+            distro = platform.dist()[0]
+            if distro in RPM_BASED_OS:
+                shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
+            elif distro in DEB_BASED_OS:
+                shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
+            else:
+                shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
         if args.log or args.log == '':
             ctl.write_ui_property("log", args.log.strip())
 
