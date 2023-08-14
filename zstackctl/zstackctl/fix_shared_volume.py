@@ -65,7 +65,7 @@ def do_convert(args):
 
 def do_find_qcow2(vgUuid):
     paths = []
-    raw_paths = bash.bash_o('lvs --nolocking --noheading -Slv_name=~".*%s" -Stags={%s} -opath %s' % (QCOW2_SUFFIX, DONE_TAG, vgUuid)).strip().splitlines()
+    raw_paths = bash.bash_o('lvs --nolocking -t --noheading -Slv_name=~".*%s" -Stags={%s} -opath %s' % (QCOW2_SUFFIX, DONE_TAG, vgUuid)).strip().splitlines()
     for raw_path in raw_paths:
         paths.append(raw_path.strip())
     sys.stdout.write(",".join(paths))

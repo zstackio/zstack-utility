@@ -16,6 +16,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
+from zstacklib.utils import list_ops
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
 from zstacklib.utils import traceable_shell
@@ -326,6 +327,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CONVERT_VOLUME_FORMAT_PATH = "/sharedblock/volume/convertformat"
     SHRINK_SNAPSHOT_PATH = "/sharedblock/snapshot/shrink"
     GET_QCOW2_HASH_VALUE_PATH = "/sharedblock/getqcow2hash"
+    CHECK_STATE_PATH = "/sharedblock/vgstate/check"
 
     vgs_in_progress = set()
     vg_size = {}
@@ -368,6 +370,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.SHRINK_SNAPSHOT_PATH, self.shrink_snapshot)
         http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
+        http_server.register_async_uri(self.CHECK_STATE_PATH, self.check_vg_state)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -410,11 +413,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         return diskPaths
 
-    def create_vg_if_not_found(self, vgUuid, disks, hostUuid, allDisks, forceWipe=False):
+    def create_vg_if_not_found(self, vgUuid, disks, hostUuid, allDisks, forceWipe=False, is_first_create_vg=False):
         # type: (str, set([CheckDisk]), str, set([CheckDisk]), bool) -> bool
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
-        def find_vg(vgUuid, raise_exception = True):
-            cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
+        def find_vg(vgUuid, raise_exception=True):
+            cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking -t %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code != 0 and raise_exception:
                 raise RetryException("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
@@ -423,14 +426,17 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             return True
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
-        def create_vg(hostUuid, vgUuid, diskPaths, raise_excption = True):
+        def create_vg(hostUuid, vgUuid, diskPaths, raise_exception=True):
+            if not is_first_create_vg:
+                raise Exception("vg %s has already been created before, and there may be a risk of data loss during "
+                        "secondary creation. Please check your storage" % vgUuid)
             cmd = shell.ShellCmd("vgcreate -qq --shared --addtag '%s::%s::%s::%s' --metadatasize %s %s %s" %
                                  (INIT_TAG, hostUuid, time.time(), linux.get_hostname(),
                                   DEFAULT_VG_METADATA_SIZE, vgUuid, " ".join(diskPaths)))
             cmd(is_exception=False)
             logger.debug("created vg %s, ret: %s, stdout: %s, stderr: %s" %
                          (vgUuid, cmd.return_code, cmd.stdout, cmd.stderr))
-            if cmd.return_code != 0 and raise_excption:
+            if cmd.return_code != 0 and raise_exception:
                 raise RetryException("ret: %s, stdout: %s, stderr: %s" %
                                 (cmd.return_code, cmd.stdout, cmd.stderr))
             elif cmd.return_code != 0:
@@ -465,7 +471,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         size_cache = self.vg_size.get(cmd.vgUuid)
-        if size_cache != None and linux.get_current_timestamp() - size_cache['currentTimestamp'] < 60:
+        if size_cache is not None and linux.get_current_timestamp() - size_cache['currentTimestamp'] < 60:
             rsp.totalCapacity = size_cache['totalCapacity']
             rsp.availableCapacity = size_cache['availableCapacity']
         elif cmd.vgUuid not in self.vgs_in_progress:
@@ -536,7 +542,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         for diskUuid in cmd.allSharedBlockUuids:
             disk = CheckDisk(diskUuid)
-            p = disk.get_path()
+            p = disk.get_path(raise_exception=False)
             if p is not None:
                 allDiskPaths.add(p)
                 allDisks.add(disk)
@@ -590,7 +596,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         lvm.start_lvmlockd(cmd.ioTimeout)
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
-        rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, disks, cmd.hostUuid, allDisks, cmd.forceWipe)
+        rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, disks, cmd.hostUuid, allDisks, cmd.forceWipe, cmd.isFirst)
 
 #       sanlock table:
 #       
@@ -634,6 +640,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         # lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         # lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), linux.get_hostname()))
         self.clear_stalled_qmp_socket()
+        lvm.check_missing_pv(cmd.vgUuid)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
@@ -675,13 +682,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid):
-            cmd = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("vgs --nolocking -t %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 return True
 
             logger.debug("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
-            cmd = shell.ShellCmd("vgs --nolocking %s" % vgUuid)
+            cmd = shell.ShellCmd("vgs --nolocking -t %s" % vgUuid)
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 logger.warn("found vg %s without tag %s" % (vgUuid, INIT_TAG))
@@ -773,7 +780,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
             return jsonobject.dumps(rsp)
 
-        command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
+        command = shell.ShellCmd("vgs --nolocking -t %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, {disk}, cmd.hostUuid, allDisks, cmd.forceWipe)
@@ -1092,7 +1099,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             measure_size = linux.qcow2_measure_required_size(dst_abs_path)
             current_size = int(lvm.get_lv_size(dst_abs_path))
             if current_size < measure_size:
-                lvm.resize_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
+                lvm.extend_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -1523,4 +1530,52 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         rsp.hashValue = secret.get_image_hash(abs_path)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_vg_state(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        if cmd.vgUuids is None or len(cmd.vgUuids) == 0:
+            return jsonobject.dumps(rsp)
+
+        rsp.failedVgs = {}
+
+        def vgck(vg_group):
+            if len(vg_group) == 0:
+                return
+
+            vgUuid = vg_group.pop(0)
+            r, o, e = lvm.vgck(vgUuid, 10)
+
+            if o is not None and o != "":
+                for es in o.strip().splitlines():
+                    if "lock start in progress" in es:
+                        break
+                    elif "held by other host" in es:
+                        break
+                    elif "Reading VG %s without a lock" % vgUuid in es:
+                        rsp.failedVgs.update({vgUuid : o})
+                        break
+
+            if vgUuid not in rsp.failedVgs:
+                pvs_outs = bash.bash_o(
+                    "timeout -s SIGKILL 10 pvs --noheading --nolocking -t -Svg_name=%s -ouuid,name,missing" % vgUuid).strip()
+                if "missing" in pvs_outs:
+                    rsp.failedVgs.update({vgUuid : "vg %s was missing pv" % vgUuid})
+
+            vgck(vg_group)
+
+        # up to three worker threads executing vgck
+        threads_maxnum = 3
+        vg_groups = list_ops.list_split(cmd.vgUuids, threads_maxnum)
+
+        threads = []
+        for vg_group in vg_groups:
+            if len(vg_group) != 0:
+                threads.append(thread.ThreadFacade.run_in_thread(vgck, (vg_group,)))
+
+        for t in threads:
+            t.join()
+
         return jsonobject.dumps(rsp)
