@@ -2655,6 +2655,14 @@ class Vm(object):
             e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
             return disk
 
+        def scsi_disk_volume():
+            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'disk'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+            e(disk, 'source', None, {'dev': volume.installPath})
+            e(disk, 'blockio', None, {'logical_block_size': '512', 'physical_block_size': '4096'})
+            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+            return disk
+
         def iscsibased_volume():
             # type: () -> etree.Element
             def virtio_iscsi():
@@ -2771,6 +2779,8 @@ class Vm(object):
             disk_element = ceph_volume()
         elif volume.deviceType == 'scsilun':
             disk_element = scsilun_volume()
+        elif volume.deviceType == 'scsi_disk':
+            disk_element = scsi_disk_volume()
         elif volume.deviceType == 'block':
             disk_element = block_volume()
         elif volume.deviceType == 'spool':
@@ -5426,7 +5436,14 @@ class Vm(object):
             lvm.unpriv_sgio()
             devices = elements['devices']
             for volume in storageDevices:
-                if match_storage_device(volume.installPath):
+                if volume.deviceType == 'scsi_disk':
+                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'disk'})
+                    e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
+                    e(disk, 'source', None, {'dev': lvm.parse_local_schema_install_path(volume.installPath)})
+                    e(disk, 'blockio', None, {'logical_block_size': '512', 'physical_block_size': '4096'})
+                    e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    return disk
+                elif match_storage_device(volume.installPath):
                     disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
                     e(disk, 'source', None, {'dev': volume.installPath})

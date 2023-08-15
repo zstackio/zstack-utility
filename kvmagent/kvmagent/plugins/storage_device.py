@@ -305,9 +305,23 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def attach_scsi_lun(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.volume.deviceType == 'scsi_disk':
+            return self.attach_local_scsi_lun(cmd)
+        else:
+            return self.attach_remote_scsi_lun(cmd)
+
+    def attach_local_scsi_lun(self, cmd):
         rsp = AgentRsp()
+        # install path : "host://{hostUuid}/wwn/{wwn}"
+        cmd.volume.installPath = lvm.parse_local_schema_install_path(cmd.volume.installPath)
+        vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid)
+        vm.attach_data_volume(cmd.volume, cmd.addons)
+        return jsonobject.dumps(rsp)
+
+    def attach_remote_scsi_lun(self, cmd):
         lvm.unpriv_sgio()
 
+        rsp = AgentRsp()
         if not cmd.multipath and "mpath" in cmd.volume.installPath:
             cmd.volume.installPath = self.get_slave_path(cmd.volume.installPath)
 
@@ -362,6 +376,20 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def detach_scsi_lun(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.volume.deviceType == 'scsi_disk':
+            return self.detach_local_scsi_lun(cmd)
+        else:
+            return self.detach_remote_scsi_lun(cmd)
+
+    def detach_local_scsi_lun(self, cmd):
+        rsp = AgentRsp()
+        # install path : "host://{hostUuid}/wwn/{wwn}"
+        cmd.volume.installPath = lvm.parse_local_schema_install_path(cmd.volume.installPath)
+        vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid)
+        vm.detach_data_volume(cmd.volume)
+        return jsonobject.dumps(rsp)
+
+    def detach_remote_scsi_lun(self, cmd):
         rsp = AgentRsp()
 
         vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid)
