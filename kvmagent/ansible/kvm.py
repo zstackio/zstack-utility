@@ -206,15 +206,17 @@ def install_kvm_pkg():
             'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel libicu edac-utils',
             'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu ',
             'uniontech': 'vconfig iscsi-initiator-utils OpenIPMI nettle qemu-kvm python-pyudev collectd-disk',
-            'rocky': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel collectd-disk'
+            'rocky': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel collectd-disk',
+            'helix': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel edac-utils'
         }
 
         releasever_mapping = {
             'c74': 'qemu-kvm-ev ',
             'c76': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
             'c79': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
-            'h76c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
-            'h79c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
+            'h76c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel vconfig OVMF libicu',
+            'h79c': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel vconfig OVMF libicu',
+            'h84r': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel collectd-disk',
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel',
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'nfs4': 'vconfig iscsi-initiator-utils OpenIPMI nettle libselinux-devel iptables iptables-services qemu-kvm python2-pyudev collectd-disk'
