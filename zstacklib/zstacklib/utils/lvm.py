@@ -131,7 +131,7 @@ class RetryException(Exception):
     pass
 
 
-class SharedBlockCandidateStruct:
+class BlockStruct:
     def __init__(self):
         self.wwid = None  # type: str
         self.vendor = None  # type: str
@@ -220,7 +220,7 @@ def get_mpath_block_devices(scsi_info):
 
             slaves = os.listdir("/sys/class/block/%s/slaves/" % dm)
             if slaves is None or len(slaves) == 0:
-                struct = SharedBlockCandidateStruct()
+                struct = BlockStruct()
                 struct.wwid = get_dm_wwid(dm)
                 struct.type = "mpath"
                 block_devices_list[idx] = struct
@@ -385,8 +385,8 @@ def get_dm_wwid(dm):
         return None
 
 def get_device_info(dev_name, scsi_info):
-    # type: (str, dict[str, str]) -> SharedBlockCandidateStruct
-    s = SharedBlockCandidateStruct()
+    # type: (str, dict[str, str]) -> BlockStruct
+    s = BlockStruct()
     dev_name = dev_name.strip()
 
     def get_wwid(dev):
@@ -414,8 +414,8 @@ def get_device_info(dev_name, scsi_info):
     return s
 
 def lsblk_info(dev_name):
-    # type: (str) -> SharedBlockCandidateStruct
-    s = SharedBlockCandidateStruct()
+    # type: (str) -> BlockStruct
+    s = BlockStruct()
 
     r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name,
                             False)
