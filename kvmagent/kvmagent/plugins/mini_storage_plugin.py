@@ -157,7 +157,7 @@ class RetryException(Exception):
 
 
 class GetBlockDevicesRsp(AgentRsp):
-    blockDevices = None  # type: list[lvm.SharedBlockCandidateStruct]
+    blockDevices = None  # type: list[lvm.BlockStruct]
 
     def __init__(self):
         super(GetBlockDevicesRsp, self).__init__()

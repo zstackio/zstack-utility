@@ -131,7 +131,7 @@ class RetryException(Exception):
     pass
 
 
-class SharedBlockCandidateStruct:
+class BlockStruct:
     def __init__(self):
         self.wwid = None  # type: str
         self.vendor = None  # type: str
@@ -220,7 +220,7 @@ def get_mpath_block_devices(scsi_info):
 
             slaves = os.listdir("/sys/class/block/%s/slaves/" % dm)
             if slaves is None or len(slaves) == 0:
-                struct = SharedBlockCandidateStruct()
+                struct = BlockStruct()
                 struct.wwid = get_dm_wwid(dm)
                 struct.type = "mpath"
                 block_devices_list[idx] = struct
@@ -385,8 +385,8 @@ def get_dm_wwid(dm):
         return None
 
 def get_device_info(dev_name, scsi_info):
-    # type: (str, dict[str, str]) -> SharedBlockCandidateStruct
-    s = SharedBlockCandidateStruct()
+    # type: (str, dict[str, str]) -> BlockStruct
+    s = BlockStruct()
     dev_name = dev_name.strip()
 
     def get_wwid(dev):
@@ -413,20 +413,37 @@ def get_device_info(dev_name, scsi_info):
     s.path = get_device_path(dev_name)
     return s
 
-def lsblk_info(dev_name):
-    # type: (str) -> SharedBlockCandidateStruct
-    s = SharedBlockCandidateStruct()
+def all_lsblk():
+    results = []
+    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE", False)
+    if r != 0 or o.strip() == "":
+        logger.warn("can not get device information")
+        return results
+    
+    for line in o.strip().split("\n"):
+        results.append(lsblk_info_line(line))
+    return results
 
+def lsblk_info(dev_name):
+    # type: (str) -> BlockStruct
     r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name,
                             False)
     if r != 0 or o.strip() == "":
         logger.warn("can not get device information from %s" % dev_name)
         return None
+    return lsblk_info_line(o.strip().split("\n")[0])
 
+def lsblk_info_line(line):
+    # type: (str) -> BlockStruct
     def get_data(e):
         return e.split("=")[1].strip().strip('"')
 
-    for entry in o.strip().split("\n")[0].split('" '):  # type: str
+    s = BlockStruct()
+    # NAME="/dev/sdf" VENDOR="ATA     " MODEL="HGST HUS728T8TAL" WWN="0x5000cca0c3e78802" SERIAL="VR2TYVPP" HCTL="1:0:5:0" TYPE="disk" SIZE="8001563222016"
+    # NAME is path
+    for entry in line.strip().split('" '):  # type: str
+        if entry.startswith("NAME"):
+            s.path = get_data(entry)
         if entry.startswith("VENDOR"):
             s.vendor = get_data(entry)
         elif entry.startswith("MODEL"):
@@ -441,8 +458,20 @@ def lsblk_info(dev_name):
             s.size = get_data(entry)
         elif entry.startswith('TYPE'):
             s.type = get_data(entry)
-
     return s
+
+def parse_local_schema_install_path(install_path):
+    # type: (str) -> str
+    # install_path format is "host://{hostUuid}/wwn/{wwn}"
+    if not install_path.startswith('host://'):
+        return install_path
+
+    wwn = install_path.split('/wwn/')[1]
+    lsblk_list = all_lsblk()
+    matched_lsblk_list = [blk for blk in lsblk_list if blk.wwn.upper() == wwn or blk.wwn.upper() == '0X' + wwn]
+    if not matched_lsblk_list:
+        raise Exception('unable to find scsi lun with install path of %s' % install_path)
+    return matched_lsblk_list[0].path
 
 def get_device_path(dev):
     for symlink in shell.call("udevadm info -q symlink -n %s" % dev).strip().split():
