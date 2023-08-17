@@ -889,6 +889,13 @@ class OvsBaseCtl(object):
 
             if flag == 0:
                 self.ovs.restart()
+
+            numvfs = '/sys/bus/pci/devices/{}/sriov_numvfs'.format(bdf)
+            vfnum = readSysfs(numvfs)
+            confirmWriteSysfs(numvfs, "0")
+            shell.call("devlink dev eswitch set pci/{} mode {}".format(bdf, "legacy"))
+            confirmWriteSysfs(numvfs, str(vfnum))
+
             return 0
 
         except Exception as err:
