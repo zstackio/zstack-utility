@@ -5229,6 +5229,7 @@ class Vm(object):
             def allocat_ide_config(_disk, _volume):
                 if _volume.deviceAddress:
                     e(_disk, 'address', None, {'type': 'drive', 'bus': _volume.deviceAddress.bus, 'unit': _volume.deviceAddress.unit})
+                    volume_ide_configs.pop(0)
                 else:
                     if len(volume_ide_configs) == 0:
                         err = "insufficient IDE address."
