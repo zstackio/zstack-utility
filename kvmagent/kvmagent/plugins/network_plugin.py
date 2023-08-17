@@ -650,8 +650,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def check_macvlan_vlan_eth(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CheckVlanBridgeResponse()
-        if not linux.vlan_eth_exists(cmd.bridgeName):
-            rsp.error = "can not find vlan bridge[%s] for macvlan" % cmd.bridgeName
+        if not linux.vlan_eth_exists(cmd.physicalInterfaceName, cmd.vlan):
+            rsp.error = "can not find vlan network interface[%s] for macvlan" % linux.make_vlan_eth_name(cmd.physicalInterfaceName, cmd.vlan)
             rsp.success = False
         else:
             self._ifup_device_if_down(cmd.physicalInterfaceName)
