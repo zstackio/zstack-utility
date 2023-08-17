@@ -1583,6 +1583,26 @@ def get_cpu_model():
     model_name = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Model name/{print $2}'").strip()
     return vendor_id, model_name
 
+def get_socket_num():
+    num_dmidecode = int(shell.call("dmidecode -t processor | grep 'Socket Designation' | wc -l").strip())
+    num_lscpu = int(shell.call("lscpu | awk '/Socket\(s\)/{print $2}'").strip())
+    num_cpuinfo = int(shell.call("grep 'physical id' /proc/cpuinfo | sort -u | wc -l").strip())
+    '''
+    Seems not all platforms can get these values correctly, 
+    depending on the system and the version of tools like util-linux and dmidecode.
+    
+    Return the value if two or three values are equal, else treated as 1 cpu.
+    '''
+    freq = {}
+    for num in [num_dmidecode, num_lscpu, num_cpuinfo]:
+        if num in freq:
+            freq[num] += 1
+            if freq[num] >= 2:
+                return num
+        else:
+            freq[num] = 1
+    return 1
+
 @retry(times=3, sleep_time=3)
 def get_cpu_speed():
     max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'

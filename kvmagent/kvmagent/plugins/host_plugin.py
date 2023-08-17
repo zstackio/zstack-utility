@@ -920,8 +920,6 @@ class HostPlugin(kvmagent.KvmAgent):
     ATTACH_VOLUME_PATH = "/host/volume/attach"
     DETACH_VOLUME_PATH = "/host/volume/detach"
 
-    cpu_sockets = 0
-
     def __init__(self):
         self.IS_YUM = False
         self.IS_APT = False
@@ -1303,21 +1301,9 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usedCpu = used_cpu
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
+        rsp.cpuSockets = linux.get_socket_num()
 
-        if HostPlugin.cpu_sockets < 1:
-            if IS_AARCH64:
-                # Not sure if other arm cpus have this problem.
-                o = bash_o("lscpu | grep 'Socket(s)' | awk '{print $2}'").strip()
-                sockets =  int(o) if o != '' else 0
-            else:
-                sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
-            HostPlugin.cpu_sockets = sockets if sockets > 0 else 1
-
-        rsp.cpuSockets = HostPlugin.cpu_sockets
-
-        ret = jsonobject.dumps(rsp)
-        logger.debug('get host capacity: %s' % ret)
-        return ret
+        return jsonobject.dumps(rsp)
 
     def _heartbeat_func(self, heartbeat_file):
         class Heartbeat(object):
