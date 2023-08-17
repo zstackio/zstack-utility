@@ -255,9 +255,9 @@ class IPTablesChain(IPTablesParser):
                 return
 
         iptables_rule = IPTabelsRule(_rule)
-        if _rule.split()[2] == '-j':
-            self.default_rule = iptables_rule
-            return
+        # if _rule.split()[2] == '-j':
+        #     self.default_rule = iptables_rule
+        #     return
 
         if line_number == -1 or line_number > len(self.user_defined_rules):
             self.user_defined_rules.append(iptables_rule)
@@ -479,12 +479,16 @@ iptable rules:
     def add_chain_if_not_exist(self, name, policy=None, counter_num=0, counter_size=0):
         iptables_chain = self.get_chain_by_name(name)
         if not iptables_chain:
-            return self._add_chain(name, policy, counter_num, counter_size)
+            iptables_chain = self._add_chain(name, policy, counter_num, counter_size)
+
+        return iptables_chain
 
     def add_chain(self, name, policy=None, counter_num=0, counter_size=0):
         iptables_chain = self.get_chain_by_name(name)
         if not iptables_chain:
-            return self._add_chain(name, policy, counter_num, counter_size)
+            iptables_chain = self._add_chain(name, policy, counter_num, counter_size)
+
+        return iptables_chain
 
     def delete_chain(self, chain_name):
         for chain in self.build_in_chains:

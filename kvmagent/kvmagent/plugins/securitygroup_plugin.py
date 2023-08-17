@@ -22,6 +22,12 @@ import re
 logger = log.get_logger(__name__)
 
 
+RULE_TYPE_INGRESS = 'Ingress'
+RULE_TYPE_EGRESS = 'Egress'
+RULE_STATE_ENABLED = 'Enabled'
+RULE_STATE_DISABLED = 'Disabled'
+
+
 class VmNicSecurityTO(object):
     def __init__(self, nicCmd):
         self.name = nicCmd.internalName
@@ -34,15 +40,18 @@ class VmNicSecurityTO(object):
         self.security_group_refs = self._build_refs(nicCmd.securityGroupRefs)
 
     def _build_refs(self, refs):
-        if not refs:
+        ref_data = refs.to_dict()
+        if not ref_data:
             return []
-        sorted_refs = sorted(refs.items(), key=lambda x: x[1])
-        return [ref[0] for ref in sorted_refs]
+        sorted_refs = sorted(ref_data.items(), key=lambda x: x[1])
+        return [item[0] for item in sorted_refs]
 
 
 class SecurityGroup(object):
     def __init__(self, uuid=None):
         self.uuid = uuid
+        self.update_ipv4 = False
+        self.update_ipv6 = False
         self.ingress_rules = []  # type RuleTO
         self.egress_rules = []  # type RuleTO
         self.ip6_ingress_rules = []  # type RuleTO
@@ -52,7 +61,7 @@ class SecurityGroup(object):
         rto = RuleTO(rule)
         if rto.version == 4:
             if rto.type == RULE_TYPE_INGRESS:
-                self.rule.append(rto)
+                self.ingress_rules.append(rto)
             elif rto.type == RULE_TYPE_EGRESS:
                 self.egress_rules.append(rto)
         if rto.version == 6:
@@ -88,7 +97,7 @@ class SecurityGroup(object):
 
 class RuleTO(object):
     def __init__(self, ruleTO):
-        self.prioriy = ruleTO.priority
+        self.priority = ruleTO.priority
         self.type = ruleTO.type
         self.state = ruleTO.state
         self.version = ruleTO.ipVersion
@@ -138,31 +147,38 @@ class ApplySecurityGroupRuleCmd(kvmagent.AgentCommand):
 
     def parse_cmd(self, cmd):
 
-        _flush_cmd()
+        self._flush_cmd()
 
         for nicCmd in cmd.vmNicTOs:
             nic = VmNicSecurityTO(nicCmd)
             self.nics.append(nic)
 
-        for uuid, rules in cmd.ruleTOs:
+        rule_dict = cmd.ruleTOs.to_dict()
+        rule6_dict = cmd.ip6RuleTOs.to_dict()
+
+        for uuid, rules in rule_dict.items():
             sg = self.get_security_group_by_uuid(uuid)
             if not sg:
                 sg = SecurityGroup(uuid)
+                sg.update_ipv4 = True
                 self.security_groups.append(sg)
             if not rules:
                 continue
             for rule in rules:
+                rule_dict = rule.to_dict()
                 sg.add_rule(rule)
 
-        for uuid, ip6rules in cmd.ip6RuleTOs:
+        for uuid, ip6rules in rule6_dict.items():
             sg = self.get_security_group_by_uuid(uuid)
             if not sg:
                 sg = SecurityGroup(uuid)
+                sg.update_ipv6 = True
                 self.security_groups.append(sg)
             if not ip6rules:
                 continue
             for ip6rule in ip6rules:
-                sg.add_rule(ip6rule)
+                ip6rule_dict = ip6rule.to_dict()
+                sg.add_rule(ip6rule_dict)
 
         for sg in self.security_groups:
             sg.sort_rules()
@@ -213,21 +229,18 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     SECURITY_GROUP_UPDATE_GROUP_MEMBER = "/securitygroup/updategroupmember"
     SECURITY_GROUP_CHECK_DEFAULT_RULES_ON_HOST_PATH = "/securitygroup/checkdefaultrulesonhost"
 
-    RULE_TYPE_INGRESS = 'Ingress'
-    RULE_TYPE_EGRESS = 'Egress'
     PROTOCOL_TCP = 'TCP'
     PROTOCOL_UDP = 'UDP'
     PROTOCOL_ICMP = 'ICMP'
     PROTOCOL_ALL = 'ALL'
 
-    RULE_STATE_ENABLED = 'Enabled'
-    RULE_STATE_DISABLED = 'Disabled'
     RULE_ACTION_ACCEPT = 'ACCEPT'
     RULE_ACTION_DROP = 'DROP'
     RULE_ACTION_RETURN = 'RETURN'
 
     IP_SPLIT = ','
     RANGE_SPLIT = '-'
+    PORT_SPLIT = ':'
 
     NIC_SECURITY_POLICY_DENY = 'DENY'
     NIC_SECURITY_POLICY_ALLOW = 'ALLOW'
@@ -282,11 +295,11 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                         filter_table.delete_chain(chain.name)
                         sg_default_chain.delete_rule_by_target(chain.name)
 
-        filter_table.iptable_restore()
+        filter_table.iptables_restore()
 
         IPTABLES_CMD = iptables.get_iptables_cmd() if version == self.IPV4 else iptables.get_ip6tables_cmd()
         to_delete_chain = []
-        out = bash.bash_o("%s -nvL | grep '^Chain' | sed 's/[()]//g' | awk '{print $2, $3}'" % IPTABLES_CMD).strip()
+        out = bash.bash_o("%s -nvL | grep '^Chain' | sed 's/[()]//g' | awk '{print $2, $3}'" % IPTABLES_CMD).splitlines()
         for o in out:
             chain_ref = o.split()
             if len(chain_ref) != 2:
@@ -300,19 +313,17 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             for chain in to_delete_chain:
                 filter_table.delete_chain(chain)
             logger.debug('deleted unused chain: %s' % to_delete_chain)
-            filter_table.iptable_restore()
+            filter_table.iptables_restore()
 
     @bash.in_bash
     def _cleanup_unused_ipset(self):
         to_delete = []
-        out = bash.bash_o("ipset list | awk '/^Name:/ {printf \"%s \",$2} /^References:/ {printf \"%s\n\",$2}'").strip()
-        for o in out:
-            ipset_ref = o.split()
-            if len(ipset_ref) != 2:
-                continue
+        out = bash.bash_o("ipset list | grep -E '^Name|^References' | awk '{print $2}'").splitlines()
+        for i in range(0, len(out), 2):
+            ipset_ref = out[i:i+2]
             name = ipset_ref[0]
             references = ipset_ref[1]
-            if name.startswith('zstack-sg') and references == '0':
+            if self._is_sg_ipset_name(name) and references == '0':
                 to_delete.append(name)
         if to_delete:
             ipset_mn = ipset.IPSetManager()
@@ -361,6 +372,12 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         if not sg_default_chain:
             self._create_sg_default_chain(filter_table, ip_version)
 
+    def _is_sg_ipset_name(self, name):
+        if not name:
+            return False
+        if name.startswith('zstack-sg') or name.startswith('sg-'):
+            return True
+
     def _is_vnic_chain_name(self, chain_name):
         if not chain_name:
             return False
@@ -394,11 +411,13 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
 
     def _make_sg_rule_ipset_name(self, sg_uuid, rule_type, priority):
         uuid_part = sg_uuid[0:8]
-        return 'zstack-sg-%s-%s-rule-%s' % (uuid_part, rule_type, priority)
+        if rule_type == RULE_TYPE_INGRESS:
+            return 'sg-%s-in-ipset-%s' % (uuid_part, priority)
+        else:
+            return 'sg-%s-out-ipset-%s' % (uuid_part, priority)
 
-    def _make_sg_rule_comment(self, sg_uuid, rule_type, priority):
-        uuid_part = sg_uuid[0:8]
-        return 'sg-%s-%s-%s' % (uuid_part, rule_type, priority)
+    def _make_sg_rule_comment(self, rule_type, priority):
+        return '%s-priority@%s' % (rule_type, priority)
 
     def _do_make_security_group_rule(self, sg_uuid, ip_version, rto, ipset_mn):
         rule_str = []
@@ -410,7 +429,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                     rule_str.extend(['-s', rto.src_ips])
             else:
                 ipset_name = self._make_sg_rule_ipset_name(sg_uuid, rto.type, rto.priority)
-                ipset_mn.create_set(name=ipset_name, match_ips=rto.src_ips, ip_version=ip_version)
+                ipset_mn.create_set(name=ipset_name, match_ips=rto.src_ips.split(self.IP_SPLIT), ip_version=self.ZSTACK_IPSET_FAMILYS[ip_version])
                 rule_str.extend(['-m set --match-set', ipset_name, 'src'])
         if rto.dst_ips:
             if self.IP_SPLIT not in rto.dst_ips:
@@ -420,75 +439,76 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                     rule_str.extend(['-d', rto.dst_ips])
             else:
                 ipset_name = self._make_sg_rule_ipset_name(sg_uuid, rto.type, rto.priority)
-                ipset_mn.create_set(name=ipset_name, match_ips=rto.dst_ips, ip_version=ip_version)
+                ipset_mn.create_set(name=ipset_name, match_ips=rto.dst_ips.split(self.IP_SPLIT), ip_version=self.ZSTACK_IPSET_FAMILYS[ip_version])
                 rule_str.extend(['-m set --match-set', ipset_name, 'dst'])
         if rto.remote_group_uuid:
             zstack_ipset_name = self._make_security_group_ipset_name(rto.remote_group_uuid, ip_version)
-            ipset_mn.create_set(name=zstack_ipset_name, match_ips=rto.remote_group_vm_ips, ip_version=ip_version)
-            if rto.type == self.RULE_TYPE_INGRESS:
-                rule_str.extend(['-m state --state NEW', '-m set --match-set', ipset_name, 'src'])
+            ipset_mn.create_set(name=zstack_ipset_name, match_ips=rto.remote_group_vm_ips, ip_version=self.ZSTACK_IPSET_FAMILYS[ip_version])
+            if rto.type == RULE_TYPE_INGRESS:
+                rule_str.extend(['-m state --state NEW', '-m set --match-set', zstack_ipset_name, 'src'])
             else:
-                rule_str.extend(['-m state --state NEW', '-m set --match-set', ipset_name, 'dst'])
+                rule_str.extend(['-m state --state NEW', '-m set --match-set', zstack_ipset_name, 'dst'])
         if rto.protocol:
             if rto.protocol == self.PROTOCOL_ICMP:
-                rule_str.extend(['-p', 'icmp'])
+                rule_str.append('-p icmp')
             elif rto.protocol == self.PROTOCOL_TCP:
-                rule_str.extend(['-p', 'tcp'])
+                rule_str.append('-p tcp -m multiport --dports')
             elif rto.protocol == self.PROTOCOL_UDP:
-                rule_str.extend(['-p', 'udp'])
+                rule_str.append('-p udp -m multiport --dports')
         if rto.dst_ports:
-            rule_str.extend(['-m', 'multiport', '--dports', rto.dst_ports])
-        rule_comment = self._make_sg_rule_comment(sg_uuid, rto.type, rto.prioriy)
+            rule_str.append(rto.dst_ports.replace(self.RANGE_SPLIT, self.PORT_SPLIT))
+
+        rule_comment = self._make_sg_rule_comment(rto.type, rto.priority)
         rule_str.extend(['-m comment --comment', rule_comment])
+
         if rto.action:
             rule_str.extend(['-j', rto.action])
 
         return rule_str
 
     @bash.in_bash
-    def _do_update_security_group_rules(filter_table, filter6_table, ipset_mn, sgs):
+    def _do_update_security_group_rules(self, filter_table, filter6_table, ipset_mn, sgs):
         for sg in sgs:
             sg_in_chain_name = self._make_sg_in_chain_name(sg.get_uuid())
             sg_out_chain_name = self._make_sg_out_chain_name(sg.get_uuid())
 
-            sg_in_chain = filter_table.add_chain(sg_in_chain_name)
-            sg_out_chain = filter_table.add_chain(sg_out_chain_name)
-
-            if sg.get_ingress_rules():
+            if sg.update_ipv4:
                 sg_in_chain = filter_table.add_chain(sg_in_chain_name)
                 sg_in_chain.flush_chain()
-                sg_in_chain.add_default_rule(' '.join(['-A', sg_in_chain_name, '-j', 'RETURN']))
-                rule_prefix = ['-A', sg_in_chain_name]
-                for ingrers_rule in sg.get_ingress_rules():
-                    rule_body = self._do_make_security_group_rule(sg.get_uuid(), self.IPV4, ingrers_rule, ipset_mn)
-                    sg_in_chain.add_rule(' '.join(rule_prefix.extend(rule_body)))
+                if sg.get_ingress_rules():
+                    sg_in_chain.add_default_rule('-A %s -j RETURN' % sg_in_chain_name)
+                    rule_prefix = ['-A', sg_in_chain_name]
+                    for ingress_rule in sg.get_ingress_rules():
+                        rule_body = self._do_make_security_group_rule(sg.get_uuid(), self.IPV4, ingress_rule, ipset_mn)
+                        sg_in_chain.add_rule(' '.join(rule_prefix + rule_body))
 
-            if sg.get_egress_rules():
                 sg_out_chain = filter_table.add_chain(sg_out_chain_name)
                 sg_out_chain.flush_chain()
-                sg_out_chain.add_default_rule(' '.join(['-A', sg_out_chain_name, '-j', 'RETURN']))
-                rule_prefix = ['-A', sg_out_chain_name]
-                for egress_rule in sg.get_egress_rules():
-                    rule_body = self._do_make_security_group_rule(sg.get_uuid(), self.IPV4, egress_rule, ipset_mn)
-                    sg_out_chain.add_rule(' '.join(rule_prefix.extend(rule_body)))
+                if sg.get_egress_rules():
+                    sg_out_chain.add_default_rule('-A %s -j RETURN' % sg_out_chain_name)
+                    rule_prefix = ['-A', sg_out_chain_name]
+                    for egress_rule in sg.get_egress_rules():
+                        rule_body = self._do_make_security_group_rule(sg.get_uuid(), self.IPV4, egress_rule, ipset_mn)
+                        sg_out_chain.add_rule(' '.join(rule_prefix + rule_body))
 
-            if sg.get_ip6_ingress_rules():
+            if sg.update_ipv6:
                 sg_in_chain = filter6_table.add_chain(sg_in_chain_name)
                 sg_in_chain.flush_chain()
-                sg_in_chain.add_default_rule(' '.join(['-A', sg_in_chain_name, '-j', 'RETURN']))
-                rule_prefix = ['-A', sg_in_chain_name]
-                for ingress_ip6_rule in sg.get_ip6_ingress_rules():
-                    rule_body = self._do_make_security_group_rule(sg.get_uuid(), self.IPV6, ingress_ip6_rule, ipset_mn)
-                    sg_in_chain.add_rule(' '.join(rule_prefix.extend(rule_body)))
+                if sg.get_ip6_ingress_rules():
+                    sg_in_chain.add_default_rule('-A %s -j RETURN' % sg_in_chain_name)
+                    rule_prefix = ['-A', sg_in_chain_name]
+                    for ingress_ip6_rule in sg.get_ip6_ingress_rules():
+                        rule_body = self._do_make_security_group_rule(sg.get_uuid(), self.IPV6, ingress_ip6_rule, ipset_mn)
+                        sg_in_chain.add_rule(' '.join(rule_prefix + rule_body))
 
-            if sg.get_ip6_egress_rules():
                 sg_out_chain = filter6_table.add_chain(sg_out_chain_name)
                 sg_out_chain.flush_chain()
-                sg_out_chain.add_default_rule(' '.join(['-A', sg_out_chain_name, '-j', 'RETURN']))
-                rule_prefix = ['-A', sg_out_chain_name]
-                for egress_ip6_rule in sg.get_ip6_egress_rules():
-                    rule_body = self._do_make_security_group_rule(sg.get_uuid(), self.IPV6, egress_ip6_rule, ipset_mn)
-                    sg_out_chain.add_rule(' '.join(rule_prefix.extend(rule_body)))
+                if sg.get_ip6_egress_rules():
+                    sg_out_chain.add_default_rule('-A %s -j RETURN' % sg_out_chain_name)
+                    rule_prefix = ['-A', sg_out_chain_name]
+                    for egress_ip6_rule in sg.get_ip6_egress_rules():
+                        rule_body = self._do_make_security_group_rule(sg.get_uuid(), self.IPV6, egress_ip6_rule, ipset_mn)
+                        sg_out_chain.add_rule(' '.join(rule_prefix + rule_body))
 
     def _delete_vnic_chain(self, filter_table, filter6_table, nic_name):
         in_chain_name = self._make_nic_in_chain_name(nic_name)
@@ -511,11 +531,12 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         sg6_default_chain.delete_rule_by_target(in_chain_name)
         sg6_default_chain.delete_rule_by_target(out_chain_name)
 
-    def _do_update_vnic_rules(filter_table, filter6_table, nics):
+    def _do_update_vnic_rules(self, filter_table, filter6_table, nics):
         for nic in nics:
             if nic.action_code == self.ACTION_CODE_DELETE_CHAIN or not nic.security_group_refs:
                 self._delete_vnic_chain(filter_table, filter6_table, nic.name)
                 continue
+
             is_ipv4 = False
             is_ipv6 = False
             for addr in nic.ips:
@@ -536,11 +557,11 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 nic_out_chain.flush_chain()
 
                 for sg_uuid in nic.security_group_refs:
-                    nic_in_chain.add_rule(' '.join(['-A', nic_in_chain_name, '-j', self._make_sg_in_chain_name(sg_uuid)]))
-                    nic_out_chain.add_rule(' '.join(['-A', nic_out_chain_name, '-j', self._make_sg_out_chain_name(sg_uuid)]))
+                    nic_in_chain.add_rule('-A %s -j %s' % (nic_in_chain_name, self._make_sg_in_chain_name(sg_uuid)))
+                    nic_out_chain.add_rule('-A %s -j %s' % (nic_out_chain_name, self._make_sg_out_chain_name(sg_uuid)))
 
-                nic_in_chain.add_default_rule(' '.join(['-A', nic_in_chain_name, '-j', nic_in_action]))
-                nic_out_chain.add_default_rule(' '.join(['-A', nic_out_chain_name, '-j', nic_out_action]))
+                nic_in_chain.add_default_rule('-A %s -j %s' % (nic_in_chain_name, nic_in_action))
+                nic_out_chain.add_default_rule('-A %s -j %s' % (nic_out_chain_name, nic_out_action))
 
                 #  -A sg-default -m physdev --physdev-out vnic516.0 -j vnic516.0-in
                 #  -A sg-default -m physdev --physdev-in vnic516.0 -j vnic516.0-out
@@ -555,11 +576,11 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 nic_out_chain.flush_chain()
 
                 for sg_uuid in nic.security_group_refs:
-                    nic_in_chain.add_rule(' '.join(['-A', nic_in_chain_name, '-j', self._make_sg_in_chain_name(sg_uuid)]))
-                    nic_out_chain.add_rule(' '.join(['-A', nic_out_chain_name, '-j', self._make_sg_out_chain_name(sg_uuid)]))
+                    nic_in_chain.add_rule('-A %s -j %s' % (nic_in_chain_name, self._make_sg_in_chain_name(sg_uuid)))
+                    nic_out_chain.add_rule('-A %s -j %s' % (nic_out_chain_name, self._make_sg_out_chain_name(sg_uuid)))
 
-                nic_in_chain.add_default_rule(' '.join(['-A', nic_in_chain_name, '-j', nic_in_action]))
-                nic_out_chain.add_default_rule(' '.join(['-A', nic_out_chain_name, '-j', nic_out_action]))
+                nic_in_chain.add_default_rule('-A %s -j %s' % (nic_in_chain_name, nic_in_action))
+                nic_out_chain.add_default_rule('-A %s -j %s' % (nic_out_chain_name, nic_out_action))
 
                 sg6_default_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_CHAIN, '-m physdev --physdev-out', nic.name, '-j', nic_in_chain_name]))
                 sg6_default_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_CHAIN, '-m physdev --physdev-in', nic.name, '-j', nic_out_chain_name]))
@@ -652,8 +673,6 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         rsp = UpdateGroupMemberResponse()
 
         ipset_mn = ipset.IPSetManager()
-        filter_table = iptables.from_iptables_save()
-        filter6_table = iptables.from_iptables_save(version=self.IPV6)
 
         to_delete_ipset = []
         for uto in cmd.updateGroupTOs:
@@ -668,6 +687,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         ipset_mn.refresh_my_ipsets()
 
         if to_delete_ipset:
+            filter_table = iptables.from_iptables_save()
+            filter6_table = iptables.from_iptables_save(version=self.IPV6)
             for chain in filter_table.get_chains():
                 for rule in chain.rules:
                     if rule.get_ipset_name() and rule.get_ipset_name() in to_delete_ipset:
@@ -676,8 +697,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 for rule in chain.rules:
                     if rule.get_ipset_name() and rule.get_ipset_name() in to_delete_ipset:
                         chain.delete_rule(rule.name)
-            filter_table.iptable_restore()
-            filter6_table.iptable_restore()
+            filter_table.iptables_restore()
+            filter6_table.iptables_restore()
             ipset_mn.clean_ipsets(to_delete_ipset)
 
         self._cleanup_conntrack()
