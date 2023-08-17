@@ -663,7 +663,6 @@ class HostPlugin(kvmagent.KvmAgent):
     CANCEL_JOB = "/job/cancel"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
-    cpu_sockets = 0
 
     def __init__(self):
         self.IS_YUM = False
@@ -940,16 +939,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usedCpu = used_cpu
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
-
-        if HostPlugin.cpu_sockets < 1:
-            sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
-            HostPlugin.cpu_sockets = sockets if sockets > 0 else 1
-
-        rsp.cpuSockets = HostPlugin.cpu_sockets
-
-        ret = jsonobject.dumps(rsp)
-        logger.debug('get host capacity: %s' % ret)
-        return ret
+        rsp.cpuSockets = linux.get_socket_num()
+        return jsonobject.dumps(rsp)
 
     def _heartbeat_func(self, heartbeat_file):
         class Heartbeat(object):
