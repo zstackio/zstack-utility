@@ -1055,6 +1055,13 @@ host_key_checking = False
 EOF
 }
 
+do_config_systemd(){
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    sed -i 's/\#\?DefaultTimeoutStartSec.*/DefaultTimeoutStartSec=10s/g' /etc/systemd/system.conf
+    sed -i 's/\#\?DefaultTimeoutStopSec.*/DefaultTimeoutStopSec=10s/g' /etc/systemd/system.conf
+    systemctl daemon-reload
+}
+
 do_check_system(){
     echo_subtitle "Check System"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -1386,6 +1393,7 @@ upgrade_zstack(){
     #rerun install system libs, upgrade might need new libs
     is_install_system_libs
     do_config_ansible
+    do_config_systemd
     show_spinner is_enable_chronyd
     show_spinner uz_stop_zstack
     show_spinner prepare_zops_user_and_db
@@ -2531,6 +2539,7 @@ config_system(){
     fi
     do_enable_sudo
     do_config_networkmanager
+    do_config_systemd
 }
 
 cs_add_cronjob(){
