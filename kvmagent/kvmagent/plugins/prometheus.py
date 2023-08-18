@@ -9,6 +9,7 @@ from prometheus_client.core import GaugeMetricFamily, REGISTRY
 import psutil
 
 from kvmagent import kvmagent
+from zstacklib.utils import bash
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
