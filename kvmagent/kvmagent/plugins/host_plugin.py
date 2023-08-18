@@ -1577,14 +1577,23 @@ if __name__ == "__main__":
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
         releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
-        yum_cmd = "export YUM0={};echo {}>/etc/yum/vars/YUM0;yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
-        yum_cmd = yum_cmd.format(releasever, releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
-        #support update qemu-kvm and update OS
-        if releasever in ['c74', 'c76', 'c79', 'h76c', 'h79c']:
-            if "qemu-kvm" in updates or cmd.releaseVersion is not None:
-                update_qemu_cmd = "export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn  swap -y -- remove qemu-img-ev -- install qemu-img " \
-                              "&& yum remove qemu-kvm-ev qemu-kvm-common-ev -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install qemu-kvm qemu-kvm-common -y && "
-                yum_cmd = update_qemu_cmd.format(releasever) + yum_cmd
+        yum_cmd = ""
+        # If upgrade qemu-kvm and libvirt at the same time
+        # you need to upgrade qemu-kvm and then upgrade libvirt
+        # to ensure that libvirtd is rebooted after upgrading qemu-kvm
+        if "qemu-kvm" in updates or (cmd.releaseVersion is not None and "qemu-kvm" not in exclude):
+            update_qemu_cmd = "export YUM0={0};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} swap -y -- remove qemu-img-ev -- install qemu-img " \
+                              "&& yum remove qemu-kvm-ev qemu-kvm-common-ev -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update " \
+                              "qemu-storage-daemon -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} install qemu-kvm qemu-kvm-common -y && "
+            yum_cmd = yum_cmd + update_qemu_cmd.format(releasever,
+                                                       ',zstack-experimental-mn' if cmd.enableExpRepo else '')
+        if "libvirt" in updates or (cmd.releaseVersion is not None and "libvirt" not in exclude):
+            update_libvirt_cmd = "export YUM0={};yum remove libvirt libvirt-libs libvirt-client libvirt-python libvirt-admin libvirt-bash-completion -y && " \
+                                 "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} install libvirt libvirt-client libvirt-python -y && "
+            yum_cmd = yum_cmd + update_libvirt_cmd.format(releasever,
+                                                          ',zstack-experimental-mn' if cmd.enableExpRepo else '')
+        upgrade_os_cmd = "export YUM0={};echo {}>/etc/yum/vars/YUM0;yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
+        yum_cmd = yum_cmd + upgrade_os_cmd.format(releasever, releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
 
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
