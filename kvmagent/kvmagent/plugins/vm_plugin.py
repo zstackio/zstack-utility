@@ -8628,7 +8628,10 @@ host side snapshot files chian:
 
         @linux.retry(times=3, sleep_time=2)
         def detach_temp_disk_and_retry(vm):
-            vm.domain.detachDevice(self._create_xml_for_guesttools_temp_disk(vm.uuid))
+            try:
+                vm.domain.detachDevice(self._create_xml_for_guesttools_temp_disk(vm.uuid))
+            except Exception:
+                logger.info("detach device success, can not find disk vdz")
             if vm._check_target_disk_existing_by_path(self._guesttools_temp_disk_file_path(vm.uuid)):
                 raise RetryException("failed to detach guest tools temp disk")
 
