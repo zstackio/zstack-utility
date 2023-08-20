@@ -1,4 +1,5 @@
 from kvmagent import kvmagent
+from kvmagent.plugins import vm_plugin
 from zstacklib.utils import bash
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
@@ -11,6 +12,7 @@ from zstacklib.utils import qemu
 from zstacklib.utils import qemu_img
 from zstacklib.utils import ceph
 from zstacklib.utils import sanlock
+from zstacklib.utils import xmlobject
 import os.path
 import time
 import traceback
@@ -21,6 +23,7 @@ from datetime import datetime, timedelta
 from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
+
 
 class UmountException(Exception):
     pass
@@ -263,6 +266,20 @@ def kill_progresses_using_mount_path(mount_path):
     logger.warn('kill the progresses with mount path: %s, killed process: %s' % (mount_path, o.stdout))
 
 
+def get_block_vm_root_volume_path(vm_uuid, root_volume_path):
+    vm = vm_plugin.get_vm_by_uuid(vm_uuid)
+    sysinfo = vm.domain_xmlobject.sysinfo
+    if xmlobject.has_element(sysinfo, "oemStrings") is not True:
+        return root_volume_path
+
+    oem_strings = sysinfo.oemStrings.get_child_node_as_list('entry')
+    for oem_string in oem_strings:
+        if oem_string.text_.startswith("storage:"):
+            return oem_string.text_.replace("storage:", "") + root_volume_path
+
+    return root_volume_path
+
+
 def get_running_vm_root_volume_path(vm_uuid, is_file_system):
     # 1. get "-drive ... -device ... bootindex=1,
     # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
@@ -300,10 +317,14 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
     else:
         logger.debug("find vm[uuid: %s] root volume path %s" % (vm_uuid, root_volume_path))
 
-    if not is_file_system:
-        return root_volume_path.replace("rbd:", "")
+    if is_file_system:
+        return root_volume_path
 
-    return root_volume_path
+    if "/dev/disk/by-id/wwn" in root_volume_path:
+        return get_block_vm_root_volume_path(vm_uuid, root_volume_path)
+
+    return root_volume_path.replace("rbd:", "")
+
 
 
 def need_kill(vm_uuid, storage_paths, is_file_system):
@@ -327,6 +348,8 @@ class HaPlugin(kvmagent.KvmAgent):
     CANCEL_SHAREDBLOCK_SELF_FENCER = "/ha/sharedblock/cancelselffencer"
     ALIYUN_NAS_SELF_FENCER = "/ha/aliyun/nas/setupselffencer"
     CANCEL_NAS_SELF_FENCER = "/ha/aliyun/nas/cancelselffencer"
+    BLOCK_SELF_FENCER = "/ha/block/setupselffencer"
+    CANCEL_BLOCK_SELF_FENCER = "/ha/block/cancelselffencer"
 
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
@@ -435,6 +458,12 @@ class HaPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
+    def cancel_block_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.cancel_fencer(cmd.uuid)
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
     def setup_aliyun_nas_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         created_time = time.time()
@@ -494,6 +523,90 @@ class HaPlugin(kvmagent.KvmAgent):
 
         heartbeat_on_aliyunnas()
         return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def setup_block_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        created_time = time.time()
+        self.setup_fencer(cmd.uuid, created_time)
+        install_path = cmd.installPath;
+        heart_beat_wwn_path = install_path.replace("block://", "/dev/disk/by-id/wwn-0x")
+        rsp = AgentRsp()
+
+        if os.path.exists(heart_beat_wwn_path) is not True:
+            try:
+                bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
+            except Exception as e:
+                pass
+
+        # recheck wwn path
+        if os.path.exists(heart_beat_wwn_path) is not True:
+            err_msg = "fail to find heartbeat lun, please make sure host is connected with ps";
+            logger.debug(err_msg)
+            rsp.success = False
+            rsp.error = err_msg
+            return jsonobject.dumps(rsp)
+
+        def heartbeat_io_check(path):
+            heartbeat_check = shell.ShellCmd('sg_inq %s' % path)
+            heartbeat_check(False)
+            if heartbeat_check.return_code != 0:
+                return False
+
+            return True
+
+        @thread.AsyncThread
+        def heartbeat_on_block():
+            failure = 0
+
+            while self.run_fencer(cmd.uuid, created_time):
+                try:
+                    time.sleep(cmd.interval)
+
+                    successfully_check_heartbeat = heartbeat_io_check(heart_beat_wwn_path)
+                    if successfully_check_heartbeat is not True:
+                        logger.debug('heartbeat path %s is not accessible' % heart_beat_wwn_path)
+                        failure += 1
+                    else:
+                        logger.debug('heartbeat path %s is accessible' % heart_beat_wwn_path)
+                        failure = 0
+                        continue
+
+                    if failure < cmd.maxAttempts:
+                        continue
+
+                    try:
+                        logger.warn("block storage %s fencer fired!" % cmd.uuid)
+                        if cmd.strategy == 'Permissive':
+                            continue
+
+                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.uuid, False).keys()
+
+                        if vm_uuids:
+                            self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
+                            clean_network_config(vm_uuids)
+                            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
+                            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
+
+                        # reset the failure count
+                        failure = 0
+                    except Exception as e:
+                        logger.warn("kill vm failed, %s" % e.message)
+                        content = traceback.format_exc()
+                        logger.warn("traceback: %s" % content)
+                    finally:
+                        self.report_storage_status([cmd.uuid], 'Disconnected')
+
+                except Exception as e:
+                    logger.debug('self-fencer on block primary storage %s stopped abnormally' % cmd.uuid)
+                    content = traceback.format_exc()
+                    logger.warn(content)
+
+            logger.debug('stop self-fencer on block primary storage %s' % cmd.uuid)
+
+        heartbeat_on_block()
+        return jsonobject.dumps(AgentRsp())
+
 
     @kvmagent.replyerror
     def cancel_sharedblock_self_fencer(self, req):
@@ -1052,6 +1165,8 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_SHAREDBLOCK_SELF_FENCER, self.cancel_sharedblock_self_fencer)
         http_server.register_async_uri(self.ALIYUN_NAS_SELF_FENCER, self.setup_aliyun_nas_self_fencer)
         http_server.register_async_uri(self.CANCEL_NAS_SELF_FENCER, self.cancel_aliyun_nas_self_fencer)
+        http_server.register_async_uri(self.BLOCK_SELF_FENCER, self.setup_block_self_fencer)
+        http_server.register_async_uri(self.CANCEL_BLOCK_SELF_FENCER, self.cancel_block_self_fencer)
 
     def stop(self):
         pass
