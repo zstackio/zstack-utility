@@ -41,7 +41,7 @@ logger = log.get_logger(__name__)
 
 RPM_BASED_OS = ['redhat', 'centos', 'alibaba', 'kylin10', 'rocky']
 DEB_BASED_OS = ['uos', 'kylin4.0.2', 'debian', 'ubuntu', 'uniontech']
-ARM_ACPI_SUPPORT_OS = ['kylin10', 'openEuler20.03']
+ARM_ACPI_SUPPORT_OS = ['kylin10', 'openEuler20.03', 'openEuler22.03']
 SUPPORTED_ARCH = ['x86_64', 'aarch64', 'mips64el', 'loongarch64']
 DIST_WITH_RPM_DEB = ['kylin']
 HOST_ARCH = platform.machine()
