@@ -160,25 +160,23 @@ class ApplySecurityGroupRuleCmd(kvmagent.AgentCommand):
             sg = self.get_security_group_by_uuid(uuid)
             if not sg:
                 sg = SecurityGroup(uuid)
-                sg.update_ipv4 = True
                 self.security_groups.append(sg)
+            sg.update_ipv4 = True
             if not rules:
                 continue
             for rule in rules:
-                rule_dict = rule.to_dict()
                 sg.add_rule(rule)
 
         for uuid, ip6rules in rule6_dict.items():
             sg = self.get_security_group_by_uuid(uuid)
             if not sg:
                 sg = SecurityGroup(uuid)
-                sg.update_ipv6 = True
                 self.security_groups.append(sg)
+            sg.update_ipv6 = True
             if not ip6rules:
                 continue
             for ip6rule in ip6rules:
-                ip6rule_dict = ip6rule.to_dict()
-                sg.add_rule(ip6rule_dict)
+                sg.add_rule(ip6rule)
 
         for sg in self.security_groups:
             sg.sort_rules()
