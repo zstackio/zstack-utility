@@ -125,8 +125,9 @@ class IPTabelsRule(IPTablesParser):
 
     def get_target(self):
         if '-j' in self.name:
-            index = self.name.index('-j')
-            self.target = self.name[index + 1]
+            rule_to_list = self.name.split()
+            index = rule_to_list.index('-j')
+            self.target = rule_to_list[index + 1]
 
         return self.target
 
