@@ -255,9 +255,6 @@ class IPTablesChain(IPTablesParser):
                 return
 
         iptables_rule = IPTabelsRule(_rule)
-        # if _rule.split()[2] == '-j':
-        #     self.default_rule = iptables_rule
-        #     return
 
         if line_number == -1 or line_number > len(self.user_defined_rules):
             self.user_defined_rules.append(iptables_rule)
@@ -398,8 +395,6 @@ class IPTablesTable(IPTablesParser):
         table_string_list.append('*%s' % self.name)
 
         for chain in self.get_chains():
-            if chain.name not in BUILD_IN_CHAINS_DICT[self.name] and not chain.get_rules():
-                continue
             chain_string_list.append(chain.to_iptables_string())
             for r in chain.get_rules():
                 rule_string_list.append(r.format_to_string())
