@@ -2655,12 +2655,14 @@ class Vm(object):
             e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
             return disk
 
-        def scsi_disk_volume():
+        def disk_volume():
+            bus = "scsi" if volume.bus == "default" else volume.bus
+
             disk = etree.Element('disk', attrib={'type': 'block', 'device': 'disk'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
             e(disk, 'source', None, {'dev': volume.installPath})
             e(disk, 'blockio', None, {'logical_block_size': '512', 'physical_block_size': '4096'})
-            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': bus})
             return disk
 
         def iscsibased_volume():
@@ -2779,8 +2781,8 @@ class Vm(object):
             disk_element = ceph_volume()
         elif volume.deviceType == 'scsilun':
             disk_element = scsilun_volume()
-        elif volume.deviceType == 'scsi_disk':
-            disk_element = scsi_disk_volume()
+        elif volume.deviceType == 'disk':
+            disk_element = disk_volume()
         elif volume.deviceType == 'block':
             disk_element = block_volume()
         elif volume.deviceType == 'spool':
@@ -3078,7 +3080,7 @@ class Vm(object):
             elif volume.deviceType == 'ceph':
                 if disk.source.name__ and disk.source.name_ in volume.installPath:
                     return disk, disk.target.dev_
-            elif volume.deviceType == 'scsilun':
+            elif volume.deviceType in ('scsilun', 'disk'):
                 if disk.source.dev__ and volume.installPath in disk.source.dev_:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'block' or volume.deviceType == 'file':
@@ -5436,12 +5438,13 @@ class Vm(object):
             lvm.unpriv_sgio()
             devices = elements['devices']
             for volume in storageDevices:
-                if volume.deviceType == 'scsi_disk':
+                if volume.deviceType == 'disk':
+                    bus = "scsi" if volume.bus == "default" else volume.bus
                     disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'disk'})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw'})
                     e(disk, 'source', None, {'dev': lvm.parse_local_schema_install_path(volume.installPath)})
                     e(disk, 'blockio', None, {'logical_block_size': '512', 'physical_block_size': '4096'})
-                    e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': bus})
                     return disk
                 elif match_storage_device(volume.installPath):
                     disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
