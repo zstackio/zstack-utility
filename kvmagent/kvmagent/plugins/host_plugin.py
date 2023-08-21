@@ -67,7 +67,6 @@ BOND_MODE_ACTIVE_6 = "balance-alb"
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
-        self.iptablesSucc = None
 
 class HostCapacityResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -995,8 +994,7 @@ class HostPlugin(kvmagent.KvmAgent):
         linux.write_uuids("host", "host=%s" % self.host_uuid)
 
         vm_plugin.cleanup_stale_vnc_iptable_chains()
-        apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
-        rsp.iptablesSucc = apply_iptables_result
+        self.apply_iptables_rules(cmd.iptablesRules)
 
         if self.host_socket is not None:
             self.host_socket.close()
