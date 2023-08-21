@@ -143,6 +143,8 @@ class SharedBlockCandidateStruct:
         self.type = None  # type: str
         self.size = None  # type: long
         self.path = None  # type: str
+        self.source = None  # type: str
+        self.transport = None  # type: str
 
 def get_vg_uuid(path):
     # type: (str) -> str
@@ -161,6 +163,23 @@ def get_block_devices():
     block_devices.extend(get_nvme_block_devices())
 
     return block_devices
+
+def get_nvme_transport(dev_name):
+    transport = linux.read_file("/sys/class/block/%s/device/transport" % dev_name)
+    if transport:
+        return transport.strip()
+
+    nvme_subsystems = []
+    if os.path.exists("/sys/class/nvme-subsystem/"):
+        nvme_subsystems = os.listdir("/sys/class/nvme-subsystem/")
+
+    for target in nvme_subsystems:
+        for fpath in linux.walk("/sys/class/nvme-subsystem/%s" % target, depth=2):
+            if os.path.basename(fpath) != dev_name:
+                continue
+            transport = linux.read_file(fpath + "/../transport")
+            if transport:
+                return transport.strip()
 
 
 def get_nvme_block_devices():
@@ -182,7 +201,10 @@ def get_nvme_block_devices():
 
             wwid = linux.read_file("/sys/block/%s/wwid" % dev)
             if wwid:
-                devices.append(get_device_info(dev, {dev: wwid.strip()}))
+                device_info = get_device_info(dev, {dev: wwid.strip()})
+                device_info.transport = get_nvme_transport(dev)
+                device_info.source = 'nvme'
+                devices.append(device_info)
         return devices
     except Exception as e:
         logger.error(traceback.format_exc())
@@ -418,7 +440,7 @@ def lsblk_info(dev_name):
     # type: (str) -> SharedBlockCandidateStruct
     s = SharedBlockCandidateStruct()
 
-    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name,
+    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE,TRAN /dev/%s" % dev_name,
                             False)
     if r != 0 or o.strip() == "":
         logger.warn("can not get device information from %s" % dev_name)
@@ -442,6 +464,9 @@ def lsblk_info(dev_name):
             s.size = get_data(entry)
         elif entry.startswith('TYPE'):
             s.type = get_data(entry)
+        elif entry.startswith('TRAN'):
+            s.transport = get_data(entry)
+            s.source = s.transport
 
     return s
 
