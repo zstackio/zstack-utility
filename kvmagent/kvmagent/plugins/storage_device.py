@@ -305,7 +305,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def attach_scsi_lun(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if cmd.volume.deviceType == 'scsi_disk':
+        if cmd.volume.deviceType == 'disk':
             return self.attach_local_scsi_lun(cmd)
         else:
             return self.attach_remote_scsi_lun(cmd)
@@ -376,7 +376,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def detach_scsi_lun(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if cmd.volume.deviceType == 'scsi_disk':
+        if cmd.volume.deviceType == 'disk':
             return self.detach_local_scsi_lun(cmd)
         else:
             return self.detach_remote_scsi_lun(cmd)
