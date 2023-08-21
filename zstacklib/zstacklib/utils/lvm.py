@@ -142,6 +142,18 @@ class BlockStruct:
         self.type = None  # type: str
         self.size = None  # type: long
         self.path = None  # type: str
+        self.parent = None  # type: str
+        self.mount_point = None  # type: str
+        self.swap = False
+    
+    def set_mount_point(self, mount_point_text):
+        # type: (str) -> None
+        if mount_point_text == "[SWAP]":
+            self.mount_point = ""
+            self.swap = True
+        else:
+            self.mount_point = mount_point_text
+            self.swap = False
 
     def is_wwn_matched(self, wwn):
         # type: (str) -> bool
@@ -430,10 +442,13 @@ def get_device_info(dev_name, scsi_info):
     s.path = get_device_path(dev_name)
     return s
 
-def all_lsblk():
-    # type: () -> list[BlockStruct]
+def all_lsblk(with_pk_name = False, with_mount_point = False):
+    # type: (bool, bool) -> list[BlockStruct]
     results = []
-    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE", False)
+    cmd = "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE"
+    cmd = cmd + ",PKNAME" if with_pk_name else cmd
+    cmd = cmd + ",MOUNTPOINT" if with_mount_point else cmd
+    r, o, e = bash.bash_roe(cmd, False)
     if r != 0 or o.strip() == "":
         logger.warn("can not get device information")
         return results
@@ -454,6 +469,7 @@ def lsblk_info(dev_name):
 def lsblk_info_line(line):
     # type: (str) -> BlockStruct
     def get_data(e):
+        # type: (str) -> str
         return e.split("=")[1].strip().strip('"')
 
     s = BlockStruct()
@@ -476,6 +492,10 @@ def lsblk_info_line(line):
             s.size = get_data(entry)
         elif entry.startswith('TYPE'):
             s.type = get_data(entry)
+        elif entry.startswith('PKNAME'):
+            s.parent = get_data(entry)
+        elif entry.startswith('MOUNTPOINT'):
+            s.set_mount_point(get_data(entry))
     return s
 
 def parse_local_schema_install_path(install_path):
@@ -488,7 +508,7 @@ def parse_local_schema_install_path(install_path):
     lsblk_list = all_lsblk()
     matched_lsblk_list = [blk for blk in lsblk_list if blk.is_wwn_matched(wwn)]
     if not matched_lsblk_list:
-        raise Exception('unable to find scsi lun with install path of %s' % install_path)
+        raise Exception('unable to find lun with install path of %s' % install_path)
     return matched_lsblk_list[0].path
 
 def get_device_path(dev):
