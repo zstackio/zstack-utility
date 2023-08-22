@@ -1121,7 +1121,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return []
 
         nvme_luns = jsonobject.loads(o).Devices
-        nvme_subsystems = os.listdir("/sys/class/nvme-subsystem/")
+        nvme_subsystems = []
+        if os.path.exists("/sys/class/nvme-subsystem/"):
+            nvme_subsystems = os.listdir("/sys/class/nvme-subsystem/")
 
         def get_nqn():
             nqn = linux.read_file("/sys/class/block/%s/device/subsysnqn" % dev_name)
@@ -1133,6 +1135,19 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 if nqn and any(os.path.basename(fpath) == dev_name for fpath in
                                linux.walk("/sys/class/nvme-subsystem/%s" % target, depth=2)):
                     return nqn.strip()
+
+        def get_transport():
+            transport = linux.read_file("/sys/class/block/%s/device/transport" % dev_name)
+            if transport:
+                return transport.strip()
+
+            for target in nvme_subsystems:
+                for fpath in linux.walk("/sys/class/nvme-subsystem/%s" % target, depth=2):
+                    if os.path.basename(fpath) != dev_name:
+                        continue
+                    transport = linux.read_file(fpath + "/../transport")
+                    if transport:
+                        return transport.strip()
 
         for lun in nvme_luns:
             s = NvmeLunStruct()
@@ -1149,6 +1164,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             path = lvm.get_device_path(lun.DevicePath)
             s.path = path if path else s.wwn
             s.nqn = get_nqn()
+            s.transport = get_transport()
 
             ret.append(s)
         return ret
