@@ -143,6 +143,23 @@ class BlockStruct:
         self.size = None  # type: long
         self.path = None  # type: str
 
+    def is_wwn_matched(self, wwn):
+        # type: (str) -> bool
+        if self.wwn is None or len(self.wwn) == 0:
+            return False
+        input_wwn = wwn.upper()[2:] if wwn.startswith("0x") else wwn.upper()
+        target_wwn = self.wwn.upper()[2:] if self.wwn.startswith("0x") else self.wwn.upper()
+        if input_wwn == target_wwn:
+            return True
+
+        # for raid lun wwn=600508b1001ceffea8584e56281aeb99 (in cloud database)
+        # lsblk return: WWN="0x600508b1001ceffe" SERIAL="600508b1001ceffea8584e56281aeb99"
+        # raid return: (use arcconf) ... Volume Unique Identifier : 600508B1001CEFFEA8584E56281AEB99
+        # we should check lsblk.serial
+        if self.serial is None or len(self.serial) != len(input_wwn): # length of serial must equals to input_wwn (without '0x')
+            return False
+        return self.serial.upper() == input_wwn
+
 def get_vg_uuid(path):
     # type: (str) -> str
     if not path or len(path.split("/")) != 4:
@@ -414,6 +431,7 @@ def get_device_info(dev_name, scsi_info):
     return s
 
 def all_lsblk():
+    # type: () -> list[BlockStruct]
     results = []
     r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE", False)
     if r != 0 or o.strip() == "":
@@ -468,7 +486,7 @@ def parse_local_schema_install_path(install_path):
 
     wwn = install_path.split('/wwn/')[1]
     lsblk_list = all_lsblk()
-    matched_lsblk_list = [blk for blk in lsblk_list if blk.wwn.upper() == wwn or blk.wwn.upper() == '0X' + wwn]
+    matched_lsblk_list = [blk for blk in lsblk_list if blk.is_wwn_matched(wwn)]
     if not matched_lsblk_list:
         raise Exception('unable to find scsi lun with install path of %s' % install_path)
     return matched_lsblk_list[0].path
