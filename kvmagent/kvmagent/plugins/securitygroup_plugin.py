@@ -448,7 +448,10 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 rule_str.extend(['-m state --state NEW', '-m set --match-set', zstack_ipset_name, 'dst'])
         if rto.protocol:
             if rto.protocol == self.PROTOCOL_ICMP:
-                rule_str.append('-p icmp')
+                if rto.version == self.IPV4:
+                    rule_str.append('-p icmp')
+                else:
+                    rule_str.append('-p ipv6-icmp')
             elif rto.protocol == self.PROTOCOL_TCP:
                 rule_str.append('-p tcp -m multiport --dports')
             elif rto.protocol == self.PROTOCOL_UDP:
