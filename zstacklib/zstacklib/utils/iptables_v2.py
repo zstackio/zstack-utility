@@ -24,6 +24,8 @@ FORWARD_CHAIN_NAME = 'FORWARD'
 
 ACCEPT_POLICY = 'ACCEPT'
 
+RULE_DEFAULT_TARGET = ['ACCEPT', 'DROP', 'RETURN', 'REJECT']
+
 BUILD_IN_CHAINS_DICT = {
     FILTER_TABLE_NAME: ['INPUT', 'FORWARD', 'OUTPUT'],
     NAT_TABLE_NAME: ['PREROUTING', 'POSTROUTING', 'OUTPUT'],
@@ -371,7 +373,14 @@ class IPTablesTable(IPTablesParser):
         chain = self.get_chain_by_name(chain_name)
         if not chain:
             chain = self.add_chain(chain_name)
-        chain.add_rule(' '.join(tokens))
+
+        if tokens[2] == '-j' and tokens[3] in RULE_DEFAULT_TARGET:
+            if chain.default_rule:
+                logger.warn('chain[%s] already has default rule[%s], ' % (chain.name, chain.default_rule.name))
+                return
+            chain.add_default_rule(' '.join(tokens))
+        else:
+            chain.add_rule(' '.join(tokens))
 
     def _sort_build_in_chains(self):
         if self.name not in BUILD_IN_CHAINS_DICT:
