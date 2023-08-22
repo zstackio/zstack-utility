@@ -76,6 +76,7 @@ class RaidLogicalDriveStruct(object):
         self.writePolicy = None
         self.id = None
         self.raidControllerSasAddress = None
+        self.path = None
 
 
 class SmartDataStruct(object):
@@ -242,6 +243,33 @@ class LocalScsiScanRsp(AgentRsp):
         self.raidPhysicalDriveStructs = []
         self.raidLogicalDriveStructs = []
 
+class BlockDeviceNode(lvm.BlockStruct):
+    def __init__(self):
+        super(lvm.BlockStruct, self).__init__()
+        # type: list[BlockDeviceNode]
+        self.children = []
+    
+    def copy_from(self, block):
+        # type: (lvm.BlockStruct) -> BlockDeviceNode
+        self.wwid = block.wwid
+        self.vendor = block.vendor
+        self.model = block.model
+        self.wwn = block.wwn
+        self.serial = block.serial
+        self.hctl = block.hctl
+        self.type = block.type
+        self.size = block.size
+        self.path = block.path
+        self.parent = block.parent
+        self.mount_point = block.mount_point
+        self.swap = block.swap
+        return self
+
+class BlockDetailRsp(AgentRsp):
+    def __init__(self):
+        super(LocalScsiScanRsp, self).__init__()
+        # type: BlockDeviceNode
+        self.block = None
 
 class IscsiLoginRsp(AgentRsp):
     iscsiTargetStructList = None  # type: list[IscsiTargetStruct]
@@ -279,6 +307,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     RAID_SELF_TEST_PATH = "/storagedevice/raid/selftest"
     HBA_SCAN_PATH = "/storagedevice/hba/scan"
     LOCAL_SCSI_SCAN_PATH = "/storagedevice/local/scsi/scan"
+    FIND_BLOCK_DETAIL_PATH = "/storagedevice/block/detail"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -297,6 +326,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RAID_SELF_TEST_PATH, self.drive_self_test)
         http_server.register_async_uri(self.HBA_SCAN_PATH, self.hba_scan)
         http_server.register_async_uri(self.LOCAL_SCSI_SCAN_PATH, self.scan_local_scsi)
+        http_server.register_async_uri(self.FIND_BLOCK_DETAIL_PATH, self.block_detail)
 
     def stop(self):
         pass
@@ -1561,6 +1591,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             v.raidControllerNumber = adapter
             v.raidLevel = "RAID%s" % variables["RAID level"]
             v.driveState = self.convert_raid_state(variables["Status of Logical Device"])
+            v.path = variables["Disk Name"]
             v.size = self.convert_size_in_bytes(variables["Size"])
             v.wwn = variables["Volume Unique Identifier"].upper()
             v.id = int(logical_id)
@@ -1945,3 +1976,21 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         return devices
 
+    @kvmagent.replyerror
+    def block_detail(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = BlockDetailRsp()
+
+        # type: list[lvm.BlockStruct]
+        lsblk_list = lvm.all_lsblk(with_pk_name=True, with_mount_point=True)
+        matched_lsblk_list = [blk for blk in lsblk_list if blk.is_wwn_matched(cmd.wwn)]
+        if not matched_lsblk_list:
+            rsp.error = 'unable to find lun with wwn: %s' % cmd.wwn
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        rsp.block = BlockDeviceNode().copy_from(matched_lsblk_list[0])
+
+        children = [blk for blk in lsblk_list if blk.parent == rsp.block.path]
+        rsp.block.children = [BlockDeviceNode().copy_from(child) for child in children]
+        return jsonobject.dumps(rsp)
