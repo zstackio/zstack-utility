@@ -215,6 +215,7 @@ declare -a upgrade_params_array=(
     '4.5.0,-DAddTagToSchedulerSnapshot=true'
     '4.6.0,-DupgradeVipSnatNetworkServiceRefRecord=true'
     '4.6.0,-DupgradeLinuxGuestTools=true'
+    '4.7.21,-DupgradeMtuSystemTag=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
