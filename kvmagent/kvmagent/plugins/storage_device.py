@@ -76,6 +76,7 @@ class RaidLogicalDriveStruct(object):
         self.writePolicy = None
         self.id = None
         self.raidControllerSasAddress = None
+        self.path = None
 
 
 class SmartDataStruct(object):
@@ -1590,6 +1591,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             v.raidControllerNumber = adapter
             v.raidLevel = "RAID%s" % variables["RAID level"]
             v.driveState = self.convert_raid_state(variables["Status of Logical Device"])
+            v.path = variables["Disk Name"]
             v.size = self.convert_size_in_bytes(variables["Size"])
             v.wwn = variables["Volume Unique Identifier"].upper()
             v.id = int(logical_id)
