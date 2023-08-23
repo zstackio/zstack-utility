@@ -114,25 +114,28 @@ if host_info.distro in RPM_BASED_OS:
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
     qemu_pkg = ' '.join(_qemu_pkg)
-    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs qemu-storage-daemon nmap-ncat lvm2 lvm2-libs'
+    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs nmap-ncat lvm2 lvm2-libs'
+    common_update_list = 'qemu-storage-daemon'
     # common imagestorebackupstorage deps of ns10 that need to update
     ns10_update_list = "nettle exfat-utils fuse-exfat collectd collectd-disk collectd-virt"
 
-    if client == "true" :
+    if client == "true":
         if host_info.major_version < 7:
             # change error to warning due to imagestore client will install after add kvm host
             Warning("Imagestore Client only support distribution version newer than 7.0")
         if zstack_repo == 'false':
             yum_install_package(qemu_pkg, host_post_info)
         else:
-            command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
-                       "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
+            command = (
+                          "pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
+                          "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
 
             if releasever in ['ns10']:
-                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
-                ns10_update_list, zstack_repo)
-                run_remote_command(command, host_post_info)
+                common_update_list = common_update_list + ' ' + ns10_update_list
+            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
+                common_update_list, zstack_repo)
+            run_remote_command(command, host_post_info)
     else:
         if zstack_repo == 'false':
             yum_install_package(qemu_pkg, host_post_info)
