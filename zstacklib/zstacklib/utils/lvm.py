@@ -442,12 +442,18 @@ def get_device_info(dev_name, scsi_info):
     s.path = get_device_path(dev_name)
     return s
 
-def all_lsblk(with_pk_name = False, with_mount_point = False):
-    # type: (bool, bool) -> list[BlockStruct]
-    results = []
+def lsblk_command(with_pk_name = False, with_mount_point = False, dev_name = None):
+    # type: (bool, bool, str) -> str
     cmd = "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE"
     cmd = cmd + ",PKNAME" if with_pk_name else cmd
     cmd = cmd + ",MOUNTPOINT" if with_mount_point else cmd
+    cmd = cmd + " %s" % dev_name if dev_name else cmd
+    return cmd
+
+def all_lsblk(with_pk_name = False, with_mount_point = False):
+    # type: (bool, bool) -> list[BlockStruct]
+    results = []
+    cmd = lsblk_command(with_pk_name, with_mount_point)
     r, o, e = bash.bash_roe(cmd, False)
     if r != 0 or o.strip() == "":
         logger.warn("can not get device information")
@@ -459,8 +465,7 @@ def all_lsblk(with_pk_name = False, with_mount_point = False):
 
 def lsblk_info(dev_name):
     # type: (str) -> BlockStruct
-    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name,
-                            False)
+    r, o, e = bash.bash_roe(lsblk_command(dev_name), False)
     if r != 0 or o.strip() == "":
         logger.warn("can not get device information from %s" % dev_name)
         return None

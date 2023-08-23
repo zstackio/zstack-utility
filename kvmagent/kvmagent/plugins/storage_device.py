@@ -308,6 +308,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     HBA_SCAN_PATH = "/storagedevice/hba/scan"
     LOCAL_SCSI_SCAN_PATH = "/storagedevice/local/scsi/scan"
     FIND_BLOCK_DETAIL_PATH = "/storagedevice/block/detail"
+    WIPE_PARTITION_PATH = "/storagedevice/block/partition/wipe"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -327,6 +328,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.HBA_SCAN_PATH, self.hba_scan)
         http_server.register_async_uri(self.LOCAL_SCSI_SCAN_PATH, self.scan_local_scsi)
         http_server.register_async_uri(self.FIND_BLOCK_DETAIL_PATH, self.block_detail)
+        http_server.register_async_uri(self.WIPE_PARTITION_PATH, self.wipe_partitions_if_exists)
 
     def stop(self):
         pass
@@ -1993,4 +1995,24 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         children = [blk for blk in lsblk_list if blk.parent == rsp.block.path]
         rsp.block.children = [BlockDeviceNode().copy_from(child) for child in children]
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def wipe_partitions_if_exists(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        lsblk_list = lvm.all_lsblk(with_pk_name=True, with_mount_point=True)
+        matched_lsblk_list = [blk for blk in lsblk_list if blk.is_wwn_matched(cmd.wwn)]
+        if not matched_lsblk_list:
+            rsp.error = 'unable to find lun with wwn: %s' % cmd.wwn
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+        
+        if len(matched_lsblk_list) == 1:
+            # this disk has no partitions
+            return jsonobject.dumps(rsp)
+
+        disk_block = [blk.path for blk in matched_lsblk_list if blk.type == "disk"]
+        lvm.wipe_fs(disk_block)
         return jsonobject.dumps(rsp)
