@@ -5445,7 +5445,7 @@ class Vm(object):
                     e(disk, 'source', None, {'dev': lvm.parse_local_schema_install_path(volume.installPath)})
                     e(disk, 'blockio', None, {'logical_block_size': '512', 'physical_block_size': '4096'})
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': bus})
-                    return disk
+                    Vm.set_device_address(disk, volume)
                 elif match_storage_device(volume.installPath):
                     disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
