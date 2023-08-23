@@ -490,6 +490,8 @@ def copy_kvm_files():
         copy_to_remote(_src, _dst, None, host_post_info)
 
     # copy qemu configration file
+    command = 'mkdir -p /etc/pki/qemu/'
+    run_remote_command(command, host_post_info)
     qemu_conf_src = os.path.join(file_root, "qemu.conf")
     qemu_conf_dst = "/etc/libvirt/qemu.conf"
     qemu_conf_status = copy_to_remote(qemu_conf_src, qemu_conf_dst, None, host_post_info)
