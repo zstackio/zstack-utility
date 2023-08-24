@@ -6811,6 +6811,9 @@ class VmPlugin(kvmagent.KvmAgent):
             shell_cmd = shell.ShellCmd(cmd)
             shell_cmd(False)
             if shell_cmd.return_code != 0 or not check_volume():
+                if 'non-file destination not supported' in shell_cmd.stderr:
+                    shell_cmd.stderr = 'the current libvirt does not support migrating storage to ceph ' \
+                                       'from the same host. Please upgrade to libvirt-4.9.0-22.gef3a393 or higher'
                 logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, shell_cmd.stderr))
                 return False, shell_cmd.stderr
 
