@@ -50,7 +50,7 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import xmlhook
 from zstacklib.utils import misc
-from zstacklib.utils import qemu_img, qemu
+from zstacklib.utils import qemu_img, qemu, qmp
 from zstacklib.utils import ebtables
 from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
@@ -6782,10 +6782,21 @@ class VmPlugin(kvmagent.KvmAgent):
                 self.domain = domain
                 self.disk_name = disk_name
 
+            def __enter__(self):
+                logger.info("start copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
+
             def _cancel(self):
                 logger.debug('cancelling vm[uuid:%s] blockCopy disk[%s]' % (vmUuid, self.disk_name))
                 # cancel block job async
                 self.domain.blockJobAbort(self.disk_name)
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                # Concluded job should be dismiss, otherwise it will affect the next blockcopy
+                jobs = qmp.vm_query_jobs(vmUuid)
+                for job in jobs:
+                    if job['status'] == "concluded":
+                        qmp.vm_dismiss_block_job(vmUuid, job['id'])
+                super(BlockCopyDaemon, self).__exit__(exc_type, exc_value, traceback)
 
             def _get_percent(self):
                 # type: () -> int
@@ -6795,7 +6806,6 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid(vmUuid)
             return vm._get_target_disk_by_path(task_spec.newVolume.installPath, is_exception=False) is not None
 
-        logger.info("start copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
         with BlockCopyDaemon(task_spec, get_vm_by_uuid(vmUuid).domain, disk_name):
             cmd = 'virsh blockcopy --domain {} {} --xml {} --pivot --wait --transient-job --reuse-external'.format(vmUuid, disk_name, disk_xml)
             shell_cmd = shell.ShellCmd(cmd)
@@ -7456,8 +7466,9 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         for i in range(0, 3):
-            r, o, err = execute_qmp_command(cmd.vmUuid, '{"execute":"query-block-jobs"}')
-            if err:
+            try:
+                qmp.vm_query_block_jobs(cmd.vmUuid)
+            except Exception as e:
                 rsp.success = False
                 rsp.error = "Failed to query block jobs, report error"
                 return jsonobject.dumps(rsp)
