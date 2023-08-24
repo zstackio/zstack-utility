@@ -46,3 +46,4 @@ kvmagent/test/nfs_testsuit/test_ha_nfs_touch_fail.py
 kvmagent/test/shareblock_testsuite/test_ha_shareblock.py
 kvmagent/test/shareblock_testsuite/test_physical_nic.py
 zstacklib/test/zstacklib_unittest_suite.py
+kvmagent/test/vm_plugin_testsuite/test_apply_memory_balloon.py
