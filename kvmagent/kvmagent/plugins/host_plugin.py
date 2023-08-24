@@ -3169,6 +3169,14 @@ done
 
         return jsonobject.dumps(rsp)
 
+    @property
+    def libvirt_version(self):
+        return linux.get_libvirt_version()
+
+    @property
+    def qemu_version(self):
+        return qemu.get_version()
+
     def start(self):
         self.host_uuid = None
         self.host_socket = None
@@ -3232,8 +3240,6 @@ done
         http_server.register_async_uri(self.DETACH_VOLUME_PATH, self.detach_volume__path)
 
         self.heartbeat_timer = {}
-        self.libvirt_version = linux.get_libvirt_version()
-        self.qemu_version = qemu.get_version()
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
         if os.path.exists(filepath):
             os.unlink(filepath)
