@@ -225,14 +225,19 @@ def install_kvm_pkg():
             'aarch64': 'edk2-aarch64'
         }
 
+        extra_rpm_mapping = {
+            'kylin_aarch64': "ksmtuned"
+        }
+
         # handle zstack_repo
         if zstack_repo != 'false':
             distro_head = host_info.distro.split("_")[0] if releasever in kylin or releasever in uos else host_info.distro
-            common_dep_list = "%s %s %s %s" % (
+            common_dep_list = "%s %s %s %s %s" % (
                 os_base_dep,
                 distro_mapping.get(distro_head, ''),
                 releasever_mapping.get(releasever, ''),
-                edk2_mapping.get(host_info.host_arch, ''))
+                edk2_mapping.get(host_info.host_arch, ''),
+                extra_rpm_mapping.get("%s_%s" % (distro_head, host_info.host_arch), ''))
             # common kvmagent deps of x86 and arm that need to update
             common_update_list = ("sanlock sysfsutils hwdata sg3_utils lvm2"
                                   " lvm2-libs lvm2-lockd systemd openssh"
@@ -754,7 +759,6 @@ def set_legacy_iptables_ebtables():
     host_post_info.post_label = "ansible.shell.switch.legacy-version"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
-
 
 def do_ksm_config():
     if isEnableKsm == 'none':
