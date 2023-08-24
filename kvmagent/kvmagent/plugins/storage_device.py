@@ -174,6 +174,9 @@ class NvmeLunStruct(ScsiLunStruct):
         super(NvmeLunStruct, self).__init__()
         self.nqn = ""
         self.transport = ""  # maybe 'pcie' 'tcp' 'rdma'
+        self.devicePath = "" # /dev/nvme0n1
+        self.mountPoint = ""
+        self.swap = False
 
     @staticmethod
     def example(i):
@@ -183,12 +186,14 @@ class NvmeLunStruct(ScsiLunStruct):
         s.multipathDeviceUuid = ""
         s.nqn = "0x5000d31000e56801"
         s.path = "fc-0x21000024ff326b55-0x5000d31000e56826-lun-" + i
+        s.devicePath = "/dev/nvme0n1"
         s.model = "Compellent Vol"
         s.wwn = "0x6000d31000e56800"
         s.type = "mpath"
         s.wwids = ["36000d31000e56800000000000000010" + i]
         s.serial = "6000d31000e56800000000000000010" + i
         s.size = "21990232555520"
+        s.transport = "tcp"
         return s
 
 
@@ -1322,15 +1327,18 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for lun in nvme_luns:
             s = NvmeLunStruct()
             dev_name = os.path.basename(lun.DevicePath)
-            blk_info = lvm.lsblk_info(dev_name)
+            blk_info = lvm.lsblk(lvm.ListBlockCommand().with_mount_point().device(dev_name))
             s.vendor = blk_info.vendor
             s.model = blk_info.model
             s.wwn = blk_info.wwn
             s.serial = blk_info.serial
             s.hctl = blk_info.hctl
             s.size = blk_info.size
+            s.mountPoint = blk_info.mount_point
+            s.swap = blk_info.swap
             s.type = 'mpath' if lvm.is_slave_of_multipath(lun.DevicePath) else blk_info.type
             s.wwids = [s.wwn]
+            s.devicePath = lun.DevicePath
             path = lvm.get_device_path(lun.DevicePath)
             s.path = path if path else s.wwn
             s.nqn = get_nqn()
@@ -1984,7 +1992,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = BlockDetailRsp()
 
         # type: list[lvm.BlockStruct]
-        lsblk_list = lvm.all_lsblk(with_pk_name=True, with_mount_point=True)
+        lsblk_list = lvm.lsblk(lvm.ListBlockCommand().with_parent().with_mount_point())
         matched_lsblk_list = [blk for blk in lsblk_list if blk.is_wwn_matched(cmd.wwn)]
         if not matched_lsblk_list:
             rsp.error = 'unable to find lun with wwn: %s' % cmd.wwn
@@ -2002,7 +2010,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        lsblk_list = lvm.all_lsblk(with_pk_name=True, with_mount_point=True)
+        lsblk_list = lvm.lsblk(lvm.ListBlockCommand().with_parent().with_mount_point())
         matched_lsblk_list = [blk for blk in lsblk_list if blk.is_wwn_matched(cmd.wwn)]
         if not matched_lsblk_list:
             rsp.error = 'unable to find lun with wwn: %s' % cmd.wwn

@@ -172,6 +172,34 @@ class BlockStruct:
             return False
         return self.serial.upper() == input_wwn
 
+class ListBlockCommand(object):
+    def __init__(self):
+        self.column_pk = False
+        self.column_mount = False
+        self.dev_name = None
+
+    def command(self):
+        # type: () -> str
+        cmd = "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE"
+        cmd = cmd + ",PKNAME" if self.column_pk else cmd
+        cmd = cmd + ",MOUNTPOINT" if self.column_mount else cmd
+        cmd = cmd + " /dev/%s" % self.dev_name if self.dev_name else cmd
+        return cmd
+
+    def with_parent(self):
+        self.column_pk = True
+        return self
+
+    def with_mount_point(self):
+        self.column_mount = True
+        return self
+
+    def device(self, dev_name):
+        # type: (str) -> ListBlockCommand
+        # dev_name is device path base name, ex: 'sda', 'vda'
+        self.dev_name = dev_name
+        return self
+
 def get_vg_uuid(path):
     # type: (str) -> str
     if not path or len(path.split("/")) != 4:
@@ -442,34 +470,23 @@ def get_device_info(dev_name, scsi_info):
     s.path = get_device_path(dev_name)
     return s
 
-def lsblk_command(with_pk_name = False, with_mount_point = False, dev_name = None):
-    # type: (bool, bool, str) -> str
-    cmd = "lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE"
-    cmd = cmd + ",PKNAME" if with_pk_name else cmd
-    cmd = cmd + ",MOUNTPOINT" if with_mount_point else cmd
-    cmd = cmd + " %s" % dev_name if dev_name else cmd
-    return cmd
+def lsblk_info(dev_name):
+    # type: (str) -> BlockStruct
+    # dev_name, use 'sda' if device path is '/dev/sda'
+    results = lsblk(ListBlockCommand().device(dev_name))
+    return results[0] if results else None
 
-def all_lsblk(with_pk_name = False, with_mount_point = False):
-    # type: (bool, bool) -> list[BlockStruct]
+def lsblk(command = ListBlockCommand()):
+    # type: (ListBlockCommand) -> list[BlockStruct]
     results = []
-    cmd = lsblk_command(with_pk_name, with_mount_point)
-    r, o, e = bash.bash_roe(cmd, False)
+    r, o, _ = bash.bash_roe(command.command())
     if r != 0 or o.strip() == "":
-        logger.warn("can not get device information")
+        logger.warn("can not get device information : %s" % command.command())
         return results
     
     for line in o.strip().split("\n"):
         results.append(lsblk_info_line(line))
     return results
-
-def lsblk_info(dev_name):
-    # type: (str) -> BlockStruct
-    r, o, e = bash.bash_roe(lsblk_command(dev_name), False)
-    if r != 0 or o.strip() == "":
-        logger.warn("can not get device information from %s" % dev_name)
-        return None
-    return lsblk_info_line(o.strip().split("\n")[0])
 
 def lsblk_info_line(line):
     # type: (str) -> BlockStruct
@@ -510,7 +527,7 @@ def parse_local_schema_install_path(install_path):
         return install_path
 
     wwn = install_path.split('/wwn/')[1]
-    lsblk_list = all_lsblk()
+    lsblk_list = lsblk()
     matched_lsblk_list = [blk for blk in lsblk_list if blk.is_wwn_matched(wwn)]
     if not matched_lsblk_list:
         raise Exception('unable to find lun with install path of %s' % install_path)
