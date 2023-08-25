@@ -658,7 +658,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         rsp = CleanupUnusedRulesOnHostResponse()
 
         self._cleanup_unused_chain(self.IPV4)
-        if cmd.skipIpv6:
+        if not cmd.skipIpv6:
             self._cleanup_unused_chain(self.IPV6)
 
         self._cleanup_unused_ipset()
