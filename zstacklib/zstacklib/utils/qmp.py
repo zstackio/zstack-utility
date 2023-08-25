@@ -14,9 +14,11 @@ def qmp_subcmd(s_cmd):
             s_cmd = json.dumps(j_cmd)
     return s_cmd
 
+
 @bash.in_bash
 def execute_qmp_command(domain_id, command):
     return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, qmp_subcmd(command)))
+
 
 def vm_query_jobs(vm_uuid):
     r, o, e = execute_qmp_command(vm_uuid, '{"execute":"query-jobs"}')
@@ -33,5 +35,13 @@ def vm_query_block_jobs(vm_uuid):
 
     return json.loads(o.strip())["return"]
 
-def vm_dismiss_block_job(vm_uuid, jobid):
-    return execute_qmp_command(vm_uuid, '{"execute":"block-job-dismiss", "arguments": {"id":"%s"}}' % jobid)
+
+def vm_dismiss_block_job(vm_uuid):
+    jobs = vm_query_jobs(vm_uuid)
+    if not jobs:
+        return
+
+    for job in jobs:
+        if job['status'] == "concluded":
+            execute_qmp_command(vm_uuid, '{"execute":"block-job-dismiss", "arguments": {"id":"%s"}}' % job['id'])
+    return
