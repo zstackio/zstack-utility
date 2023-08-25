@@ -9,7 +9,6 @@ from prometheus_client.core import GaugeMetricFamily, REGISTRY
 import psutil
 
 from kvmagent import kvmagent
-from zstacklib.utils import bash
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
@@ -535,7 +534,7 @@ def check_disk_insert_and_remove():
     def check_no_raid_disk():
         cmd = "lsblk -d -P -p -o serial,tran,pkname"
         pattern = r'(\w+)="([^"]*)"'
-        r1, devices_info = bash.bash_ro(cmd)
+        r1, devices_info = bash_ro(cmd)
 
         if r1 != 0:
             return []
@@ -662,11 +661,11 @@ def collect_sas_raid_state(metrics):
 
 def collect_mega_raid_state(metrics):
     r, vinfos = bash_ro("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-    if r != 0 or jsonobject.loads(cinfos)['Controllers'][0]['Command Status']['Status'] != "Success":
+    if r != 0 or jsonobject.loads(vinfos)['Controllers'][0]['Command Status']['Status'] != "Success":
         return
 
     r, dinfos = bash_ro("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
-    if r != 0 or jsonobject.loads(cinfos)['Controllers'][0]['Command Status']['Status'] != "Success":
+    if r != 0 or jsonobject.loads(dinfos)['Controllers'][0]['Command Status']['Status'] != "Success":
         return
 
     global disk_status_abnormal_list_record
@@ -1282,13 +1281,13 @@ kvmagent.register_prometheus_collector(collect_vm_pvpanic_enable_in_domain_xml)
 kvmagent.register_prometheus_collector(collect_node_disk_wwid)
 kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 kvmagent.register_prometheus_collector(collect_physical_network_interface_state)
-kvmagent.register_prometheus_collector(collect_host_disk_state)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
     kvmagent.register_prometheus_collector(collect_equipment_state)
 
 if misc.isHyperConvergedHost():
+    kvmagent.register_prometheus_collector(collect_host_disk_state)
     kvmagent.register_prometheus_collector(collect_ipmi_info)
     kvmagent.register_prometheus_collector(collect_ssd_state)
 else:
