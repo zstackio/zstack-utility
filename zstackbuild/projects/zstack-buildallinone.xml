@@ -24,6 +24,7 @@
     <target name="copy-trial-license">
         <echo message="copy zstack_trial_license to ${allinone.bin.dir}" />
         <copy file="${zstack.trial.license}" todir="${allinone.bin.dir}" />
+        <copy file="${zsv.trial.license}" todir="${allinone.bin.dir}" />
     </target>
 
     <target name="check-repo-version-exists">

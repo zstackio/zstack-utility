@@ -42,6 +42,7 @@ REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
 UPGRADE='n'
 FORCE='n'
+ZSV_INSTALL='n'
 MINI_INSTALL='n'
 CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
@@ -2431,8 +2432,8 @@ il_install_license(){
         else
             fail "License path ${LICENSE_PATH} does not exists."
         fi
-    elif [ x"$INSTALL_ENTERPRISE" = x'y' ]; then
-      # if -E is set
+    elif [ x"$INSTALL_ENTERPRISE" = x'y' -o x"$ZSV_INSTALL" = x'y' ]; then
+      # if "-E" or "--zsv" is set
       zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     chown -R zstack:zstack /var/lib/zstack/license >>$ZSTACK_INSTALL_LOG 2>&1
@@ -3677,7 +3678,7 @@ load_install_conf() {
 
 load_install_conf
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,cube,SY,sds,no-zops -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,zsv,cube,SY,sds,no-zops -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3735,6 +3736,7 @@ do
         --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
         --grayscale ) check_myarg $1 $2;GRAYSCALE_UPGRADE=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
+        --zsv) ZSV_INSTALL='y';shift;;
         --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
@@ -3743,6 +3745,10 @@ do
         * ) usage;;
     esac
 done
+
+if [ x"$ZSV_INSTALL" = x"y" ];then
+    ZSTACK_TRIAL_LICENSE='./zsv_trial_license'
+fi
 
 # Fix bug ZSTAC-14090
 [ $# -eq $((OPTIND-1)) ] || usage
@@ -4290,6 +4296,10 @@ fi
 # deploy by cube mode
 if [ x"$CUBE_INSTALL" = x"y" ];then
     zstack-ctl configure deploy_mode="cube"
+fi
+
+if [ x"$ZSV_INSTALL" = x"y" ];then
+    zstack-ctl configure deploy_mode="zsv"
 fi
 
 #Install license
