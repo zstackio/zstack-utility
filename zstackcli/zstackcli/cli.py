@@ -343,7 +343,7 @@ Parse command parameters error:
                 if len(params) != 2:
                     raise CliError('Invalid parameter[%s], the parameter must be split by "="' % param_str)
 
-                if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] == 'rules':
+                if apiname == 'APIAddSecurityGroupRuleMsg' and params[0] in ['rules', 'remoteSecurityGroupUuids']:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APISetVmNicSecurityGroupMsg' and params[0] == 'refs':
                     all_params[params[0]] = eval(params[1])
