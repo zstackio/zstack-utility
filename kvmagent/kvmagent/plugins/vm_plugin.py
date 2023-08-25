@@ -1559,23 +1559,12 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
         self.percent = base + curr
 
     def wait_and_pivot(self, bdev):
-        def _check_block_job_canceled():
-            # Concluded job should be dismiss, otherwise it will affect the next blockcopy
-            jobs = qmp.vm_query_jobs(self.vmUuid)
-            if not jobs:
-                return
-
-            for job in jobs:
-                if job['status'] == "concluded":
-                    qmp.vm_dismiss_block_job(self.vmUuid, job['id'])
-            return
-
         while True:
             time.sleep(2)
             if self.cancelled:
                 self.domain.blockJobAbort(bdev, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_ASYNC)
                 logger.info("blockjob cancelled: %s:%s" % (self.vmUuid, bdev))
-                _check_block_job_canceled()
+                qmp.vm_dismiss_block_job(self.vmUuid)
                 break
 
             info = self.domain.blockJobInfo(bdev, 0)
@@ -1587,7 +1576,7 @@ class VmVolumesRecoveryTask(plugin.TaskDaemon):
             if info['cur'] != 0 and info['end'] == info['cur']:
                 try:
                     self.domain.blockJobAbort(bdev, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT)
-                    _check_block_job_canceled()
+                    qmp.vm_dismiss_block_job(self.vmUuid)
                     break
                 except libvirt.libvirtError as e:
                     if e.get_error_code() == libvirt.VIR_ERR_BLOCK_COPY_ACTIVE:
@@ -6805,10 +6794,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
             def __exit__(self, exc_type, exc_value, traceback):
                 # Concluded job should be dismiss, otherwise it will affect the next blockcopy
-                jobs = qmp.vm_query_jobs(vmUuid)
-                for job in jobs:
-                    if job['status'] == "concluded":
-                        qmp.vm_dismiss_block_job(vmUuid, job['id'])
+                qmp.vm_dismiss_block_job(vmUuid)
                 super(BlockCopyDaemon, self).__exit__(exc_type, exc_value, traceback)
 
             def _get_percent(self):
