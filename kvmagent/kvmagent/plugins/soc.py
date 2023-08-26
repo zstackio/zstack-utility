@@ -1,4 +1,6 @@
 import ctypes
+import os
+
 from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import log
@@ -93,6 +95,12 @@ class Soc(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @in_bash
     def soc_migrate_vm(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if not os.path.isdir("/var/lib/zstack/migrate"):
+            os.mkdir("/var/lib/zstack/migrate")
+        sscard_id_file = "/var/lib/zstack/migrate/%s" % cmd.vmInstanceUuid
+        with open(sscard_id_file, "w") as fd:
+            fd.write("%s" % cmd.destSocId)
         rsp = AgentRsp()
         handler = soc_handler.get_soc_handler(req)
         ret, msg = handler.migrate_vm(req)
