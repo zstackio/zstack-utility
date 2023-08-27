@@ -33,6 +33,7 @@ class SocCreateVmRsp(AgentRsp):
 class Soc(kvmagent.KvmAgent):
     SOC_CREATE_VM_PATH = "/vm/soc/create"
     SOC_CREATE_SNAPSHOT_PATH = "/vm/soc/createSnapshot"
+    SOC_CREATE_BACKUP_PATH = "/vm/soc/createBackup"
     SOC_DELETE_BACKUP_PATH = "/vm/soc/deleteBackup"
     SOC_DELETE_VM_PATH = "/vm/soc/delete"
     SOC_DELETE_SNAPSHOT_PATH = "/vm/soc/deleteSnapshot"
@@ -44,6 +45,7 @@ class Soc(kvmagent.KvmAgent):
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.SOC_CREATE_VM_PATH, self.soc_create_vm)
+        http_server.register_async_uri(self.SOC_CREATE_BACKUP_PATH, self.soc_create_backup)
         http_server.register_async_uri(self.SOC_CREATE_SNAPSHOT_PATH, self.soc_create_snapshot)
         http_server.register_async_uri(self.SOC_DELETE_BACKUP_PATH, self.soc_delete_backup)
         http_server.register_async_uri(self.SOC_DELETE_VM_PATH, self.soc_delete_vm)
@@ -86,6 +88,18 @@ class Soc(kvmagent.KvmAgent):
         rsp = AgentRsp()
         handler = soc_handler.get_soc_handler(req)
         ret, msg = handler.recover_backup(req)
+        if ret != 0:
+            rsp.success = False
+            rsp.error = msg
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def soc_create_backup(self, req):
+        rsp = AgentRsp()
+        handler = soc_handler.get_soc_handler(req)
+        ret, msg = handler.create_backup(req)
         if ret != 0:
             rsp.success = False
             rsp.error = msg
