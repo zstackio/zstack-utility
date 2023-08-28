@@ -1628,21 +1628,16 @@ class ShowStatusCmd(Command):
             out = cmd.stdout
             if 'schema_version' not in out:
                 version = '0.6'
-                installed_on = ''
             else:
                 version = get_zstack_version(db_hostname, db_port, db_user, db_password)
                 if len(version.split('.')) >= 4:
                     version = '.'.join(version.split('.')[:3])
-                installed_on = get_zstack_installed_on(db_hostname, db_port, db_user, db_password)
 
             detailed_version = get_detail_version()
-            pjnum = get_pjnum()
             if detailed_version is not None:
-                info('version: %s (%s for %s)' % (version, detailed_version, pjnum))
+                info('version: %s (%s)' % (version, detailed_version))
             else:
-                info('version: %s for %s' % (version, pjnum))
-            info('INSTALLED ON: %s' % installed_on)
-
+                info('version: %s' % (version))
         def show_hci_version():
             hci_path = '/usr/local/hyperconverged/conf/VERSION'
             if not os.path.exists(hci_path):
@@ -1657,21 +1652,6 @@ class ShowStatusCmd(Command):
                         hci_version = list[-3]
                         hci_name = version.split("-%s-" % hci_version)
                         info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
-
-        def get_pjnum():
-            pjnum_path = ctl.zstack_home + "/PJNUM"
-            if not os.path.exists(pjnum_path):
-                return 'unknown'
-            with open(pjnum_path, 'r') as fd:
-                line = fd.readline()
-                if line.startswith('PJNUM='):
-                    num = line.strip('\t\n\r').split('=')[1]
-                    if num == '001':
-                        return 'universal'
-                    else:
-                        return 'tailored'
-                else:
-                    return 'unknown'
 
         info('\n'.join(info_list))
         show_version()
@@ -1794,6 +1774,53 @@ class ShowStatus2Cmd(Command):
         self._format_str_color("MN", mn_status)
         self._format_str_color("MN-UI", ui_status)
 
+class ShowStatus3Cmd(Command):
+    def __init__(self):
+        super(ShowStatus3Cmd, self).__init__()
+        self.name = 'status3'
+        self.description = 'show project num(PJNUM) and version installed_on info'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--host',
+                            help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
+        parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
+
+    def _stop_remote(self, args):
+        shell_no_pipe(
+            'ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl status"' % args.host)
+
+    def run(self, args):
+        self.quiet = args.quiet
+        if args.host:
+            self._stop_remote(args)
+            return
+
+        try:
+            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+        except CtlError as e:
+            info('version: %s' % colored('unknown, %s' % e.message.strip(), 'yellow'))
+            return
+
+        def get_pjnum():
+            pjnum_path = ctl.zstack_home + "/PJNUM"
+            if not os.path.exists(pjnum_path):
+                return 'unknown'
+            with open(pjnum_path, 'r') as fd:
+                line = fd.readline()
+                if line.startswith('PJNUM='):
+                    num = line.strip('\t\n\r').split('=')[1]
+                    if num == '001':
+                        return 'universal'
+                    else:
+                        return 'particular'
+                else:
+                    return 'unknown'
+
+        pjnum = get_pjnum()
+        info('project num(PJNUM): %s' % pjnum)
+        installed_on = get_zstack_installed_on(db_hostname, db_port, db_user, db_password)
+        info('installed on: %s' % installed_on)
 class DeployDBCmd(Command):
     DEPLOY_DB_SCRIPT_PATH = "WEB-INF/classes/deploydb.sh"
     ZSTACK_PROPERTY_FILE = "WEB-INF/classes/zstack.properties"
@@ -10615,6 +10642,7 @@ def main():
     RecoverHACmd()
     ScanDatabaseBackupCmd()
     ShowStatus2Cmd()
+    ShowStatus3Cmd()
     ShowStatusCmd()
     StartCmd()
     StopCmd()
