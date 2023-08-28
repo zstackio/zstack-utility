@@ -145,9 +145,10 @@ if host_info.distro in RPM_BASED_OS:
             run_remote_command(command, host_post_info)
 
             if releasever in ['ns10']:
-                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
-                ns10_update_list, zstack_repo)
-                run_remote_command(command, host_post_info)
+                common_update_list = common_update_list + ' ' + ns10_update_list
+            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
+                common_update_list, zstack_repo)
+            run_remote_command(command, host_post_info)
 
             command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
                         "--disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (svr_pkgs, zstack_repo)
