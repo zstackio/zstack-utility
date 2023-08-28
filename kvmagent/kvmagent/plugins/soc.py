@@ -41,6 +41,7 @@ class Soc(kvmagent.KvmAgent):
     SOC_RECOVER_FROM_BACKUP_PATH = "/vm/soc/recover"
     SOC_REVERT_SNAPSHOT_PATH = "/vm/soc/revert"
     SOC_GET_CARD_ID_PATH = "/soc/card/id"
+    SOC_START_VM_ON_NEW_HOST = "/vm/soc/startOnNewHost"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -54,6 +55,7 @@ class Soc(kvmagent.KvmAgent):
         http_server.register_async_uri(self.SOC_RECOVER_FROM_BACKUP_PATH, self.soc_recover_from_backup)
         http_server.register_async_uri(self.SOC_REVERT_SNAPSHOT_PATH, self.soc_revert_snapshot)
         http_server.register_async_uri(self.SOC_GET_CARD_ID_PATH, self.soc_get_card_id)
+        http_server.register_async_uri(self.SOC_START_VM_ON_NEW_HOST, self.soc_start_vm_on_new_host)
 
     def stop(self):
         pass
@@ -178,6 +180,18 @@ class Soc(kvmagent.KvmAgent):
         rsp = AgentRsp()
         handler = soc_handler.get_soc_handler(req)
         ret, msg = handler.create_vm(req)
+        if ret != 0:
+            rsp.success = False
+            rsp.error = msg
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def soc_start_vm_on_new_host(self, req):
+        rsp = AgentRsp()
+        handler = soc_handler.get_soc_handler(req)
+        ret, msg = handler.start_vm(req)
         if ret != 0:
             rsp.success = False
             rsp.error = msg
