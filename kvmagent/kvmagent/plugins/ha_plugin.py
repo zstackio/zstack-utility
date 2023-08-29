@@ -273,23 +273,13 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
         logger.warn("can not find process of vm[uuid: %s]" % vm_uuid)
         return None
 
-    # try to get vm running qemu version
-    qemu_version = qemu.get_running_version(vm_uuid)
-    if qemu_version == "":
-        qemu_version = QEMU_VERSION
-
     pid = out.split(" ")[0]
     cmdline = out.split(" ", 3)[-1]
     if "bootindex=1" in cmdline:
-        root_volume_path = cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
-        if LooseVersion(LIBVIRT_VERSION) >= LooseVersion("6.0.0") and LooseVersion(qemu_version) >= LooseVersion("4.2.0"):
-            if is_file_system:
-                root_volume_path = cmdline.split("bootindex=1")[0].split('filename')[-1].split('"')[2]
-            else:
-                root_volume_path = cmdline.split("bootindex=1")[0].split('image')[0].split('"')[-3] + '/'
+        root_volume_path = find_root_volume_with_bootindex_from_ps_output(cmdline, vm_uuid, is_file_system)
     elif " -boot order=dc" in cmdline:
         # TODO: maybe support scsi volume as boot volume one day
-        root_volume_path = cmdline.split("id=drive-virtio-disk0")[0].split(" -drive file=")[-1].split(",")[0]
+        root_volume_path = find_root_volume_with_bootorder_from_ps_output(cmdline)
     else:
         logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (pid, cmdline))
         return None
@@ -305,6 +295,40 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
 
     return root_volume_path
 
+def find_root_volume_with_bootindex_and_file_system_from_ps_output(cmdline):
+    parts = cmdline.split("bootindex=1")
+    if len(parts) <= 1:
+        return None
+
+    filename_parts = parts[0].split('filename')
+    if len(filename_parts) > 1:
+        return filename_parts[-1].split('"')[2]
+
+    drive_parts = parts[0].split(" -drive file=")
+    if len(drive_parts) > 1:
+        return drive_parts[-1].split(",")[0]
+
+    return None
+
+
+def find_root_volume_with_bootindex_from_ps_output(cmdline, vm_uuid, is_file_system):
+    # try to get vm running qemu version
+    qemu_version = qemu.get_running_version(vm_uuid)
+    if qemu_version == "":
+        qemu_version = QEMU_VERSION
+
+    if LooseVersion(LIBVIRT_VERSION) >= LooseVersion("6.0.0") and LooseVersion(qemu_version) >= LooseVersion("4.2.0"):
+        if is_file_system:
+            root_volume_path = find_root_volume_with_bootindex_and_file_system_from_ps_output(cmdline)
+        else:
+            root_volume_path = cmdline.split("bootindex=1")[0].split('image')[0].split('"')[-3] + '/'
+    else:
+        root_volume_path = cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
+
+    return root_volume_path
+
+def find_root_volume_with_bootorder_from_ps_output(cmdline):
+    return cmdline.split("id=drive-virtio-disk0")[0].split(" -drive file=")[-1].split(",")[0]
 
 def need_kill(vm_uuid, storage_paths, is_file_system):
     vm_path = get_running_vm_root_volume_path(vm_uuid, is_file_system)
