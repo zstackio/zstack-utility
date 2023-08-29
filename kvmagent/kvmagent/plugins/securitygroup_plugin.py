@@ -691,11 +691,11 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             filter_table = iptables.from_iptables_save()
             filter6_table = iptables.from_iptables_save(version=self.IPV6)
             for chain in filter_table.get_chains():
-                for rule in chain.rules:
+                for rule in chain.user_defined_rules:
                     if rule.get_ipset_name() and rule.get_ipset_name() in to_delete_ipset:
                         chain.delete_rule(rule.name)
             for chain in filter6_table.get_chains():
-                for rule in chain.rules:
+                for rule in chain.user_defined_rules:
                     if rule.get_ipset_name() and rule.get_ipset_name() in to_delete_ipset:
                         chain.delete_rule(rule.name)
             filter_table.iptables_restore()
