@@ -3844,7 +3844,7 @@ echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 # Copy zstack trial license into /var/lib/zstack/license
 if [ -f $ZSTACK_TRIAL_LICENSE ]; then
   mkdir -p /var/lib/zstack/license
-  /bin/cp -f $ZSTACK_TRIAL_LICENSE /var/lib/zstack/license
+  /bin/cp -f $ZSTACK_TRIAL_LICENSE /var/lib/zstack/license/zstack_trial_license
 fi
 
 if [ -f $PRODUCT_TITLE_FILE ]; then
