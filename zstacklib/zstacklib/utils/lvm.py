@@ -954,7 +954,7 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
         if r == 0 and o.strip() != "":
             exists_vg = o.strip()
 
-        if expected_vg in o.strip():
+        if expected_vg and expected_vg in o.strip():
             continue
 
         backup = backup_super_block(disk)
