@@ -1655,10 +1655,19 @@ class ShowStatusCmd(Command):
                         hci_name = version.split("-%s-" % hci_version)
                         info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
 
+        def show_zsv_version():
+            zsv_version = get_zsv_version()
+            if zsv_version:
+                info('ZSphere version: %s' % zsv_version)
+            else:
+                info(colored('ZSphere version: Unknown', 'yellow'))
+
         info('\n'.join(info_list))
         show_version()
         if is_hyper_converged_host():
             show_hci_version()
+        elif is_zsv_env():
+            show_zsv_version()
 
         s = check_zstack_status()
         if s is not None and not s:
@@ -6649,6 +6658,10 @@ def is_hyper_converged_host():
         return False
     return True
 
+def is_zsv_env():
+    properties_file_path = os.path.join(os.environ['ZSTACK_HOME'], 'WEB-INF/classes/zstack.properties')
+    properties = PropertyFile(properties_file_path)
+    return properties.read_property('deploy_mode') == 'zsv'
 
 def get_hci_detail_version():
     detailed_version_file = "/usr/local/hyperconverged/conf/VERSION"
@@ -6659,6 +6672,13 @@ def get_hci_detail_version():
     else:
         return None
 
+def get_zsv_version():
+    detailed_version_file = os.path.join(os.environ['ZSTACK_HOME'], 'WEB-INF', 'classes', 'zsphere_config', 'version')
+    if os.path.exists(detailed_version_file):
+        with open(detailed_version_file, 'r') as fd:
+            return fd.read().strip()
+    else:
+        return ''
 
 class ConfiguredCollectLogCmd(Command):
     logger_dir = '/var/log/zstack/'
