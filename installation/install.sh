@@ -1430,7 +1430,6 @@ upgrade_zstack(){
     [ ! -z "$upgrade_persist_params" ] && zstack-ctl configure $upgrade_persist_params
     done
 
-
     # set ticket.sns.topic.http.url if not exists
     zstack-ctl show_configuration | grep 'ticket.sns.topic.http.url' >/dev/null 2>&1
     [ $? -ne 0 ] && zstack-ctl configure ticket.sns.topic.http.url=http://localhost:5000/zwatch/webhook
@@ -1444,6 +1443,10 @@ upgrade_zstack(){
 
     # configure deploy_mode if it is cube
     do_config_deploy_node
+
+    # configure deploy_mode if it is zsv
+    zstack-ctl show_configuration | grep 'deploy_mode' | grep zsv >/dev/null 2>&1
+    [ $? -eq 0 ] && iz_upgrade_zsphere_tools
 
     # update consoleProxyCertFile if necessary
     certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
@@ -2324,6 +2327,27 @@ cp_third_party_tools(){
     pass
 }
 
+iz_install_zsphere_tools(){
+    echo_subtitle "Install ZSpere tools"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    inner_install_zsphere_tools()
+}
+
+iz_upgrade_zsphere_tools(){
+    echo_subtitle "Upgrade ZSpere tools"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    inner_install_zsphere_tools()
+}
+
+inner_install_zsphere_tools(){
+    ZSV_SOURCE_DIR=/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zsphere_config
+    ZSV_CONFIG_DIR=$ZSTACK_HOME/WEB-INF/classes/zsphere_config
+
+    /bin/rm -rf $ZSV_CONFIG_DIR
+    mkdir -p $ZSV_CONFIG_DIR
+    /bin/cp -f $ZSV_SOURCE_DIR/version $ZSV_CONFIG_DIR/version
+}
+
 install_zstack(){
     echo_title "Install ${PRODUCT_NAME} Tools"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -2336,6 +2360,10 @@ install_zstack(){
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         show_spinner sd_install_zstack_ui
         zstack-ctl config_ui --restore
+    fi
+    # zsphere is zsv env
+    if [ x"$ZSV_INSTALL" = x"y" ]; then
+        show_spinner iz_install_zsphere_tools
     fi
 }
 
@@ -3746,8 +3774,8 @@ do
     esac
 done
 
-if [ x"$ZSV_INSTALL" = x"y" ];then
-    ZSTACK_TRIAL_LICENSE='./zsv_trial_license'
+if [ x"$ZSV_INSTALL" = x"y" && x"$CUBE_INSTALL" = x"y" ];then
+    fail2 "\n\tYou can not install use both cube and zsv mode.\n\n"
 fi
 
 # Fix bug ZSTAC-14090
@@ -3842,6 +3870,10 @@ fi
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
 # Copy zstack trial license into /var/lib/zstack/license
+if [ x"$ZSV_INSTALL" = x"y" ];then
+    ZSTACK_TRIAL_LICENSE='./zsv_trial_license'
+fi
+
 if [ -f $ZSTACK_TRIAL_LICENSE ]; then
   mkdir -p /var/lib/zstack/license
   /bin/cp -f $ZSTACK_TRIAL_LICENSE /var/lib/zstack/license/zstack_trial_license
