@@ -474,6 +474,10 @@ def copy_tools():
         if os.path.exists(pkg_path):
             copy_to_remote(pkg_path, pkg_dest_path, "mode=755", host_post_info)
 
+    # create pushgateway persistence data directory
+    command = 'mkdir -p %s' % os.path.join(zstack_lib_dir, 'prometheus', 'host_pushgateway')
+    run_remote_command(command, host_post_info)
+
 def copy_kvm_files():
     """copy kvmagent files and packages"""
     global qemu_conf_status, copy_zstacklib_status, copy_kvmagent_status, copy_smart_nics_status
