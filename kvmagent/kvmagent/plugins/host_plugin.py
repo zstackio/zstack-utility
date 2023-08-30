@@ -2596,6 +2596,7 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = DeployQemuTlsResponse()
 
+        linux.mkdir('/etc/pki/CA', 0755)
         linux.mkdir('/etc/pki/libvirt', 0755)
         linux.mkdir('/etc/pki/libvirt/private', 0750)
 
