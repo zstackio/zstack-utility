@@ -176,6 +176,11 @@ class NvmeSanScanRsp(AgentRsp):
         super(NvmeSanScanRsp, self).__init__()
         self.nvmeLunStructs = []
 
+class NvmeServerConnectRsp(AgentRsp):
+    def __init__(self):
+        super(NvmeServerConnectRsp, self).__init__()
+        self.nvmeLunStructs = []
+
 
 class IscsiLoginCmd(AgentCmd):
     @log.sensitive_fields("iscsiChapUserPassword")
@@ -213,6 +218,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     ISCSI_LOGOUT_PATH = "/storagedevice/iscsi/logout"
     FC_SCAN_PATH = "/storagedevice/fc/scan"
     NVME_SCAN_PATH = "/storagedevice/nvme/scan"
+    NVME_CONNECT_PATH = "/storagedevice/nvme/connect"
+    NVME_DISCONNECT_PATH = "/storagedevice/nvme/disconnect"
     MULTIPATH_ENABLE_PATH = "/storagedevice/multipath/enable"
     MULTIPATH_DISABLE_PATH = "/storagedevice/multipath/disable"
     ATTACH_SCSI_LUN_PATH = "/storagedevice/scsilun/attach"
@@ -229,6 +236,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ISCSI_LOGOUT_PATH, self.iscsi_logout, cmd=IscsiLogoutCmd())
         http_server.register_async_uri(self.FC_SCAN_PATH, self.scan_sg_devices)
         http_server.register_async_uri(self.NVME_SCAN_PATH, self.scan_nvme_devices)
+        http_server.register_async_uri(self.NVME_CONNECT_PATH, self.connect_nvme_devices)
+        http_server.register_async_uri(self.NVME_DISCONNECT_PATH, self.disconnect_nvme_devices)
         http_server.register_async_uri(self.MULTIPATH_ENABLE_PATH, self.enable_multipath)
         http_server.register_async_uri(self.MULTIPATH_DISABLE_PATH, self.disable_multipath)
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
@@ -539,6 +548,22 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = NvmeSanScanRsp()
         rsp.nvmeLunStructs = self.get_nvme_luns(cmd.rescan)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def connect_nvme_devices(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = NvmeServerConnectRsp()
+
+        rsp.nvmeLunStructs = self.connect_nvme_server(cmd)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def disconnect_nvme_devices(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        self.disconnect_nvme_server(cmd)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1111,6 +1136,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         s.storageWwnn = get_storage_wwnn(s.hctl)
         return s
 
+
     @bash.in_bash
     def get_nvme_luns(self, rescan):
         # type: (bool) -> list[NvmeLunStruct]
@@ -1168,6 +1194,57 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
             ret.append(s)
         return ret
+
+    def get_nqns(self):
+        nqns = set()
+        o = bash.bash_errorout("nvme list-subsys -o json")
+        nvme_subsystems = jsonobject.loads(o.strip()).Subsystems
+        if nvme_subsystems:
+            for s in nvme_subsystems:
+                if s.hasattr("NQN"):
+                    nqns.add(s.NQN)
+        logger.debug("found existing nqns: %s" % str(nqns))
+        return nqns
+
+    @bash.in_bash
+    def connect_nvme_server(self, cmd):
+        r, o, e = bash.bash_roe("timeout 60 nvme discover -a %s -s %s -t %s | grep subnqn:" % (cmd.ip, cmd.port, cmd.transport))
+        if r != 0:
+            raise Exception("unable find any nqn on server[%s:%s, transport:%s], error: %s" % (cmd.ip, cmd.port, cmd.transport, str(e)))
+
+        discovered_nqns = set()
+        for line in o.splitlines():
+            discovered_nqns.add(line.strip().split()[1])
+
+        existing_nqns = self.get_nqns()
+        connected_nqn_cnt = 0
+        for nqn in discovered_nqns:
+            if nqn in existing_nqns:
+                continue
+            r, o, e = bash.bash_roe("timeout 60 nvme connect -a %s -s %s -t %s --nqn %s" % (cmd.ip, cmd.port, cmd.transport, nqn))
+            if r == 0:
+                connected_nqn_cnt = connected_nqn_cnt + 1
+
+        if connected_nqn_cnt == 0:
+            raise Exception("unable connect any nqn on server[%s:%s, transport:%s], error: %s" % (cmd.ip, cmd.port, cmd.transport, str(e)))
+
+        return filter(lambda l: l.nqn in discovered_nqns, self.get_nvme_luns(rescan=True))
+
+    @bash.in_bash
+    def disconnect_nvme_server(self, cmd):
+        r, o, e = bash.bash_roe("timeout 60 nvme discover -a %s -s %s -t %s | grep subnqn:" % (cmd.ip, cmd.port, cmd.transport))
+        if r != 0:
+            logger.warn("unable find any nqn on server[%s:%s, transport:%s], %s" % (cmd.ip, cmd.port, cmd.transport, str(e)))
+            return
+
+        discovered_nqns = set()
+        for line in o.splitlines():
+            discovered_nqns.add(line.strip().split()[1])
+
+        for nqn in discovered_nqns:
+            r, o, e = bash.bash_roe("timeout 60 nvme disconnect --nqn %s" % nqn)
+            if r != 0:
+                logger.warn("disconnect nvme nqn[%s] failed: %s" % (nqn, e))
 
     @bash.in_bash
     def get_megaraid_devices_storcli(self, smart_scan_result):
