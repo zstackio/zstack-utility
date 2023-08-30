@@ -2428,13 +2428,13 @@ cp_third_party_tools(){
 iz_install_zsphere_tools(){
     echo_subtitle "Install ZSpere tools"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    inner_install_zsphere_tools()
+    inner_install_zsphere_tools
 }
 
 iz_upgrade_zsphere_tools(){
     echo_subtitle "Upgrade ZSpere tools"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    inner_install_zsphere_tools()
+    inner_install_zsphere_tools
 }
 
 inner_install_zsphere_tools(){
@@ -3876,7 +3876,7 @@ do
     esac
 done
 
-if [ x"$ZSV_INSTALL" = x"y" && x"$CUBE_INSTALL" = x"y" ];then
+if [ x"$ZSV_INSTALL" = x"y" ] && [ x"$CUBE_INSTALL" = x"y" ];then
     fail2 "\n\tYou can not install use both cube and zsv mode.\n\n"
 fi
 
