@@ -136,8 +136,16 @@ start_agent_tools() {
 }
 
 send_install_success() {
-  os_type=`cat /etc/os-release | grep -i "^ID=" | cut -d '=' -f 2 | cut -d '"' -f 2`
-  os_version=`cat /etc/os-release | grep -i "^VERSION_ID=" | cut -d '=' -f 2 | cut -d '"' -f 2`
+  if [ -f /etc/os-release ]; then
+      os_type=$(awk -F= '/^ID/ {print tolower($2)}' /etc/os-release | tr -d '"')
+      os_version=$(awk -F= '/^VERSION_ID/ {print $2}' /etc/os-release | tr -d '"')
+  elif [ -f /etc/redhat-release ]; then
+      os_type=$(cat /etc/redhat-release | awk '{print tolower($1)}')
+      os_version=$(cat /etc/redhat-release | awk '{print $3}')
+  else
+      os_type="unknown"
+      os_version="unknown"
+  fi
   result="version=${version},os_type=${os_type} ${os_version},platform=$(uname -s)"
   send_install_result "$result"
 }
