@@ -1446,7 +1446,7 @@ upgrade_zstack(){
 
     # configure deploy_mode if it is zsv
     zstack-ctl show_configuration | grep 'deploy_mode' | grep zsv >/dev/null 2>&1
-    [ $? -eq 0 ] && iz_upgrade_zsphere_tools
+    [ $? -eq 0 ] && show_spinner iz_upgrade_zsphere_tools
 
     # update consoleProxyCertFile if necessary
     certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
@@ -2328,15 +2328,17 @@ cp_third_party_tools(){
 }
 
 iz_install_zsphere_tools(){
-    echo_subtitle "Install ZSpere tools"
+    echo_subtitle "Install ZSphere Tools"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     inner_install_zsphere_tools
+    pass
 }
 
 iz_upgrade_zsphere_tools(){
-    echo_subtitle "Upgrade ZSpere tools"
+    echo_subtitle "Upgrade ZSphere Tools"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     inner_install_zsphere_tools
+    pass
 }
 
 inner_install_zsphere_tools(){
