@@ -1,6 +1,8 @@
 import bash
 import json
 import qemu
+import re
+
 from distutils.version import LooseVersion
 
 def qmp_subcmd(s_cmd):
