@@ -203,12 +203,14 @@ class CreateEmptyVolumeRsp(AgentRsp):
     def __init__(self):
         super(CreateEmptyVolumeRsp, self).__init__()
         self.actualSize = None
+        self.size = None
 
 
 class CreateVolumeFromCacheRsp(AgentRsp):
     def __init__(self):
         super(CreateVolumeFromCacheRsp, self).__init__()
         self.actualSize = None
+        self.size = None
 
 def translate_absolute_path_from_install_path(path):
     if path is None:
@@ -872,7 +874,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def create_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVolumeFromCacheRsp()
-        _, rsp.actualSize = self.create_volume_with_backing(cmd)
+        rsp.size, rsp.actualSize = self.create_volume_with_backing(cmd)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid, False)
         rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         return jsonobject.dumps(rsp)
@@ -1242,12 +1244,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                     linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options)
+                    rsp.size = linux.qcow2_virtualsize(install_abs_path)
         elif not lvm.lv_exists(install_abs_path):
             lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             if cmd.volumeFormat != 'raw':
                 qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, False, cmd.provisioning)
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
+                    rsp.size = linux.qcow2_virtualsize(install_abs_path)
                     linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
                     linux.qcow2_fill(0, 1048576, install_abs_path)
                     if 'preallocation=metadata' in qcow2_options:

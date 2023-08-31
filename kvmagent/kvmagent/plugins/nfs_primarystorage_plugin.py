@@ -2,29 +2,24 @@
 
 @author: frank
 '''
+import fcntl
 import os
 import os.path
-import traceback
 import tempfile
-import fcntl
+import traceback
 
 import zstacklib.utils.uuidhelper as uuidhelper
-
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http
 from zstacklib.utils import jsonobject
-from zstacklib.utils import linux
-from zstacklib.utils import log
-from zstacklib.utils import shell
 from zstacklib.utils import lock
 from zstacklib.utils import qemu_img, qcow2
+from zstacklib.utils import secret
 from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import *
-from zstacklib.utils.report import *
-from zstacklib.utils.plugin import completetask
-from zstacklib.utils import secret
 from zstacklib.utils.misc import IgnoreError
+from zstacklib.utils.plugin import completetask
+from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
 
@@ -69,12 +64,14 @@ class CreateRootVolumeFromTemplateResponse(NfsResponse):
     def __init__(self):
         super(CreateRootVolumeFromTemplateResponse, self).__init__()
         self.actualSize = None
+        self.size = None
 
 
 class CreateEmptyVolumeResponse(NfsResponse):
     def __init__(self):
         super(CreateEmptyVolumeResponse, self).__init__()
         self.actualSize = None
+        self.size = None
 
 
 class CreateVolumeWithBackingRsp(NfsResponse):
@@ -851,7 +848,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         self.create_meta_file(cmd)
         self._set_capacity_to_response(cmd.uuid, rsp)
-        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         logger.debug('successfully create empty volume[uuid:%s, name:%s, size:%s] at %s' % (cmd.uuid, cmd.name, cmd.size, cmd.installUrl))
         return jsonobject.dumps(rsp)
 
@@ -942,7 +939,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             rsp.error = err
             rsp.success = False
 
-        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         return jsonobject.dumps(rsp)
 
     @staticmethod

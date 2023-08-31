@@ -109,12 +109,14 @@ class CreateEmptyVolumeRsp(AgentRsp):
     def __init__(self):
         super(CreateEmptyVolumeRsp, self).__init__()
         self.actualSize = None
+        self.size = None
 
 
 class CreateVolumeFromCacheRsp(AgentRsp):
     def __init__(self):
         super(CreateVolumeFromCacheRsp, self).__init__()
         self.actualSize = None
+        self.size = None
 
 class GetBackingChainRsp(AgentRsp):
     def __init__(self):
@@ -284,7 +286,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         self.do_create_volume_with_backing(cmd.templatePathInCache, cmd.installPath, cmd)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
-        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -503,7 +505,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
-        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
