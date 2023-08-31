@@ -257,14 +257,21 @@ def install_kvm_pkg():
             update_list = common_update_list
             no_update_list = common_no_update_list
 
+            # libvirt does not need to be updated
             command = "which virsh"
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = "libvirt"
             (status, output) = run_remote_command(command, host_post_info, True, True)
-
-            versions = host_info.distro_version.split('.')
-            if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
-                dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
+            if output:
+                dep_list =' '.join([pkg for pkg in dep_list.split() if pkg == 'libvirt-python' or not pkg.startswith("libvirt")])
+            
+            	# libvirt-python installation does not affect the libvirt installation
+            	command = ("yum --disablerepo=* --enablerepo={0} --assumeno install libvirt-python |awk '{{print $1}}' | grep -Ew '^\s*libvirt\s*$'").format(zstack_repo)
+            	host_post_info.post_label = "ansible.shell.install.pkg"
+            	host_post_info.post_label_param = "libvirt-python"
+            	(status, output) = run_remote_command(command, host_post_info, True, True)
+            	if status is True:
+                    error("libvirt-python should not install!")
 
             # skip these packages when connect host
             _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
@@ -282,6 +289,7 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
+
             if host_info.host_arch == 'loongarch64' and releasever in kylin and yum_check_package("qemu", host_post_info):
                 command = "yum --disablerepo=* --enablerepo={0} install -y qemu-block-rbd;".format(zstack_repo)
                 host_post_info.post_label_param = "qemu-block-rbd"
