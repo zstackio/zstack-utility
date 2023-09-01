@@ -3255,69 +3255,72 @@ class Vm(object):
                 self.dump_vm_xml_to_log()
 
     def do_block_commit(self, task_spec, volume):
+        def do_block_commit_disk(task_spec, disk_name, top, base, active_commit):
+            def wait_job(_):
+                logger.debug('block commit is waiting for %s blockCommit job completion' % disk_name)
+                return not self._wait_for_block_job(disk_name, abort_on_error=True)
+
+            def check_overlay_file(path):
+                if not active_commit:
+                    return True
+
+                return self._check_target_disk_existing_by_path(path, True)
+
+            def abort_block_commit_job(_):
+                flag = libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_ASYNC
+                if active_commit:
+                    logger.debug('active commit, abort with pivot flag')
+                    flag = libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT
+
+                try:
+                    if not self.domain.blockJobInfo(disk_name, 0):
+                        logger.info("block commit job finished automatic, no need to abort")
+                        return True
+
+                    self.domain.blockJobAbort(disk_name, flag)
+                    logger.debug('block commit abort success, check overlay file path')
+                    return True
+                except Exception as e:
+                    logger.warn("pivot active layer failed, %s" % e)
+                    return False
+
+            logger.debug('start block commit for disk %s, from %s, to %s, active commit: %s'
+                         % (disk_name, top, base, active_commit))
+            flags = libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE
+
+            # currently we only handle active commit
+            if active_commit:
+                # Pass a flag to libvirt to indicate that we expect a two phase
+                # block job. We must tell libvirt to pivot to the new active layer (base).
+                flags |= libvirt.VIR_DOMAIN_BLOCK_COMMIT_ACTIVE
+
+            self.domain.blockCommit(disk_name, base, top, 0, flags)
+            touchQmpSocketWhenExists(task_spec.vmUuid)
+            logger.debug('block commit for disk %s in processing' % disk_name)
+
+            if not linux.wait_callback_success(wait_job, timeout=d.get_remaining_timeout(),
+                                               ignore_exception_in_callback=True):
+                if not check_overlay_file(base):
+                    raise kvmagent.KvmError('block commit failed')
+                logger.debug("although the block commit job failed, device install path has been changed to %s" % base)
+
+            if not linux.wait_callback_success(abort_block_commit_job, d.get_remaining_timeout(),
+                                               ignore_exception_in_callback=True):
+                raise kvmagent.KvmError('block commit abort failed')
+
+            if not linux.wait_callback_success(check_overlay_file, base, d.get_remaining_timeout(),
+                                               ignore_exception_in_callback=True):
+                raise kvmagent.KvmError('block commit succeeded, but overlay file is not cleared')
+
+            return base
+
         target_disk, disk_name = self._get_target_disk(volume)
         top = VolumeTO.get_volume_actual_installpath(task_spec.top)
         base = VolumeTO.get_volume_actual_installpath(task_spec.base)
         install_path = VmPlugin.get_source_file_by_disk(target_disk)
         active_commit = top == install_path
-        with BlockCommitDaemon(task_spec, self, disk_name, top=top, base=base, active_commit=active_commit, timeout=task_spec.timeout - 10):
-            return self._do_block_commit_disk(task_spec, disk_name, task_spec.top, task_spec.base, active_commit)
-
-    def _do_block_commit_disk(self, task_spec, disk_name, top, base, active_commit):
-        def wait_job(_):
-            logger.debug('block commit is waiting for %s blockCommit job completion' % disk_name)
-            return not self._wait_for_block_job(disk_name, abort_on_error=True)
-
-        def check_overlay_file(path):
-            if not active_commit:
-                return True
-
-            return self._check_target_disk_existing_by_path(path, True)
-
-        def abort_block_commit_job(_):
-            flag = libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_ASYNC
-            if active_commit:
-                logger.debug('active commit, abort with pivot flag')
-                flag = libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT
-
-            try:
-                if not self.domain.blockJobInfo(disk_name, 0):
-                    logger.info("block commit job finished automatic, no need to abort")
-                    return True
-
-                self.domain.blockJobAbort(disk_name, flag)
-                logger.debug('block commit abort success, check overlay file path')
-                return True
-            except Exception as e:
-                logger.warn("pivot active layer failed, %s" % e)
-                return False
-
-        logger.debug('start block commit for disk %s, from %s, to %s, active commit: %s'
-                     % (disk_name, top, base, active_commit))
-        flags = libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE
-
-        # currently we only handle active commit
-        if active_commit:
-            # Pass a flag to libvirt to indicate that we expect a two phase
-            # block job. We must tell libvirt to pivot to the new active layer (base).
-            flags |= libvirt.VIR_DOMAIN_BLOCK_COMMIT_ACTIVE
-
-        self.domain.blockCommit(disk_name, base, top, 0, flags)
-        touchQmpSocketWhenExists(task_spec.vmUuid)
-        logger.debug('block commit for disk %s in processing' % disk_name)
-
-        if not linux.wait_callback_success(wait_job, timeout=task_spec.timeout, ignore_exception_in_callback=True):
-            if not check_overlay_file(base):
-                raise kvmagent.KvmError('block commit failed')
-            logger.debug("although the block commit job failed, device install path has been changed to %s" % base)
-
-        if not linux.wait_callback_success(abort_block_commit_job, timeout=60, ignore_exception_in_callback=True):
-            raise kvmagent.KvmError('block commit abort failed')
-
-        if not linux.wait_callback_success(check_overlay_file, base, timeout=60, ignore_exception_in_callback=True):
-            raise kvmagent.KvmError('block commit succeeded, but overlay file is not cleared')
-
-        return base
+        with BlockCommitDaemon(task_spec, self, disk_name, top=top, base=base, active_commit=active_commit) as d:
+            return do_block_commit_disk(task_spec, disk_name, task_spec.top, task_spec.base, active_commit)
 
     def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
         device_id = volume.deviceId
@@ -4131,16 +4134,6 @@ class Vm(object):
 
     def merge_snapshot(self, cmd):
         _, disk_name = self._get_target_disk(cmd.volume)
-        begin_time = time.time()
-        deadline = begin_time + get_timeout(cmd)
-
-        def get_timeout_seconds(exception_if_timeout=True):
-            now = time.time()
-            if now >= deadline and exception_if_timeout:
-                raise kvmagent.KvmError(
-                    'live merging snapshot chain failed, timeout after %d seconds' % deadline - begin_time)
-
-            return deadline - now
 
         def do_pull(base, top):
             logger.debug('start block rebase [active: %s, new backing: %s]' % (top, base))
@@ -4151,7 +4144,7 @@ class Vm(object):
             def wait_previous_job(_):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_previous_job, timeout=get_timeout_seconds(), ignore_exception_in_callback=True):
+            if not linux.wait_callback_success(wait_previous_job, timeout=d.get_remaining_timeout(), ignore_exception_in_callback=True):
                 raise kvmagent.KvmError('merge snapshot failed - pending previous block job')
 
             self.domain.blockRebase(disk_name, base, 0)
@@ -4161,7 +4154,7 @@ class Vm(object):
             def wait_job(_):
                 return not self._wait_for_block_job(disk_name, abort_on_error=True)
 
-            if not linux.wait_callback_success(wait_job, timeout=get_timeout_seconds()):
+            if not linux.wait_callback_success(wait_job, timeout=d.get_remaining_timeout()):
                 raise kvmagent.KvmError('live merging snapshot chain failed, block job not finished')
 
             # Double check (c.f. issue #757)
@@ -4176,7 +4169,7 @@ class Vm(object):
                                            cmd.fullRebase)
         # confirm MergeSnapshotDaemon's cancel will be invoked before block job wait
         base = None if cmd.fullRebase else cmd.srcPath
-        with MergeSnapshotDaemon(cmd, self, disk_name, top=cmd.destPath, base=base, timeout=get_timeout_seconds()):
+        with MergeSnapshotDaemon(cmd, self, disk_name, top=cmd.destPath, base=base) as d:
             do_pull(base, cmd.destPath)
 
     def take_volumes_shallow_backup(self, task_spec, volumes, dst_backup_paths):
