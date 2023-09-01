@@ -354,7 +354,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CONVERT_VOLUME_FORMAT_PATH = "/sharedblock/volume/convertformat"
     SHRINK_SNAPSHOT_PATH = "/sharedblock/snapshot/shrink"
     GET_QCOW2_HASH_VALUE_PATH = "/sharedblock/getqcow2hash"
-    CHECK_LOCK_PATH = "/sharedblock/lock/check"
+    CHECK_STATE_PATH = "/sharedblock/vgstate/check"
 
     vgs_in_progress = set()
     vg_size = {}
@@ -403,7 +403,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.SHRINK_SNAPSHOT_PATH, self.shrink_snapshot)
         http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
-        http_server.register_async_uri(self.CHECK_LOCK_PATH, self.check_lock)
+        http_server.register_async_uri(self.CHECK_STATE_PATH, self.check_vg_state)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -690,6 +690,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         # lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         # lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), linux.get_hostname()))
         self.clear_stalled_qmp_socket()
+        lvm.check_missing_pv(cmd.vgUuid)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
@@ -1651,7 +1652,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def check_lock(self, req):
+    def check_vg_state(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
         if cmd.vgUuids is None or len(cmd.vgUuids) == 0:
@@ -1675,6 +1676,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     elif "Reading VG %s without a lock" % vgUuid in es:
                         rsp.failedVgs.update({vgUuid : o})
                         break
+
+            if vgUuid not in rsp.failedVgs:
+                pvs_outs = bash.bash_o(
+                    "timeout -s SIGKILL 10 pvs --noheading --nolocking -t -Svg_name=%s -ouuid,name,missing" % vgUuid).strip()
+                if "missing" in pvs_outs:
+                    rsp.failedVgs.update({vgUuid : "vg %s was missing pv" % vgUuid})
+
             vgck(vg_group)
 
         # up to three worker threads executing vgck
