@@ -26,7 +26,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
 from zstacklib.utils.ceph import get_mon_addr
-from zstacklib.utils.report import Report
+from zstacklib.utils.report import Report, get_exact_percent
 from zstacklib.utils import shell
 from zstacklib.utils import ceph
 from zstacklib.utils import qemu_img
@@ -1092,7 +1092,18 @@ class CephAgent(object):
             # roll back tmp ceph file after import it
             _1()
 
-            shell.check_run("rbd import --image-format 2 %s %s/%s" % (src_path, pool, tmp_image_name))
+            p_file = linux.create_temp_file()
+            def _get_percent(synced):
+                t = linux.tail_1(p_file, split=b"\r")
+                if t:
+                    for word in t.split():
+                        if word.endswith('%'):
+                            report.progress_report(get_exact_percent(int(word[:-1]), report.taskStage))
+                            break
+                return synced
+
+            t_shell = traceable_shell.get_shell(cmd)
+            t_shell.bash_progress_1("rbd import --image-format 2 %s %s/%s 2>%s " % (src_path, pool, tmp_image_name, p_file), _get_percent)
             actual_size = os.path.getsize(src_path)
         else:
             raise Exception('unknown url[%s]' % cmd.url)
