@@ -75,6 +75,8 @@ class TaskDaemon(object):
         self.progress_reporter = AutoReporter.from_spec(task_spec, task_name, self._get_percent, self._get_detail) if report_progress else None
         self.cancel_thread = threading.Timer(self.timeout, self._timeout_cancel) if self.timeout > 0 else None
         self.closed = False
+        self.start_time = None
+        self.deadline = None
 
     def __enter__(self):
         self.start()
@@ -96,7 +98,13 @@ class TaskDaemon(object):
         if self.progress_reporter:
             self.progress_reporter.start()
 
-        logger.debug("[task=%s] (name=%s) task started. timeout %d" % (self.api_id, self.task_name, self.timeout))
+        self.start_time = time.time()
+        self.deadline = self.start_time + self.timeout
+        logger.debug("[task=%s] (name=%s) task started. timeout %d, deadline %d" % (self.api_id, self.task_name, self.timeout, self.deadline))
+
+    def get_remaining_timeout(self):
+        now = time.time()
+        return self.deadline - now
 
     def close(self):
         if self.closed:
