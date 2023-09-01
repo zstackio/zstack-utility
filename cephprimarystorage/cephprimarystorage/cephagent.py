@@ -782,8 +782,19 @@ class CephAgent(plugin.TaskManager):
 
     @replyerror
     def download_imagestore(self, req):
+        class ImageStoreDownloadDaemon(plugin.TaskDaemon):
+            def __init__(self, driver, task_spec):
+                super(ImageStoreDownloadDaemon, self).__init__(task_spec, "download image")
+                self.task_spec = task_spec
+                self.driver = driver
+
+            def _cancel(self):
+                traceable_shell.cancel_job_by_api(self.api_id)
+                self.driver.do_deletion(self.task_spec, self.task_spec.psInstallPath, True)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        return self.imagestore_client.download_imagestore(cmd)
+        with ImageStoreDownloadDaemon(self.get_driver(cmd), task_spec=cmd):
+            return self.imagestore_client.download_imagestore(cmd)
 
     @replyerror
     def create_snapshot(self, req):
@@ -1432,7 +1443,7 @@ class CephAgent(plugin.TaskManager):
                     time.sleep(0.1)
                 image.flush()
         except Queue.Full:
-            rsp.srror = 'rbd write timed out at offset: %d' % offsets
+            rsp.srror = 'rbd write timed out at offset: %d' % offset
         finally:
             logger.info("xxx: bytes written: "+str(offset))
 

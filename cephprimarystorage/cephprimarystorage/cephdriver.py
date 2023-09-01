@@ -62,7 +62,10 @@ class CephDriver(object):
         return rsp
 
     @linux.retry(times=30, sleep_time=5)
-    def do_deletion(self, cmd, path):
+    def do_deletion(self, cmd, path, skip_if_not_exist=False):
+        if shell.run('rbd info %s' % path) != 0 and skip_if_not_exist:
+            return
+
         shell.call('rbd rm %s' % path)
 
     def create_snapshot(self, cmd, rsp):
