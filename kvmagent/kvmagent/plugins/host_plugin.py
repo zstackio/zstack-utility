@@ -9,6 +9,7 @@ import os
 import os.path
 import platform
 import re
+import shutil
 import tempfile
 import time
 import uuid
@@ -44,6 +45,7 @@ IS_MIPS64EL = host_arch == 'mips64el'
 IS_LOONGARCH64 = host_arch == 'loongarch64'
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"] \
                 + ["/boot/efi/EFI/{}/grub.cfg".format(platform.dist()[0])]
+BACKUPFILE_DIR = "/var/lib/zstack/backupfiles/"
 IPTABLES_CMD = iptables.get_iptables_cmd()
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
@@ -85,6 +87,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.libvirtVersion = None
         self.hvmCpuFlag = None
         self.cpuModelName = None
+        self.hostname = None
         self.systemSerialNumber = None
         self.eptFlag = None
         self.libvirtCapabilities = []
@@ -187,6 +190,22 @@ class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
         super(GetHostPhysicalMemoryFactsResponse, self).__init__()
         self.physicalMemoryFacts = []
 
+class FileVerificationRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(FileVerificationRsp, self).__init__()
+        self.changeList = []
+        self.restoreFailedList = []
+
+class AddVerificationFileRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AddVerificationFileRsp, self).__init__()
+        self.digest = ''
+        self.backup = True
+
+class ConfirmVerificationFilesRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ConfirmVerificationFilesRsp, self).__init__()
+        self.paths = []
 
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
     bondings = None  # type: list[HostNetworkBondingInventory]
@@ -411,6 +430,19 @@ class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
         super(UpdateSpiceChannelConfigResponse, self).__init__()
         self.restartLibvirt = False
 
+class DeployQemuTlsCommand(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeployQemuTlsCommand, self).__init__()
+        self.caCert = None
+        self.serverCert = None
+        self.clientCert = None
+        self.serverKey = None
+        self.clientKey = None
+
+class DeployQemuTlsResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeployQemuTlsResponse, self).__init__()
+
 # using kvmagent to transmit vm operations to management node
 # like start/stop/reboot a specific vm instance
 class VmOperation(object):
@@ -616,6 +648,10 @@ class HostPlugin(kvmagent.KvmAgent):
     GENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/generate"
     UNGENERATE_VFIO_MDEV_DEVICES = "/mdevdevice/ungenerate"
     HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
+    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig"
+    HOST_FILEVERIFICATION = "/host/file/check"
+    HOST_ADD_VERIFICATION_FILE = "/host/file/add"
+    HOST_CONFIRM_INIT_VERIFICATION_FILE = "/host/file/initConfirm"
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
     SCAN_VM_PORT_PATH = "/host/vm/scanport"
@@ -627,9 +663,10 @@ class HostPlugin(kvmagent.KvmAgent):
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
     GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
+    DEPLOY_QEMU_TLS_PATH = "/host/deployqemutls"
+    CANCEL_JOB = "/job/cancel"
 
     host_network_facts_cache = {}  # type: dict[float, list[list, list]]
-    cpu_sockets = 0
 
     def __init__(self):
         self.IS_YUM = False
@@ -799,7 +836,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
         # compatible with Kylin SP2 HostOS ISO and standardized ISO
-        rsp.osRelease = "Sword" if rsp.osDistribution == "kylin" and host_arch in ["x86_64", "aarch64"] else rsp.osRelease
+        rsp.osRelease.replace('Kylin', 'Sword')
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
@@ -826,6 +863,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.libvirtVersion = self.libvirt_version
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
+        rsp.hostname = os.uname()[1]
 
         libvirtCapabilitiesList = []
         features = self._get_features_in_libvirt()
@@ -978,16 +1016,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.usedCpu = used_cpu
         rsp.totalMemory = _get_total_memory()
         rsp.usedMemory = used_memory
-
-        if HostPlugin.cpu_sockets < 1:
-            sockets = len(bash_o('grep "physical id" /proc/cpuinfo | sort -u').splitlines())
-            HostPlugin.cpu_sockets = sockets if sockets > 0 else 1
-
-        rsp.cpuSockets = HostPlugin.cpu_sockets
-
-        ret = jsonobject.dumps(rsp)
-        logger.debug('get host capacity: %s' % ret)
-        return ret
+        rsp.cpuSockets = linux.get_socket_num()
+        return jsonobject.dumps(rsp)
 
     def _heartbeat_func(self, heartbeat_file):
         class Heartbeat(object):
@@ -2254,6 +2284,46 @@ done
         return jsonobject.dumps(plugin.cancel_job(cmd, rsp))
 
     @kvmagent.replyerror
+    def add_verification_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AddVerificationFileRsp()
+        rsp.digest = linux.get_file_hash(cmd.path, cmd.hexType)
+        rsp.backup = linux.copy_file(cmd.path, os.path.join(BACKUPFILE_DIR, cmd.uuid))
+        return jsonobject.dumps(rsp)
+    
+    @kvmagent.replyerror
+    @in_bash
+    def confirm_init_verification_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ConfirmVerificationFilesRsp()
+
+        for pattern in cmd.patterns:
+            paths = shell.call("find %s -name %s" % (os.path.dirname(pattern), os.path.basename(pattern))).split()
+            rsp.paths.extend(paths)
+        
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_and_restore_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = FileVerificationRsp()
+        for fv in cmd.files:
+            if os.path.isfile(fv.path):
+                digest = linux.get_file_hash(fv.path, fv.hexType)
+                if digest == fv.digest:
+                    continue
+            elif os.path.isdir(fv.path):
+                rsp.restoreFailedList.append(fv.uuid)
+                rsp.changeList.append(fv.uuid)
+                continue
+            backup = os.path.join(BACKUPFILE_DIR, fv.uuid)
+            res = linux.copy_file(backup, fv.path)
+            if not res:
+                rsp.restoreFailedList.append(fv.uuid)
+            rsp.changeList.append(fv.uuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def transmit_vm_operation_to_vm(self, req):
         rsp = TransmitVmOperationToMnRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -2521,6 +2591,50 @@ done
         rsp.topology = NumaTopology()()
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def deploy_qemu_tls(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeployQemuTlsResponse()
+
+        linux.mkdir('/etc/pki/CA', 0755)
+        linux.mkdir('/etc/pki/libvirt', 0755)
+        linux.mkdir('/etc/pki/libvirt/private', 0750)
+
+        linux.write_to_file('/etc/pki/CA/cacert.pem', cmd.caCert)
+        os.chmod('/etc/pki/CA/cacert.pem',  0444)
+
+        linux.write_to_file('/etc/pki/libvirt/servercert.pem', cmd.serverCert)
+        os.chmod('/etc/pki/libvirt/servercert.pem', 0440)
+
+        linux.write_to_file('/etc/pki/libvirt/private/serverkey.pem', cmd.serverKey)
+        os.chmod('/etc/pki/libvirt/private/serverkey.pem', 0600)
+
+        linux.write_to_file('/etc/pki/libvirt/clientcert.pem', cmd.clientCert)
+        os.chmod('/etc/pki/libvirt/clientcert.pem', 0440)
+
+        linux.write_to_file('/etc/pki/libvirt/private/clientkey.pem', cmd.clientKey)
+        os.chmod('/etc/pki/libvirt/private/clientkey.pem', 0644)
+
+        linux.mkdir('/etc/pki/qemu', 0755)
+        shutil.copyfile('/etc/pki/CA/cacert.pem', '/etc/pki/qemu/ca-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/servercert.pem', '/etc/pki/qemu/server-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/private/serverkey.pem', '/etc/pki/qemu/server-key.pem')
+        shutil.copyfile('/etc/pki/libvirt/clientcert.pem', '/etc/pki/qemu/client-cert.pem')
+        shutil.copyfile('/etc/pki/libvirt/private/clientkey.pem', '/etc/pki/qemu/client-key.pem')
+
+        with open('/etc/libvirt/libvirtd.conf') as f:
+            content = f.read()
+        linux.write_to_file('/etc/libvirt/libvirtd.conf.bak', content)
+
+        content = re.sub('#key_file', 'key_file', content, 1)
+        content = re.sub('#cert_file', 'cert_file', content, 1)
+        content = re.sub('#ca_file', 'ca_file', content, 1)
+        content = re.sub('#tls_port =', 'tls_port =', content, 1)
+        content = re.sub('listen_tls = 0', 'listen_tls = 1', content, 1)
+        linux.write_to_file('/etc/libvirt/libvirtd.conf', content)
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
         self.host_socket = None
@@ -2558,6 +2672,10 @@ done
         http_server.register_async_uri(self.UNGENERATE_VFIO_MDEV_DEVICES, self.ungenerate_vfio_mdev_devices)
         http_server.register_async_uri(self.HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH, self.update_spice_channel_config)
         http_server.register_async_uri(self.CANCEL_JOB, self.cancel)
+        http_server.register_async_uri(self.HOST_FILEVERIFICATION, self.check_and_restore_file)
+        http_server.register_async_uri(self.HOST_ADD_VERIFICATION_FILE, self.add_verification_file)
+        http_server.register_async_uri(self.HOST_CONFIRM_INIT_VERIFICATION_FILE, self.confirm_init_verification_file)
+        http_server.register_async_uri(self.DEPLOY_QEMU_TLS_PATH, self.deploy_qemu_tls)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
         http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)
         http_server.register_async_uri(self.SCAN_VM_PORT_PATH, self.scan_vm_port)

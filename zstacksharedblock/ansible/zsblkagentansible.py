@@ -32,6 +32,8 @@ remote_pass = None
 remote_port = None
 host_uuid = None
 require_python_env = "false"
+isZYJ = "false"
+zyjDistribution = ""
 
 free_spcae = 1073741824
 increment = 1073741824
@@ -68,6 +70,8 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+if isZYJ and zyjDistribution != "":
+    host_post_info.distribution = zyjDistribution
 
 # include zstacklib.py
 host_info = get_remote_host_info_obj(host_post_info)

@@ -1842,6 +1842,9 @@ def cleanup_stale_vnc_iptable_chains():
 def shared_block_to_file(sbkpath):
     return sbkpath.replace("sharedblock:/", "/dev")
 
+def block_to_path(blockpath):
+    return blockpath.replace("block://", "/dev/disk/by-id/wwn-0x")
+
 class VmOperationJudger(object):
     def __init__(self, op):
         self.op = op
@@ -2792,6 +2795,8 @@ class Vm(object):
     def _get_target_disk_by_path(self, installPath, is_exception=True):
         if installPath.startswith('sharedblock'):
             installPath = shared_block_to_file(installPath)
+        elif installPath.startswith('block'):
+            installPath = block_to_path(installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source'):
@@ -2830,7 +2835,8 @@ class Vm(object):
     def _get_target_disk(self, volume, is_exception=True):
         if volume.installPath.startswith('sharedblock'):
             volume.installPath = shared_block_to_file(volume.installPath)
-        volume = file_volume_check(volume)
+        elif volume.installPath.startswith('block'):
+            volume.installPath = block_to_path(volume.installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source') and not volume.deviceType == 'quorum':
@@ -3214,9 +3220,16 @@ class Vm(object):
             disks, destXml = self._build_domain_new_xml({})
         logger.debug("migrate dest xml:%s" % destXml)
 
+        destHostIp = cmd.destHostIp
+        proto = "tls" if cmd.useTls else "tcp"
+        destUrl = "qemu+{1}://{0}/system".format(destHostIp, proto)
+        tcpUri = "tcp://{0}".format(destHostIp)
         flag = (libvirt.VIR_MIGRATE_LIVE |
                 libvirt.VIR_MIGRATE_PEER2PEER |
                 libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
+
+        if proto == 'tls':
+            flag |= libvirt.VIR_MIGRATE_TLS
 
         if cmd.autoConverge:
             flag |= libvirt.VIR_MIGRATE_AUTO_CONVERGE
@@ -3422,6 +3435,8 @@ class Vm(object):
         else:
             if iso.path.startswith('sharedblock'):
                 iso.path = shared_block_to_file(iso.path)
+            elif iso.path.startswith('block'):
+                iso.path = block_to_path(iso.path)
 
             iso = iso_check(iso)
             cdrom = etree.Element('disk', {'type': iso.type, 'device': 'cdrom'})
@@ -4336,7 +4351,6 @@ class Vm(object):
             if get_gic_version(cmd.cpuNum) == 2:
                 e(features, "gic", attrib={'version': '2'})
 
-
         def make_qemu_commandline():
             if not os.path.exists(QMP_SOCKET_PATH):
                 os.mkdir(QMP_SOCKET_PATH)
@@ -4344,6 +4358,12 @@ class Vm(object):
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
+            if bash.bash_r('getenforce | grep -i dis') != 0:
+                e(qcmd, "qemu:arg", attrib={"value": "--device"})
+                e(qcmd, "qemu:arg", attrib={"value": "lkmc_pci,addr=1e.0"})
+                e(qcmd, "qemu:arg", attrib={"value": "--device"})
+                e(qcmd, "qemu:arg", attrib={"value": "vboot,addr=1f.0"})
+
             if "hygon" in model_name.lower() and cmd.vmCpuModel == 'Hygon_Customized' and cmd.imagePlatform.lower() != "other":
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
                 e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
@@ -4950,7 +4970,7 @@ class Vm(object):
 
             if cmd.coloPrimary or cmd.coloSecondary:
                 e(root, 'iothreads', str(len(cmd.nics)))
-            e(root, 'uuid', uuidhelper.to_full_uuid(cmd.vmInstanceUuid))
+            e(root, 'uuid', uuidhelper.get_full_uuid(cmd.vmInstanceUuid))
             e(root, 'description', cmd.vmName)
             e(root, 'on_poweroff', 'destroy')
             e(root, 'on_reboot', 'restart')

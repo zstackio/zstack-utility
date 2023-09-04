@@ -26,6 +26,7 @@ import fcntl
 import xxhash
 
 from inspect import stack
+import hashlib
 
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
@@ -184,6 +185,24 @@ def exception_on_opened_dir(d):
     s = shell.call("timeout 10 lsof -Fc +D %s" % d, exception=False)
     if s:
         raise VolumeInUseError('dir %s is still opened: %s' % (d, ' '.join(s.splitlines())))
+
+def get_file_hash(f_path, hex_type):
+    if hex_type.lower() in dir(hashlib):
+        with open(f_path,'rb') as f:
+            hashobj = hashlib.new(hex_type, f.read())
+            return hashobj.hexdigest()
+
+def copy_file(src_file, dst_file):
+    try:
+        parent_path = os.path.dirname(dst_file)
+        if not os.path.exists(parent_path):
+            os.makedirs(parent_path)
+        shutil.copy(src_file, dst_file)
+    except Exception as e:
+        logger.debug(e)
+        return False
+    return True
+
 
 def rm_file_force(fpath):
     try:
@@ -683,6 +702,11 @@ def mkdir(path, mode=0o755):
 
     return False
 
+def write_to_file(fpath, content):
+    with open(fpath, 'w') as f:
+        f.write(content)
+        f.flush()
+        os.fsync(f)
 
 def create_temp_file():
     tmp_fd, tmp_path = tempfile.mkstemp()
@@ -1497,6 +1521,26 @@ def get_cpu_model():
     vendor_id = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Vendor ID/{print $2}'").strip()
     model_name = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Model name/{print $2}'").strip()
     return vendor_id, model_name
+
+def get_socket_num():
+    num_dmidecode = int(shell.call("dmidecode -t processor | grep 'Socket Designation' | wc -l").strip())
+    num_lscpu = int(shell.call("lscpu | awk '/Socket\(s\)/{print $2}'").strip())
+    num_cpuinfo = int(shell.call("grep 'physical id' /proc/cpuinfo | sort -u | wc -l").strip())
+    '''
+    Seems not all platforms can get these values correctly, 
+    depending on the system and the version of tools like util-linux and dmidecode.
+    
+    Return the value if two or three values are equal, else treated as 1 cpu.
+    '''
+    freq = {}
+    for num in [num_dmidecode, num_lscpu, num_cpuinfo]:
+        if num in freq:
+            freq[num] += 1
+            if freq[num] >= 2:
+                return num
+        else:
+            freq[num] = 1
+    return 1
 
 @retry(times=3, sleep_time=3)
 def get_cpu_speed():

@@ -44,10 +44,12 @@ skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
 isMini = 'false'
 isBareMetal2Gateway='false'
+isZYJ = "false"
 releasever = ''
 unsupported_iproute_list = ["nfs4"]
 mn_ip = None
 isInstallHostShutdownHook = 'false'
+zyjDistribution = ""
 
 
 # get parameter from shell
@@ -79,6 +81,8 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+if isZYJ and zyjDistribution != "":
+    host_post_info.distribution = zyjDistribution
 
 host_info = get_remote_host_info_obj(host_post_info)
 releasever = get_host_releasever(host_info)
@@ -94,15 +98,26 @@ if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_info.host_arch))
 
 def update_libvirtd_config(host_post_info):
+    command = "grep -i -E '^(host_uuid|listen_tls)' %s" % libvirtd_conf_file
+    status, output = run_remote_command(command, host_post_info, True, True)
+
     # name: copy libvirtd conf to keep environment consistent,only update host_uuid
     copy_arg = CopyArg()
     copy_arg.src = "%s/libvirtd.conf" % file_root
     copy_arg.dest =  libvirtd_conf_file
-    file_changed_flag = copy(copy_arg, host_post_info)
-    replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % uuid4(), host_post_info)
+    file_changed_flag = '"changed:False'
+    if output.find('listen_tls') < 0:
+        file_changed_flag = copy(copy_arg, host_post_info)
+    if status is True:
+        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % uuid4(), host_post_info)
+    else:
+        command = "uuidgen"
+        status, output = run_remote_command(command, host_post_info, True, True)
+        replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % output , host_post_info)
 
     return file_changed_flag
 
+@skip_on_zyj(isZYJ)
 @with_arch(todo_list=['x86_64'], host_arch=host_info.host_arch)
 def check_nested_kvm(host_post_info):
     """aarch64 does not need to modprobe kvm"""
@@ -183,6 +198,7 @@ else:
 run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
 
 
+@skip_on_zyj(isZYJ)
 def install_kvm_pkg():
     def rpm_based_install():
         mlnx_ofed = " python3 unbound libnl3-devel lsof \
@@ -445,6 +461,7 @@ def install_kvm_pkg():
     else:
         error("unsupported OS!")
 
+
 def copy_tools():
     """copy binary tools"""
     tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'zwatch-vm-agent-freebsd', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
@@ -473,6 +490,8 @@ def copy_kvm_files():
         copy_to_remote(_src, _dst, None, host_post_info)
 
     # copy qemu configration file
+    command = 'mkdir -p /etc/pki/qemu/'
+    run_remote_command(command, host_post_info)
     qemu_conf_src = os.path.join(file_root, "qemu.conf")
     qemu_conf_dst = "/etc/libvirt/qemu.conf"
     qemu_conf_status = copy_to_remote(qemu_conf_src, qemu_conf_dst, None, host_post_info)
@@ -552,6 +571,7 @@ def copy_grubaa64_efi():
     copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
 
+@skip_on_zyj(isZYJ)
 @on_redhat_based(host_info.distro, exclude=['alibaba'])
 def set_max_performance():
     # AliOS 7u2 does not support tuned-adm

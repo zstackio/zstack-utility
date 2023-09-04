@@ -708,6 +708,7 @@ def collect_host_conntrack_statistics():
 
     return metrics.values()
 
+
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
 kvmagent.register_prometheus_collector(collect_vm_statistics)
