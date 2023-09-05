@@ -918,6 +918,7 @@ class CephAgent(plugin.TaskManager):
                 for word in t.split():
                     if word.endswith('%'):
                         report.progress_report(get_exact_percent(int(word[:-1]), report.taskStage))
+                        break
             return synced
 
         t_shell = traceable_shell.get_shell(cmd)
