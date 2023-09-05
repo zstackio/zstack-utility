@@ -9566,6 +9566,8 @@ class StartUiCmd(Command):
 
         scmd = scmd.substitute(LOGGING_PATH=args.log,STOP=StartUiCmd.ZSTACK_UI_STOP,START=StartUiCmd.ZSTACK_UI_START,MN_HOST=args.mn_host,MN_PORT=args.mn_port,WEBHOOK_HOST=args.webhook_host,WEBHOOK_PORT=args.webhook_port,SERVER_PORT=args.server_port,SSL_ENABLE=enableSSL,SSL_KEYALIAS=args.ssl_keyalias,SSL_KEYSTORE=args.ssl_keystore,SSL_KEYSTORE_TYPE=args.ssl_keystore_type,SSL_KETSTORE_PASSWORD=args.ssl_keystore_password,DB_URL=args.db_url,DB_USERNAME=args.db_username,DB_PASSWORD=args.db_password,ZSTACK_UI_KEYSTORE_PEM=realpem,CUSTOM_PROPS=custom_props)
 
+	shell("ps aux| grep zstack-ui/scripts/start.sh | awk '{print $2}'|xargs kill -9",is_exception=False)
+
         script(scmd, no_pipe=True)
         os.system('mkdir -p /var/run/zstack/')
         with open(StartUiCmd.PORT_FILE, 'w') as fd:
