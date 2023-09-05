@@ -39,7 +39,7 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
         return rsp
 
     @linux.retry(times=30, sleep_time=5)
-    def do_deletion(self, cmd, path):
+    def do_deletion(self, cmd, path, skip_if_not_exist=False):
         RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).delete_empty_volume(path)
 
     def create_snapshot(self, cmd, rsp):

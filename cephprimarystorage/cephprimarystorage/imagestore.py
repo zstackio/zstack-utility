@@ -106,6 +106,7 @@ class ImageStoreClient(object):
         return xs[0], xs[1]
 
     def download_imagestore(self, cmd):
+        t_shell = traceable_shell.get_shell(cmd)
         self._check_zstore_cli()
         rsp = AgentResponse()
         name, imageid = self._parse_image_reference(cmd.bsInstallPath)
@@ -122,7 +123,7 @@ class ImageStoreClient(object):
         logger.debug('pulling %s:%s from image store' % (name, imageid))
 
         try:
-            shell.call(cmdstr)
+            t_shell.call(cmdstr)
         except Exception as ex:
             err = str(ex)
             if 'Please check whether ImageStore directory is correctly mounted' in err:
