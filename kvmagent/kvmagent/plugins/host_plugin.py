@@ -1094,11 +1094,13 @@ class HostPlugin(kvmagent.KvmAgent):
             # in case lscpu doesn't show cpu max mhz
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
-            # cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
-            # cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
-            # rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
-            cpu_processor_num = shell.call("lscpu | grep -m1 'CPU(s)' | awk -F ':' '{print $2}'")                    
-            rsp.cpuProcessorNum = int(cpu_processor_num.strip())
+            cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            # On openeuler, lscpu otuputs 'per cluster' instead of 'per socket'
+            if not cpu_cores_per_socket:
+                cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per cluster/{print $NF}'")
+
+            cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
             '''
             examples:         
@@ -1144,6 +1146,9 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
             cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            # On openeuler, lscpu otuputs 'per cluster' instead of 'per socket'
+            if not cpu_cores_per_socket:
+                cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per cluster/{print $NF}'")
             cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
             rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
