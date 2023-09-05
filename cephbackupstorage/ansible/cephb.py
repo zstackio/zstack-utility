@@ -106,6 +106,8 @@ if virtual_env_status is False:
 command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
 run_remote_command(command, host_post_info)
 
+# name: install python pkg and replace ceph python path
+replace_content(ceph_file_path, "regexp='/usr/bin/env python' replace='/usr/bin/python2.7'", host_post_info)
 # name: install python pkg
 extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
 pip_install_arg = PipInstallArg()
