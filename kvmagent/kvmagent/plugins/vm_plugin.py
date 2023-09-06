@@ -5739,19 +5739,23 @@ class Vm(object):
         else:
             e(interface, 'address', None, attrib={'type': "pci"})
 
-        if nic.ips and iftype == 'bridge':
-            ip4Addr = None
-            ip6Addrs = []
-            for addr in nic.ips:
-                version = netaddr.IPAddress(addr).version
-                if version == 4:
-                    ip4Addr = addr
-                else:
-                    ip6Addrs.append(addr)
-            # ipv4 nic
-            if ip4Addr is not None:
+        if nic.cleanTraffic and iftype == 'bridge':
+            if nic.ips:
+                ip4Addr = None
+                ip6Addrs = []
+                for addr in nic.ips:
+                    version = netaddr.IPAddress(addr).version
+                    if version == 4:
+                        ip4Addr = addr
+                    else:
+                        ip6Addrs.append(addr)
+                # ipv4 nic
+                if ip4Addr is not None:
+                    filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
+                    e(filterref, 'parameter', None, {'name': 'IP', 'value': ip4Addr})
+            else:
+                # no ip nic only filter by mac
                 filterref = e(interface, 'filterref', None, {'filter': 'clean-traffic'})
-                e(filterref, 'parameter', None, {'name': 'IP', 'value': ip4Addr})
 
         if iftype != 'hostdev':
             if nic.driverType:
