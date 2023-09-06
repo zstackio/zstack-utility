@@ -287,7 +287,7 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         if sg_default_chain:
             for chain in filter_table.get_chains():
                 if self._is_vnic_chain_name(chain.name):
-                    vnic_name = chain.name.split('-')[0]
+                    vnic_name = chain.name.split('-')[1]
                     if vnic_name not in all_nics:
                         logger.debug('clean up defunct vnic chain[%s]' % chain.name)
                         filter_table.delete_chain(chain.name)
@@ -379,13 +379,13 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     def _is_vnic_chain_name(self, chain_name):
         if not chain_name:
             return False
-        if chain_name.startswith('vnic') and (chain_name.endswith('-in') or chain_name.endswith('-out')):
+        if chain_name.startswith('sg-vnic') and (chain_name.endswith('-in') or chain_name.endswith('-out')):
             return True
 
     def is_sg_chain_name(self, chain_name):
         if not chain_name:
             return False
-        if chain_name.startswith('sg-') and (chain_name.endswith('-in') or chain_name.endswith('-out')):
+        if chain_name.startswith('sg-') and (chain_name.endswith('-in') or chain_name.endswith('-out')) and 'vnic' not in chain_name:
             return True
 
     def _make_security_group_ipset_name(self, uuid, ip_version):
@@ -394,10 +394,10 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         return '%s-%s' % (self.ZSTACK_IPSET_NAME_FORMAT[ip_version], uuid_part)
 
     def _make_nic_in_chain_name(self, vif_name):
-        return '%s-in' % vif_name
+        return 'sg-%s-in' % vif_name
 
     def _make_nic_out_chain_name(self, vif_name):
-        return '%s-out' % vif_name
+        return 'sg-%s-out' % vif_name
 
     def _make_sg_in_chain_name(self, sg_uuid):
         uuid_part = sg_uuid[0:8]
