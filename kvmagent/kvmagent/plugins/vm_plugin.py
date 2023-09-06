@@ -4360,9 +4360,9 @@ class Vm(object):
             vendor_id, model_name = linux.get_cpu_model()
             if bash.bash_r('getenforce | grep -i dis') != 0:
                 e(qcmd, "qemu:arg", attrib={"value": "--device"})
-                e(qcmd, "qemu:arg", attrib={"value": "lkmc_pci,addr=1e.0"})
+                e(qcmd, "qemu:arg", attrib={"value": "lkmc_pci,addr=1c.0"})
                 e(qcmd, "qemu:arg", attrib={"value": "--device"})
-                e(qcmd, "qemu:arg", attrib={"value": "vboot,addr=1f.0"})
+                e(qcmd, "qemu:arg", attrib={"value": "vboot,addr=1d.0"})
 
             if "hygon" in model_name.lower() and cmd.vmCpuModel == 'Hygon_Customized' and cmd.imagePlatform.lower() != "other":
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
