@@ -1292,11 +1292,12 @@ upgrade_zstack(){
     [ $? -ne 0 ] && zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
 
     # configure chrony.serverIp if not exists
-    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-    if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+    if [ -n "$CHRONY_SERVER_IP" ]; then
+        sed -i '/^[[:space:]]*chrony\.serverIp\.[0-9]/d' $properties_file
         zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
     else
-        zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+        zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+        [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
     fi
 
     # configure RepoVersion.Strategy if not exists
@@ -4311,11 +4312,12 @@ fi
 zstack-ctl configure RepoVersion.Strategy="permissive"
 
 # configure chrony.serverIp if not exists
-zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+if [ -n "$CHRONY_SERVER_IP" ]; then
+    sed -i "/^[[:space:]]*chrony\.serverIp\.[0-9]/d" $properties_file
     zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
 else
-    zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
 fi
 
 #Install license
