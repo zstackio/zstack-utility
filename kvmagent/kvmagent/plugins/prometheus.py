@@ -32,6 +32,8 @@ QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
 ALARM_CONFIG = None
 PAGE_SIZE = None
 disk_list_record = None
+# hard code for aliyun OEM
+nvme_serial_numbers_record = None
 
 gpu_devices = {
     'NVIDIA': set(),
@@ -798,6 +800,7 @@ def collect_ssd_state():
         'ssd_temperature': GaugeMetricFamily('ssd_temperature', 'ssd temperature', None, ['disk', 'serial_number']),
     }
 
+    nvme_serial_numbers = set()
     r, o = bash_ro("lsblk -d -o name,type,rota | grep -w disk | awk '$3 == 0 {print $1}'")  # type: (int, str)
     if r != 0 or o.strip() == "":
         return metrics.values()
@@ -810,6 +813,7 @@ def collect_ssd_state():
         serial_number = o.strip()
 
         if disk_name.startswith('nvme'):
+            nvme_serial_numbers.add(serial_number)
             r, o = bash_ro("smartctl -A /dev/%s | grep -E '^Percentage Used:|^Temperature:'" % disk_name)
             if r != 0 or o.strip() == "":
                 continue
@@ -832,8 +836,28 @@ def collect_ssd_state():
                     metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(info.split()[4].strip()))
                 elif "Temperature_Celsius" in info and info.split()[9].strip().isdigit():
                     metrics['ssd_temperature'].add_metric([disk_name, serial_number], float(info.split()[9].strip()))
-
+    check_nvme_disk_insert_and_remove(nvme_serial_numbers)
     return metrics.values()
+
+
+def check_nvme_disk_insert_and_remove(nvme_serial_numbers):
+    global nvme_serial_numbers_record
+    if nvme_serial_numbers_record is None:
+        nvme_serial_numbers_record = nvme_serial_numbers
+        return
+
+    if nvme_serial_numbers_record == nvme_serial_numbers:
+        return
+
+    for serial_number in nvme_serial_numbers:
+        if serial_number not in nvme_serial_numbers_record:
+            send_physical_disk_insert_alarm_to_mn(serial_number, "unknown-unknown")
+
+    for serial_number in nvme_serial_numbers_record:
+        if serial_number not in nvme_serial_numbers:
+            send_physical_disk_remove_alarm_to_mn(serial_number, "unknown-unknown")
+
+    nvme_serial_numbers_record = nvme_serial_numbers
 
 
 collect_equipment_state_last_time = None
@@ -1118,7 +1142,7 @@ def fetch_vm_qemu_processes():
     processes = []
     for process in psutil.process_iter():
         try:
-            if process.name() == QEMU_CMD or QEMU_CMD in process.cmdline(): # /usr/libexec/qemu-kvm
+            if process.name() == QEMU_CMD or QEMU_CMD in process.cmdline():  # /usr/libexec/qemu-kvm
                 processes.append(process)
         except psutil.NoSuchProcess:
             pass
@@ -1134,7 +1158,7 @@ def find_vm_uuid_from_vm_qemu_process(process):
         for word in process.cmdline():
             # word like 'guest=707e9d31751e499eb6110cce557b4168,debug-threads=on'
             if word.startswith(prefix) and word.endswith(suffix):
-                return word[len(prefix) : len(word) - len(suffix)]
+                return word[len(prefix): len(word) - len(suffix)]
         return None
     except psutil.NoSuchProcess:
         return None
@@ -1396,20 +1420,21 @@ def handle_gpu_status(gpu_status, pci_device_address):
 def get_gpu_metrics():
     return {
         "host_gpu_power_draw": GaugeMetricFamily('host_gpu_power_draw', 'gpu power draw', None,
-                                            ['pci_device_address', 'gpu_serial']),
+                                                 ['pci_device_address', 'gpu_serial']),
         "host_gpu_temperature": GaugeMetricFamily('host_gpu_temperature', 'gpu temperature', None,
-                                             ['pci_device_address', 'gpu_serial']),
+                                                  ['pci_device_address', 'gpu_serial']),
         "host_gpu_fan_speed": GaugeMetricFamily('host_gpu_fan_speed', 'current percentage of gpu fan speed', None,
-                                           ['pci_device_address', 'gpu_serial']),
-        "host_gpu_utilization": GaugeMetricFamily('host_gpu_utilization', 'gpu utilization', None, ['pci_device_address']),
+                                                ['pci_device_address', 'gpu_serial']),
+        "host_gpu_utilization": GaugeMetricFamily('host_gpu_utilization', 'gpu utilization', None,
+                                                  ['pci_device_address']),
         "host_gpu_memory_utilization": GaugeMetricFamily('host_gpu_memory_utilization', 'gpu memory utilization', None,
-                                                    ['pci_device_address', 'gpu_serial']),
+                                                         ['pci_device_address', 'gpu_serial']),
         "host_gpu_rxpci_in_bytes": GaugeMetricFamily('host_gpu_rxpci_in_bytes', 'gpu rxpci in bytes', None,
-                                                ['pci_device_address', 'gpu_serial']),
+                                                     ['pci_device_address', 'gpu_serial']),
         "host_gpu_txpci_in_bytes": GaugeMetricFamily('host_gpu_txpci_in_bytes', 'gpu txpci in bytes', None,
-                                                ['pci_device_address', 'gpu_serial']),
+                                                     ['pci_device_address', 'gpu_serial']),
         "host_gpu_status": GaugeMetricFamily('host_gpu_status', 'gpu status, 0 is critical, 1 is nominal', None,
-                                        ['pci_device_address', 'gpuStatus', 'gpu_serial']),
+                                             ['pci_device_address', 'gpuStatus', 'gpu_serial']),
         "vgpu_utilization": GaugeMetricFamily('vgpu_utilization', 'vgpu utilization', None, ['vm_uuid', 'mdev_uuid']),
         "vgpu_memory_utilization": GaugeMetricFamily('vgpu_memory_utilization', 'vgpu memory utilization', None,
                                                      ['vm_uuid', 'mdev_uuid'])
@@ -1420,6 +1445,7 @@ def add_gpu_pci_device_address(type, pci_device_address, gpu_serial):
     pci_device_address_list = gpu_devices.get(type, set())
     pci_device_address_list.add((pci_device_address, gpu_serial))
     gpu_devices[type] = pci_device_address_list
+
 
 def check_gpu_status_and_save_gpu_status(type, metrics):
     pci_device_address_list = gpu_devices.get(type, set())
@@ -1500,7 +1526,8 @@ def collect_nvidia_gpu_status():
         add_metrics('host_gpu_temperature', info[1].strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_fan_speed', info[2].replace('%', '').strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_utilization', info[3].replace('%', '').strip(), [pci_device_address, gpu_serial], metrics)
-        add_metrics('host_gpu_memory_utilization', calculate_percentage(info[8].replace('MiB', '').strip(), info[9].replace('MiB', '').strip()),
+        add_metrics('host_gpu_memory_utilization',
+                    calculate_percentage(info[8].replace('MiB', '').strip(), info[9].replace('MiB', '').strip()),
                     [pci_device_address, gpu_serial], metrics)
         gpu_index_mapping_pciaddress[info[5].strip()] = pci_device_address
 
@@ -1534,13 +1561,13 @@ def collect_nvidia_gpu_status():
 def collect_huawei_gpu_status():
     metrics = get_gpu_metrics()
     metrics['host_gpu_ddr_capacity'] = GaugeMetricFamily('host_gpu_ddr_capacity', 'gpu DDR Capacity', None,
-                                            ['pci_device_address', 'gpu_serial'])
-    metrics['host_gpu_ddr_usage_rate'] = GaugeMetricFamily('host_gpu_ddr_usage_rate', 'gpu DDR Usage Rate(%)', None,
-                                            ['pci_device_address', 'gpu_serial'])
-    metrics['host_gpu_hbm_capacity'] = GaugeMetricFamily('host_gpu_hbm_capacity', 'gpu HBM Capacity', None,
-                                            ['pci_device_address', 'gpu_serial'])
-    metrics['host_gpu_hbm_rate'] = GaugeMetricFamily('host_gpu_hbm_rate', 'gpu HBM Usage Rate(%)', None,
                                                          ['pci_device_address', 'gpu_serial'])
+    metrics['host_gpu_ddr_usage_rate'] = GaugeMetricFamily('host_gpu_ddr_usage_rate', 'gpu DDR Usage Rate(%)', None,
+                                                           ['pci_device_address', 'gpu_serial'])
+    metrics['host_gpu_hbm_capacity'] = GaugeMetricFamily('host_gpu_hbm_capacity', 'gpu HBM Capacity', None,
+                                                         ['pci_device_address', 'gpu_serial'])
+    metrics['host_gpu_hbm_rate'] = GaugeMetricFamily('host_gpu_hbm_rate', 'gpu HBM Usage Rate(%)', None,
+                                                     ['pci_device_address', 'gpu_serial'])
 
     if has_npu_smi() is False:
         return metrics.values()
@@ -1567,7 +1594,8 @@ def collect_huawei_gpu_status():
         gpu_hbm_rate = None
         gpu_power = None
 
-        r, info_out = bash_ro("npu-smi info -t board -i %s;npu-smi info -t power -i %s;npu-smi info -t usages -i %s" % (npu_id, npu_id, npu_id))
+        r, info_out = bash_ro("npu-smi info -t board -i %s;npu-smi info -t power -i %s;npu-smi info -t usages -i %s" % (
+        npu_id, npu_id, npu_id))
         if r != 0:
             logger.error("npu query gpu board is error, %s " % info_out)
             break
@@ -1603,7 +1631,8 @@ def collect_huawei_gpu_status():
                 break
 
         add_gpu_pci_device_address("HUAWEI", pci_device_address, gpu_serial)
-        add_metrics('host_gpu_power_draw', gpu_power if gpu_info[2].strip() == 'NA' else gpu_info[2].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_power_draw', gpu_power if gpu_info[2].strip() == 'NA' else gpu_info[2].strip(),
+                    [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_temperature', gpu_info[3].strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_utilization', gpu_info[4].strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_memory_utilization', gpu_info[5].strip(), [pci_device_address, gpu_serial], metrics)
@@ -1614,6 +1643,7 @@ def collect_huawei_gpu_status():
 
     check_gpu_status_and_save_gpu_status("HUAWEI", metrics)
     return metrics.values()
+
 
 def collect_hy_gpu_status():
     metrics = get_gpu_metrics()
@@ -1631,13 +1661,16 @@ def collect_hy_gpu_status():
         gpu_serial = card_data['Serial Number']
         pci_device_address = card_data["PCI Bus"].lower()
         add_gpu_pci_device_address("HY", pci_device_address, gpu_serial)
-        add_metrics('host_gpu_power_draw', card_data.get("Average Graphics Package Power (W)"), [pci_device_address, gpu_serial],
+        add_metrics('host_gpu_power_draw', card_data.get("Average Graphics Package Power (W)"),
+                    [pci_device_address, gpu_serial],
                     metrics)
-        add_metrics('host_gpu_temperature', card_data.get("Temperature (Sensor junction) (C)"), [pci_device_address, gpu_serial],
+        add_metrics('host_gpu_temperature', card_data.get("Temperature (Sensor junction) (C)"),
+                    [pci_device_address, gpu_serial],
                     metrics)
         add_metrics('host_gpu_fan_speed', card_data.get("Fan speed (%)"), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_utilization', card_data.get("DCU use (%)"), [pci_device_address, gpu_serial], metrics)
-        add_metrics('host_gpu_memory_utilization', card_data.get("DCU memory use (%)"), [pci_device_address, gpu_serial],
+        add_metrics('host_gpu_memory_utilization', card_data.get("DCU memory use (%)"),
+                    [pci_device_address, gpu_serial],
                     metrics)
     check_gpu_status_and_save_gpu_status("HY", metrics)
     return metrics.values()
@@ -1660,9 +1693,11 @@ def collect_amd_gpu_status():
         gpu_serial = card_data['Serial Number']
         pci_device_address = card_data['PCI Bus'].lower()
         add_gpu_pci_device_address("AMD", pci_device_address, gpu_serial)
-        add_metrics('host_gpu_power_draw', card_data.get('Average Graphics Package Power (W)'), [pci_device_address, gpu_serial],
+        add_metrics('host_gpu_power_draw', card_data.get('Average Graphics Package Power (W)'),
+                    [pci_device_address, gpu_serial],
                     metrics)
-        add_metrics('host_gpu_temperature', card_data.get('Temperature (Sensor edge) (C)'), [pci_device_address, gpu_serial],
+        add_metrics('host_gpu_temperature', card_data.get('Temperature (Sensor edge) (C)'),
+                    [pci_device_address, gpu_serial],
                     metrics)
         add_metrics('host_gpu_fan_speed', card_data.get('Fan speed (%)'), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_utilization', card_data.get('GPU use (%)'), [pci_device_address, gpu_serial], metrics)
@@ -1702,8 +1737,10 @@ def convert_pci_status_to_int(pci_address):
 def has_hy_smi():
     return shell.run_without_log("which hy-smi") == 0
 
+
 def has_ix_smi():
     return shell.run_without_log("which ixsmi") == 0
+
 
 def has_nvidia_smi():
     return shell.run_without_log("which nvidia-smi") == 0
@@ -1715,8 +1752,10 @@ def has_rocm_smi():
             return False
     return shell.run_without_log("which rocm-smi") == 0
 
+
 def has_npu_smi():
     return shell.run_without_log("which npu-smi") == 0
+
 
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
@@ -1926,7 +1965,8 @@ Restart=always
 RestartSec=30s
 [Install]
 WantedBy=multi-user.target
-''' % (service_name, service_env_config, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log, binPath, memory_limit_config)
+''' % (service_name, service_env_config, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log,
+       binPath, memory_limit_config)
 
             if not os.path.exists(service_path):
                 linux.write_file(service_path, service_conf, True)
