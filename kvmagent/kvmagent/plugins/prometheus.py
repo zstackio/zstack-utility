@@ -31,6 +31,7 @@ disk_status_abnormal_list_record = {}
 
 #hard code for cube
 nvme_serial_numbers_record = None
+is_hygon = True if 'hygon' in linux.get_cpu_model()[1].lower() else False
 
 
 def read_number(fname):
@@ -741,23 +742,24 @@ def collect_ipmi_state():
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
     # get cpu info
-    r, cpu_temps = bash_ro("sensors")
-    if r == 0:
-        count = 0
-        for info in cpu_temps.splitlines():
-            match = re.search( r'^Physical id[^+]*\+(\d*\.\d+)', info)
-            if match:
-                cpu_id = "CPU" + str(count)
-                metrics['cpu_temperature'].add_metric([cpu_id], float(match.group(1).strip()))
-                count = count + 1
-
-        if count == 0:
+    if not is_hygon:
+        r, cpu_temps = bash_ro("sensors")
+        if r == 0:
+            count = 0
             for info in cpu_temps.splitlines():
-                match = re.search(r'^temp[^+]*\+(\d*\.\d+)', info)
+                match = re.search( r'^Physical id[^+]*\+(\d*\.\d+)', info)
                 if match:
                     cpu_id = "CPU" + str(count)
                     metrics['cpu_temperature'].add_metric([cpu_id], float(match.group(1).strip()))
                     count = count + 1
+
+            if count == 0:
+                for info in cpu_temps.splitlines():
+                    match = re.search(r'^temp[^+]*\+(\d*\.\d+)', info)
+                    if match:
+                        cpu_id = "CPU" + str(count)
+                        metrics['cpu_temperature'].add_metric([cpu_id], float(match.group(1).strip()))
+                        count = count + 1
 
     # get cpu status
     r, cpu_infos = bash_ro("hd_ctl -c cpu")
@@ -874,6 +876,16 @@ def collect_ipmi_state():
                     fan_status_abnormal_list_record.remove(fan_name)
                 elif fan_state == 10:
                     send_physical_fan_status_alarm_to_mn(fan_name, info.split("|")[2].strip())
+            elif re.match(r"^cpu\d+_core_temp", info):
+                if not is_hygon:
+                    continue
+                pattern = r'cpu(\d+)_core_temp.*?(\d+) degrees c'
+                match = re.search(pattern, info)
+                if not match:
+                    continue
+                cpu_id = "CPU" + str(match.group(1))
+                temp = float(match.group(2).strip())
+                metrics['cpu_temperature'].add_metric([cpu_id], temp)
 
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
