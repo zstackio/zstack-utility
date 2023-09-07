@@ -760,12 +760,10 @@ def do_ksm_config():
     if isEnableKsm == 'none':
         return
 
-    if isEnableKsm == 'true':
-        service_status("ksm", "state=restarted enabled=yes", host_post_info)
-        service_status("ksmtuned", "state=restarted enabled=yes", host_post_info)
-    else:
-        service_status("ksmtuned", "state=stopped enabled=no", host_post_info)
-        service_status("ksm", "state=stopped enabled=no", host_post_info)
+    command = "echo %s > /sys/kernel/mm/ksm/run" % "1" if isEnableKsm == 'true' else "0"
+    host_post_info.post_label = "ansible.shell.host-ksm"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)
 
 
 def do_auditd_config():
