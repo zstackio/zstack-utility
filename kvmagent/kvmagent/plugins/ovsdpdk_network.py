@@ -11,6 +11,7 @@ from zstacklib.utils import log
 from zstacklib.utils import ovs
 from zstacklib.utils.ovs import OvsError
 from zstacklib.utils import http
+from zstacklib.utils import lock
 
 OVS_DPDK_NET_CHECK_BRIDGE = '/network/ovsdpdk/checkbridge'
 OVS_DPDK_NET_CREATE_BRIDGE = '/network/ovsdpdk/createbridge'
@@ -162,7 +163,8 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
     '''
     High performance Network Plugin.
     '''
-
+    
+    @lock.lock("ovs_global_config")
     @kvmagent.replyerror
     def create_ovs_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -197,7 +199,8 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
         logger.debug(http.path_msg(OVS_DPDK_NET_CREATE_BRIDGE,
                                    'create bridge:{} success.'.format(cmd.bridgeName)))
         return jsonobject.dumps(rsp)
-
+    
+    @lock.lock("ovs_global_config")
     @kvmagent.replyerror
     def check_ovs_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -237,6 +240,7 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
                                    'check bridges:{} success.'.format(cmd.bridgeName)))
         return jsonobject.dumps(rsp)
 
+    @lock.lock("ovs_global_config")
     @kvmagent.replyerror
     def delete_ovs_bridge(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])

@@ -807,7 +807,6 @@ class OvsBaseCtl(object):
                 "Create ovs bridges {} failed. {}".format(brName, err))
             raise OvsError(str(err))
 
-    @lock.lock("ovs_global_config")
     def prepareDeleteBr(self, br):
         if self.deleteBr(br) != 0:
             return -1 
@@ -1218,7 +1217,6 @@ class OvsBaseCtl(object):
             return BridgeExistPfNotExist 
         return BridgeAndPfExist 
 
-    @lock.lock("ovs_global_config")
     def prepareBridge(self, interface, bridgeName):
         ret = self.isInterfaceExist(interface, bridgeName)
         if not ret:
