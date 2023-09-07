@@ -120,7 +120,8 @@ startVmCmdBody = {
     "kvmHostAddons": {
         "qcow2Options": " -o cluster_size=2097152 "
     },
-    "x2apic": True
+    "x2apic": True,
+    "acpi": True
 }
 
 migrate_vm_cmd_body = {

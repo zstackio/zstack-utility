@@ -4586,7 +4586,7 @@ class Vm(object):
                 e(features, f)
 
             def make_acpi():
-                if HOST_ARCH == "x86_64" or (cmd.acpi and DIST_NAME_VERSION in linux.ARM_ACPI_SUPPORT_OS and not is_virtual_machine()):
+                if cmd.acpi:
                     e(features, 'acpi')
 
             make_acpi()
