@@ -29,6 +29,9 @@ memory_status_abnormal_list_record = set()
 fan_status_abnormal_list_record = set()
 disk_status_abnormal_list_record = {}
 
+#hard code for aliyun OEM
+nvme_serial_numbers_record = set()
+
 
 def read_number(fname):
     res = linux.read_file(fname)
@@ -647,6 +650,8 @@ def collect_ssd_state():
         'ssd_life_left': GaugeMetricFamily('ssd_life_left', 'ssd life left', None, ['disk', 'serial_number']),
         'ssd_temperature': GaugeMetricFamily('ssd_temperature', 'ssd temperature', None, ['disk', 'serial_number']),
     }
+
+    nvme_serial_numbers = set()
     
     r, o = bash_ro("lsblk -d -o name,type,rota | grep -w disk | awk '$3 == 0 {print $1}'")  # type: (int, str)
     if r != 0 or o.strip() == "":
@@ -660,6 +665,7 @@ def collect_ssd_state():
         serial_number = o.strip()
         
         if disk_name.startswith('nvme'):
+            nvme_serial_numbers.add(serial_number)
             r, o = bash_ro("smartctl -A /dev/%s | grep -E '^Percentage Used:|^Temperature:'" % disk_name)
             if r != 0 or o.strip() == "":
                 continue
@@ -680,8 +686,27 @@ def collect_ssd_state():
                     metrics['ssd_life_left'].add_metric([disk_name, serial_number], float(info.split()[4].strip()))
                 elif "Temperature_Celsius" in info and info.split()[9].strip().isdigit():
                     metrics['ssd_temperature'].add_metric([disk_name, serial_number], float(info.split()[9].strip()))
-        
+    check_nvme_disk_insert_and_remove(nvme_serial_numbers)
     return metrics.values()
+
+def check_nvme_disk_insert_and_remove(nvme_serial_numbers):
+    global nvme_serial_numbers_record
+    if not nvme_serial_numbers_record:
+        nvme_serial_numbers_record = nvme_serial_numbers
+        return
+
+    if nvme_serial_numbers_record == nvme_serial_numbers:
+        return
+
+    for serial_number in nvme_serial_numbers:
+        if serial_number not in nvme_serial_numbers_record:
+            send_physical_disk_insert_alarm_to_mn(serial_number, "unknown-unknown")
+
+    for serial_number in nvme_serial_numbers_record:
+        if serial_number not in nvme_serial_numbers:
+            send_physical_disk_remove_alarm_to_mn(serial_number, "unknown-unknown")
+
+    nvme_serial_numbers_record = nvme_serial_numbers
 
 
 collect_equipment_state_last_time = None
