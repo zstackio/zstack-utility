@@ -999,6 +999,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         if rsp.osDistribution == 'centos':
             rsp.osDistribution = platform.linux_distribution()[0].lower()
+        if rsp.osDistribution == 'openEuler':
+            rsp.osDistribution = platform.linux_distribution()[0].lower()
         rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
         # compatible with Kylin SP2 HostOS ISO and standardized ISO
         rsp.osRelease = rsp.osRelease.replace('ZStack', 'Sword') if rsp.osDistribution == "kylin" else rsp.osRelease
