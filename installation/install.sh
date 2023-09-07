@@ -1657,7 +1657,8 @@ is_install_general_libs_rh(){
             avahi-tools \
             audit \
             redis \
-            nodejs"
+            nodejs \
+            zs-forecast-capacity"
     if [ "$BASEARCH" == "x86_64" ]; then
       deps_list="${deps_list} mcelog"
     fi
