@@ -746,8 +746,8 @@ class Ovs(object):
 /var/log/zstack/openvswitch/*.log {
     daily
     compress
-    sharedscripts
     missingok
+    sharedscripts
     postrotate
         # Tell Open vSwitch daemons to reopen their log files
         if [ -d /var/run/openvswitch ]; then
@@ -764,7 +764,7 @@ class Ovs(object):
 
         with open(logrotateFile, "w") as f:
             f.write(logrotateConf)
-
+            os.chmod(logrotateFile, 0o644)
         if firstTimeLogrotate:
             ret = shell.run("logrotate --force /etc/logrotate.d/openvswitch-zstack")
             if ret != 0:
