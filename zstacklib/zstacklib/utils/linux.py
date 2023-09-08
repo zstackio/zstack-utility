@@ -2445,7 +2445,7 @@ def link(source, link_name):
     os.link(source, link_name)
     logger.debug("link %s to %s" % (source, link_name))
 
-def tail_1(path):
+def tail_1(path, split=b"\n"):
     if not os.path.exists(path):
         return None
     if os.path.getsize(path) <= 2:
@@ -2453,7 +2453,7 @@ def tail_1(path):
 
     with open(path, 'rb') as f:
         f.seek(-2, os.SEEK_END)
-        while f.tell() > 0 and f.read(1) != b"\n":
+        while f.tell() > 0 and f.read(1) != split:
             f.seek(-2, os.SEEK_CUR)
         return f.readline()
 
