@@ -30,7 +30,7 @@ fan_status_abnormal_list_record = set()
 disk_status_abnormal_list_record = {}
 
 #hard code for aliyun OEM
-nvme_serial_numbers_record = set()
+nvme_serial_numbers_record = None
 
 
 def read_number(fname):
@@ -691,7 +691,7 @@ def collect_ssd_state():
 
 def check_nvme_disk_insert_and_remove(nvme_serial_numbers):
     global nvme_serial_numbers_record
-    if not nvme_serial_numbers_record:
+    if nvme_serial_numbers_record is None:
         nvme_serial_numbers_record = nvme_serial_numbers
         return
 
