@@ -8868,7 +8868,8 @@ host side snapshot files chian:
         rsp = kvmagent.AgentResponse()
 
         for vm_uuid in cmd.vmUuids:
-            self.do_apply_memory_balloon_to_vm(vm_uuid, cmd.direction, cmd.adjustPercent, cmd.vmReservedMemory.get(vm_uuid, 0))
+            reserved_memory = cmd.vmReservedMemory[vm_uuid] if cmd.vmReservedMemory and cmd.vmReservedMemory.hasattr(vm_uuid) else 0
+            self.do_apply_memory_balloon_to_vm(vm_uuid, cmd.direction, cmd.adjustPercent, reserved_memory)
 
         return jsonobject.dumps(rsp)
 
@@ -8893,9 +8894,10 @@ host side snapshot files chian:
             return
 
         if direction == 'Decrease':
-            # do not decrease memory over unuse memory
-            changed_to = actual_mem - actual_mem * precentage / 100
-            changed_to = changed_to if changed_to < mem.unused else mem.unused
+            # do not decrease memory over unused memory
+            delta = actual_mem * precentage / 100
+            delta = delta if delta < mem.unused else mem.unused
+            changed_to = actual_mem - delta
         elif direction == 'Increase':
             # do not increase memory over max memory
             changed_to = actual_mem + actual_mem * precentage / 100
