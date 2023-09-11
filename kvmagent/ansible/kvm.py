@@ -764,7 +764,8 @@ def do_ksm_config():
     if isEnableKsm == 'none':
         return
 
-    command = "echo %s > /sys/kernel/mm/ksm/run" % "1" if isEnableKsm == 'true' else "0"
+    oprator = "1" if isEnableKsm == 'true' else "0"
+    command = "echo %s > /sys/kernel/mm/ksm/run" % oprator
     host_post_info.post_label = "ansible.shell.host-ksm"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
