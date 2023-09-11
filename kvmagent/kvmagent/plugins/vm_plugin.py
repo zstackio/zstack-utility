@@ -8868,7 +8868,8 @@ host side snapshot files chian:
         rsp = kvmagent.AgentResponse()
 
         for vm_uuid in cmd.vmUuids:
-            self.do_apply_memory_balloon_to_vm(vm_uuid, cmd.direction, cmd.adjustPercent, cmd.vmReservedMemory.get(vm_uuid, 0))
+            reserved_memory = cmd.vmReservedMemory[vm_uuid] if cmd.vmReservedMemory and cmd.vmReservedMemory.hasattr(vm_uuid) else 0
+            self.do_apply_memory_balloon_to_vm(vm_uuid, cmd.direction, cmd.adjustPercent, reserved_memory)
 
         return jsonobject.dumps(rsp)
 
