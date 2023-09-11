@@ -127,7 +127,7 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
-archRelease="x86_64/c72 x86_64/c74 x86_64/c76 x86_64/c79 x86_64/h76c x86_64/h79c \
+archRelease="x86_64/c72 x86_64/c74 x86_64/c76 x86_64/c79 x86_64/h76c x86_64/h79c x86_64/h84r \
 x86_64/ky10sp1 x86_64/ky10sp2 x86_64/ky10sp3 aarch64/ky10sp1 aarch64/ky10sp2 \
 aarch64/ky10sp3 aarch64/oe2203sp1 mips64el/ky10sp1 loongarch64/ky10sp1 loongarch64/ky10sp3"
 

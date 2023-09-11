@@ -40,7 +40,7 @@ apt_server = ""
 trusted_host = ""
 uos = ['uos20', 'uos1021a']
 kylin = ["ky10sp1", "ky10sp2", "ky10sp3"]
-centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84']
+centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84', 'h84r']
 enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "rl84", "oe2203sp1"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
@@ -63,7 +63,8 @@ qemu_alias = {
     "uos1021a": "qemu-kvm",
     "nfs4": "qemu-kvm",
     'h76c': 'qemu-kvm',
-    'h79c': 'qemu-kvm'
+    'h79c': 'qemu-kvm',
+    'h84r': 'qemu-kvm'
 }
 
 ansible_constants.set_constant('HOST_KEY_CHECKING', False)
@@ -530,6 +531,7 @@ def get_host_releasever(host_info):
         "centos core 7.1.1503": "c74",
         'helix core 7.6c': 'h76c',
         'helix core 7.9c': 'h79c',
+        'helix green obsidian 8.4r': 'h84r',
         "openeuler lts-sp1 20.03": "euler20",
         "openeuler lts-sp1 22.03": "oe2203sp1",
         "uos fou 20": "uos20",
@@ -2142,26 +2144,34 @@ def check_umask(host_post_info):
 
 def upgrade_to_helix(host_info, host_post_info):
     releasever = get_host_releasever(host_info)
-    if releasever in ['c76', 'c79']:
+    if releasever in ['c76', 'c79', 'rl84']:
         distro_name = {
             'c76': 'h76c',
-            'c79': 'h79c'
+            'c79': 'h79c',
+            'rl84': 'h84r'
             }.get(releasever)
         if not os.path.exists('/opt/zstack-dvd/x86_64/%s' % distro_name):
             return host_info
         pkg_name = {
-            'c76': 'helix-release-7-6c.0.h7.helix.x86_64.rpm',
-            'c79': 'helix-release-7-9c.0.h7.helix.x86_64.rpm'
+            'c76': ['helix-release-7-6c.0.h7.helix.x86_64.rpm'],
+            'c79': ['helix-release-7-9c.0.h7.helix.x86_64.rpm'],
+            'rl84': ['helix-gpg-keys-8.4r-36.el8.noarch.rpm',
+                     'helix-repos-8.4r-36.el8.noarch.rpm',
+                     'helix-release-8.4r-36.el8.noarch.rpm']
         }.get(releasever)
-        helix_release_pkg = '/opt/zstack-dvd/x86_64/%s/Packages/%s' % (
-            distro_name, pkg_name)
-        install_cmd = ('yum install -y /opt/%s && sed -i "/distroverpkg=/d; '
-                       '/bugtracker_url=/d" /etc/yum.conf') % pkg_name
+        # helix_release_pkg = '/opt/zstack-dvd/x86_64/%s/Packages/%s' % (
+        #     distro_name, pkg_name)
+        helix_pkgs = ['/opt/zstack-dvd/x86_64/%s/Packages/%s' % (
+            distro_name, x) for x in pkg_name]
+        dest_pkg_path = ' '.join(['/opt/%s' % x for x in pkg_name])
+        install_cmd = ('yum install -y %s && sed -i "/distroverpkg=/d; '
+                       '/bugtracker_url=/d" /etc/yum.conf') % dest_pkg_path
 
-        copy_arg = CopyArg()
-        copy_arg.src = helix_release_pkg
-        copy_arg.dest = '/opt'
-        copy(copy_arg, host_post_info)
+        for helix_pkg in helix_pkgs:
+            copy_arg = CopyArg()
+            copy_arg.src = helix_pkg
+            copy_arg.dest = '/opt'
+            copy(copy_arg, host_post_info)
         run_remote_command(install_cmd, host_post_info)
 
         # flush ansible cache after upgrading
@@ -2178,7 +2188,8 @@ def install_release_on_host(is_rpm, host_info, host_post_info):
         release_name_mapping = {
             'rl84': 'el8',
             'h76c': 'h7',
-            'h79c': 'h7'}
+            'h79c': 'h7',
+            'h84r': 'h8'}
         release_name = release_name_mapping.get(releasever, 'el7')
         pkg_name = 'zstack-release-{0}-1.{1}.zstack.noarch.rpm'.format(releasever, release_name)
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/{2}'.format(host_info.host_arch, releasever, pkg_name)
