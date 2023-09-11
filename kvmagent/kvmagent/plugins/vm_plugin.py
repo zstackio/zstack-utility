@@ -8868,11 +8868,11 @@ host side snapshot files chian:
         rsp = kvmagent.AgentResponse()
 
         for vm_uuid in cmd.vmUuids:
-            self.do_apply_memory_balloon_to_vm(vm_uuid, cmd.direction, cmd.adjustPercent)
+            self.do_apply_memory_balloon_to_vm(vm_uuid, cmd.direction, cmd.adjustPercent, cmd.vmReservedMemory.get(vm_uuid, 0))
 
         return jsonobject.dumps(rsp)
 
-    def do_apply_memory_balloon_to_vm(self, vm_uuid, direction, precentage):
+    def do_apply_memory_balloon_to_vm(self, vm_uuid, direction, precentage, preserved_memory):
         vm = get_vm_by_uuid_no_retry(vm_uuid, False)
         if not vm:
             logger.debug("vm[uuid:%s] is not running, skip memory balloon" % vm_uuid)
@@ -8888,6 +8888,10 @@ host side snapshot files chian:
             return
 
         actual_mem = mem.actual
+        if actual_mem <= preserved_memory:
+            logger.debug("vm[uuid:%s] actual memory[%s] is less than preserved memory[%s], skip memory balloon" % (vm_uuid, actual_mem, preserved_memory))
+            return
+
         if direction == 'Decrease':
             # do not decrease memory over unuse memory
             changed_to = actual_mem - actual_mem * precentage / 100
