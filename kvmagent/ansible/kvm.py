@@ -37,6 +37,7 @@ remote_port = None
 host_uuid = None
 libvirtd_conf_file = "/etc/libvirt/libvirtd.conf"
 skip_packages = ""
+extra_packages = ""
 update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
@@ -192,12 +193,6 @@ run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm
 
 def install_kvm_pkg():
     def rpm_based_install():
-        mlnx_ofed = " python3 unbound libnl3-devel lsof \
-                        libibverbs ibacm librdmacm mlnx-ethtool libibumad ofed-scripts mlnx-dpdk infiniband-diags \
-                        mlnx-dpdk-tools rdma-core mlnx-ofa_kernel kmod-mlnx-ofa_kernel kmod-iser mlnx-ofa_kernel-devel \
-                        rdma-core-devel mstflint kmod-isert mlnx-iproute2 mlnx-dpdk-doc libibverbs-utils librdmacm-utils \
-                        mlnx-dpdk-devel openvswitch kmod-srp mlnx-ofed-dpdk-upstream-libs"
-
         os_base_dep = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils libvirt libvirt-client libvirt-python lighttpd lsof net-tools nfs-utils nmap openssh-clients \
                         smartmontools sshpass usbutils wget audit dnsmasq collectd-virt storcli nvme-cli pv rsync sed pciutils tar"
@@ -268,6 +263,11 @@ def install_kvm_pkg():
             versions = host_info.distro_version.split('.')
             if output and len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
                 dep_list = dep_list.replace('libvirt libvirt-client libvirt-python ', '')
+
+            # add extra package
+            if extra_packages != '':
+                dep_list = dep_list + " " + extra_packages
+
 
             # skip these packages when connect host
             _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
