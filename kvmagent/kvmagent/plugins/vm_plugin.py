@@ -8930,9 +8930,10 @@ host side snapshot files chian:
             return
 
         if direction == 'Decrease':
-            # do not decrease memory over unuse memory
-            changed_to = actual_mem - actual_mem * precentage / 100
-            changed_to = changed_to if changed_to < mem.unused else mem.unused
+            # do not decrease memory over unused memory
+            delta = actual_mem * precentage / 100
+            delta = delta if delta < mem.unused else mem.unused
+            changed_to = actual_mem - delta
         elif direction == 'Increase':
             # do not increase memory over max memory
             changed_to = actual_mem + actual_mem * precentage / 100
