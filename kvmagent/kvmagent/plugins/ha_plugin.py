@@ -800,6 +800,7 @@ class CephHeartbeatController(AbstractStorageFencer):
                 logger.debug("write operation to %s not finished util timeout, report update failure" % heartbeat_object_name)
                 return False, waited_time
 
+	del completion
         return True, waited_time
 
     def get_ha_fencer_name(self):
