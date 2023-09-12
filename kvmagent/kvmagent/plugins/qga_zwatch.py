@@ -152,12 +152,12 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                     if qga.os_version == '6':
                         zwatch_restart_cmd = self.ZWATCH_RESTART_CMD_EL6
                 dhcpStatus = not qga.guest_file_is_exist(zwatch_vm_info_path)
-                _, qgaZWatch = qga.guest_file_read(zwatch_vm_info_path)
                 # skip when dhcp enable
                 if dhcpStatus:
                     with self.running_vm_lock:
                         self.running_vm_list.remove(uuid)
                     break
+                _, qgaZWatch = qga.guest_file_read(zwatch_vm_info_path)
                 logger.debug('vm[%s] start monitor with qga' % uuid)
                 # set vmUuid by qga at first
                 if qgaZWatch != uuid:
