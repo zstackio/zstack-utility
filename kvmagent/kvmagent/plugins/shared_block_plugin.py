@@ -1256,8 +1256,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     rsp.size = linux.qcow2_virtualsize(install_abs_path)
                     linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
                     linux.qcow2_fill(0, 1048576, install_abs_path)
-                    if 'preallocation=metadata' in qcow2_options:
-                        linux.qcow2_discard(install_abs_path)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
