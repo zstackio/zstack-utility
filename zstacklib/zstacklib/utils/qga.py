@@ -151,7 +151,8 @@ class VmQga(object):
             raise Exception(message)
 
         try:
-            logger.debug("vm {} run qga command {}".format(self.vm_uuid, cmd))
+            # run qga command log has too many to influence whole log file, hide it for clean log
+            # logger.debug("vm {} run qga command {}".format(self.vm_uuid, cmd))
             
             parsed = json.loads(ret)
         except ValueError:
@@ -183,7 +184,7 @@ class VmQga(object):
     def guest_exec_bash_no_exitcode(self, cmd, exception=True, output=True):
         exitcode, ret_data = self.guest_exec_bash(cmd, output)
         if exitcode != 0:
-            logger.debug("qga exec command: {}, exitcode {}, ret {}".format(cmd, exitcode, ret_data))
+            # logger.debug("qga exec command: {}, exitcode {}, ret {}".format(cmd, exitcode, ret_data))
             if exception:
                 raise Exception('cmd {}, exitcode {}, ret {}'
                                 .format(cmd, exitcode, ret_data))
@@ -200,7 +201,7 @@ class VmQga(object):
             raise Exception('qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
 
         if not output:
-            logger.debug("run qga bash: {} failed, no output".format(cmd))
+            logger.warn("run qga bash: {} failed, no output".format(cmd))
             return 0, None
 
         ret = None
@@ -245,7 +246,7 @@ class VmQga(object):
             raise Exception('qga exec cmd {} failed for vm {}'.format(file, self.vm_uuid))
 
         if not output:
-            logger.debug("run qga python: {} failed, no output".format(file))
+            logger.warn("run qga python: {} failed, no output".format(file))
             return 0, None
 
         ret = None
@@ -316,7 +317,7 @@ class VmQga(object):
             raise Exception('qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
 
         if not output:
-            logger.debug("run qga wmic: {} failed, no output".format(cmd))
+            logger.warn("run qga wmic: {} failed, no output".format(cmd))
             return 0, None
 
         ret = None
@@ -350,7 +351,7 @@ class VmQga(object):
             raise Exception('qga exec cmd {} failed for vm {}'.format(cmd, self.vm_uuid))
 
         if not output:
-            logger.debug("run qga powershell: {} failed, no output".format(cmd))
+            logger.warn("run qga powershell: {} failed, no output".format(cmd))
             return 0, None
 
         ret = None
@@ -543,7 +544,7 @@ class VmQga(object):
             else:
                 self.os, self.os_version, self.os_id_like = self.guest_get_os_info()
         except Exception as e:
-            logger.debug("qga init failed {}".format(e))
+            logger.warn("qga init failed {}".format(e))
 
     """
     def guest_get_hostname(self):
@@ -593,10 +594,7 @@ class VmQga(object):
         try:
             handle = self.call_qga_command("guest-file-open", args={"path": path, "mode": 'r'})
         except Exception as e:
-            if 'No such file' in e.message:
-                return False
-            else:
-                raise e
+            return False
 
         self.guest_file_close(handle)
         return True
