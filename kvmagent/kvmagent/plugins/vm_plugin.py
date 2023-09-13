@@ -2315,8 +2315,8 @@ class Vm(object):
 
         return memory_stats
 
-    def set_memory(self, memory_size_in_bytes):
-        self.domain.setMemoryFlags(memory_size_in_bytes / 1024)
+    def set_memory(self, memory_size_in_mega_bytes):
+        self.domain.setMemoryFlags(memory_size_in_mega_bytes)
 
     def get_memory(self):
         return long(self.domain_xmlobject.currentMemory.text_) * 1024
@@ -8868,7 +8868,7 @@ host side snapshot files chian:
         rsp = kvmagent.AgentResponse()
 
         for vm_uuid in cmd.vmUuids:
-            reserved_memory = cmd.vmReservedMemory[vm_uuid] if cmd.vmReservedMemory and cmd.vmReservedMemory.hasattr(vm_uuid) else 0
+            reserved_memory = cmd.vmReservedMemory[vm_uuid] / 1024 if cmd.vmReservedMemory and cmd.vmReservedMemory.hasattr(vm_uuid) else 0
             self.do_apply_memory_balloon_to_vm(vm_uuid, cmd.direction, cmd.adjustPercent, reserved_memory)
 
         return jsonobject.dumps(rsp)
@@ -8906,6 +8906,10 @@ host side snapshot files chian:
             raise Exception('unknown direction[%s]' % direction)
 
         logger.debug("change vm[uuid:%s] memory from %s to %s" % (vm_uuid, mem.actual, changed_to))
+        if mem.actual == changed_to:
+            logger.debug("vm[uuid:%s] memory is already changed to %s, skip it" % (vm_uuid, changed_to))
+            return
+
         vm.set_memory(changed_to)
         self.wait_memory_changed(vm_uuid, changed_to)
 
