@@ -477,6 +477,18 @@ def skip_on_zyj(is_zyj):
     return wrap
 
 
+def only_on_zyj(is_zyj):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            if is_zyj == 'true':
+                return f(*args, **kwargs)
+            else:
+                logger.info("Skip function[{}] on host.".format(f.__name__))
+        return inner
+    return wrap
+
+
 def on_redhat_based(distro=None, exclude=[]):
     def wrap(f):
         @functools.wraps(f)

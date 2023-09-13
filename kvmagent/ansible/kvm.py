@@ -815,6 +815,14 @@ def set_gpu_blacklist():
     run_remote_command(command, host_post_info)
 
 
+@only_on_zyj(isZYJ)
+def do_kvm_host_config():
+    command = "chmod 755 /var/lib/zstack/"
+    host_post_info.post_label = "ansible.shell.do.zyj.host.config"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)
+
+
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
@@ -840,6 +848,7 @@ do_auditd_config()
 do_systemd_config()
 modprobe_usb_module()
 set_gpu_blacklist()
+do_kvm_host_config()
 start_kvmagent()
 
 host_post_info.start_time = start_time
