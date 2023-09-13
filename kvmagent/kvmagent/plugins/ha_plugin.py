@@ -505,6 +505,8 @@ class SanlockHealthChecker(AbstractStorageFencer):
             return True
 
         vm_in_ps_uuid_list = find_ps_running_vm(vg_uuid)
+        if len(vm_in_ps_uuid_list) == 0:
+            return True
 
         volume_abs_path = self.get_record_vm_lun(vg_uuid, self.host_uuid)
         if not lvm.lv_exists(volume_abs_path):
