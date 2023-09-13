@@ -3,6 +3,7 @@ from kvmagent.test.utils import vm_utils, network_utils, pytest_utils
 from kvmagent.test.utils.stub import *
 from kvmagent.plugins.vm_plugin import VmPlugin
 from zstacklib.utils import jsonobject
+from zstacklib.utils import linux
 from zstacklib.test.utils import misc
 from zstacklib.test.utils import remote
 from unittest import TestCase
@@ -29,7 +30,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
     def test_get_cpu_model_and_conpare(self):
         rsp = jsonobject.loads(vm_utils.get_cpu_xml())
         xmlResult, xmlOutput = bash.bash_ro('virsh capabilities | virsh cpu-baseline /dev/stdin')
-        modelResult, modelNameOut = bash.bash_ro("grep -m1 -P -o '(model name|cpu MHz)\s*:\s*\K.*' /proc/cpuinfo")
+        _, modelNameOut = linux.get_cpu_model()
         self.assertEqual(rsp.cpuXml.strip('\n\t '), xmlOutput.strip('\n\t '), 'xml is inconsistent')
         self.assertEqual(rsp.cpuModelName, modelNameOut.splitlines()[0], 'cpuModelName is inconsistent')
         compareRsp = jsonobject.loads(vm_utils.compare_cpu_function(rsp.cpuXml))

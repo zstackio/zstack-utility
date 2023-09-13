@@ -1579,8 +1579,8 @@ def get_cpu_num():
     return int(out)
 
 def get_cpu_model():
-    vendor_id = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Vendor ID/{print $2}'").strip()
-    model_name = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/Model name/{print $2}'").strip()
+    vendor_id = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/^ *Vendor ID/{print $2}'").strip()
+    model_name = shell.call("lscpu |awk -F':' '{IGNORECASE=1}/^ *Model name/{print $2}'").strip()
     return vendor_id, model_name
 
 def get_socket_num():
