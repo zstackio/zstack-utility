@@ -903,6 +903,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             size = cmd.virtualSize if cmd.virtualSize else ""
             linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options, size)
 
+        virtual_size = linux.qcow2_get_virtual_size(install_abs_path)
         lvm.deactive_lv(install_abs_path)
         return virtual_size, lvm.get_lv_size(install_abs_path)
 
