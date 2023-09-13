@@ -997,6 +997,8 @@ def qcow2_create_with_cmd(dst, size, cmd=None):
 
 def qcow2_create_with_option(dst, size, opt=""):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
+    if 'preallocation=metadata' in opt:
+        qcow2_discard(dst)
     os.chmod(dst, 0o660)
 
 def qcow2_create_with_backing_file(backing_file, dst, size=""):
