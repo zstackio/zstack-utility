@@ -8910,6 +8910,17 @@ host side snapshot files chian:
             logger.debug("vm[uuid:%s] memory is already changed to %s, skip it" % (vm_uuid, changed_to))
             return
 
+        if changed_to < mem.max * 30 / 100:
+            logger.debug("vm[uuid:%s] memory can not changed lower than 30% of its max memory %s, skip it" % (vm_uuid, mem.max))
+            return
+
+        if changed_to < 1 * 1024 * 1024:
+            logger.debug("vm[uuid:%s] memory can not changed lower than 1GB, skip it" % vm_uuid)
+            return
+
+        vm.set_memory(changed_to)
+        self.wait_memory_changed(vm_uuid, changed_to)
+
         vm.set_memory(changed_to)
         self.wait_memory_changed(vm_uuid, changed_to)
 
