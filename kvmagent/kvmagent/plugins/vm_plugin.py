@@ -4462,6 +4462,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
+    KVM_VM_CHECK_VOLUME_PATH = "/vm/volume/check"
     KVM_TAKE_VOLUME_SNAPSHOT_PATH = "/vm/volume/takesnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
@@ -4509,6 +4510,8 @@ class VmPlugin(kvmagent.KvmAgent):
     ROLLBACK_QUORUM_CONFIG_PATH = "/rollback/quorum/config"
     FAIL_COLO_PVM_PATH = "/fail/colo/pvm"
     GET_VM_DEVICE_ADDRESS_PATH = "/vm/getdeviceaddress"
+    SYNC_VM_CLOCK_PATH = "/vm/clock/sync"
+    SET_SYNC_VM_CLOCK_TASK_PATH = "/vm/clock/sync/task"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -5077,7 +5080,6 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = StopVmResponse()
         try:
             self._record_operation(cmd.uuid, self.VM_OP_STOP)
-
             self._stop_vm(cmd)
             logger.debug("successfully stopped vm[uuid:%s]" % cmd.uuid)
         except kvmagent.KvmError as e:
@@ -5211,6 +5213,17 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
             rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_volume(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid(cmd.uuid)
+        for volume in cmd.volumes:
+            vm._get_target_disk(volume)
 
         return jsonobject.dumps(rsp)
 
@@ -6824,6 +6837,128 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def sync_vm_clock_now(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm = get_vm_by_uuid_no_retry(cmd.vmUuid, True)
+        if vm.state != Vm.VM_STATE_RUNNING:
+            rsp.success = False
+            rsp.error = 'vm[uuid:%s, name:%s] is not in running state' % (cmd.vmUuid, vm.get_name())
+            return jsonobject.dumps(rsp)
+
+        vm._wait_until_qemuga_ready(3000, cmd.vmUuid)
+        script = '''virsh qemu-agent-command %s --cmd "{\\"execute\\":\\"guest-set-time\\",\\"arguments\\":{\\"time\\":`date +%%s%%N`}}"''' % cmd.vmUuid
+        r, o, e = bash.bash_roe(script)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to sync time for vm[uuid:%s]: %s, %s" % (cmd.vmUuid, o, e)
+        return jsonobject.dumps(rsp)
+
+    sync_clock_script = '''#!/bin/bash
+    interval=$1
+    if [[ ! -s /var/lib/zstack/kvm/sync-clock/interval-$interval-vms.txt ]]; then exit 0; fi
+    running_vms=`virsh list | sed -n '3,$p' | awk '{printf $2 "\\n"}'`
+    while IFS= read -r uuid
+    do
+        if [[ "$running_vms" == *"$uuid"* ]]; then
+            virsh qemu-agent-command $uuid --cmd "{\\"execute\\":\\"guest-set-time\\",\\"arguments\\":{\\"time\\":`date +%s%N`}}" &> /dev/null
+            if [ $? -ne 0 ]; then
+                echo "$(date) failed to sync clock for vm: $uuid" >> "/var/log/zstack/sync-clock/interval-$interval.log"
+            fi
+        fi
+    done < /var/lib/zstack/kvm/sync-clock/interval-$interval-vms.txt
+    '''
+
+    sync_clock_cron_exp_map = {
+        60 : '*/1 * * * *',
+        120 : '*/2 * * * *',
+        180 : '*/3 * * * *',
+        240 : '*/4 * * * *',
+        300 : '*/5 * * * *',
+        360 : '*/6 * * * *',
+        600 : '*/10 * * * *',
+        720 : '*/12 * * * *',
+        900 : '*/15 * * * *',
+        1200 : '*/20 * * * *',
+        1800 : '*/30 * * * *',
+        3600 : '0 */1 * * *',
+        7200 : '0 */2 * * *',
+        10800 : '0 */3 * * *',
+        14400 : '0 */4 * * *',
+        21600 : '0 */6 * * *',
+        28800 : '0 */8 * * *',
+        43200 : '0 */12 * * *',
+        86400 : '0 0 */1 * *'
+    }
+
+    @bash.in_bash
+    @kvmagent.replyerror
+    def set_sync_vm_clock_task(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        r, o, e = bash.bash_roe('systemctl start crond')
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to start crond service to preform sync clock task: %s %s" % (o, e)
+            return jsonobject.dumps(rsp)
+
+        script_directory = '/var/lib/zstack/kvm/sync-clock'
+        script_path = os.path.join(script_directory, 'sync-clock.sh')
+        log_directory = '/var/log/zstack/sync-clock/'
+
+        if not os.path.exists(script_directory):
+            os.mkdir(script_directory)
+        if not os.path.exists(log_directory):
+            os.mkdir(log_directory)
+        if not os.path.exists(script_path):
+            with open(script_path, "w") as fd:
+                fd.write(self.sync_clock_script)
+            os.chmod(script_path, 0o755)
+
+        # key: interval in seconds,  value: vm_uuid list
+        interval_uuid_map = {}
+        for vm_uuid in cmd.intervalMap.__dict__.keys():
+            interval = cmd.intervalMap[vm_uuid]
+            # check interval
+            if not self.sync_clock_cron_exp_map.has_key(interval):
+                rsp.success = False
+                rsp.error = "failed to start sync vm clock task: unexpect interval %d" % interval
+                return jsonobject.dumps(rsp)
+            if interval_uuid_map.has_key(interval):
+                interval_uuid_map[interval].append(vm_uuid)
+            else:
+                interval_uuid_map[interval] = [vm_uuid]
+
+        # string list
+        cron_scripts = []
+        r, o, _ = bash.bash_roe('/usr/bin/crontab -l | grep -v "bash %s"' % script_path)
+        if r == 0:
+            cron_scripts.append(o.strip())
+
+        for interval in interval_uuid_map:
+            vm_uuids = interval_uuid_map[interval]
+            sync_vm_file_path = os.path.join(script_directory, 'interval-%d-vms.txt' % interval)
+            with open(sync_vm_file_path, "w") as fd:
+                fd.write('\n'.join(vm_uuids))
+                fd.write('\n')
+            os.chmod(sync_vm_file_path, 0o666)
+            # '*/1 * * * * bash $script_path 60'
+            cron_scripts.append('%s bash %s %d' % (self.sync_clock_cron_exp_map[interval], script_path, interval))
+
+        tmp_path = tempfile.mktemp()
+        with open(tmp_path, "w") as fd:
+            fd.write('\n'.join(cron_scripts))
+            fd.write('\n')
+
+        r, o, e = bash.bash_roe('/usr/bin/crontab %s' % tmp_path)
+        os.remove(tmp_path)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to write crond script to preform sync clock task: %s %s" % (o, e)
+        return jsonobject.dumps(rsp)
+
     @staticmethod
     def _find_volume_device_address(vm, volumes):
         #  type:(Vm, list[jsonobject.JsonObject]) -> list[VmDeviceAddress]
@@ -6878,6 +7013,7 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate_vm)
+        http_server.register_async_uri(self.KVM_VM_CHECK_VOLUME_PATH, self.check_volume)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_SNAPSHOT_PATH, self.take_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
@@ -6923,6 +7059,8 @@ class VmPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ROLLBACK_QUORUM_CONFIG_PATH, self.rollback_quorum_config)
         http_server.register_async_uri(self.FAIL_COLO_PVM_PATH, self.fail_colo_pvm, cmd=FailColoPrimaryVmCmd())
         http_server.register_async_uri(self.GET_VM_DEVICE_ADDRESS_PATH, self.get_vm_device_address)
+        http_server.register_async_uri(self.SYNC_VM_CLOCK_PATH, self.sync_vm_clock_now)
+        http_server.register_async_uri(self.SET_SYNC_VM_CLOCK_TASK_PATH, self.set_sync_vm_clock_task)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
