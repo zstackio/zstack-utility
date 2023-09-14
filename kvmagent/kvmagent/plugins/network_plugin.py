@@ -36,6 +36,7 @@ KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/populatefdb"
 KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/populatefdbs"
 KVM_CHECK_MACVLAN_L2VLAN_NETWORK_PATH = "/network/l2vlan/macvlan/checkbridge"
 KVM_REALIZE_MACVLAN_L2VLAN_NETWORK_PATH = "/network/l2vlan/macvlan/createbridge"
+KVM_DELETE_FDB_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/deletefdbs"
 KVM_SET_BRIDGE_ROUTER_PORT_PATH = "/host/bridge/routerport"
 KVM_DELETE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/deletebridge"
 KVM_DELETE_L2VLAN_NETWORK_PATH = "/network/l2vlan/deletebridge"
@@ -104,6 +105,12 @@ class PopulateVxlanFdbCmd(kvmagent.AgentResponse):
         self.interf = None
         self.peers = None
 
+class DeleteVxlanFdbCmd(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteVxlanFdbCmd, self).__init__()
+        self.interf = None
+        self.peers = None
+
 class CheckBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckBridgeResponse, self).__init__()
@@ -133,6 +140,10 @@ class CreateVxlanBridgesResponse(kvmagent.AgentResponse):
 class PopulateVxlanFdbResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(PopulateVxlanFdbResponse, self).__init__()
+
+class DeleteVxlanFdbResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DeleteVxlanFdbResponse, self).__init__()
 
 class SetBridgeRouterPortResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -850,6 +861,26 @@ class NetworkPlugin(kvmagent.KvmAgent):
         rsp.success = True
         return jsonobject.dumps(rsp)
 
+    def delete_vxlan_fdbs(self, req):
+        #delete  vxlan fdb
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DeleteVxlanFdbResponse
+
+        interfs = linux.get_interfs_from_uuids(cmd.networkUuids)
+        if interfs == []:
+            rsp.success = True
+            return jsonobject.dumps(rsp)
+
+
+        if linux.delete_vxlan_fdbs(interfs, cmd.peers) == False:
+            rsp.success = False
+            rsp.error = "error on delete fdb"
+            return jsonobject.dumps(rsp)
+
+        rsp.success = True
+        return jsonobject.dumps(rsp)
+
+
     def set_bridge_router_port(self, req):
         # set bridge router port:
         # echo "2" > /sys/devices/virtual/net/vnic2.1/brport/multicast_router
@@ -956,6 +987,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORKS_PATH, self.create_vxlan_bridges)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH, self.populate_vxlan_fdb)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH, self.populate_vxlan_fdbs)
+        http_server.register_async_uri(KVM_DELETE_FDB_L2VXLAN_NETWORKS_PATH, self.delete_vxlan_fdbs)
         http_server.register_async_uri(KVM_SET_BRIDGE_ROUTER_PORT_PATH, self.set_bridge_router_port)
         http_server.register_async_uri(KVM_DELETE_L2NOVLAN_NETWORK_PATH, self.delete_novlan_bridge)
         http_server.register_async_uri(KVM_DELETE_L2VLAN_NETWORK_PATH, self.delete_vlan_bridge)

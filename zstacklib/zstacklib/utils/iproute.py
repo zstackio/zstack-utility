@@ -750,6 +750,25 @@ def batch_populate_vxlan_fdbs(ifnames, lladdr, dsts):
             ipr.sendto(data, (0, 0))
         ipb.close()
 
+@_log_iproute_call("delete vxlan fdbs")
+def batch_delete_vxlan_fdbs(ifnames, lladdr, dsts):
+    with get_iproute(None) as ipr:
+        ifNameIndexMap = {}
+        for ifname in ifnames:
+            ifindex = query_index_by_ifname(ifname.strip())
+            if ifindex is None:
+                continue
+            ifNameIndexMap[ifname] = ifindex
+
+        ipb = pyroute2.IPBatch()
+        for dst in dsts:
+            for ifname in ifnames:
+                ipb.fdb('del', ifindex=ifNameIndexMap[ifname], lladdr=lladdr, dst=dst)
+            data = ipb.batch
+            ipb.reset()
+            ipr.sendto(data, (0, 0))
+        ipb.close()
+
 def add_fdb_entry(ifname, lladdr):
     with get_iproute(None) as ipr:
         ifindex = query_index_by_ifname(ifname.strip())
