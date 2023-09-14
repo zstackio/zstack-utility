@@ -8961,8 +8961,7 @@ host side snapshot files chian:
             return mem.actual == changed_to
 
         if not linux.wait_callback_success(wait_for_actual_memory_change, None, interval=3, timeout=24):
-            raise Exception('unable to wait vm[uuid:%s] memory changed, after %s seconds'
-                            % (vm_uuid, 24))
+            logger.warn('unable to wait vm[uuid:%s] memory changed, after %s seconds' % (vm_uuid, 24))
 
 
     @kvmagent.replyerror
