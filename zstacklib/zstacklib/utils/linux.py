@@ -22,6 +22,7 @@ import platform
 import pprint
 import errno
 import json
+import math
 
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
@@ -188,6 +189,40 @@ def rm_dir_checked(dpath):
 
     exception_on_opened_dir(dpath)
     shutil.rmtree(dpath)
+
+def zero_dd(path, bs, count=None, iflag=None, oflag=None, times=1, exception=True):
+    bs = "bs={}".format(bs) if bs else ""
+    count = "count={}".format(count) if count else ""
+    iflag = "iflag={}".format(iflag) if iflag else ""
+    oflag = "oflag={}".format(oflag) if oflag else ""
+    ddcmd = "dd if=/dev/zero of={} {} {} {} {}".format(path, bs, count, iflag, oflag)
+    ecmds = ";sync;".join([ddcmd for i in range(times)])
+    shell.run("sync")
+    shell.call(ecmds, exception=exception)
+    shell.run("sync")
+
+def zeroed_file_dev(fpath):
+    # size -> unit:bytes
+    if not os.path.exists(fpath):
+        logger.debug("no such file or dev [{}], skip to zeroed it.".format(fpath))
+        return
+
+    exception_on_opened_file(fpath)
+    if os.path.isfile(fpath):
+        size = os.path.getsize(fpath)
+        count = int(math.ceil(float(size)/1024/1024))
+        """
+        In case of file, one time dd does not ensure that all data is erased.
+        If you want to be really sure your data is gone you will need to write over the file 7 times.
+        This is the current Department of Defense procedure for wiping sensitive data.
+        c.f. https://www.marksanborn.net/security/securely-wipe-a-file-with-dd/
+        
+        But 7 times will take so many long times in a big file, here we repeat 3 times.
+        """
+        zero_dd(fpath, bs="1M", count=count, oflag="direct", times=3)
+    else:
+        zero_dd(fpath, bs="1M", oflag="direct", exception=False)
+    logger.debug("successfully zeroed the file/dev[{}]".format(fpath))
 
 def process_exists(pid):
     return os.path.exists("/proc/" + str(pid))
@@ -1687,6 +1722,11 @@ def list_all_file(path):
         else:
             yield fi_d
 
+def listdir(d):
+    try:
+        return os.listdir(d)
+    except:
+        return []
 
 def find_file(file_name, current_path, parent_path_depth=2, sub_folder_first=False):
     ''' find_file will return a file path, when finding a file in given path.

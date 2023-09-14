@@ -161,16 +161,18 @@ def replyerror(func):
     return wrap
 
 
-def deleteImage(path):
-     linux.rm_file_checked(path)
-     logger.debug('successfully delete %s' % path)
-     if (path.endswith('.qcow2')):
-        imfFiles = [".imf",".imf2"]
-        for f in imfFiles:
-            filePath = path.replace(".qcow2", f)
-            linux.rm_file_force(filePath)
-     pdir = os.path.dirname(path)
-     linux.rmdir_if_empty(pdir)
+def deleteImage(path, zeroed=False):
+    if zeroed:
+        linux.zeroed_file_dev(path)
+    linux.rm_file_checked(path)
+    logger.debug('successfully delete %s' % path)
+    imfFiles = [".imf",".imf2"]
+    for f in imfFiles:
+        filePath = path.replace(".qcow2", f)
+        linux.rm_file_force(filePath)
+    linux.rm_file_force('%s.json' % path)
+    pdir = os.path.dirname(path)
+    linux.rmdir_if_empty(pdir)
 
 
 class KvmDaemon(daemon.Daemon):

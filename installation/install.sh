@@ -779,6 +779,7 @@ check_system(){
     else
         cs_check_hostname_zstack
     fi
+    [ x`systemctl is-enabled cockpit.socket 2>/dev/null` = x"enabled" ] && (systemctl disable cockpit.socket && systemctl stop cockpit.socket)  
     show_spinner do_check_system
     cs_check_zstack_data_exist
     show_spinner cs_create_repo
@@ -882,6 +883,13 @@ cat > /etc/ansible/ansible.cfg << EOF
 executable = /bin/bash
 log_path = /var/log/ansible/ansible.log
 EOF
+}
+
+do_config_systemd(){
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    sed -i 's/\#\?DefaultTimeoutStartSec.*/DefaultTimeoutStartSec=10s/g' /etc/systemd/system.conf
+    sed -i 's/\#\?DefaultTimeoutStopSec.*/DefaultTimeoutStopSec=10s/g' /etc/systemd/system.conf
+    systemctl daemon-reload
 }
 
 do_check_system(){
@@ -1159,6 +1167,7 @@ upgrade_zstack(){
     #rerun install system libs, upgrade might need new libs
     is_install_system_libs
     do_config_ansible
+    do_config_systemd
     show_spinner is_enable_chronyd
     show_spinner uz_stop_zstack
     show_spinner uz_stop_zstack_ui
@@ -1438,9 +1447,6 @@ is_install_general_libs_rh(){
             gzip \
             unzip \
             httpd \
-            openssh \
-            openssh-clients \
-            openssh-server \
             rsync \
             sshpass \
             sudo \
@@ -1457,7 +1463,6 @@ is_install_general_libs_rh(){
             python-backports-ssl_match_hostname \
             python-setuptools \
             avahi \
-            gnutls-utils \
             avahi-tools \
             audit"
     if [ "$BASEARCH" == "x86_64" ]; then
@@ -2185,6 +2190,7 @@ config_system(){
     fi
     do_enable_sudo
     do_config_networkmanager
+    do_config_systemd
 }
 
 cs_add_cronjob(){

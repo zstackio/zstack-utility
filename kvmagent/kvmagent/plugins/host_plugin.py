@@ -69,6 +69,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.cpuModelName = None
         self.systemSerialNumber = None
         self.eptFlag = None
+        self.kvmPtp = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -373,6 +374,7 @@ class ZwatchInstallResult(object):
     def __init__(self):
         self.vmInstanceUuid = None
         self.version = None
+        self.timeProtocol = None
 
 class ZwatchInstallResultRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -698,6 +700,8 @@ class HostPlugin(kvmagent.KvmAgent):
         ipV4Addrs = shell.call("ip addr | grep -w inet | grep -v 127.0.0.1 | awk '!/zs$/{print $2}' | cut -d/ -f1")
         rsp.systemProductName = 'unknown'
         rsp.systemSerialNumber = 'unknown'
+        rc_kvm_ptp = shell.run("cat /lib/modules/$(uname -r)/modules.builtin | grep ptp_kvm")
+        rsp.kvmPtp = not rc_kvm_ptp
         is_dmidecode = shell.run("dmidecode")
         if str(is_dmidecode) == '0' and kvmagent.os_arch == "x86_64":
             system_product_name = shell.call('dmidecode -s system-product-name').strip()
@@ -1862,6 +1866,7 @@ done
         result = ZwatchInstallResult()
         result.vmInstanceUuid = cmd.vmInstanceUuid
         result.version = cmd.version
+        result.timeProtocol = cmd.timeProtocol
         url = self.config.get(kvmagent.SEND_COMMAND_URL)
         if not url:
             raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit zwatch install result to management node")

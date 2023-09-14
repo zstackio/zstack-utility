@@ -3,7 +3,12 @@ import random
 import os
 import os.path
 import time
+import re
+import xml.etree.ElementTree as etree
 
+import simplejson
+
+from zstacklib.utils import form
 from zstacklib.utils import shell
 from zstacklib.utils import bash
 from zstacklib.utils import lock
@@ -19,6 +24,7 @@ LVM_CONFIG_PATH = "/etc/lvm"
 LVM_CONFIG_FILE = '/etc/lvm/lvm.conf'
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 DEB_SANLOCK_CONFIG_FILE_PATH = "/etc/default/sanlock"
+LIVE_LIBVIRT_XML_DIR = "/var/run/libvirt/qemu"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
 LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
@@ -43,11 +49,39 @@ class VmStruct(object):
     def __init__(self):
         super(VmStruct, self).__init__()
         self.pid = ""
-        self.cmdline = ""
+        self.xml = ""
         self.root_volume = ""
         self.uuid = ""
         self.volumes = []
 
+    def load_from_xml(self, xml):
+        def load_source(element):
+            is_root_vol = False
+            path = None
+            for e in element:
+                if e.tag == "boot":
+                    is_root_vol = True
+                elif e.tag == "source":
+                    if "file" in e.attrib:
+                        path = e.attrib["file"]
+                    elif "dev" in e.attrib:
+                        path = e.attrib["dev"]
+                    if path and path.startswith("/dev/"):
+                        self.volumes.append(path)
+
+            if is_root_vol:
+                self.root_volume = path
+
+        self.xml = xml
+        root = etree.fromstring(xml)
+        for e1 in root:
+            if e1.tag == "domain":
+                for e2 in e1:
+                    if e2.tag == "devices":
+                        for e3 in e2:
+                            if e3.tag == "disk":
+                                load_source(e3)
+                        return
 
 class LvmlockdLockType(object):
     NULL = 0
@@ -988,8 +1022,14 @@ def deactive_lv(path, raise_exception=True):
 
 
 @bash.in_bash
-def delete_lv(path, raise_exception=True, deactive=True):
+def delete_lv(path, raise_exception=True, deactive=True, zeroed=False):
     logger.debug("deleting lv %s" % path)
+    if zeroed:
+        if not lv_is_active(path):
+            active_lv(path, shared=False)
+        linux.zeroed_file_dev(path)
+        deactive_lv(path, False)
+
     if deactive:
         deactive_lv(path, False)
     # remove meta-lv if any
@@ -1648,43 +1688,77 @@ def is_volume_on_pvs(volume_path, pvUuids, includingMissing=True):
             return True
     return False
 
+'''
+e.g. lsblk command output when iscsi disconnected:
+
+    [root@10-0-0-0 linus]# lsblk -P /dev/$VG/$LV -s -o NAME,TYPE,STATE
+    NAME="$VG-$LV" TYPE="lvm" STATE="transport-offline"
+    NAME="sda" TYPE="disk" STATE="running"
+
+explain:
+
+    If you switch off the network/machine for a iscsi based storage,
+    "qemu-img --backing-chain $vm_root_volume" may not be able to determine
+    the running vm I/O on that storage works or not. One solution is check
+    if the state of the disk of lv is "transport-offline".
+'''
+
+@bash.in_bash
+def is_bad_vm_root_volume(vm_root_volume):
+    cmd = "lsblk -sr " + vm_root_volume + "-o NAME,TYPE,STATE"
+    r, o = bash.bash_ro(cmd)
+    if r != 0:
+        return True
+
+    dep_devices = form.load(o)
+    has_running_disk = any(dep_dev["TYPE"] == "disk" and dep_dev["STATE"] == "running" for dep_dev in dep_devices)
+    has_not_running_disk = any(dep_dev["TYPE"] == "disk" and dep_dev["STATE"] != "running" for dep_dev in dep_devices)
+    return has_not_running_disk or not has_running_disk
+
+def get_vm_pid(uuid):
+    pid = linux.read_file(os.path.join(LIVE_LIBVIRT_XML_DIR, uuid + ".pid"))
+    if pid:
+        return pid.strip()
+
+    return linux.find_vm_pid_by_uuid(uuid)
 
 @bash.in_bash
 def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
-    # 1. get "-drive ... -device ... bootindex=1,
-    # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
-    # 3. make sure io has error
-    # 4. filter for pv
-    out = bash.bash_o("pgrep -a 'qemu-kvm|qemu-system' | grep %s" % vgUuid).strip().split("\n")
-    if len(out) == 0:
-        return []
+    # type: (str, list[str], bool) -> list[VmStruct]
+    # 1. get root volume from live vm xml
+    # 2. make sure io has error
+    # 3. filter for pv
 
     vms = []
-    for o in out:
-        vm = VmStruct()
-        vm.pid = o.split(" ")[0]
-        vm.cmdline = o.split(" ", 3)[-1]
-        vm.uuid = o.split(" -uuid ")[-1].split(" ")[0]
-        if "bootindex=1" in vm.cmdline:
-            vm.root_volume = vm.cmdline.split("bootindex=1")[0].split(" -drive file=")[-1].split(",")[0]
-        elif " -boot order=dc" in vm.cmdline:
-            # TODO(weiw): maybe support scsi volume as boot volume one day
-            vm.root_volume = vm.cmdline.split("id=drive-virtio-disk0")[0].split(" -drive file=")[-1].split(",")[0]
-        else:
-            logger.warn("found strange vm[pid: %s, cmdline: %s], can not find boot volume" % (vm.pid, vm.cmdline))
+    for file_name in linux.listdir(LIVE_LIBVIRT_XML_DIR):
+        xs = file_name.split(".")
+        if len(xs) != 2 or xs[1] != "xml":
             continue
 
-        r = bash.bash_r("%s --backing-chain %s" % (qemu_img.subcmd('info'), vm.root_volume))
-        if checkIo is True and r == 0:
+        xml = linux.read_file(os.path.join(LIVE_LIBVIRT_XML_DIR, file_name))
+        if not '/dev/' + vgUuid in xml:
+            continue
+
+        vm = VmStruct()
+        vm.uuid = xs[0]
+        vm.pid = get_vm_pid(vm.uuid)
+        vm.load_from_xml(xml)
+        if not vm.root_volume:
+            logger.warn("found strange vm[pid: %s, uuid: %s], can not find boot volume" % (vm.pid, vm.uuid))
+            continue
+
+        if not vm.root_volume.startswith("/dev/" + vgUuid):
+            continue
+
+        bad_vm_root_volume_condition = False
+        r = bash.bash_r("blockdev --flushbufs %s" % vm.root_volume)
+        if is_bad_vm_root_volume(vm.root_volume) is True:
+            bad_vm_root_volume_condition = True
+        elif checkIo is True and r == 0:
             logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
             continue
 
-        out = bash.bash_o("virsh dumpxml %s | grep \"source file='/dev/\"" % vm.uuid).strip().splitlines()
-        if len(out) != 0:
-            for file in out:
-                vm.volumes.append(file.strip().split("'")[1])
-
-        if is_volume_on_pvs(vm.root_volume, pvUuids, True):
+        if bad_vm_root_volume_condition is True or is_volume_on_pvs(vm.root_volume, pvUuids, True):
             vms.append(vm)
 
     return vms
