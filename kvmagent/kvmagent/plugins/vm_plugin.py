@@ -8900,7 +8900,7 @@ host side snapshot files chian:
             changed_to = actual_mem - delta
         elif direction == 'Increase':
             # do not increase memory over max memory
-            changed_to = actual_mem + actual_mem * precentage / 100
+            changed_to = actual_mem + mem.max * precentage / 100
             changed_to = changed_to if changed_to < mem.max else mem.max
         else:
             raise Exception('unknown direction[%s]' % direction)
