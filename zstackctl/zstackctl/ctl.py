@@ -1587,6 +1587,8 @@ class ShowStatusCmd(Command):
                 version = '0.6'
             else:
                 version = get_zstack_version(db_hostname, db_port, db_user, db_password)
+                if len(version.split('.')) >= 4:
+                    version = '.'.join(version.split('.')[:3])
 
             detailed_version = get_detail_version()
             if detailed_version is not None:
@@ -1603,8 +1605,10 @@ class ShowStatusCmd(Command):
                     if version[0].isdigit(): 
                         info('Cube version: %s (Cube %s)' % (version.split('-')[0], version))
                     else:
-                        list = version.split('-')   
-                        info(list[0] + ' version: %s (%s)' % (list[1], version))
+                        list = version.split('-')
+                        hci_version = list[-3]
+                        hci_name = version.split("-%s-" % hci_version)
+                        info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
 
         info('\n'.join(info_list))
         show_version()
@@ -5181,6 +5185,9 @@ class DumpMysqlCmd(Command):
         parser.add_argument('--remote-keep-amount', type=int,
                             help="The amount of files you want to keep on remote host, older files will be deleted, default number is 60",
                             required=False)
+        parser.add_argument('--bwlimit',
+                            help="This option allows you to specify the maximum transfer rate for the data sent over the socket, specified in units per second. The RATE value can be suffixed with a string to indicate a size multiplier, and may be a fractional value (e.g. `--bwlimit=1.5m`)",
+                            required=False)
 
     def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip, remote_host_port):
         (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
@@ -5191,10 +5198,22 @@ class DumpMysqlCmd(Command):
         (status, output, stderr) = shell_return_stdout_stderr(command)
         if status != 0:
             error(stderr)
-        sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s %s@%s:%s" % (private_key, remote_host_port,
-                                                                              self.mysql_backup_dir, self.ui_backup_dir,
-                                                                              self.zstone_backup_dir, user,
-                                                                              remote_host_ip, self.remote_backup_dir)
+
+        if args.bwlimit is not None:
+            sync_command = "rsync -lr --bwlimit=%s -e 'ssh -i %s -p %s'  %s %s %s %s@%s:%s" % (args.bwlimit, private_key, remote_host_port,
+                                                                                  self.mysql_backup_dir,
+                                                                                  self.ui_backup_dir,
+                                                                                  self.zstone_backup_dir, user,
+                                                                                  remote_host_ip,
+                                                                                  self.remote_backup_dir)
+
+        else:
+            sync_command = "rsync -lr -e 'ssh -i %s -p %s'  %s %s %s %s@%s:%s" % (private_key, remote_host_port,
+                                                                                  self.mysql_backup_dir,
+                                                                                  self.ui_backup_dir,
+                                                                                  self.zstone_backup_dir, user,
+                                                                                  remote_host_ip,
+                                                                                  self.remote_backup_dir)
         (status, output, stderr) = shell_return_stdout_stderr(sync_command)
         if status != 0:
             error(stderr)
@@ -6464,11 +6483,18 @@ class CollectLogCmd(Command):
 
 
 def is_hyper_converged_host():
-    r, o = commands.getstatusoutput("bootstrap is_deployed")
-    if r != 0 or o.strip() != "true":
+    if not os.path.exists("/usr/local/hyperconverged"):
         return False
-    return True
-
+    
+    # Compatible with lower versions
+    if os.path.exists("/usr/local/hyperconverged/conf/host_info.json"):
+        return True
+    
+    if os.path.exists("/usr/local/hyperconverged/conf/deployed_info"):
+        return True
+    
+    return False
+    
 
 def get_hci_detail_version():
     detailed_version_file = "/usr/local/hyperconverged/conf/VERSION"
@@ -6528,7 +6554,7 @@ class ConfiguredCollectLogCmd(Command):
         if "/" in log_name:
             error("clear log failed, value[%s] is invalid" % log_name)
         
-        log_path = self.ui_log_download_dir + ("collect-log-%s" % log_name)
+        log_path = self.ui_log_download_dir + log_name
         if os.path.isfile(log_path):
             shell('rm -f %s' % log_path)
             info("clear log file[%s] successfully!" % log_path)
