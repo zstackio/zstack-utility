@@ -8926,7 +8926,7 @@ host side snapshot files chian:
             return
 
         actual_mem = mem.actual
-        if actual_mem <= preserved_memory:
+        if actual_mem <= preserved_memory and direction == 'Decrease':
             logger.debug("vm[uuid:%s] actual memory[%s] is less than preserved memory[%s], skip memory balloon" % (vm_uuid, actual_mem, preserved_memory))
             return
 
