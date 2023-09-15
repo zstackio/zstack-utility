@@ -8884,7 +8884,7 @@ host side snapshot files chian:
             return
 
         mem = vm.get_memory_stats()
-        if not mem.unused:
+        if not mem.usable:
             logger.debug("vm[uuid:%s] do not support virtio memory balloon, skip it" % vm_uuid)
             return
 
@@ -8896,7 +8896,7 @@ host side snapshot files chian:
         if direction == 'Decrease':
             # do not decrease memory over unused memory
             delta = actual_mem * precentage / 100
-            delta = delta if delta < mem.unused else mem.unused
+            delta = delta if delta < mem.usable else mem.usable
             changed_to = actual_mem - delta
         elif direction == 'Increase':
             # do not increase memory over max memory
