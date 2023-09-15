@@ -149,14 +149,14 @@ if host_info.distro in RPM_BASED_OS:
 
             if releasever in kylin:
                 common_update_list = common_update_list + ' ' + ky10_update_list
-            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
-                common_update_list, zstack_repo)
-            run_remote_command(command, host_post_info)
-
                 if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
                     command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
                         ky10sp3_update_list, zstack_repo)
                     run_remote_command(command, host_post_info)
+
+            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
+                common_update_list, zstack_repo)
+            run_remote_command(command, host_post_info)
 
             if releasever not in ['c72', 'c74']:
                 command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
