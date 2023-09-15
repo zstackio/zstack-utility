@@ -1086,6 +1086,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
         if rsp.osDistribution == 'centos':
             rsp.osDistribution = platform.linux_distribution()[0].lower()
+        if rsp.osDistribution == 'openEuler':
+            rsp.osDistribution = platform.linux_distribution()[0].lower()
         rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
         # compatible with Kylin SP2 HostOS ISO and standardized ISO
         rsp.osRelease = rsp.osRelease.replace('ZStack', 'Sword') if rsp.osDistribution == "kylin" else rsp.osRelease
@@ -1182,6 +1184,9 @@ class HostPlugin(kvmagent.KvmAgent):
             cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
             rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
             cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            # On openeuler, lscpu otuputs 'per cluster' instead of 'per socket'
+            if not cpu_cores_per_socket:
+                cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per cluster/{print $NF}'")
             cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
             rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
@@ -1229,6 +1234,9 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
 
             cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
+            # On openeuler, lscpu otuputs 'per cluster' instead of 'per socket'
+            if not cpu_cores_per_socket:
+                cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per cluster/{print $NF}'")
             cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
             rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
 
