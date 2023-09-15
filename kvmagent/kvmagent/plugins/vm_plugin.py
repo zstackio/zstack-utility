@@ -8656,7 +8656,7 @@ host side snapshot files chian:
             except Exception:
                 logger.info("detach device success, can not find disk vdz")
             if vm._check_target_disk_existing_by_path(self._guesttools_temp_disk_file_path(vm.uuid)):
-                raise RetryException("failed to detach guest tools temp disk")
+                raise RetryException("current vm %s can not detach guest tools temp disk" % vm.uuid)
 
         if vm._check_target_disk_existing_by_path(self._guesttools_temp_disk_file_path(vm.uuid)):
             detach_temp_disk_and_retry(vm)
