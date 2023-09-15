@@ -1220,6 +1220,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         connected_nqn_cnt = 0
         for nqn in discovered_nqns:
             if nqn in existing_nqns:
+                connected_nqn_cnt = connected_nqn_cnt + 1
                 continue
             r, o, e = bash.bash_roe("timeout 60 nvme connect -a %s -s %s -t %s --nqn %s" % (cmd.ip, cmd.port, cmd.transport, nqn))
             if r == 0:
