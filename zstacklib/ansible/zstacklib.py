@@ -1504,6 +1504,13 @@ def get_remote_host_info_obj(host_post_info):
         host_post_info.post_label = "ansible.get.host.info.fail"
         logger.warning("get_remote_host_info on host %s failed!" % host)
         raise Exception(result)
+
+    # support customized host distribution
+    if host_post_info.distribution is not None:
+        host_info.distro = host_post_info.distribution.split(' ')[0]
+        host_info.distro_release = host_post_info.distribution.split(' ')[1]
+        host_info.distro_version = host_post_info.distribution.split(' ')[2]
+
     return host_info
 
 
