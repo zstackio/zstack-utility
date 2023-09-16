@@ -997,6 +997,8 @@ def qcow2_create_with_cmd(dst, size, cmd=None):
 
 def qcow2_create_with_option(dst, size, opt=""):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
+    if 'preallocation=metadata' in opt:
+        qcow2_discard(dst)
     os.chmod(dst, 0o660)
 
 def qcow2_create_with_backing_file(backing_file, dst, size=""):
@@ -1024,15 +1026,15 @@ def raw_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
     os.chmod(dst, 0o660)
 
-def create_template(src, dst, compress=False, shell=shell, progress_output=None):
+def create_template(src, dst, compress=False, shell=shell, progress_output=None, opts=""):
     fmt = get_img_fmt(src)
     if fmt == 'raw':
         return raw_create_template(src, dst, shell=shell, progress_output=progress_output)
     if fmt == 'qcow2':
-        return qcow2_create_template(src, dst, compress, shell=shell, progress_output=progress_output)
+        return qcow2_create_template(src, dst, compress, shell=shell, progress_output=progress_output, opts=opts)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
-def qcow2_create_template(src, dst, compress, shell=shell, progress_output=None):
+def qcow2_create_template(src, dst, compress, shell=shell, progress_output=None, opts=""):
     redirect, ext_opts = "", []
     if progress_output:
         redirect = " > " + progress_output
@@ -1040,6 +1042,9 @@ def qcow2_create_template(src, dst, compress, shell=shell, progress_output=None)
 
     if compress:
         ext_opts.append("-c")
+
+    if opts != "":
+        ext_opts.append(opts)
 
     shell.call('%s %s -f qcow2 -O qcow2 %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), src, dst, redirect))
 

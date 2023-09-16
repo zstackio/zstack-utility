@@ -1,6 +1,6 @@
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
-from zstacklib.utils import bash, lvm
+from zstacklib.utils import bash, lvm, linux
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 import pytest
@@ -53,7 +53,7 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         rsp = sharedblock_utils.shareblock_create_empty_volume(
             installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
             volumeUuid=volumeUuid,
-            size=1048574*100,
+            size=1048576*100,
             hostUuid=hostUuid,
             vgUuid=vgUuid,
         )
@@ -69,6 +69,11 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
             primaryStorageUuid=vgUuid
         )
         self.assertEqual(True, rsp.success, rsp.error)
+        rsp = sharedblock_utils.sharedblock_estimate_template("sharedblock://{}/{}".format(vgUuid,snaphostUuid))
+        self.assertEqual(True, rsp.success, rsp.error)
+        self.assertEqual(True, rsp.size is not None, rsp.error)
+        self.assertEqual(True, rsp.actualSize is not None, rsp.error)
+        self.assertEqual(True, rsp.size > rsp.actualSize, rsp.error)
 
         rsp = sharedblock_utils.sharedblock_migrate_volumes(
             vgUuid,
@@ -92,11 +97,14 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                     "compareQcow2" : True,
                     "skipIfExisting" : False
                 }
-            ]
+            ],
+            provisioning=lvm.VolumeProvisioningStrategy.ThickProvisioning
         )
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vg2Uuid, volumeUuid)))
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vg2Uuid, snaphostUuid)))
         self.assertEqual(True, rsp.success, rsp.error)
+        self.assertEqual(str(lvm.calcLvReservedSize(1048576*100)), lvm.get_lv_size("/dev/%s/%s" % (vg2Uuid, snaphostUuid)))
+        self.assertEqual(str(lvm.calcLvReservedSize(1048576*100)), lvm.get_lv_size("/dev/%s/%s" % (vg2Uuid, volumeUuid)))
 
         # test migrate back
         rsp = sharedblock_utils.sharedblock_migrate_volumes(
@@ -121,7 +129,9 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                     "compareQcow2" : True,
                     "skipIfExisting" : False
                 }
-            ]
+            ],
+            provisioning=lvm.VolumeProvisioningStrategy.ThinProvisioning,
+            addons={"thinProvisioningInitializeSize":5368709120}
         )
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vgUuid, volumeUuid)))
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vgUuid, snaphostUuid)))
@@ -154,8 +164,11 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                     "compareQcow2" : True,
                     "skipIfExisting" : False
                 }
-            ]
+            ],
+            provisioning=lvm.VolumeProvisioningStrategy.ThinProvisioning,
+            addons={"thinProvisioningInitializeSize":5368709120}
         )
+
 
         self.assertEqual(True, rsp.success, rsp.error)
         self.assertEqual(lvm.lv_is_active("/dev/{}/{}".format(vg2Uuid,volumeUuid)), False)
@@ -190,3 +203,9 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(True, rsp.success, rsp.error)
         self.assertEqual(lvm.lv_is_active("/dev/{}/{}".format(vg2Uuid,volumeUuid)), True)
         self.assertEqual(lvm.lv_is_active("/dev/{}/{}".format(vg2Uuid,snaphostUuid)), True)
+
+        self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vgUuid, volumeUuid)))
+        self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vgUuid, snaphostUuid)))
+        self.assertGreaterEqual(str(lvm.calcLvReservedSize(1048576*100)), lvm.get_lv_size("/dev/%s/%s" % (vgUuid, snaphostUuid)))
+        # snapshot makes no change
+        self.assertEqual(str(lvm.calcLvReservedSize(1048576*100)), lvm.get_lv_size("/dev/%s/%s" % (vgUuid, volumeUuid)))

@@ -2,19 +2,12 @@ import os
 import os.path
 import re
 import random
-import tempfile
-import time
 import traceback
-import xxhash
 
-from distutils.version import LooseVersion
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
-from zstacklib.utils import http
-from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
 from zstacklib.utils import list_ops
@@ -116,6 +109,11 @@ class ResizeVolumeRsp(AgentRsp):
 class ExtendMergeTargetRsp(AgentRsp):
     def __init__(self):
         super(ExtendMergeTargetRsp, self).__init__()
+
+
+class ExtendMigarteTargetRsp(AgentRsp):
+    def __init__(self):
+        super(ExtendMigarteTargetRsp, self).__init__()
 
 
 class OfflineMergeSnapshotRsp(AgentRsp):
@@ -334,6 +332,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedblock/volume/revertfromsnapshot"
     MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/merge"
     EXTEND_MERGE_TARGET_PATH = "/sharedblock/snapshot/extendmergetarget"
+    EXTEND_MIGRATE_TARGET_PATH = "/sharedblock/volume/extendmigratetarget"
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/offlinemerge"
     CREATE_EMPTY_VOLUME_PATH = "/sharedblock/volume/createempty"
     CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/sharedblock/volume/createwithbacking"
@@ -384,6 +383,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.EXTEND_MERGE_TARGET_PATH, self.extend_merge_target)
+        http_server.register_async_uri(self.EXTEND_MIGRATE_TARGET_PATH, self.extend_migrate_target)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CONVERT_IMAGE_TO_VOLUME, self.convert_image_to_volume)
@@ -1193,6 +1193,20 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def extend_migrate_target(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ExtendMigarteTargetRsp()
+        dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
+
+        with lvm.OperateLv(dst_abs_path, shared=False):
+            current_size = int(lvm.get_lv_size(dst_abs_path))
+            if current_size < cmd.requiredSize:
+                lvm.extend_lv_from_cmd(dst_abs_path, cmd.requiredSize, cmd, extend_thin_by_specified_size=True)
+
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def offline_merge_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = OfflineMergeSnapshotRsp()
@@ -1256,8 +1270,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     rsp.size = linux.qcow2_virtualsize(install_abs_path)
                     linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
                     linux.qcow2_fill(0, 1048576, install_abs_path)
-                    if 'preallocation=metadata' in qcow2_options:
-                        linux.qcow2_discard(install_abs_path)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
@@ -1412,11 +1424,20 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         migrated_size = 0
 
         lvm.update_pv_allocate_strategy(cmd)
+
+        top = filter(lambda s: s.snapshotUuid is None, cmd.migrateVolumeStructs)[0].currentInstallPath
+        top = translate_absolute_path_from_install_path(top)
+
         for struct in cmd.migrateVolumeStructs:
             target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
             current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
 
-            if struct.independent:
+            if top == current_abs_path:
+                with lvm.OperateLv(current_abs_path, shared=True):
+                    lv_size = int(linux.qcow2_virtualsize(current_abs_path))
+                    lv_size = lvm.calcLvReservedSize(lv_size)
+                    struct.put('lv_size', lv_size)
+            elif struct.independent:
                 with lvm.RecursiveOperateLv(current_abs_path, shared=True):
                     lv_size = int(linux.qcow2_measure_required_size(current_abs_path))
                     lv_size = lvm.calcLvReservedSize(lv_size)
@@ -1441,16 +1462,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         PFILE = linux.create_temp_file()
         try:
-            report = Report.from_spec(cmd, 'MigrateVolumes')
             parent_stage = get_task_stage(cmd, "10-90")
-
-            def _get_progress(synced):
-                last = linux.tail_1(PFILE).strip()
-                if not last or not last.isdigit():
-                    return synced
-
-                report.progress_report(get_exact_percent_from_scale(last, start, end), "report")
-                return synced
 
             for struct in cmd.migrateVolumeStructs:
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
@@ -1463,13 +1475,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 start = get_exact_percent(float(migrated_size) / total_size * 100, parent_stage)
                 end = get_exact_percent(float(struct.lv_size + migrated_size) / total_size * 100, parent_stage)
 
-                if struct.independent:
-                    with lvm.RecursiveOperateLv(current_abs_path, shared=True):
-                        linux.create_template(current_abs_path, target_abs_path)
-                else:
-                    with lvm.OperateLv(current_abs_path, shared=True):
-                        t_bash = traceable_shell.get_shell(cmd)
-                        t_bash.bash_progress_1("pv -n %s > %s 2>%s" % (current_abs_path, target_abs_path, PFILE), _get_progress)
+                with lvm.RecursiveOperateLv(current_abs_path, shared=True):
+                    backing_file = None if struct.independent else linux.qcow2_get_backing_file(current_abs_path)
+                    opts = "" if not backing_file else " -B %s " % backing_file
+                    qcow2.create_template_with_task_daemon(current_abs_path, target_abs_path, cmd,
+                                                           opts=opts,
+                                                           stage="%s-%s" % (start, end),
+                                                           task_name="MigrateVolumes")
+
+                    if top == current_abs_path and cmd.provisioning == lvm.VolumeProvisioningStrategy.ThinProvisioning:
+                        lvm.active_lv(target_abs_path, shared=False)
+                        old_size, new_size = self.shrink_lv_on_qcow2(target_abs_path, cmd.addons[lvm.thinProvisioningInitializeSize])
+                        logger.debug("shrink lv %s from %s to %s on qcow2 after migration" % (target_abs_path, old_size, new_size))
+                        lvm.active_lv(target_abs_path, shared=True)
 
                 migrated_size += struct.lv_size
 
@@ -1487,9 +1505,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                             r, o, e = bash.bash_roe("%s %s" % (qemu_img.subcmd("check"), target_abs_path))
                             if r != 0 and "No errors were found" not in str(o):
                                 raise Exception("target qcow2 image[%s] has been corrupted after migration, stdout: %s, stderr: %s" % (target_abs_path, o ,e))
-
-                        logger.info("start to compare hash value between %s add %s" % (current_abs_path, target_abs_path))
-                        linux.compare_segmented_xxhash(current_abs_path, target_abs_path, int(lvm.get_lv_size(target_abs_path)), raise_exception=True, blocksize=10485760)
                     if current_backing_file and not struct.independent:
                         target_backing_file = current_backing_file.replace(previous_ps_uuid, target_ps_uuid)
                         lvm.active_lv(target_backing_file, shared=True)
@@ -1623,28 +1638,32 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = ShrinkSnapShotRsp()
 
-        size = None
-        old_size = None
         abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         with lvm.RecursiveOperateLv(abs_path, shared=False):
-            old_size = long(lvm.get_lv_size(abs_path))
-            check_result = qemu_img.get_check_result(abs_path)  # type: qemu_img.CheckResult
-            if check_result.allocated_clusters is None:
-                size = check_result.image_end_offset
-                lvm.resize_lv(abs_path, size, True)
-            else:
-                # if full allocated, do nothing
-                if check_result.allocated_clusters != check_result.total_clusters:
-                    size = check_result.image_end_offset
-                    lvm.resize_lv(abs_path, size, True)
+            rsp.oldSize, rsp.size = self.shrink_lv_on_qcow2(abs_path)
 
-            size = long(lvm.get_lv_size(abs_path))
-
-        rsp.oldSize = old_size
-        rsp.size = size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
+
+    def shrink_lv_on_qcow2(self, installPath, extra_size=0):
+        old_size = long(lvm.get_lv_size(installPath))
+        if 'qcow2' != linux.get_img_fmt(installPath):
+            return old_size, old_size
+
+        virtual_size = linux.qcow2_get_virtual_size(installPath)
+        check_result = qemu_img.get_check_result(installPath)  # type: qemu_img.CheckResult
+        if check_result.allocated_clusters is None or check_result.allocated_clusters != check_result.total_clusters:
+            new_size = long(check_result.image_end_offset) + extra_size
+            if new_size >= old_size:
+                return old_size, old_size
+            if new_size > virtual_size:
+                new_size = virtual_size
+
+            lvm.resize_lv(installPath, new_size, True)
+
+        new_size = long(lvm.get_lv_size(installPath))
+        return old_size, new_size
 
     @kvmagent.replyerror
     def get_qcow2_hashvalue(self, req):
