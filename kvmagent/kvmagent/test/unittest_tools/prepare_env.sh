@@ -110,7 +110,7 @@ prepare_mn_mock() {
     # in system env
     cd /root
     # python get-pip.py
-    yum install -y openssl-devel openssl libffi libffi-devel
+    yum --disablerepo=* --enablerepo=zstack-local,qemu-kvm-ev install -y openssl-devel openssl libffi libffi-devel
     umount /tmp
     mkdir -p /tmp
     cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
