@@ -364,6 +364,16 @@ def online_increase_cpu(vm_uuid, cpu_num):
     }))
 
 
+def apply_memory_balloon(vm_uuid_list, direction, percent):
+    # type: (list, str, int) -> None
+
+    return VM_PLUGIN.apply_memory_balloon(misc.make_a_request({
+        'vmUuids': vm_uuid_list,
+        'direction': direction,
+        'adjustPercent': percent
+    }))
+
+
 def online_increase_mem(vm_uuid, mem_size):
     # type: (str, long) -> None
 

@@ -858,6 +858,25 @@ def _get_free_memory():
 def _get_used_memory():
     return _get_total_memory() - _get_free_memory()
 
+@in_bash
+def apply_memory_reserve(reserved_memory_capacity):
+    machine_limit_memory = _get_total_memory() - reserved_memory_capacity
+    ret = bash_r("systemctl set-property machine.slice MemoryLimit=%s" % machine_limit_memory)
+    if ret != 0:
+        raise Exception("unable to set machine.slice MemoryLimit")
+
+@in_bash
+def close_machine_slice_oom_killer():
+    machine_slice_oom_killer_config_path = "/sys/fs/cgroup/memory/machine.slice/memory.oom_control"
+    if not os.path.exists(machine_slice_oom_killer_config_path):
+        raise Exception("%s doesn't exist" % machine_slice_oom_killer_config_path)
+    ret = bash_r('echo 1 > %s' % machine_slice_oom_killer_config_path)
+    if ret == 0:
+        return
+    else:
+        raise Exception("unable to close oom killer")
+
+
 class HostPlugin(kvmagent.KvmAgent):
     '''
     classdocs
@@ -994,7 +1013,10 @@ class HostPlugin(kvmagent.KvmAgent):
         linux.write_uuids("host", "host=%s" % self.host_uuid)
 
         vm_plugin.cleanup_stale_vnc_iptable_chains()
-        self.apply_iptables_rules(cmd.iptablesRules)
+        apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
+        rsp.iptablesSucc = apply_iptables_result
+        apply_memory_reserve(cmd.reservedMemory)
+        close_machine_slice_oom_killer()
 
         if self.host_socket is not None:
             self.host_socket.close()
