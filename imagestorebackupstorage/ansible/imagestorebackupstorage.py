@@ -63,13 +63,13 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
+if isZYJ and zyjDistribution != "":
+    host_post_info.distribution = zyjDistribution
 
 # include zstacklib.py
 host_info = get_remote_host_info_obj(host_post_info)
 releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
-if isZYJ and zyjDistribution != "":
-    host_post_info.distribution = zyjDistribution
 
 IS_AARCH64 = host_info.host_arch == 'aarch64'
 IS_MIPS64EL = host_info.host_arch == 'mips64el'
