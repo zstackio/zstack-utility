@@ -12,7 +12,7 @@ __ENV_SETUP__ = {
 }
 
 
-class TestHostConnect(TestCase, pytest_utils.PytestExtension):
+class TestHost(TestCase, pytest_utils.PytestExtension):
     @misc.test_for(handlers=[
         host_plugin.HostPlugin.CONNECT_PATH
     ])
@@ -24,9 +24,9 @@ class TestHostConnect(TestCase, pytest_utils.PytestExtension):
             'iptablesRules': [],
             'ignoreMsrs': False,
             'pageTableExtensionDisabled': False,
-            'version': '4.0',
-            'reservedMemory': 1024000,
+            'version': '4.0'
         }
+
         host = host_plugin.HostPlugin()
         host.configure()
         host.start()
