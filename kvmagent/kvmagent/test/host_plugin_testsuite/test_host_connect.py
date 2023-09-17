@@ -24,8 +24,7 @@ class TestHostConnect(TestCase, pytest_utils.PytestExtension):
             'iptablesRules': [],
             'ignoreMsrs': False,
             'pageTableExtensionDisabled': False,
-            'version': '4.0',
-            'reservedMemory': 1024000,
+            'version': '4.0'
         }
         host = host_plugin.HostPlugin()
         host.configure()
