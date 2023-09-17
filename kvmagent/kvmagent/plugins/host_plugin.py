@@ -865,16 +865,6 @@ def apply_memory_reserve(reserved_memory_capacity):
     if ret != 0:
         raise Exception("unable to set machine.slice MemoryLimit")
 
-@in_bash
-def close_machine_slice_oom_killer():
-    machine_slice_oom_killer_config_path = "/sys/fs/cgroup/memory/machine.slice/memory.oom_control"
-    if not os.path.exists(machine_slice_oom_killer_config_path):
-        raise Exception("%s doesn't exist" % machine_slice_oom_killer_config_path)
-    ret = bash_r('echo 1 > %s' % machine_slice_oom_killer_config_path)
-    if ret == 0:
-        return
-    else:
-        raise Exception("unable to close oom killer")
 
 
 class HostPlugin(kvmagent.KvmAgent):
@@ -1016,7 +1006,6 @@ class HostPlugin(kvmagent.KvmAgent):
         apply_iptables_result = self.apply_iptables_rules(cmd.iptablesRules)
         rsp.iptablesSucc = apply_iptables_result
         apply_memory_reserve(cmd.reservedMemory)
-        close_machine_slice_oom_killer()
 
         if self.host_socket is not None:
             self.host_socket.close()
