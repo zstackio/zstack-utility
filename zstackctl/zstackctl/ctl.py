@@ -1641,19 +1641,18 @@ class ShowStatusCmd(Command):
             else:
                 info('version: %s' % version)
         def show_hci_version():
-            hci_path = '/usr/local/hyperconverged/conf/VERSION'
-            if not os.path.exists(hci_path):
+            full_version = get_hci_full_version()
+            if not full_version:
                 return
-            with open(hci_path, 'r') as fd:
-                version = fd.readline().strip(' \t\n\r')
-                if version is not None: 
-                    if version[0].isdigit(): 
-                        info('Cube version: %s (Cube %s)' % (version.split('-')[0], version))
-                    else:
-                        list = version.split('-')
-                        hci_version = list[-3]
-                        hci_name = version.split("-%s-" % hci_version)
-                        info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
+            version = full_version.strip(' \t\n\r')
+            if version is not None: 
+                if version[0].isdigit(): 
+                    info('Cube version: %s (Cube %s)' % (version.split('-')[0], version))
+                else:
+                    list = version.split('-')
+                    hci_version = list[-3]
+                    hci_name = version.split("-%s-" % hci_version)
+                    info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
 
         def show_zsv_version():
             zsv_version = get_zsv_version()
@@ -6663,14 +6662,17 @@ def is_zsv_env():
     properties = PropertyFile(properties_file_path)
     return properties.read_property('deploy_mode') == 'zsv'
 
-def get_hci_detail_version():
+def get_hci_full_version():
     detailed_version_file = "/usr/local/hyperconverged/conf/VERSION"
     if os.path.exists(detailed_version_file):
         with open(detailed_version_file, 'r') as fd:
-            detailed_version = fd.read().strip()
-            return detailed_version.rsplit("-", 2)[0]
+            return fd.read().strip()
     else:
         return None
+
+def get_hci_detail_version():
+    full_version = get_hci_full_version()
+    return None if full_version is None else full_version.rsplit("-", 2)[0]
 
 def get_zsv_version():
     detailed_version_file = os.path.join(os.environ['ZSTACK_HOME'], 'WEB-INF', 'classes', 'zsphere_config', 'version')
@@ -10155,10 +10157,34 @@ class GetZStackVersion(Command):
         self.description = "get zstack version from database, eg. 2.4.0"
         ctl.register_command(self)
 
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('-a', '--addition', help="print zstack additional version", required=False, action='store_true')
+
     def run(self, args):
+        if args.addition:
+            sys.stdout.write(self.get_additional_version() + '\n')
+        else:
+            sys.stdout.write(self.get_main_version_from_db() + '\n')
+
+    def get_main_version_from_db(self):
         hostname, port, user, password = ctl.get_live_mysql_portal()
-        version = get_zstack_version(hostname, port, user, password)
-        sys.stdout.write(version + '\n')
+        return get_zstack_version(hostname, port, user, password)
+
+    # cube:  'AliyunHCI-Z 1.1.0'
+    # zsv:   'ZSphere 4.0.0'
+    # cloud: ''
+    def get_additional_version(self):
+        if is_hyper_converged_host():
+            version = get_hci_detail_version()
+            if not version:
+                return ''
+            clips = version.rsplit("-", 1)
+            return '%s %s' % (clips[0], clips[1]) if len(clips) == 2 else version
+        elif is_zsv_env():
+            version = get_zsv_version()
+            return 'ZSphere ' + version if version else 'ZSphere Unknown'
+        else:
+            return ''
 
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
