@@ -1082,7 +1082,7 @@ Parse command parameters error:
                                 "startPort":100,"endPort":1000}]'
 
   Query* [conditions] [Query_API_PARAMS]
-                query resources with query APIs; find details at http://zdoc.readthedocs.org/en/latest/userManual/query.html.
+                query resources with query APIs; find details at https://zstackdoc.readthedocs.io/en/latest/userManual/query.html.
 
                 conditions are arranged in format of:
 
