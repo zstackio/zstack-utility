@@ -4,13 +4,13 @@
 '''
 import sys, os, os.path
 from zstacklib.utils import log
-from zstacklib.utils import linux
-import zstacklib.utils.iptables as iptables
 
 pidfile = '/var/run/zstack/ceph-primarystorage.pid'
 log.configure_log('/var/log/zstack/ceph-primarystorage.log')
 logger = log.get_logger(__name__)
+
 import cephagent
+from zstacklib.utils import linux
 
 def prepare_pid_dir(path):
     pdir = os.path.dirname(path)
