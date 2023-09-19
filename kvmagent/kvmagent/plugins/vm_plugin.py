@@ -2533,6 +2533,9 @@ class Vm(object):
                   {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'})
                 e(disk, 'source', None, {'dev': volume.installPath})
 
+                if volume.shareable:
+                    e(disk, 'shareable')
+
                 if volume.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', volume.wwn)
@@ -4782,6 +4785,9 @@ class Vm(object):
                 e(disk, 'driver', None,
                   {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'})
                 e(disk, 'source', None, {'dev': _v.installPath})
+                
+                if _v.shareable:
+                    e(disk, 'shareable')
 
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
