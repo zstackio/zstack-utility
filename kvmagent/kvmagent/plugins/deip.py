@@ -77,9 +77,9 @@ class Eip(object):
         else:
             ns_name_suffix = ipaddr
 
-        arr = iproute.query_all_namespaces()
-        for ns in arr:
-            if (ns.endswith(ns_name_suffix)): # ns is like 'br_eth0_172_20_51_136'
+        netns = iproute.IpNetnsShell.list_netns()
+        for ns in netns:
+            if ns.endswith(ns_name_suffix):  # ns is like 'br_eth0_172_20_51_136'
                 return ns
 
         return None
@@ -99,7 +99,7 @@ class Eip(object):
 
         @bash.in_bash
         def delete_namespace():
-            iproute.delete_namespace_if_exists(NS_NAME)
+            iproute.IpNetnsShell(NS_NAME).del_netns()
 
         @bash.in_bash
         def delete_outer_dev():
@@ -186,6 +186,7 @@ class Eip(object):
         NIC_PREFIXLEN = eip.nicPrefixLen
         NIC_IP= eip.nicIp
         NIC_MAC= eip.nicMac
+        NIC_MAC_IN_EBTALES = ip.removeZeroFromMacAddress(NIC_MAC)
         NS_NAME = "%s_%s" % (eip.publicBridgeName, eip.vip.replace(".", "_"))
 
         EBTABLE_CHAIN_NAME= eip.vmBridgeName
@@ -203,7 +204,8 @@ class Eip(object):
         # in case the namespace deleted and the orphan outer link leaves in the system,
         # deleting the orphan link and recreate it
         def delete_orphan_outer_dev(inner_dev, outer_dev):
-            if not iproute.is_device_ifname_exists(inner_dev, NS_NAME):
+            mac = iproute.IpNetnsShell(NS_NAME).get_mac(inner_dev)
+            if mac is None:
                 iproute.delete_link_no_error(outer_dev)
 
         def create_dev_if_needed(outer_dev, outer_dev_desc, inner_dev, inner_dev_desc):
@@ -222,8 +224,10 @@ class Eip(object):
                 bash_errorout('brctl addif {{bridge}} {{device}}')
 
         def add_dev_namespace_if_needed(device, namespace):
-            if not iproute.is_device_ifname_exists(device, NS_NAME):
-                iproute.set_link_attribute(device, None, netns=namespace)
+            mac = iproute.IpNetnsShell(namespace).get_mac(device)
+            if mac is None:
+                iproute.IpNetnsShell(namespace).add_link(device)
+
 
         @bash.in_bash
         def set_ip_to_idev_if_needed(device, ipCmd, ip, prefix):
@@ -232,7 +236,7 @@ class Eip(object):
                 bash_errorout('eval {{NS}} {{ipCmd}} addr flush dev {{device}}')
                 bash_errorout('eval {{NS}} {{ipCmd}} addr add {{ip}}/{{prefix}} dev {{device}}')
 
-            iproute.set_link_up(device, NS_NAME)
+            iproute.IpNetnsShell(NS_NAME).set_link_up(device)
 
         @bash.in_bash
         def create_iptable_rule_if_needed(iptableCmd, table, rule, at_head=False):
@@ -313,11 +317,12 @@ class Eip(object):
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}')
-            GATEWAY = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
-            if not GATEWAY:
+            GATEWAY_MAC = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
+            if not GATEWAY_MAC:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
 
-            create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY}}")
+            GATEWAY_MAC = ip.removeZeroFromMacAddress(GATEWAY_MAC)
+            create_ebtable_rule_if_needed('nat', CHAIN_NAME, "-p ARP --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} -j arpreply --arpreply-mac {{GATEWAY_MAC}}")
 
             for BLOCK_DEV in [PRI_ODEV, PUB_ODEV]:
                 BLOCK_CHAIN_NAME = '{{BLOCK_DEV}}-arp'
@@ -325,7 +330,7 @@ class Eip(object):
                     bash_errorout(EBTABLES_CMD + ' -t nat -N {{BLOCK_CHAIN_NAME}}')
 
                 create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}")
-                create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{BLOCK_DEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC}} -j DROP")
+                create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME, "-p ARP -o {{BLOCK_DEV}} --arp-op Request --arp-ip-dst {{NIC_GATEWAY}} --arp-mac-src ! {{NIC_MAC_IN_EBTALES}} -j DROP")
 
             BLOCK_CHAIN_NAME = '{{NIC_NAME}}-arp'
             if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') != 0:
@@ -333,7 +338,7 @@ class Eip(object):
 
             create_ebtable_rule_if_needed('nat', 'POSTROUTING', "-p ARP -o {{NIC_NAME}} -j {{BLOCK_CHAIN_NAME}}")
             create_ebtable_rule_if_needed('nat', BLOCK_CHAIN_NAME,
-                                          "-p ARP -o {{NIC_NAME}} --arp-op Request --arp-ip-src {{NIC_GATEWAY}} --arp-mac-src ! {{GATEWAY}} -j DROP")
+                                          "-p ARP -o {{NIC_NAME}} --arp-op Request --arp-ip-src {{NIC_GATEWAY}} --arp-mac-src ! {{GATEWAY_MAC}} -j DROP")
 
         @bash.in_bash
         def set_gateway_arp_if_needed_v6():
@@ -343,10 +348,11 @@ class Eip(object):
                 bash_errorout(EBTABLES_CMD + ' -t nat -N {{CHAIN_NAME}}')
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}', at_head=True)
-            GATEWAY = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
-            if not GATEWAY:
+            GATEWAY_MAC = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
+            if not GATEWAY_MAC:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
 
+            GATEWAY_MAC = ip.removeZeroFromMacAddress(GATEWAY_MAC)
             # this is hack method to direct ipv6 external traffic to this eip namespace
             create_ebtable_rule_if_needed('nat', CHAIN_NAME,
                                           "-p IPv6 --ip6-destination {{NIC_GATEWAY}}/{{NIC_PREFIXLEN}} -j ACCEPT")
@@ -355,7 +361,7 @@ class Eip(object):
             create_ebtable_rule_if_needed('nat', CHAIN_NAME,
                                           "-p IPv6 --ip6-destination ff00::/8 -j ACCEPT")
             create_ebtable_rule_if_needed('nat', CHAIN_NAME,
-                                          "-p IPv6 -j dnat --to-destination {{GATEWAY}}")
+                                          "-p IPv6 -j dnat --to-destination {{GATEWAY_MAC}}")
 
         @bash.in_bash
         def enable_ipv6_forwarding():
@@ -424,11 +430,13 @@ class Eip(object):
 
             create_ebtable_rule_if_needed('nat', 'PREROUTING', '-i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}')
             create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN,
-                                          "-p ARP --arp-op Request --arp-ip-dst {{NIC_IP}} -j arpreply --arpreply-mac {{NIC_MAC}}", True)
+                                          "-p ARP --arp-op Request --arp-ip-dst {{NIC_IP}} -j arpreply --arpreply-mac {{NIC_MAC_IN_EBTALES}}", True)
             create_ebtable_rule_if_needed('nat', PRI_ODEV_CHAIN, "-p ARP --arp-op Request -j DROP")
 
         newCreated = False
-        if not iproute.is_namespace_exists(NS_NAME):
+
+        netns = iproute.IpNetnsShell.list_netns()
+        if NS_NAME not in netns:
             newCreated = True
             iproute.add_namespace(NS_NAME)
 
@@ -450,7 +458,7 @@ class Eip(object):
         add_dev_namespace_if_needed(PRI_IDEV, NS_NAME)
 
         if int(eip.ipVersion) == 4:
-            iproute.set_link_up_no_error(PUB_IDEV, NS_NAME)
+            iproute.IpNetnsShell(NS_NAME).set_link_up(PUB_IDEV)
             if newCreated and not eip.skipArpCheck:
                 r, o = bash.bash_ro('eval {{NS}} arping -D -w 1 -c 3 -I {{PUB_IDEV}} {{VIP}}')
                 if r != 0 and "Unicast reply from" in o:
@@ -463,7 +471,7 @@ class Eip(object):
             add_filter_to_prevent_namespace_arp_request()
 
             # ping VIP gateway
-            bash_r('eval {{NS}} arping -q -A -w 2.5 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
+            bash_r('eval {{NS}} arping -q -A -w 2 -c 3 -I {{PUB_IDEV}} {{VIP}} > /dev/null')
             set_gateway_arp_if_needed()
             set_eip_rules()
             set_default_route_if_needed("ip")

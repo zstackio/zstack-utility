@@ -2,7 +2,9 @@
 import os
 import socket
 import pyroute2
-from zstacklib.utils import log
+from zstacklib.utils import log, lock
+from zstacklib.utils import shell
+from zstacklib.utils import jsonobject
 
 logger = log.get_logger(__name__)
 
@@ -31,6 +33,7 @@ def _no_error_do(func):
             return False
     return aim_to_do
 
+@lock.lock("subprocess.popen")
 def get_iproute(namespace=None):
     '''
         :raise NoSuchNamespace   if namespace is not None and not exists
@@ -40,8 +43,8 @@ def get_iproute(namespace=None):
     # `NetNS` -- RTNL API to another network namespace
     if namespace is not None:
         # do not try and create the namespace
-        if is_namespace_exists(namespace):
-            return pyroute2.NetNS(namespace)
+        # if is_namespace_exists(namespace):
+        #    return pyroute2.NetNS(namespace)
         raise NoSuchNamespace(namespace)
     else:
         return pyroute2.IPRoute()
@@ -142,7 +145,7 @@ class IpLink:
         self.device_type = chunk.get_nested('IFLA_LINKINFO', 'IFLA_INFO_KIND')
         self.broadcast = chunk.get_attr('IFLA_BROADCAST') # type: str
         self.group = chunk.get_attr('IFLA_GROUP') # type: int
-        self.chunk = chunk  
+        self.chunk = chunk
 
 class IpRoute:
     def __init__(self, chunk):
@@ -289,7 +292,7 @@ def query_addresses(namespace=None, **kwargs):
                 kwargs['family'] = _check_ip_version(kwargs['ip_version'])
                 del kwargs['ip_version']
         return [IpAddr(chunk, ipr) for chunk in ipr.get_addr(**kwargs)]
-    
+
 def is_addresses_exists(namespace=None, **kwargs):
     '''
         :kwargs condition   see function query_addresses()
@@ -643,7 +646,7 @@ def list_namespace_pids(namespace):
         ns_inode = os.stat(ns_path).st_ino
     except OSError:
         return ns_pids
-    
+
     for pid in os.listdir('/proc'):
         if not pid.isdigit():
             continue
@@ -653,7 +656,7 @@ def list_namespace_pids(namespace):
                 ns_pids.append(int(pid))
         except OSError:
             continue
-    
+
     return ns_pids
 
 @_log_iproute_call("netns add")
@@ -727,3 +730,218 @@ def is_namespace_exists(namespace):
         if name == namespace:
             return True
     return False
+
+class VnicInfo:
+    def __init__(self):
+        self.name = None
+        self.mac = None
+        self.ip = None
+        self.ip6 = None
+        self.userdata_ip = None
+        self.link_local6 = None
+
+
+class IpNetnsShell:
+    def __init__(self, netns):
+        self.netns = netns
+        self.ns_id = 0
+
+    @classmethod
+    def list_netns(cls):
+        """
+        # ip netns list
+            br_vx_2345_cedfea26f493415489a3d09b006ec18b (id: 8)
+            br_eth0.1011_1bec20ad85114a928c0ec05eb171680d (id: 6)
+            br_vx_4090_65eed997b24c4b27b1b3e8d46f704cb6 (id: 5)
+            br_eth0_11f3ff42dc5b4a67b3eae3fdabefeb1c (id: 4)
+            br_vx_2345_e6ba353d762f440990717f5ba9cf6e52 (id: 3)
+            br_vx_2345_ff15a8b9765243cd93286a52f59a1e2a (id: 1)
+        """
+        netns = []
+        o = shell.call("ip netns list")
+        lines = o.split("\n")
+        for l in lines:
+            name = l.split(" ")[0].strip(" \r\n\t")
+            if name != "":
+                netns.append(name.strip())
+
+        return netns
+
+    @classmethod
+    def get_netns_id(cls, netns):
+        netns_id = 0
+        try:
+            """
+            # ip netns | grep br_zsn0_1101_6e6978996c044313b713d67b7a0dde93 | awk '{print $3}'
+            0)
+            """
+            o = shell.call("ip netns | grep %s  | awk '{print $3}'" % netns)
+            return o.strip(" \n\t\r)")
+        except Exception as e:
+            logger.debug("get ns failed%failed, ret:%s" % e)
+            return netns_id
+
+    def add_netns(self, ns_id):
+        o = shell.call('ip netns add %s' % self.netns)
+        logger.debug("exec cmd: ip netns add %s, result: %s"
+                     % (self.netns, o))
+        o = shell.call('ip netns set %s %s' % (self.netns, ns_id))
+        logger.debug("exec cmd: ip netns set %s %s, result: %s"
+                     % (self.netns, ns_id, self.netns))
+
+    def del_netns(self):
+        links = self.get_links()
+        for link in links:
+            self.del_link(link.name)
+
+        o = shell.call('ip netns delete  %s' % self.netns)
+        logger.debug("exec cmd: ip netns delete %s, result: %s"
+                     % (self.netns, o))
+
+    def get_links(self):
+        nics = []
+        try:
+            o = shell.call("ip netns exec %s ip address" % self.netns)
+        except Exception as e:
+            logger.debug("get ip link of namespace:%s  failed, ret:%s" % (self.netns, e))
+            return nics
+        """
+        # ip netns exec br_vx_170_cf2ac70c6f3a43f9bbddb6926fbc3b0c ip a
+        1: lo: <LOOPBACK> mtu 65536 qdisc noop state DOWN group default qlen 1000
+            link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+        9: inner0@if10: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc noqueue state UP group default qlen 1000
+            link/ether fa:b3:82:ef:15:9e brd ff:ff:ff:ff:ff:ff link-netnsid 0
+            inet 192.168.1.225/24 scope global inner0
+            valid_lft forever preferred_lft forever
+            inet 169.254.169.254/32 scope global inner0
+            valid_lft forever preferred_lft forever
+            inet6 2023::5a:28c1/64 scope global
+            valid_lft forever preferred_lft forever
+            inet6 fe80::f8b3:82ff:feef:159e/64 scope link tentative
+            valid_lft forever preferred_lft forever
+        12: ud_inner0@if13: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 65500 qdisc noqueue state UP group default qlen 1000
+            link/ether a2:7d:91:f9:bf:3d brd ff:ff:ff:ff:ff:ff link-netnsid 0
+            inet 169.254.64.2/18 scope global ud_inner0
+            valid_lft forever preferred_lft forever
+            inet6 fe80::a07d:91ff:fef9:bf3d/64 scope link
+            valid_lft forever preferred_lft forever
+
+        """
+        lines = o.split("\n")
+        nic = VnicInfo()
+        for l in lines:
+            if l == "":
+                continue
+            if "@" in l:
+                # save old interface
+                if nic.name is not None and nic.mac is not None:
+                    nics.append(nic)
+
+                nic = VnicInfo()
+                name = l.strip().split(" ")[1].strip(" \r\n\t")
+                nic.name = name.split("@")[0]
+            elif "link/ether" in l:
+                nic.mac = l.strip().split(" ")[1].strip(" \r\n\t")
+            elif "inet " in l:
+                ip = l.strip().split(" ")[1].split("/")[0].strip(" \r\n\t")
+                if "169.254.169" in ip:
+                    nic.userdata_ip = ip
+                else:
+                    nic.ip = ip
+
+            elif "inet6 " in l:
+                ip6 = l.strip().split(" ")[1].split("/")[0].strip(" \r\n\t")
+                if "fe80::" not in ip6:
+                    nic.ip6 = ip6
+                else:
+                    nic.link_local6 = ip6
+
+        # save last nic
+        if nic.name is not None and nic.mac is not None:
+            nics.append(nic)
+
+        for nic in nics:
+            logger.debug("get nic info: %s" % (jsonobject.dumps(nic)))
+        return nics
+
+    def del_link(self, link_name):
+        o = shell.call('ip netns exec %s ip link del  %s' % (self.netns, link_name))
+        logger.debug("exec cmd: ip netns exec %s ip link del  %s, result: %s"
+                     % (self.netns, link_name, o))
+
+    def add_link(self, link_name):
+        o = shell.call('ip link set %s netns %s' % (link_name, self.netns))
+        logger.debug("exec cmd: ip link set %s netns %s, result: %s"
+                     % (link_name, self.netns, o))
+
+    def get_mac(self, link_name):
+        mac = None
+        vnics = self.get_links()
+        for nic in vnics:
+            if nic.name == link_name:
+                mac = nic.mac
+
+        logger.debug("finding mac for link name: %s, ret %s" % (link_name, mac))
+        return mac
+
+    def get_link_name_by_ip(self, address, ip_version):
+        link_name = None
+        vnics = self.get_links()
+        for nic in vnics:
+            if ip_version == 4 and nic.ip == address:
+                link_name = nic.name
+            if ip_version == 6 and nic.ip6 == address:
+                link_name = nic.name
+
+        logger.debug("finding link name for ip: %s, ret %s" % (address, link_name))
+        return link_name
+
+    def get_ip_address(self, ip_version, link_name):
+        address = None
+        vnics = self.get_links()
+        for nic in vnics:
+            if nic.name == link_name:
+                if ip_version == 4:
+                    address = nic.ip
+                else:
+                    address = nic.ip6
+                break
+
+        logger.debug("finding ip address for link name: %s, ret %s" % (link_name, address))
+        return address
+
+    def get_userdata_ip_address(self, link_name):
+        address = None
+        vnics = self.get_links()
+        for nic in vnics:
+            if nic.name == link_name:
+                address = nic.userdata_ip
+
+        logger.debug("finding userdata ip address for link name: %s, ret %s" % (link_name, address))
+        return address
+
+    def get_link_local6_address(self, link_name):
+        address = None
+        vnics = self.get_links()
+        for nic in vnics:
+            if nic.name == link_name:
+                address = nic.link_local6
+
+        logger.debug("finding ipv6 link local ip address for link name: %s, ret %s" % (link_name, address))
+        return address
+
+    def set_link_up(self, link_name):
+        o = shell.call('ip netns exec %s ip link set %s up' % (self.netns, link_name))
+        logger.debug("exec cmd: ip netns exec %s ip link set %s up, result: %s"
+                     % (self.netns, link_name, o))
+
+    def flush_ip_address(self, link_name):
+        o = shell.call('ip netns exec %s ip address flush dev %s' % (self.netns, link_name))
+        logger.debug("exec cmd: ip netns exec %s ip address flush dev %s, result: %s"
+                     % (self.netns, link_name, o))
+
+    def add_ip_address(self, address, prefix, link_name):
+        o = shell.call('ip netns exec %s ip address add %s/%d dev %s' %
+                       (self.netns, address, prefix, link_name))
+        logger.debug("exec cmd: ip netns exec %s ip address add %s/%d dev %s, result: %s"
+                     % (self.netns, address, prefix, link_name, o))
