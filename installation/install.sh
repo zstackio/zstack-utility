@@ -44,7 +44,6 @@ REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
 UPGRADE='n'
 FORCE='n'
-ZSV_INSTALL='n'
 MINI_INSTALL='n'
 CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
@@ -135,6 +134,12 @@ DELETE_PY_CRYPTO=''
 SETUP_EPEL=''
 CONSOLE_PROXY_ADDRESS=''
 CURRENT_VERSION=''
+
+DEPLOY_CONFIG_PATH='./deploy.properties'
+ZSV_INSTALL='n'
+if [ -s "$DEPLOY_CONFIG_PATH" ]; then
+    grep "deploy.mode" $DEPLOY_CONFIG_PATH | grep "ZSV" &> /dev/null && ZSV_INSTALL='y'
+fi
 
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
@@ -3976,10 +3981,6 @@ fi
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
 # Copy zstack trial license into /var/lib/zstack/license
-if [ x"$ZSV_INSTALL" = x"y" ];then
-    ZSTACK_TRIAL_LICENSE='./zsv_trial_license'
-fi
-
 if [ -f $ZSTACK_TRIAL_LICENSE ]; then
   mkdir -p /var/lib/zstack/license
   /bin/cp -f $ZSTACK_TRIAL_LICENSE /var/lib/zstack/license/zstack_trial_license
