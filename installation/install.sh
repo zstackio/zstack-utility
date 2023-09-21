@@ -3987,6 +3987,7 @@ check_ha_need_upgrade()
 
 add_zops_init_cronjob() {
     if [ "$ZSTACK_RELEASE" != "c76" ] && [ "$ZSTACK_RELEASE" != "c79" ]; then
+      sed -i '/zops_init.py/d' /var/spool/cron/root
       return
     fi
 
