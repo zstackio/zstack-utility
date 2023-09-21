@@ -244,8 +244,7 @@ class HostNetworkInterfaceStruct(object):
         self.offloadStatus = None
 
 
-def del_novlan_bridge(req):
-    cmd = jsonobject.loads(req[http.REQUEST_BODY])
+def del_novlan_bridge(cmd):
     linux.delete_novlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
     logger.debug('successfully delete bridge[%s] with physical interface[%s]' % (
         cmd.bridgeName, cmd.physicalInterfaceName))
