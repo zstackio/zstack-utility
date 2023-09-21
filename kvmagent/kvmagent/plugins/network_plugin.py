@@ -330,7 +330,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             #    shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
 
     def _configure_bridge_learning(self, bridgeName, interf, learning='on'):
-        shell.call("bridge link set dev %s learning %s" % (interf, learning))
+        shell.call("bridge link set dev %s learning %s" % (interf, learning), False)
 
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
