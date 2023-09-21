@@ -8009,13 +8009,13 @@ host side snapshot files chian:
     def query_block_job_status(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        for i in range(0, 3):
+        for i in range(0, 6):
             r, o, err = execute_qmp_command(cmd.vmUuid, '{"execute":"query-block-jobs"}')
             if err:
                 rsp.success = False
                 rsp.error = "Failed to query block jobs, report error"
                 return jsonobject.dumps(rsp)
-            time.sleep(1)
+            time.sleep(0.5)
 
         return jsonobject.dumps(rsp)
 
