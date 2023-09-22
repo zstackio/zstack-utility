@@ -1557,10 +1557,11 @@ def get_cpu_speed():
     try:
         (name, speed) = out.split(':')
         speed = speed.strip()
+        cpu_speed = int(float(speed))
     except Exception:
-        speed = "0"
+        cpu_speed = 0
     #logger.warn('%s is not existing, getting cpu speed from "cpu MHZ" of /proc/cpuinfo which may not be accurate' % max_freq)
-    return int(float(speed))
+    return cpu_speed
 
 def full_path(path):
     if path.startswith('~'):
