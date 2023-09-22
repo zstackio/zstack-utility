@@ -1293,7 +1293,7 @@ def _need_retry_active_lv(arg, exception):
     lock = get_lock_hold_by_us()
     if lock is not None:
         logger.debug("find lv lock hold by us on lockspace but not on client, directly init lv[path:%s]" % path)
-        return sanlock.sanlock_direct_init_resource(lock) == 0
+        return sanlock.direct_init_resource(lock) == 0
 
     return False
 
@@ -1752,18 +1752,18 @@ def examine_lockspace(lockspace):
     return r
 
 
-def check_stuck_vglk():
+def check_stuck_vglk_and_gllk():
     @linux.retry(3, 1)
-    def is_stuck_vglk():
-        r, o, e = bash.bash_roe("sanlock client status | grep ':VGLK:'")
+    def is_stuck_vglk_or_gllk():
+        r, o, e = bash.bash_roe("sanlock client status | grep -E ':VGLK:|:GLLK:'")
         if r != 0:
             return
         else:
-            raise RetryException("found sanlock vglk lock stuck")
+            raise RetryException("found sanlock vglk/gllk stuck")
     try:
-        is_stuck_vglk()
+        is_stuck_vglk_or_gllk()
     except Exception as e:
-        r, o, e = bash.bash_roe("sanlock client status | grep ':VGLK:'")
+        r, o, e = bash.bash_roe("sanlock client status | grep -E ':VGLK:|:GLLK:'")
         if r != 0:
             return
         if len(o.strip().splitlines()) == 0:
@@ -1773,9 +1773,25 @@ def check_stuck_vglk():
                 continue
             cmd = "sanlock client release -%s" % stucked.replace(" p ", " -p ")
             r, o, e = bash.bash_roe(cmd)
-            logger.warn("find stuck vglk and already released, detail: [return_code: %s, stdout: %s, stderr: %s]" %
+            logger.warn("find stuck vglk/gllk and already released, detail: [return_code: %s, stdout: %s, stderr: %s]" %
                         (r, o, e))
 
+    check_lock = lock._get_lock("check-vglk-and-gllk")
+    if check_lock.acquire(False) is False:
+        logger.debug("other thread is checking vglk or gllk...")
+        return
+
+    def release_lock(lck):
+        try:
+            lck.release()
+        except Exception:
+            return
+    try:
+        sanlock.check_stuck_vglk_and_gllk()
+    except Exception as e:
+        logger.debug("an exception was found on checking abnormal vglk/gllk: %s" % str(e))
+    finally:
+        release_lock(check_lock)
 
 @bash.in_bash
 def fix_global_lock():
@@ -1843,7 +1859,7 @@ def vgck(vgUuid, timeout):
 
 def lvm_vgck(vgUuid, timeout):
     health, o, e = vgck(vgUuid, 360 if timeout < 360 else timeout)
-    check_stuck_vglk()
+    check_stuck_vglk_and_gllk()
 
     if health != 0:
         s = "vgck %s failed, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, health, o, e)
