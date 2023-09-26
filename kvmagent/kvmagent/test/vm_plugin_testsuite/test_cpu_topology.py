@@ -82,6 +82,44 @@ class TestVmCpuTopology(TestCase, vm_utils.VmPluginTestStub):
 
         self._destroy_vm(vm.vmInstanceUuid)
 
+    def test_vm_cpu_without_cpu_hot_plug_2(self):
+        vm = vm_utils.create_startvm_body_jsonobject()
+        vm.useNuma = False
+        vm.socketNum = 2
+        vm.cpuOnSocket = 4
+        vm.threadsPerCore = 1
+        vm.cpuNum = 8
+        vm.maxVcpuNum = vm.socketNum * vm.cpuOnSocket * vm.threadsPerCore
+
+        vm_utils.create_vm(vm)
+
+        _, o = bash.bash_ro("virsh dumpxml %s | grep topology" % vm.vmInstanceUuid)
+        self.assertEqual(o.strip(), "<topology sockets='2' cores='4' threads='1'/>", "unexpected cpu topology")
+
+        _, o = bash.bash_ro("virsh dumpxml %s | grep 'vcpu placement='" % vm.vmInstanceUuid)
+        self.assertEqual(o.strip(), "<vcpu placement='static' current='8'>8</vcpu>", "unexpected cpu after increase vcpu")
+
+        self._destroy_vm(vm.vmInstanceUuid)
+
+    def test_vm_cpu_without_cpu_hot_plug(self):
+        vm = vm_utils.create_startvm_body_jsonobject()
+        vm.useNuma = False
+        vm.socketNum = 2
+        vm.cpuOnSocket = 4
+        vm.threadsPerCore = 1
+        vm.cpuNum = 1
+        vm.maxVcpuNum = vm.socketNum * vm.cpuOnSocket * vm.threadsPerCore
+
+        vm_utils.create_vm(vm)
+
+        _, o = bash.bash_ro("virsh dumpxml %s | grep topology" % vm.vmInstanceUuid)
+        self.assertEqual(o.strip(), "<topology sockets='2' cores='4' threads='1'/>", "unexpected cpu topology")
+
+        _, o = bash.bash_ro("virsh dumpxml %s | grep 'vcpu placement='" % vm.vmInstanceUuid)
+        self.assertEqual(o.strip(), "<vcpu placement='static' current='1'>8</vcpu>", "unexpected cpu after increase vcpu")
+
+        self._destroy_vm(vm.vmInstanceUuid)
+
     def test_vm_cpu_hot_plug(self):
         vm = vm_utils.create_startvm_body_jsonobject()
         vm.useNuma = True
