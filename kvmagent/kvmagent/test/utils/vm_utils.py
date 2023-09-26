@@ -301,13 +301,6 @@ def create_startvm_body_jsonobject_with_virtio_scsi_volume_iothread(vol_uuid, vo
     return jsonobject.loads(jsonobject.dumps(body))
 
 
-def increase_vm_cpu(vm_uuid, cpu_num):
-    return VM_PLUGIN.online_increase_cpu(misc.make_a_request({
-        'vmUuid': vm_uuid,
-        'cpuNum': cpu_num
-    }))
-
-
 def create_vm(startvm_body):
     return VM_PLUGIN.start_vm(misc.make_a_request(startvm_body))
 

@@ -4624,11 +4624,7 @@ class Vm(object):
                 eval("on_{}".format(HOST_ARCH))()
             else:
                 root = elements['root']
-                if cmd.maxVcpuNum != 0:
-                    e(root, 'vcpu', str(cmd.maxVcpuNum), {'placement': 'static', 'current': str(cmd.cpuNum)})
-                else:
-                    e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
-
+                e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
                 tune = e(root, 'cputune')
 
                 if cmd.addons and cmd.addons.hasattr("ioThreadPins") and cmd.addons.ioThreadPins:
