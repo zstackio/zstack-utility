@@ -45,11 +45,11 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(True, rsp.success, rsp.error)
 
         imageUuid=misc.uuid()
-        r,o = bash.bash_ro('lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(imageUuid, vgUuid))
-        self.assertEqual(0, r, "create lv failed, because {}".format(o))
-
-        r, o = bash.bash_ro("cp /root/.zguest/min-vm.qcow2 /dev/{}/{}".format(vgUuid, imageUuid))
-        self.assertEqual(0, r, "cp image failed, because {}".format(o))
+        size = os.stat("/root/.zguest/min-vm.qcow2").st_size
+        ecmd = 'lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size {}b --name {} {}'.format(size, imageUuid, vgUuid)
+        print(ecmd)
+        bash.bash_errorout(ecmd)
+        bash.bash_errorout("cp /root/.zguest/min-vm.qcow2 /dev/%s/%s" % (vgUuid, imageUuid))
 
         if not os.path.exists("/tmp"):
             os.mkdir("/tmp")

@@ -1,3 +1,5 @@
+import os
+
 import pytest
 from unittest import TestCase
 from kvmagent.test.utils.stub import init_kvmagent
@@ -75,16 +77,11 @@ class TestShareBlockVolumeWithIoThreadPin(TestCase, SharedBlockPluginTestStub):
         logger.info("image uuid: %s" % imageUuid)
         # download image to shareblock
 
-        logger.info(
-            'lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(
-                imageUuid, vgUuid))
-        r, o = bash.bash_ro(
-            'lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(
-                imageUuid, vgUuid))
-        self.assertEqual(0, r, "create lv failed, because {}".format(o))
-
-        r, o = bash.bash_ro("cp /root/.zguest/min-vm.qcow2 /dev/%s" % imageUuid)
-        self.assertEqual(0, r, "cp image failed, because {}".format(o))
+        size = os.stat("/root/.zguest/min-vm.qcow2").st_size
+        ecmd = 'lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size {}b --name {} {}'.format(size, imageUuid, vgUuid)
+        logger.info(ecmd)
+        bash.bash_errorout(ecmd)
+        bash.bash_errorout("cp /root/.zguest/min-vm.qcow2 /dev/%s/%s" % (vgUuid, imageUuid))
 
         # create volume
         # test disconnect shareblock

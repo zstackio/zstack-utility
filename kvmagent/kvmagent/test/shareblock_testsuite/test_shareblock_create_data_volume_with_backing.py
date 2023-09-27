@@ -1,3 +1,5 @@
+import os
+
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
 from zstacklib.utils import bash
@@ -63,13 +65,11 @@ class TestSharedBlockPlugin(TestCase,SharedBlockPluginTestStub):
         )
         imageUuid=misc.uuid()
         # download image to shareblock
-        print("debug")
-        print ('lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(imageUuid, vgUuid))
-        r,o = bash.bash_ro('lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size 7995392b --name {} {}'.format(imageUuid, vgUuid))
-        self.assertEqual(0, r, "create lv failed, because {}".format(o))
-
-        r, o = bash.bash_ro("cp /root/.zguest/min-vm.qcow2 /dev/%s" % imageUuid)
-        self.assertEqual(0, r, "cp image failed, because {}".format(o))
+        size = os.stat("/root/.zguest/min-vm.qcow2").st_size
+        ecmd = 'lvcreate -ay --wipesignatures y --addtag zs::sharedblock::image --size {}b --name {} {}'.format(size, imageUuid, vgUuid)
+        print(ecmd)
+        bash.bash_errorout(ecmd)
+        bash.bash_errorout("cp /root/.zguest/min-vm.qcow2 /dev/%s/%s" % (vgUuid, imageUuid))
 
         # create volume
         # test disconnect shareblock
