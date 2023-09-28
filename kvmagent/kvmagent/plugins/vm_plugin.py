@@ -7000,19 +7000,41 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVmConsoleScreenshotRsp()
         
-        tmp_ppm = "/tmp/%s.ppm" % cmd.vmUuid
-        r, o, e = bash.bash_roe("virsh screenshot %s %s" % (cmd.vmUuid, tmp_ppm))
-        if r != 0:
-            rsp.success = False
-            rsp.error = "failed to take vm console screenshot, because: %s" % e
-            return jsonobject.dumps(rsp)
-        tmp_img = image.convert_image(tmp_ppm)
-        with open(tmp_img, 'rb') as f:
-            img_data = f.read()
+        @LibvirtAutoReconnect
+        def create_stream(conn):
+            return conn.newStream()
 
-        rsp.imageData = 'data:image/png;base64,' + base64.b64encode(img_data).decode('utf-8')
-        os.remove(tmp_ppm)
-        os.remove(tmp_img)
+        def read_stream_to_file(stream, file_path):
+            with open(file_path, 'wb') as f:
+                for data in iter(lambda: stream.recv(262120), b''):
+                    f.write(data)
+        
+        stream = create_stream()
+        if stream is None:
+            rsp.success = False
+            rsp.error = "failed to create libvirt stream"
+            return jsonobject.dumps(rsp)
+        
+        tmp_ppm = "/tmp/%s.ppm" % cmd.vmUuid
+        tmp_img = "/tmp/%s.png" % cmd.vmUuid
+        try:
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            vm.domain.screenshot(stream, 0)
+            read_stream_to_file(stream, tmp_ppm)
+
+            tmp_img = image.convert_image(tmp_ppm)
+            with open(tmp_img, 'rb') as f:
+                img_data = f.read()
+
+            rsp.imageData = 'data:image/png;base64,' + base64.b64encode(img_data).decode('utf-8')
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = str(e)
+            rsp.success = False
+        finally:
+            stream.finish()
+            linux.rm_file_force(tmp_ppm)
+            linux.rm_file_force(tmp_img)
         return jsonobject.dumps(rsp)
 
     def _stop_vm(self, cmd):
