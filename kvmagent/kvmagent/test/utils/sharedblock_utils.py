@@ -337,7 +337,7 @@ def shareblock_get_qcow2_hashvalue(installPath=None):
 
 @misc.return_jsonobject()
 def sharedblock_check_lock(vgUuids=[]):
-    return get_sharedblock_plugin().check_lock(misc.make_a_request({
+    return get_sharedblock_plugin().check_vg_state(misc.make_a_request({
         "vgUuids": vgUuids
     }))
 
