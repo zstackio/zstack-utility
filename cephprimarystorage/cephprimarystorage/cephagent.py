@@ -23,7 +23,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.rollback import rollback, rollbackable
 from zstacklib.utils.plugin import completetask
 import os
-from zstacklib.utils import shell, iproute
+from zstacklib.utils import shell, iproute, remotetarget
 from zstacklib.utils import plugin
 from zstacklib.utils import linux
 from zstacklib.utils import ceph
@@ -239,6 +239,11 @@ class DownloadBitsFromNbdRsp(AgentResponse):
         super(DownloadBitsFromNbdRsp, self).__init__()
         self.diskSize = None
 
+class DownloadBitsFromRemoteTargetRsp(AgentResponse):
+    def __init__(self):
+        super(DownloadBitsFromRemoteTargetRsp, self).__init__()
+        self.diskSize = None
+
 def replyerror(func):
     @functools.wraps(func)
     def wrap(*args, **kwargs):
@@ -329,6 +334,7 @@ class CephAgent(plugin.TaskManager):
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download"
     DOWNLOAD_BITS_FROM_NBD_EXPT_PATH = "/ceph/primarystorage/nbd/download"
     CLAEN_TRASH_PATH = "/ceph/primarystorage/trash/clean"
+    DOWNLOAD_BITS_FROM_REMOTE_TARGET_PATH = "/ceph/primarystorage/remotetarget/download"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/ceph/primarystorage/kvmhost/download/progress"
     JOB_CANCEL = "/job/cancel"
@@ -406,6 +412,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_NBD_EXPT_PATH, self.download_from_nbd)
         self.http_server.register_async_uri(self.CLAEN_TRASH_PATH, self.clean_trash)
+        self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_REMOTE_TARGET_PATH, self.download_from_remote_target)
 
         self.http_server.register_async_uri(self.XSKY_GET_BLOCK_VOLUME_ACCESS_PATH, self.get_block_volume_access)
         self.http_server.register_async_uri(self.XSKY_RESIZE_BLOCK_VOLUME, self.resize_block_volume)
@@ -1509,6 +1516,18 @@ class CephAgent(plugin.TaskManager):
 
         rsp.diskSize = self._nbd2rbd(u.hostname, u.port, os.path.basename(u.path), self._normalize_install_path(rbdtarget), bandwidth,
                       Report.from_spec(cmd, "DownFromNbd"), rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def download_from_remote_target(self, req):
+        rsp = DownloadBitsFromRemoteTargetRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        uri = cmd.remoteTargetUri
+        dst_path = self._normalize_install_path(cmd.primaryStorageInstallPath)
+
+        target = remotetarget.get_remote_target_from_uri(uri)
+        target.download("rbd:%s" % dst_path)
+        rsp.diskSize = self._get_file_size(dst_path)
         return jsonobject.dumps(rsp)
 
     @replyerror
