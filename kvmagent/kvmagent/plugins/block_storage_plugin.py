@@ -323,7 +323,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         successfully_find_lun = self.check_lun_status(cmd_info)
         return successfully_find_lun
 
-    @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
+    @linux.retry(times=20, sleep_time=random.uniform(1, 3))
     def wait_lun_ready(self, abs_path):
         if os.path.exists(abs_path) is True:
             logger.debug("successfully find lun wwn: " + abs_path)
@@ -384,7 +384,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             logger.debug(e)
         return jsonobject.dumps(rsp)
 
-    @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
+    @linux.retry(times=10, sleep_time=random.uniform(1, 3))
     def wait_lun_deleted(self, abs_path):
         if os.path.exists(abs_path) is False:
             logger.debug("lun: %s has been deleted." % abs_path)
