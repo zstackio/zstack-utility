@@ -25,6 +25,12 @@ class GetCardIDRsp(AgentRsp):
         self.cardId = None
 
 
+class CheckSocRsp(AgentRsp):
+    def __init__(self):
+        super(CheckSocRsp, self).__init__()
+        self.exist = False
+
+
 class SocCreateVmRsp(AgentRsp):
     def __init__(self):
         super(SocCreateVmRsp, self).__init__()
@@ -41,6 +47,7 @@ class Soc(kvmagent.KvmAgent):
     SOC_RECOVER_FROM_BACKUP_PATH = "/vm/soc/recover"
     SOC_REVERT_SNAPSHOT_PATH = "/vm/soc/revert"
     SOC_GET_CARD_ID_PATH = "/soc/card/id"
+    SOC_CHECK_PATH = "/soc/check"
     SOC_START_VM_ON_NEW_HOST = "/vm/soc/startOnNewHost"
 
     def start(self):
@@ -56,6 +63,7 @@ class Soc(kvmagent.KvmAgent):
         http_server.register_async_uri(self.SOC_REVERT_SNAPSHOT_PATH, self.soc_revert_snapshot)
         http_server.register_async_uri(self.SOC_GET_CARD_ID_PATH, self.soc_get_card_id)
         http_server.register_async_uri(self.SOC_START_VM_ON_NEW_HOST, self.soc_start_vm_on_new_host)
+        http_server.register_async_uri(self.SOC_CHECK_PATH, self.check_soc)
 
     def stop(self):
         pass
@@ -70,6 +78,25 @@ class Soc(kvmagent.KvmAgent):
         if ret != 16 and ret != 32 and ret != 48:
             raise Exception("get SSCard info error")
         rsp.cardId = opt.raw[0:16]
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def check_soc(self, req):
+        rsp = CheckSocRsp()
+        handler = soc_handler.get_soc_handler(req)
+        ret, msg = handler.check_soc(req)
+        rsp.success = False
+        rsp.error = msg
+        if ret == 0:
+            rsp.success = True
+            rsp.exist = False
+            rsp.error = ""
+        if ret == 1:
+            rsp.success = True
+            rsp.exist = True
+            rsp.error = ""
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
