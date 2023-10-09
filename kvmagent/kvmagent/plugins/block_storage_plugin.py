@@ -158,8 +158,10 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RESIZE_VOLUME_PATH, self.resize_volume)
         http_server.register_async_uri(self.RESCAN_LUN_PATH, self.rescan_disk)
         http_server.register_async_uri(self.NO_FAILURE_PING_PATH, self.no_failure_ping)
-        http_server.register_async_uri(self.MOUNT_TEMP_IMAGE_CACHE_LUN, self.mount_temp_image_cache_lun, cmd=MountImageCacheLunCmd())
-        http_server.register_async_uri(self.CONVERT_IMAGE_CACHE_TO_LUN, self.convert_image_cache_to_lun, cmd=ConvertImageToLunCmd)
+        http_server.register_async_uri(self.MOUNT_TEMP_IMAGE_CACHE_LUN, self.mount_temp_image_cache_lun,
+                                       cmd=MountImageCacheLunCmd())
+        http_server.register_async_uri(self.CONVERT_IMAGE_CACHE_TO_LUN, self.convert_image_cache_to_lun,
+                                       cmd=ConvertImageToLunCmd)
         http_server.register_async_uri(self.UMOUNT_PATH, self.umount_path)
 
         self.imagestore_client = ImageStoreClient()
@@ -200,7 +202,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             rsp.error = "fail to umount path: " + cmd.path
         return jsonobject.dumps(rsp)
 
-
     @kvmagent.replyerror
     @bash.in_bash
     def mount_temp_image_cache_lun(self, req):
@@ -220,7 +221,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             rsp.error = "fail to mount %s to %s" % (lun_install_path, mount_path)
 
         return jsonobject.dumps(rsp)
-
 
     @kvmagent.replyerror
     def rescan_disk(self, req):
@@ -377,7 +377,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         rsp.success = True
         logout_cmd = jsonobject.loads(req[http.REQUEST_BODY])
         try:
-            self._logout_target(logout_cmd.wwn)
+            self._logout_target(logout_cmd)
         except Exception as e:
             rsp.success = False
             rsp.error = e.message
@@ -394,11 +394,22 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         raise RetryException("fail to delete lun: " + abs_path)
 
     @bash.in_bash
-    def _logout_target(self, wwn):
+    def _logout_target(self, logout_cmd):
+        wwn = logout_cmd.wwn
         disk_path = translate_absolute_path_from_wwn(wwn)
         device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % disk_path).strip();
         linux.write_file("/sys/block/%s/device/delete" % device_letter, "1")
         self.wait_lun_deleted(disk_path)
+
+        sid = bash.bash_o("iscsiadm -m session | grep %s:%s | grep %s | awk '{print $2}'" % (
+            logout_cmd.iscsiServerIp, logout_cmd.iscsiServerPort, logout_cmd.target)).strip("[]\n ")
+        if sid == "" or sid is None:
+            return
+
+        attached_lun = bash.bash_o("iscsiadm -m session -r %s -P 3 | grep 'Attached scsi disk' | grep 'running'" % sid)
+        if attached_lun == "" or attached_lun is None:
+            shell.call('timeout 10 iscsiadm --mode node --targetname "%s" -p %s:%s --logout' % (
+                logout_cmd.target, logout_cmd.iscsiServerIp, logout_cmd.iscsiServerPort))
 
     @bash.in_bash
     def iscsi_login(self, loginCmd):
