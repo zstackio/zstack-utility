@@ -989,15 +989,15 @@ def qemu_img_resize(target, size, fmt='qcow2', force=False):
     force_option = '--shrink' if force else ''
     shell.check_run('/usr/bin/qemu-img resize %s %s %s %s' % (fmt_option, force_option, target, size))
 
-def qcow2_create_with_cmd(dst, size, cmd=None):
+def qcow2_create_with_cmd(dst, size, cmd=None, discard_on_metadata=True):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
         qcow2_create(dst, size)
     else:
-        qcow2_create_with_option(dst, size, cmd.kvmHostAddons.qcow2Options)
+        qcow2_create_with_option(dst, size, cmd.kvmHostAddons.qcow2Options, discard_on_metadata)
 
-def qcow2_create_with_option(dst, size, opt=""):
+def qcow2_create_with_option(dst, size, opt="", discard_on_metadata=True):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
-    if 'preallocation=metadata' in opt:
+    if 'preallocation=metadata' in opt and discard_on_metadata:
         qcow2_discard(dst)
     os.chmod(dst, 0o660)
 
@@ -1219,6 +1219,16 @@ qemu-io -c "discard $[i*2145386496] {2}" -f qcow2 -d unmap {1}
 
     cmd(False)
     logger.debug("qcow2 discard return code: %s, stderr: %s" % (cmd.return_code, cmd.stderr))
+
+def get_block_discard_max_bytes(path):
+    if not os.path.exists(path):
+        raise Exception("block device %s not exists" % path)
+
+    discard_max_bytes = read_file('/sys/class/block/%s/queue/discard_max_bytes' % os.path.basename(path))
+    return 0 if discard_max_bytes is None else long(discard_max_bytes)
+
+def support_blkdiscard(path):
+    return get_block_discard_max_bytes(path) > 0
 
 class AbstractFileConverter(object):
     __metaclass__ = abc.ABCMeta
