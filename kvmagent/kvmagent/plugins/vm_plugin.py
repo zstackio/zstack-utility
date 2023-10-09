@@ -139,6 +139,7 @@ class VolumeTO(object):
                 v.is_cdrom = xml_obj.attrib['device'] == 'cdrom'
                 return v
 
+    # TODO remove it, should converted in MN
     @staticmethod
     def get_volume_actual_installpath(install_path):
         if install_path.startswith('sharedblock'):
@@ -2764,8 +2765,12 @@ class Vm(object):
 
     @staticmethod
     def set_volume_serial_id(vol_uuid, volume_xml_obj):
-        if volume_xml_obj.get('type') != 'block' or volume_xml_obj.get('device') != 'lun':
-            e(volume_xml_obj, 'serial', vol_uuid)
+        vol_type = volume_xml_obj.get('type')
+        if vol_type == 'vhostuser':
+            return
+        if vol_type == 'block' and volume_xml_obj.get('device') == 'lun':
+            return
+        e(volume_xml_obj, 'serial', vol_uuid)
 
     def _attach_data_volume(self, volume, addons):
         Vm.check_device_exceed_limit(volume.deviceId)
@@ -2916,6 +2921,29 @@ class Vm(object):
 
             return blk()
 
+        def vhost_volume():
+            if not os.path.exists(volume.installPath):
+                raise Exception("vhostuser disk %s does not exist" % volume.installPath)
+
+            disk = etree.Element('disk', {'type': 'vhostuser', 'device': 'disk', 'snapshot': 'no'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': volume.format})
+            source = e(disk, 'source', None, {'type': 'unix', 'path': volume.installPath})
+            e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
+
+            if volume.shareable:
+                e(disk, 'shareable')
+
+            if volume.useVirtioSCSI:
+                e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
+                e(disk, 'wwn', volume.wwn)
+            elif volume.useVirtio:
+                e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+            else:
+                bus_type = self._get_controller_type()
+                dev_format = Vm._get_disk_target_dev_format(bus_type)
+                e(disk, 'target', None, {'dev': dev_format % dev_letter, 'bus': bus_type})
+            return disk
+
         dev_letter = self._get_device_letter(volume, addons)
         volume = file_volume_check(volume)
 
@@ -2938,6 +2966,8 @@ class Vm(object):
             disk_element = block_volume()
         elif volume.deviceType == 'spool':
             disk_element = spool_volume()
+        elif volume.deviceType == 'vhost':
+            disk_element = vhost_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -3240,6 +3270,10 @@ class Vm(object):
             # 'block':
             if disk.source.dev__ and disk.source.dev_ in installPath:
                 return disk, disk.target.dev_
+            
+            # vhost
+            if disk.source.path__ and disk.source.path_ == installPath:
+                return disk, disk.target.dev_
 
         if not is_exception:
             return None, None
@@ -3291,6 +3325,10 @@ class Vm(object):
                     disk.driver.type_ = "qcow2"
                     disk.source = disk.backingStore.source
                     return disk, disk.backingStore.source.file_
+            elif volume.deviceType == 'vhost':
+                if disk.source.path__ and disk.source.path_ == volume.installPath:
+                    return disk, disk.target.dev_
+
         if not is_exception:
             return None, None
 
@@ -5423,6 +5461,32 @@ class Vm(object):
 
                 return disk
 
+            def vhost_volume(_dev_letter, _v):
+                if not os.path.exists(_v.installPath):
+                    raise Exception("vhostuser disk %s does not exist" % _v.installPath)
+            
+                disk = etree.Element('disk', {'type': 'vhostuser', 'device': 'disk', 'snapshot': 'no'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': _v.format})
+                source = e(disk, 'source', None, {'type': 'unix', 'path': _v.installPath})
+                e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
+
+                if _v.shareable:
+                    e(disk, 'shareable')
+
+                if _v.useVirtioSCSI:
+                    e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
+                    e(disk, 'wwn', _v.wwn)
+                    return disk
+
+                if _v.useVirtio:
+                    e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                else:
+                    dev_format = Vm._get_disk_target_dev_format(default_bus_type)
+                    e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
+                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
+                        allocat_ide_config(disk, _v)
+                return disk
+
             def volume_qos(volume_xml_obj):
                 if not cmd.addons:
                     return
@@ -5496,6 +5560,8 @@ class Vm(object):
                     vol = block_volume(dev_letter, v)
                 elif v.deviceType == 'spool':
                     vol = spool_volume(dev_letter, v)
+                elif v.deviceType == 'vhost':
+                    vol = vhost_volume(dev_letter, v)
                 else:
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
@@ -7341,7 +7407,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    def get_device_address_info(self, device):
+    def get_device_address_info(self, device, resource_uuid=None):
         virtualDeviceInfo = VirtualDeviceInfo()
         virtualDeviceInfo.deviceAddress.bus = device.address.bus_ if device.address.bus__ else None
         virtualDeviceInfo.deviceAddress.domain = device.address.domain_ if device.address.domain__ else None
@@ -7354,6 +7420,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
         if device.has_element('serial'):
             virtualDeviceInfo.resourceUuid = device.serial.text_
+        elif resource_uuid:
+            virtualDeviceInfo.resourceUuid = resource_uuid
 
         return virtualDeviceInfo
 
@@ -7386,7 +7454,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm.refresh()
 
             disk, _ = vm._get_target_disk(volume)
-            rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk))
+            rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk, volume.volumeUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
