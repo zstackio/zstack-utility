@@ -219,7 +219,11 @@ class Soc(kvmagent.KvmAgent):
         rsp = AgentRsp()
         handler = soc_handler.get_soc_handler(req)
         ret, msg = handler.start_vm(req)
-        if ret != 0:
+
+        # return code is 5, which means vm doesn't exit on soc
+        if ret == 5:
+            return self.soc_create_vm(req)
+        elif ret != 0:
             rsp.success = False
             rsp.error = msg
 
