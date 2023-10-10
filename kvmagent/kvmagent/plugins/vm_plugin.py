@@ -1277,6 +1277,40 @@ def get_sgio_value():
     device_name = [x for x in os.listdir("/sys/block") if not x.startswith("loop")][0]
     return "unfiltered" if os.path.isfile("/sys/block/{}/queue/unpriv_sgio".format(device_name)) else "filtered"
 
+class LibvirtCapabilities(object):
+    def __init__(self, capabilities):
+        self.str_cap = capabilities
+        self.xml_cap = minidom.parseString(capabilities)
+
+    def host(self):
+        host = self.xml_cap.getElementsByTagName('host')[0]
+        return LibvirtHostCapabilities(host)
+
+    def guests(self):
+        return self.xml_cap.getElementsByTagName('guest')
+
+class LibvirtHostCapabilities(object):
+    def __init__(self, host):
+        self.host = host
+
+    @property
+    def uuid(self):
+        return self.host.getElementsByTagName('uuid')[0].firstChild.nodeValue
+
+    def cpu(self):
+        return self.host.getElementsByTagName('cpu')[0]
+
+    def cells(self):
+        return self.host.getElementsByTagName('cells')[0]
+
+class LibvirtGuestCapabilities(object):
+    def __init__(self, guest):
+        self.guest = guest
+
+    @property
+    def os_type(self):
+        return self.guest.getElementsByTagName('os_type')[0].firstChild.nodeValue
+
 class LibvirtAutoReconnect(object):
     libvirt_singleton = LibvirtSingleton()
     conn = libvirt_singleton.conn
@@ -1287,6 +1321,7 @@ class LibvirtAutoReconnect(object):
     evtMgr = LibvirtEventManagerSingleton()
 
     libvirt_event_callbacks = libvirt_singleton.libvirt_event_callbacks
+    capabilities = LibvirtCapabilities(conn.getCapabilities())
 
     def __init__(self, func):
         self.func = func
@@ -4416,7 +4451,7 @@ class Vm(object):
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (max_vcpu - 1), 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_aarch64():
-                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 128
+                    max_vcpu = 8 if is_virtual_machine() else (cmd.maxVcpuNum if cmd.maxVcpuNum else 128)
                     e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
                     if is_virtual_machine():
                         cpu = e(root, 'cpu')
@@ -4435,7 +4470,9 @@ class Vm(object):
                     if cmd.socketNum:
                         e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
                     else:
-                        e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+                        socketNum = LibvirtAutoReconnect.capabilities.host().cells().getAttribute('num')
+                        cores = str(int(max_vcpu / int(socketNum)))
+                        e(cpu, 'topology', attrib={'sockets': socketNum, 'cores': cores, 'threads': '1'})
                     numa = e(cpu, 'numa')
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (max_vcpu - 1), 'memory': str(mem), 'unit': 'KiB'})
 
