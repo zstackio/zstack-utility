@@ -1061,6 +1061,9 @@ def raw_create_template(src, dst, shell=shell, progress_output=None):
 def qcow2_convert_to_raw(src, dst):
     shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
 
+def nbd_qemu_img_convert(src, out_format, dst):
+    shell.call('%s -f nbd -O %s %s %s' % (qemu_img.subcmd('convert'), out_format, src, dst))
+
 def qcow2_rebase(backing_file, target):
     if backing_file:
         fmt = get_img_fmt(backing_file)
