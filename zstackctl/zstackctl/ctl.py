@@ -5312,6 +5312,26 @@ class ChangeMysqlPasswordCmd(Command):
         if status != 0:
             error(output)
 
+    def get_mysql_user_hosts(self, user, root_password, remote_ip):
+        if remote_ip is None:
+            remote_ip = "localhost"
+        status, output = commands.getstatusoutput(
+            '''mysql -u root -p{root_pass} -h{remote_ip} mysql -BN -e \"select Host from user where User='{user}';\"''' \
+                    .format(root_pass=root_password, remote_ip=remote_ip, user=user))
+        if status != 0:
+            error(output)
+
+        hosts = []
+
+        # in mariadb 10.4, no grants user cannot change password
+        for host in output.split("\n"):
+            status, output = commands.getstatusoutput(
+                '''mysql -u root -p{root_pass} -h{remote_ip} mysql -e \"SHOW GRANTS FOR '{user}'@'{host}';\"'''\
+                    .format(root_pass=root_password, remote_ip=remote_ip, user=user, host=host))
+            if status == 0:
+                hosts.append(host)
+        return hosts
+
 
     def run(self, args):
         root_password_ = ''.join(map(check_special_root, args.root_password))
@@ -5320,12 +5340,15 @@ class ChangeMysqlPasswordCmd(Command):
         if check_pswd_rules(args.new_password) == False:
             error("Failed! The password you entered doesn't meet the password policy requirements.\nA strong password must contain at least 8 characters in length, and include a combination of letters, numbers and special characters.")
         if (args.user_name in self.normal_users) or (args.user_name == 'root'):
-            mn_ip = ctl.read_property('management.server.ip') if not args.remote_ip else args.remote_ip
-            set_password_sql = "SET PASSWORD FOR {user}@localhost = PASSWORD('{new_pass}');" \
-                               "SET PASSWORD FOR {user}@127.0.0.1 = PASSWORD('{new_pass}');" \
-                               "SET PASSWORD FOR {user}@{mn_ip} = PASSWORD('{new_pass}');" \
-                               "FLUSH PRIVILEGES;".format(user=args.user_name, new_pass=new_password_, mn_ip=mn_ip)
-            sql = '''mysql -u root -p{root_pass} -h '{ip}' -e "{sql}" '''.format(root_pass=root_password_, ip=mn_ip, sql=set_password_sql)
+            set_password_sql = ""
+            for host in self.get_mysql_user_hosts(args.user_name, root_password_, args.remote_ip):
+                set_password_sql += "SET PASSWORD FOR '{user}'@'{host}' = PASSWORD('{new_pass}');".format(user=args.user_name, host=host, new_pass=new_password_)
+            set_password_sql += "FLUSH PRIVILEGES;"
+            if args.remote_ip is not None:
+                sql = '''mysql -u root -p{root_pass} -h '{ip}' -e "{sql}" '''.format(root_pass=root_password_, ip=args.remote_ip, sql=set_password_sql)
+            else:
+                sql = '''mysql -u root -p{root_pass} -e "{sql}" '''.format(root_pass=root_password_, sql=set_password_sql)
+
             status, output = commands.getstatusoutput(sql)
             if status != 0:
                 error(output)
