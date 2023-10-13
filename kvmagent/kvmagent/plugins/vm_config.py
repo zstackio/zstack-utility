@@ -155,6 +155,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         VmQga.VM_OS_LINUX_UBUNTU: ("14", "16", "18",),
         VmQga.VM_OS_LINUX_DEBIAN: ("9", "10",),
         VmQga.VM_OS_LINUX_FEDORA: ("30", "31",),
+        VmQga.VM_OS_LINUX_OPENEULER: ("20", "22",),
         VmQga.VM_OS_WINDOWS: ("10", "2012", "2012r2", "2016", "2019", "2008r2",)
     }
 
