@@ -25,6 +25,8 @@ VERSION=${PRODUCT_VERSION:-""}
 VERSION_RELEASE_NR=`echo $PRODUCT_VERSION | awk -F '.' '{print $1"."$2"."$3}'`
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 MINI_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT}/zstack-mini/
+CURRENT_PROJECT_NUM=${ZSTACK_INSTALL_ROOT}/PJNUM
+UPGRADE_PROJECT_NUM=${PROJECT_NUM:-"001"}
 
 # zstack mini server before 1.1.0 is installed in /usr/local/zstack-mini
 LEGACY_MINI_INSTALL_ROOT="/usr/local/zstack-mini/"
@@ -308,6 +310,63 @@ check_zstack_release(){
             ZSTACK_RELEASE=`awk '{print $3}' /etc/zstack-release`
         else
             fail2 "deb package zstack-release is not installed, use zstack_install_kylin.sh -r xxx.iso to install zstack-dvd."
+        fi
+    fi
+}
+
+check_project_num() {
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    attempts=0
+
+    if [[ -f ${CURRENT_PROJECT_NUM} ]]; then
+        current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
+    else
+      CURRENT_PROJECT_NUM=${ZSTACK_HOME}/PJNUM
+      if [[ -f ${CURRENT_PROJECT_NUM} ]]; then
+        current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
+      else
+        current_project_num=""
+      fi
+    fi
+
+    upgrade_project_num=${UPGRADE_PROJECT_NUM}
+
+    if [[ $current_project_num == $upgrade_project_num ]]; then
+        return 0
+    fi
+
+    if [[ -z $current_project_num ]]; then
+        if [[ $upgrade_project_num =~ ^[0-9]{3}$ ]]; then
+            return 0
+        else
+            echo "Will upgrade to the custom version ($upgrade_project_num), this operation is a risk operation, please confirm"
+            while [ ${attempts} -lt 3 ]; do
+              read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
+              if [[ $confirm == "confirmed the risk" ]]; then
+                  return 0
+              else
+                  ((attempts++))
+                  echo "This key is wrong"
+              fi
+            done
+            fail2 "This key is wrong three times, will exit the installation"
+        fi
+    fi
+
+    if [[ -n $current_project_num ]]; then
+        if [[ $current_project_num != $upgrade_project_num ]]; then
+            echo "Will upgrade to a different custom version ($current_project_num -> $upgrade_project_num), this operation is a risk operation, please confirm"
+            while [ ${attempts} -lt 3 ]; do
+              read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
+              if [[ $confirm == "confirmed the risk" ]]; then
+                  return 0
+              else
+                  ((attempts++))
+                  echo "This key is wrong"
+              fi
+            done
+            fail2 "This key is wrong three times, will exit the installation"
         fi
     fi
 }
@@ -1153,75 +1212,6 @@ ia_install_pip(){
     pass
 }
 
-ia_install_ansible_package(){
-    ansible_pypi_source=$1
-    if [ ! -z $DEBUG ]; then
-        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible
-    else
-        pip install -i $ansible_pypi_source --trusted-host localhost --ignore-installed ansible >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-}
-
-ia_upgrade_setuptools_package(){
-    ansible_pypi_source=$1
-    if [ ! -z $DEBUG ]; then
-        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0
-    else
-        pip install -i $ansible_pypi_source --trusted-host localhost setuptools==39.2.0 >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-}
-
-ia_install_ansible_handle(){
-    if [[ $REDHAT_OS =~ $OS ]]; then
-        yum remove -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
-    else
-        apt-get --assume-yes remove ansible >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-
-    if pip list 2>/dev/null | grep -q -E 'ansible.*1.9.6.*' ; then
-        if [ ! -z $DEBUG ]; then
-            pip uninstall -y ansible
-        else
-            pip uninstall -y ansible >>$ZSTACK_INSTALL_LOG 2>&1
-        fi
-    fi
-
-    ia_install_ansible_package $1
-    if [ $? -ne 0 ]; then
-        ia_upgrade_setuptools_package $1
-        ia_install_ansible_package $1
-    fi
-}
-
-ia_install_ansible(){
-    echo_subtitle "Install Ansible"
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?' DEBUG
-
-    ia_install_ansible_handle $pypi_source_pip
-
-    [ $? -ne 0 ] && fail "install Ansible failed"
-    do_config_ansible
-    pass
-}
-
-ia_upgrade_ansible(){
-    echo_subtitle "Upgrade Ansible"
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-
-    if pip list 2>/dev/null | grep -q -E 'ansible.*4.10.0' && ansible --version 2>/dev/null | grep -q 'core 2.11.12.2'; then
-        pass
-        return
-    fi
-
-    cd $upgrade_folder
-    ansible_pypi_source=file://$(pwd)/zstack/static/pypi/simple
-
-    ia_install_ansible_handle $ansible_pypi_source
-
-    [ $? -ne 0 ] && fail "upgrade Ansible failed"
-    pass
-}
-
 ia_install_python_gcc_db(){
     echo_subtitle "Install Python GCC."
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -1262,8 +1252,11 @@ download_zstack(){
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     show_download iz_download_zstack
-    show_spinner uz_stop_zstack_ui
     show_spinner iz_unpack_zstack
+    if [ x"$UPGRADE" = x'y' ]; then
+        show_spinner iz_check_space
+    fi
+    show_spinner uz_stop_zstack_ui
 }
 
 # create symbol links for zstack-repo
@@ -1366,8 +1359,7 @@ upgrade_zstack(){
 
     show_spinner uz_upgrade_tomcat
     show_spinner uz_upgrade_zstack_ctl
-
-    show_spinner ia_upgrade_ansible
+    show_spinner uz_upgrade_zstack_sys
 
     # configure grayscale upgrade config
     uz_configure_grayscale_upgrade
@@ -1377,11 +1369,12 @@ upgrade_zstack(){
     [ $? -ne 0 ] && zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
 
     # configure chrony.serverIp if not exists
-    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-    if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+    if [ -n "$CHRONY_SERVER_IP" ]; then
+        sed -i '/^[[:space:]]*chrony\.serverIp\.[0-9]/d' $properties_file
         zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
     else
-        zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+        zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+        [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
     fi
 
     # configure RepoVersion.Strategy if not exists
@@ -1585,22 +1578,6 @@ sharedblock_check_qcow2_volume(){
     if [ x"$result" != x'0' ]; then
         fail "There are $result qcow2 format shared volume on sharedblock group primary storage, please contact technical support to convert volumes and then upgrade zstack"
     fi
-}
-
-install_ansible(){
-    echo_title "Install Ansible"
-    echo ""
-    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    if [[ $REDHAT_OS =~ $OS ]]; then
-        show_spinner ia_disable_selinux
-        show_spinner ia_install_python_gcc_rh
-    elif [[ $DEBIAN_OS =~ $OS ]]; then
-        #if [ -z $ZSTACK_PKG_MIRROR ]; then
-        #    show_spinner ia_update_apt
-        #fi
-        show_spinner ia_install_python_gcc_db
-    fi
-    show_spinner ia_install_ansible
 }
 
 iz_install_unzip(){
@@ -1831,6 +1808,16 @@ install_system_libs(){
     show_spinner is_install_virtualenv
     #enable chronyd
     show_spinner is_enable_chronyd
+
+    if [[ $REDHAT_OS =~ $OS ]]; then
+        show_spinner ia_disable_selinux
+        show_spinner ia_install_python_gcc_rh
+    elif [[ $DEBIAN_OS =~ $OS ]]; then
+        #if [ -z $ZSTACK_PKG_MIRROR ]; then
+        #    show_spinner ia_update_apt
+        #fi
+        show_spinner ia_install_python_gcc_db
+    fi
 }
 
 is_enable_chronyd(){
@@ -1938,6 +1925,8 @@ iz_unpack_zstack(){
             cd /; rm -rf $upgrade_folder 
             fail "failed to unpack ${PRODUCT_NAME} package: $all_in_one."
         fi
+        # Remove zstack_all_in_one.tgz to reduce tmp space usage
+        rm -rf $all_in_one
         current_date=`date +%s`
         zstack_build_time=`stat zstack.war|grep Modify|awk '{ print substr($0, index($0,$2)) }'`
         zstack_build_date=`date --date="$zstack_build_time" +%s`
@@ -1945,6 +1934,26 @@ iz_unpack_zstack(){
             fail "Your system time is earlier than ${PRODUCT_NAME} build time: $zstack_build_time . Please fix it."
         fi
     fi
+    pass
+}
+
+iz_check_space(){
+    echo_subtitle "Checking space"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+
+    # Check the /tmp directory have enough space to store unpackaged zstack.war and pip tmp files
+    zstack_war_size_B=`unzip -l $upgrade_folder/zstack.war | tail -n1 | awk '{ print $1 }'`
+    (( zstack_war_size_KiB = $zstack_war_size_B / 1024 ))
+    (( pip_tmp_size_KiB = 768 * 1024 ))
+    (( required_total_KiB = $pip_tmp_size_KiB + $zstack_war_size_KiB ))
+    available_space_KiB=`df $upgrade_folder | tail -n1 | awk '{ print $4 }'`
+    (( space_left = $available_space_KiB - $required_total_KiB ))
+
+    if [ $space_left -lt 0 ]; then
+        cd /; rm -rf $upgrade_folder
+        fail "The directory $upgrade_folder have $available_space_KiB KiB space left, where the upgrading reuqires $required_total_KiB KiB."
+    fi
+
     pass
 }
 
@@ -2020,10 +2029,11 @@ uz_upgrade_tomcat(){
            fail "failed to unzip Tomcat package: $upgrade_folder/libs/tomcat_root_app.zip."
         fi
 
-        rm -rf $TOMCAT_NAME_OLD.zip $TOMCAT_NAME_OLD apache-tomcat VERSION
+        rm -rf $TOMCAT_NAME_OLD.zip $TOMCAT_NAME_OLD apache-tomcat VERSION PJNUM
         ln -sf $TOMCAT_NAME_NEW apache-tomcat
         ln -sf apache-tomcat/webapps/zstack/VERSION VERSION
-        chown -R zstack:zstack $TOMCAT_NAME_NEW.zip $TOMCAT_NAME_NEW apache-tomcat VERSION
+        ln -sf apache-tomcat/webapps/zstack/PJNUM PJNUM
+        chown -R zstack:zstack $TOMCAT_NAME_NEW.zip $TOMCAT_NAME_NEW apache-tomcat VERSION PJNUM
         cd $upgrade_folder
 
         chmod a+x $TOMCAT_PATH/apache-tomcat/bin/*
@@ -2049,13 +2059,31 @@ uz_upgrade_zstack_ctl(){
     fi
 
     if [ ! -z $DEBUG ]; then
-        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl 
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl
     else
         bash zstack/WEB-INF/classes/tools/install.sh zstack-ctl >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     if [ $? -ne 0 ];then
         cd /; rm -rf $upgrade_folder
         fail "failed to upgrade ${PRODUCT_NAME,,}-ctl"
+    fi
+
+    pass
+}
+
+uz_upgrade_zstack_sys(){
+    echo_subtitle "Upgrade ${PRODUCT_NAME,,}-sys"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    cd $upgrade_folder
+
+    if [ ! -z $DEBUG ]; then
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-sys
+    else
+        bash zstack/WEB-INF/classes/tools/install.sh zstack-sys >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if [ $? -ne 0 ];then
+        cd /; rm -rf $upgrade_folder
+        fail "failed to upgrade ${PRODUCT_NAME,,}-sys"
     fi
 
     pass
@@ -2273,7 +2301,21 @@ iz_install_zstack(){
     if [ $? -ne 0 ];then
        fail "failed to install zstack.war to $ZSTACK_INSTALL_ROOT/$CATALINA_ZSTACK_PATH."
     fi
-    ln -s $CATALINA_ZSTACK_PATH/VERSION $ZSTACK_INSTALL_ROOT/VERSION  
+    ln -s $CATALINA_ZSTACK_PATH/VERSION $ZSTACK_INSTALL_ROOT/VERSION
+    ln -s $CATALINA_ZSTACK_PATH/PJNUM $ZSTACK_INSTALL_ROOT/PJNUM
+    pass
+}
+
+iz_install_zstacksys(){
+    echo_subtitle "Install ${PRODUCT_NAME} Sys Tool"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    cd $ZSTACK_INSTALL_ROOT
+    bash $ZSTACK_TOOLS_INSTALLER zstack-sys >>$ZSTACK_INSTALL_LOG 2>&1
+
+    if [ $? -ne 0 ];then
+       fail "failed to install ${PRODUCT_NAME,,}-sys in $ZSTACK_INSTALL_ROOT/$ZSTACK_TOOLS_INSTALLER"
+    fi
+    do_config_ansible
     pass
 }
 
@@ -2352,6 +2394,7 @@ install_zstack(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     echo ""
     show_spinner iz_chown_install_root
+    show_spinner iz_install_zstacksys
     show_spinner iz_install_zstackcli
     show_spinner iz_install_zstackctl
     show_spinner cp_third_party_tools
@@ -3271,6 +3314,9 @@ enabled=0
 
 EOF
 
+    if [ x"$OS" = x"ROCKY8" ]; then
+        sed -i '/failovermethod=priority/d'  $zstack_163_repo_file $zstack_ali_repo_file
+    fi
 }
 
 set_zstack_repo(){
@@ -3777,6 +3823,8 @@ get_mn_port
 # Fix ZSTAC-22364
 pre_scripts_to_adjust_iptables_rules
 
+# Fix ZSTAC-55831
+check_project_num
 
 which yum >>$ZSTACK_INSTALL_LOG 2>&1 && IS_YUM='y'
 which apt >>$ZSTACK_INSTALL_LOG 2>&1 && IS_APT='y'
@@ -4112,6 +4160,7 @@ if [ $? -eq 0 ]; then
 else
     echo "export ZSTACK_HOME=${ZSTACK_HOME}" >> ~/.bashrc
 fi
+source ~/.bashrc >/dev/null 2>&1
 
 #Do preinstallation checking for CentOS and Ubuntu
 check_system
@@ -4235,9 +4284,6 @@ unpack_zstack_into_tomcat
 #Install ${PRODUCT_NAME} required system libs through ansible
 install_system_libs
 
-#Install Ansible
-install_ansible
-
 if [ ! -z $ONLY_INSTALL_LIBS ];then
     echo ""
     echo_star_line
@@ -4306,11 +4352,12 @@ fi
 zstack-ctl configure RepoVersion.Strategy="permissive"
 
 # configure chrony.serverIp if not exists
-zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-if [ $? -ne 0 ] && [ -n "$CHRONY_SERVER_IP" ]; then
+if [ -n "$CHRONY_SERVER_IP" ]; then
+    sed -i "/^[[:space:]]*chrony\.serverIp\.[0-9]/d" $properties_file
     zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
 else
-    zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
+    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
+    [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
 fi
 
 # deploy by cube mode

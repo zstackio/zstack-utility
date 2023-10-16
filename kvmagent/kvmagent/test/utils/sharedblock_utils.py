@@ -20,7 +20,7 @@ def sharedblock_ping(vgUuid):
     }))
 
 @misc.return_jsonobject()
-def shareblock_connect(sharedBlockUuids=None, allSharedBlockUuids=None, vgUuid=None,hostId=None,hostUuid=None, forceWipe=True):
+def shareblock_connect(sharedBlockUuids=None, allSharedBlockUuids=None, vgUuid=None,hostId=None,hostUuid=None, forceWipe=True, isFirst=True):
     return get_sharedblock_plugin().connect(misc.make_a_request({
         "sharedBlockUuids":sharedBlockUuids, # [], ls /dev/disk/by-id -l|grep scsi
         "allSharedBlockUuids":allSharedBlockUuids,
@@ -28,7 +28,8 @@ def shareblock_connect(sharedBlockUuids=None, allSharedBlockUuids=None, vgUuid=N
         "hostId":hostId,
         "hostUuid": hostUuid,
         "forceWipe": forceWipe,
-        "primaryStorageUuid":vgUuid
+        "primaryStorageUuid":vgUuid,
+        "isFirst":isFirst
     }))
 
 @misc.return_jsonobject()
@@ -327,4 +328,10 @@ def sharedblock_shrink_snapshot(vgUuid=None, hostUuid=None, installPath=None,kvm
 def shareblock_get_qcow2_hashvalue(installPath=None):
     return get_sharedblock_plugin().get_qcow2_hashvalue(misc.make_a_request({
         "installPath": installPath
+    }))
+
+@misc.return_jsonobject()
+def sharedblock_check_lock(vgUuids=[]):
+    return get_sharedblock_plugin().check_lock(misc.make_a_request({
+        "vgUuids": vgUuids
     }))

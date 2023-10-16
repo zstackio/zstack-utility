@@ -82,6 +82,13 @@ class TaskDaemon(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         try:
+            if exc_type is not None:
+                logger.debug("discovered an exception before exiting the task daemon, it is about to perform a cancel operation")
+                self.cancel()
+        except:
+            pass
+
+        try:
             self.close()
         except:
             pass

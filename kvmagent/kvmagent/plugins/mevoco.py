@@ -361,7 +361,8 @@ class DhcpEnv(object):
 
         ip4 = iproute.IpNetnsShell(NAMESPACE_NAME).get_ip_address(4, INNER_DEV)
         ip6 = iproute.IpNetnsShell(NAMESPACE_NAME).get_ip_address(6, INNER_DEV)
-        if (ip4 is None and PREFIX_LEN is not None) or (ip6 is None and PREFIX6_LEN is not None):
+        if ((ip4 is None or ip4 != DHCP_IP) and PREFIX_LEN is not None) \
+                or ((ip6 is None or ip6 != DHCP6_IP) and PREFIX6_LEN is not None):
             iproute.IpNetnsShell(NAMESPACE_NAME).flush_ip_address(INNER_DEV)
             if DHCP_IP is not None:
                 iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(DHCP_IP, PREFIX_LEN, INNER_DEV)
@@ -770,7 +771,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if len(cmds) > 0:
             bash_r("\n".join(cmds))
 
-        bash_errorout("pkill -9 -f 'lighttpd.*/userdata/{{BR_NAME}}' || true")
+        bash_errorout("pkill -9 -f 'lighttpd.*/userdata/{{BR_NAME}}.*_%s' || true" % cmd.l3NetworkUuid)
 
         html_folder = os.path.join(self.USERDATA_ROOT, cmd.namespaceName)
         linux.rm_dir_force(html_folder)
@@ -999,6 +1000,7 @@ server.document-root = "{{http_root}}"
 
 server.port = {{port}}
 server.bind = "169.254.169.254"
+server.max-worker=1
 dir-listing.activate = "enable"
 index-file.names = ( "index.html" )
 
@@ -1019,7 +1021,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
     } else $HTTP["remoteip"] == "{{ip}}" {
         url.rewrite-once = (
             "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
-            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
+            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent_freebsd_amd64",
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
             "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
@@ -1039,7 +1041,7 @@ $HTTP["remoteip"] =~ "^(.*)$" {
     } else $HTTP["remoteip"] =~ "^(.*)$" {
         url.rewrite-once = (
             "^/zwatch-vm-agent.linux-amd64.bin$" => "/zwatch-vm-agent",
-            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent-freebsd",
+            "^/zwatch-vm-agent.freebsd-amd64.bin$" => "/zwatch-vm-agent_freebsd_amd64",
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
             "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
@@ -1093,7 +1095,7 @@ mimetype.assign = (
 
     def apply_zwatch_vm_agent(self, http_root):
         agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent"
-        freebsd_agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent-freebsd"
+        freebsd_agent_file_source_path = "/var/lib/zstack/kvm/zwatch-vm-agent_freebsd_amd64"
         if not os.path.exists(agent_file_source_path):
             logger.error("Can't find file %s" % agent_file_source_path)
             return
@@ -1109,7 +1111,7 @@ mimetype.assign = (
             linux.rm_file_force(agent_file_target_path)
             bash_r("ln -s %s %s" % (agent_file_source_path, agent_file_target_path))
 
-        freebsd_agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent-freebsd")
+        freebsd_agent_file_target_path = os.path.join(http_root, "zwatch-vm-agent_freebsd_amd64")
         if not os.path.exists(freebsd_agent_file_target_path):
             bash_r("ln -s %s %s" % (freebsd_agent_file_source_path, freebsd_agent_file_target_path))
         elif not os.path.islink(freebsd_agent_file_target_path):
@@ -1217,8 +1219,8 @@ mimetype.assign = (
 
         conf_folder = os.path.join(self.USERDATA_ROOT, to.namespaceName)
         conf_path = os.path.join(conf_folder, 'lighttpd.conf')
-        pid = linux.find_process_by_cmdline([conf_path])
-        if pid:
+        pids = linux.find_all_process_by_cmdline([conf_path])
+        for pid in pids:
             linux.kill_process(pid)
 
         linux.mkdir('/var/log/lighttpd', 0o750)

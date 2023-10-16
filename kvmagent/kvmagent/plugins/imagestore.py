@@ -75,6 +75,16 @@ class ImageStoreClient(object):
             cmdstr = '%s stopbak -domain %s' % (self.ZSTORE_CLI_PATH, vm)
             return shell.call(cmdstr).strip()
 
+    def stop_vm_backup_jobs(self, vm):
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s stopbak -domain %s -batbak' % (self.ZSTORE_CLI_PATH, vm)
+            return shell.call(cmdstr).strip()
+
+    def stop_volume_backup_job(self, vm, drive):
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s stopbak -domain %s -drive %s' % (self.ZSTORE_CLI_PATH, vm, drive)
+            return shell.call(cmdstr).strip()
+
     @staticmethod
     def check_capacity(dstdir):
         if not os.path.isdir(dstdir):
@@ -120,14 +130,14 @@ class ImageStoreClient(object):
             if err:
                 raise Exception('fail to mirror volume %s, because %s' % (vm, str(err)))
 
-    def query_vm_mirror_latencies_boundary(self, vm):
+    def query_vm_mirror_latencies_boundary(self, vm, times):
         with linux.ShowLibvirtErrorOnException(vm):
             infosMaps = []
             maxLatencies = []
             maxInfoMap = {}
             minInfoMap = {}
             PFILE = linux.create_temp_file()
-            cmdstr = '%s querylat -domain %s -count 8 > %s' % (self.ZSTORE_CLI_PATH, vm, PFILE)
+            cmdstr = '%s querylat -domain %s -count %d > %s' % (self.ZSTORE_CLI_PATH, vm, times, PFILE)
             if shell.run(cmdstr) != 0 or os.path.getsize(PFILE) == 0:
                 logger.debug("Failed to query latency for vm: [%s]", vm)
                 return maxInfoMap, minInfoMap

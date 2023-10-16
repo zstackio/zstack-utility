@@ -168,7 +168,7 @@ def get_nvme_block_devices():
 
     s = shell.ShellCmd("nvme list -o json")
     s(False)
-    if s.return_code != 0:
+    if s.return_code != 0 or not s.stdout or not s.stdout.strip():
         return []
 
     try:
@@ -1815,9 +1815,12 @@ def check_pv_status(vgUuid, timeout):
 
     return True, ""
 
+@bash.in_bash
+def vgck(vgUuid, timeout):
+    return bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (timeout, vgUuid))
 
 def lvm_vgck(vgUuid, timeout):
-    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (360 if timeout < 360 else timeout, vgUuid))
+    health, o, e = vgck(vgUuid, 360 if timeout < 360 else timeout)
     check_stuck_vglk()
 
     if health != 0:
@@ -2107,11 +2110,12 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
 
         bad_vm_root_volume_condition = False
         r = bash.bash_r("blockdev --flushbufs %s" % vm.root_volume)
-        if is_bad_vm_root_volume(vm.root_volume) is True:
-            bad_vm_root_volume_condition = True
-        elif checkIo is True and r == 0:
+        if checkIo is True and r == 0:
             logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
             continue
+        
+        if is_bad_vm_root_volume(vm.root_volume) is True:
+            bad_vm_root_volume_condition = True
 
         if bad_vm_root_volume_condition is True or is_volume_on_pvs(vm.root_volume, pvUuids, True):
             vms.append(vm)

@@ -1504,7 +1504,9 @@ def create_bridge(bridge_name, interface, move_route=True):
     #mv ip on interface to bridge
     ip = out.strip().split()[1]
     shell.call('ip addr del %s dev %s' % (ip, interface))
-    shell.call('ip addr add %s dev %s' % (ip, bridge_name))
+    r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (bridge_name, ip), exception=False)
+    if not r_out:
+        shell.call('ip addr add %s dev %s' % (ip, bridge_name))
 
     #restore routes on bridge
     for r in routes:
@@ -1660,6 +1662,15 @@ def get_ipv4_addr_by_nic(nic):
     ip = ['%s/%d' % (x.address, x.prefixlen) for x in
           iproute.query_addresses(ifname=nic, ip_version=4)]
     return ip
+
+def get_nic_state_by_name(nic):
+    try:
+        if nic :
+            return read_nic_carrier("/sys/class/net/%s/carrier" % nic).strip() == "1"
+        else:
+            return False
+    except IOError:
+        return False
 
 def get_bond_info_by_nic(nic):
     bonds = read_file("/sys/class/net/bonding_masters")
@@ -1850,6 +1861,29 @@ def find_process_by_cmdline(cmdlines):
             continue
 
     return None
+
+def find_all_process_by_cmdline(cmdlines):
+    ret = []
+    pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
+    for pid in pids:
+        try:
+            with open(os.path.join('/proc', pid, 'cmdline'), 'r') as fd:
+                cmdline = fd.read()
+
+            is_find = True
+            for c in cmdlines:
+                if c not in cmdline:
+                    is_find = False
+                    break
+
+            if not is_find:
+                continue
+
+            ret.append(pid)
+        except IOError:
+            continue
+
+    return ret
 
 def find_process_by_command(comm, cmdlines=None):
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
@@ -2508,6 +2542,19 @@ def filter_file_lines_by_regex(path, regex):
         logger.error(e)
         return None
 
+
+def filter_lines_by_str_list(lines, filter_str_list):
+    if len(lines) == 0:
+        return None
+    try:
+        filter_lines = []
+        for line in lines:
+            if any(filter_str in line for filter_str in filter_str_list):
+                filter_lines.append(line)
+        return filter_lines
+    except IOError as e:
+        logger.error(e)
+        return None
 
 def write_file(path, content, create_if_not_exist=False):
     if not os.path.exists(path) and not create_if_not_exist:

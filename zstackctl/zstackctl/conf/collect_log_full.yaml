@@ -9,6 +9,7 @@ host:
      - {name: iscsi-logs, dir: /var/log/zstack/, file: zstack-iscsi-filesystem-agent*}
      - {name: agentcollectd-logs, dir: /var/log/zstack/zstack-agent/, file: collectd.log*}
      - {name: agentserver-logs, dir: /var/log/zstack/zstack-agent/, file: server.log*}
+     - {name: yum-repos, dir: /etc/yum.repos.d/, file: '*.repo'}
      - {name: dmesg-logs, exec: 'dmesg'}
      - {name: message-logs, dir: /var/log/, file: messages*}
      - {name: route-logs, exec: 'route -n'}

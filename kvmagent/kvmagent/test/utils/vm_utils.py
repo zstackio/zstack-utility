@@ -33,9 +33,9 @@ startVmCmdBody = {
     "vmName": "vm-for-ut",
     "imagePlatform": "Linux",
     "imageArchitecture": platform.machine(),
-    "memory": 67108864,  # 64M
+    "memory": 2147483648,  # 2G
     # "memory": 16384,  # 64M
-    "maxMemory": 134217728,  # 128M
+    "maxMemory": 4294967296,  # 4G
     "maxVcpuNum": 128,
     "cpuNum": 1,
     "cpuSpeed": 0,
@@ -115,8 +115,8 @@ startVmCmdBody = {
     "videoType": get_videoType(),
     "spiceStreamingMode": "off",
     "VDIMonitorNumber": 1,
-    "pciePortNums": 0,
-    "predefinedPciBridgeNum": 0,
+    "pciePortNums": 28,
+    "predefinedPciBridgeNum": 1,
     "kvmHostAddons": {
         "qcow2Options": " -o cluster_size=2097152 "
     },

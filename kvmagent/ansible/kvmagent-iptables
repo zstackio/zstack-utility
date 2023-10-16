@@ -3,10 +3,11 @@
 ports=
 mnCidrs=
 comments=
+kvmagentPort=
 
 usage()
 {
-    echo "usage: configure-iptables --module module --ports ports [--cidrs mnCidrs]"
+    echo "usage: configure-iptables --module module --ports ports --kvmagentPort kvmagentPort [--cidrs mnCidrs]"
 }
 
 while [ -n "$1" ]; do
@@ -14,6 +15,7 @@ while [ -n "$1" ]; do
 	-p | --ports ) shift;ports=$1 ;;
 	-c | --cidrs ) shift;mnCidrs=$1 ;;
 	-m | --module ) shift;comments=$1 ;;
+	-s | --kvmagentPort) shift;kvmagentPort=$1;;
 	*) usage;exit 1 ;;
 	esac
 	shift
@@ -24,12 +26,38 @@ if [ x"$ports" = x"" ]; then
     exit 1
 fi
 
-#remove old iptables rule with comment "ImageStoreBackupStorage.dst.port.rules"
+#remove old iptables rule with comment "kvmagent.allow.port"
 iptables-save | grep $comments | \
     while read LINE; do
         drule=${LINE//\"/}
         iptables ${drule/-A/-D}
     done
+
+#remove kvmagent port rule
+iptables-save -t raw | grep "\--dport $kvmagentPort" | \
+    while read LINE; do
+        drule=${LINE//\"/}
+        iptables -t raw ${drule/-A/-D}
+    done
+
+iptables-save -t mangle | grep "\--dport $kvmagentPort" | \
+    while read LINE; do
+        drule=${LINE//\"/}
+        iptables -t mangle ${drule/-A/-D}
+    done
+
+iptables-save -t nat | grep "\--dport $kvmagentPort" | \
+    while read LINE; do
+        drule=${LINE//\"/}
+        iptables -t nat ${drule/-A/-D}
+    done
+
+iptables-save -t filter | grep "\--dport $kvmagentPort" | \
+    while read LINE; do
+        drule=${LINE//\"/}
+        iptables -t filter ${drule/-A/-D}
+    done
+
 
 #create ipset for MN subnets
 if [ x"$mnCidrs" != x"" ]; then

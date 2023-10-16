@@ -23,6 +23,8 @@ ADD_INTERFACE_TO_BRIDGE_PATH = '/network/bridge/addif'
 CREATE_BONDING_PATH = '/network/bonding/create'
 UPDATE_BONDING_PATH = '/network/bonding/update'
 DELETE_BONDING_PATH = '/network/bonding/delete'
+ATTACH_NIC_TO_BONDING_PATH = '/network/bonding/attachnic'
+DETACH_NIC_FROM_BONDING_PATH = '/network/bonding/detachnic'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
@@ -115,6 +117,7 @@ class CheckVxlanCidrResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckVxlanCidrResponse, self).__init__()
         self.vtepIp = None
+        self.physicalInterfaceName = None
 
 class CreateVxlanBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -197,6 +200,26 @@ class DeleteBondingCmd(kvmagent.AgentCommand):
 class DeleteBondingResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(DeleteBondingResponse, self).__init__()
+
+class AttachNicToBondCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(AttachNicToBondCmd, self).__init__()
+        self.bondName = None
+        self.slaves = None # type: list[HostNetworkInterfaceStruct]
+
+class AttachNicToBondResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(AttachNicToBondResponse, self).__init__()
+
+class DetachNicFromBondCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(DetachNicFromBondCmd, self).__init__()
+        self.bondName = None
+        self.slaves = None # type: list[HostNetworkInterfaceStruct]
+
+class DetachNicFromBondResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(DetachNicFromBondResponse, self).__init__()
 
 class HostNetworkInterfaceStruct(object):
     def __init__(self):
@@ -381,7 +404,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             try:
                 for slave in cmd.slaves:
-                    if self._has_vlan_or_bridge(cmd.interfaceName):
+                    if self._has_vlan_or_bridge(slave.interfaceName):
                         raise Exception(slave.interfaceName + ' has a sub-interface or a bridge port')
             except Exception as e:
                 rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -427,7 +450,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for interface in add_items:
-                if self._has_vlan_or_bridge(cmd.interfaceName):
+                if self._has_vlan_or_bridge(interface):
                     raise Exception(interface + ' has a sub-interface or a bridge port')
 
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
@@ -451,6 +474,41 @@ class NetworkPlugin(kvmagent.KvmAgent):
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bonding')
+    @kvmagent.replyerror
+    @in_bash
+    def attach_nic_to_bonding(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AttachNicToBondResponse()
+
+        try:
+            for interface in cmd.slaves:
+                if self._has_vlan_or_bridge(interface.interfaceName):
+                    raise Exception(interface.interfaceName + ' has a sub-interface or a bridge port')
+            for interface in cmd.slaves:
+                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to attach nic to bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @in_bash
+    def detach_nic_from_bonding(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = DetachNicFromBondResponse()
+
+        try:
+            for interface in cmd.slaves:
+                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to detach nic from bonding[%s], because %s' % (cmd.bondName, str(e))
             rsp.success = False
 
         return jsonobject.dumps(rsp)
@@ -505,7 +563,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bridge[%s] from device[%s], because %s' % (cmd.bridgeName, cmd.physicalInterfaceName, str(e))
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
 
     @lock.lock('bridge')
@@ -531,7 +589,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create vlan bridge[name:%s, vlan:%s] from device[%s], because %s' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName, str(e))
             rsp.success = False
-            
+
         return jsonobject.dumps(rsp)
 
     @lock.lock('bridge')
@@ -590,46 +648,61 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if len(temp_nics) != 0:
             nics = temp_nics
 
-        ips = set(map(lambda d: d.values()[0], nics))
-        nicnames = list(set(map(lambda d: d.keys()[0], nics)))
+        temp_ips = [d.values()[0] for d in nics]
+        ips = sorted(set(temp_ips), key=temp_ips.index)
+        temp_nicnames = [d.keys()[0] for d in nics]
+        nicnames = sorted(set(temp_nicnames), key=temp_nicnames.index)
 
-        ''' there are 4 cases:
+        ''' there are 7 cases:
             1. there is no interface has ip address matched the vxlan or vxpool cidr
-            2. there is only 1 interface with 1 ip address matched
-            3. there is only 1 interface with more than 1 ip address matched
-               in this case, we always return the first 1 ip address
-            4. there has multiple interfaces with ip address matched
-            #1, #4 will response error
+            2. the interface name is provided:
+                2.1 there is only 1 interface with 1 ip address matched
+                2.2 there is only 1 interface with more than 1 ip address matched
+                    in this case, we always return the first 1 ip address
+                2.3 there are multiple interfaces with ip address matched
+            3. the interface name is not provided
+                3.1 there is only 1 interface with 1 ip address matched
+                3.2 there is only 1 interface with more than 1 ip address matched
+                    in this case, we always return the first 1 ip address
+                3.3 there are multiple interfaces with ip address matched
+            #1, #3.3 will response error
         '''
 
-        if len(nicnames) == 0:
+        if not nicnames:
             # case #1
             rsp.error = "can not find qualify interface for cidr [%s]" % cmd.cidr
-        elif len(nicnames) == 1 and interf:
-            # case #2 #3
-            if nics[0].keys()[0] == interf:
-                rsp.vtepIp = nics[0].values()[0]
-                rsp.success = True
-            else:
-                rsp.error = "the interface with cidr [%s] is not the interface [%s] which provided" % (cmd.cidr, interf)
-        elif len(nicnames) == 1:
-            # case #2 #3
-            rsp.vtepIp = nics[0].values()[0]
-            rsp.success = True
-        elif len(nicnames) > 1 and interf:
-            # case #4
-            for nic in nics:
-                if nic.keys()[0] == interf:
-                    rsp.vtepIp = nics[0].values()[0]
+            return jsonobject.dumps(rsp)
+
+        if interf:
+            # case #2.1 #2.2(if only 1 interface) and case #2.3
+            for nic in nicnames:
+                if nic == interf:
+                    rsp.vtepIp = ips[0]
+                    rsp.physicalInterfaceName = nic
                     rsp.success = True
-            if rsp.vtepIp == None:
-                rsp.error = "no interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr, interf)
-        elif len(nicnames) == 2 and (linux.is_vif_on_bridge(nicnames[0], nicnames[1]) or linux.is_vif_on_bridge(nicnames[1], nicnames[0])):
-            # Note(WeiW): This is a work around for case of a interface bound to a bridge and have same ip address,
-            # see at zstackio/issues#4056, but note this wont make assurance that routing is true
-            rsp.vtepIp = nics[0].values()[0]
+            if rsp.vtepIp is None:
+                rsp.error = "no interface both qualify with cidr [%s] and interface name [%s] provided" % (cmd.cidr,
+                                                                                                           interf)
+            return jsonobject.dumps(rsp)
+
+        if len(nicnames) == 1:
+            # case #3.1 #3.2
+            rsp.vtepIp = ips[0]
+            rsp.physicalInterfaceName = nicnames[0]
+            rsp.success = True
+        elif len(nicnames) == 2 and linux.is_vif_on_bridge(nicnames[0], nicnames[1]):
+            # Note(WeiW): This is a workaround for case of an interface bound to a bridge and have same ip address,
+            # see at zstackio/issues#4056, but note this won't make assurance that routing is true
+            rsp.vtepIp = ips[0]
+            rsp.physicalInterfaceName = nicnames[0]
+            rsp.success = True
+        elif len(nicnames) == 2 and linux.is_vif_on_bridge(nicnames[1], nicnames[0]):
+            # same as above, but with the interface names reversed
+            rsp.vtepIp = ips[0]
+            rsp.physicalInterfaceName = nicnames[1]
             rsp.success = True
         elif len(nicnames) > 1 and len(ips) == 1:
+            # case #3.3
             rsp.error = "the qualified vtep ip bound to multiple interfaces"
         else:
             rsp.error = "multiple interface qualify with cidr [%s] and no interface name provided" % cmd.cidr
@@ -789,7 +862,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-
     @lock.lock('bridge')
     @kvmagent.replyerror
     def create_vxlan_bridge(self, req):
@@ -805,7 +877,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, self.check_physical_network_interface)
@@ -813,6 +884,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(CREATE_BONDING_PATH, self.create_bonding)
         http_server.register_async_uri(UPDATE_BONDING_PATH, self.update_bonding)
         http_server.register_async_uri(DELETE_BONDING_PATH, self.delete_bonding)
+        http_server.register_async_uri(ATTACH_NIC_TO_BONDING_PATH, self.attach_nic_to_bonding)
+        http_server.register_async_uri(DETACH_NIC_FROM_BONDING_PATH, self.detach_nic_from_bonding)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
         http_server.register_async_uri(KVM_CHECK_L2NOVLAN_NETWORK_PATH, self.check_bridge)
@@ -823,9 +896,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORK_PATH, self.populate_vxlan_fdb)
         http_server.register_async_uri(KVM_POPULATE_FDB_L2VXLAN_NETWORKS_PATH, self.populate_vxlan_fdbs)
         http_server.register_async_uri(KVM_SET_BRIDGE_ROUTER_PORT_PATH, self.set_bridge_router_port)
-	
-	http_server.register_async_uri(KVM_DELETE_L2NOVLAN_NETWORK_PATH, self.delete_novlan_bridge)
+        http_server.register_async_uri(KVM_DELETE_L2NOVLAN_NETWORK_PATH, self.delete_novlan_bridge)
         http_server.register_async_uri(KVM_DELETE_L2VLAN_NETWORK_PATH, self.delete_vlan_bridge)
         http_server.register_async_uri(KVM_DELETE_L2VXLAN_NETWORK_PATH, self.delete_vxlan_bridge)
+
     def stop(self):
         pass

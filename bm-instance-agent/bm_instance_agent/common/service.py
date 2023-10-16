@@ -11,7 +11,7 @@ from bm_instance_agent import exception
 
 
 LOG = logging.getLogger(__name__)
-
+SERVICE_CONF_PATH = "/var/lib/zstack/baremetalv2/bm-instance-agent/service.conf"
 
 def parse_args(argv, default_config_files=None):
     cfg.CONF(argv[1:],
@@ -19,12 +19,16 @@ def parse_args(argv, default_config_files=None):
              default_config_files=default_config_files)
 
 
+def _get_config_files():
+    return [SERVICE_CONF_PATH]
+
+
 def prepare_service(argv=None):
     logging.register_options(CONF)
     logging.set_defaults(default_log_levels=CONF.default_log_levels)
 
     argv = argv or []
-    parse_args(argv)
+    parse_args(argv, _get_config_files())
 
     logging.setup(CONF, 'bm-instance-agent')
 

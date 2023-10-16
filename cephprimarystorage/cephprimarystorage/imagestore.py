@@ -114,6 +114,9 @@ class ImageStoreClient(object):
         if cmd.shareable:
             args += " -shared"
 
+        if cmd.concurrency and cmd.concurrency > 1:
+            args += " -concurrency %d" % cmd.concurrency
+
         cmdstr = '%s -url %s:%s pull %s %s:%s' % (
         self.ZSTORE_CLI_PATH, cmd.hostname, self.ZSTORE_DEF_PORT, args, name, imageid)
         logger.debug('pulling %s:%s from image store' % (name, imageid))

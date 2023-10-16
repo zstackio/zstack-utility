@@ -40,6 +40,7 @@ from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.report import Report
 import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
+from kvmagent.plugins.prometheus import get_service_type_map, register_service_type
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
@@ -186,6 +187,48 @@ class SetIpOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(SetIpOnHostNetworkInterfaceRsp, self).__init__()
 
+class CheckInterfaceVlanCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(CheckInterfaceVlanCmd, self).__init__()
+        self.interfaceName = None
+        self.vlanId = None
+
+class CheckInterfaceVlanRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CheckInterfaceVlanRsp, self).__init__()
+        self.valid = None
+
+class GetInterfaceVlanCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetInterfaceVlanCmd, self).__init__()
+        self.interfaceNames = []
+
+class GetInterfaceVlanRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetInterfaceVlanRsp, self).__init__()
+        self.vlanIds = []
+
+class GetInterfaceNameCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetInterfaceNameCmd, self).__init__()
+        self.ipAddresses = []
+
+class GetInterfaceNameRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetInterfaceNameRsp, self).__init__()
+        self.interfaceNames = []
+
+class SetServiceTypeOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(SetServiceTypeOnHostNetworkInterfaceCmd, self).__init__()
+        self.interfaceName = None
+        self.vlanId = None
+        self.serviceType = []
+
+class SetServiceTypeOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetServiceTypeOnHostNetworkInterfaceRsp, self).__init__()
+
 class HostPhysicalMemoryStruct(object):
     def __init__(self):
         self.size = ""
@@ -201,7 +244,7 @@ class HostPhysicalMemoryStruct(object):
 
 class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
     physicalMemoryFacts = None  # type: list[HostPhysicalMemoryStruct]
-    
+
     def __init__(self):
         super(GetHostPhysicalMemoryFactsResponse, self).__init__()
         self.physicalMemoryFacts = []
@@ -378,6 +421,11 @@ class HostNetworkInterfaceInventory(object):
         self.pciDeviceAddress = None
         self.offloadStatus = None
         self.callBackIp = None
+        self.interfaceModel = None
+        self.vendorId = None
+        self.deviceId = None
+        self.subvendorId = None
+        self.subdeviceId = None
 
         bonds = ovs.getAllBondFromFile()
 
@@ -439,6 +487,7 @@ class HostNetworkInterfaceInventory(object):
 
         self.driverType = get_nic_driver_type(self.interfaceName)
         self.offloadStatus = ovs.getOffloadStatus(self.interfaceName)
+        self._init_interfacemodel()
 
     @in_bash
     def _init_from_ovs(self):
@@ -462,6 +511,42 @@ class HostNetworkInterfaceInventory(object):
         # self.slaveActive = ovs.getOvsCtl(with_dpdk=True).checkDpdkSlaveStatus(self.interfaceName)
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
         self.offloadStatus = ovs.getOffloadStatus(self.interfaceName)
+        self._init_interfacemodel()
+
+    @in_bash
+    def _init_interfacemodel(self):
+        # todo: read file
+        r, o, e = bash_roe("lspci -Dmmnnv -s %s" % self.pciDeviceAddress)
+        if r == 0:
+            vendor_name = ""
+            device_name = ""
+            subvendor_name = ""
+            for line in o.split('\n'):
+                if len(line.split(':')) < 2: continue
+                title = line.split(':')[0].strip()
+                content = line.split(':')[1].strip()
+                if title == 'Vendor':
+                    vendor_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.vendorId = content.split('[')[-1].strip(']')
+                elif title == "Device":
+                    device_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.deviceId = content.split('[')[-1].strip(']')
+                elif title == "SVendor":
+                    subvendor_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.subvendorId = content.split('[')[-1].strip(']')
+                elif title == "SDevice":
+                    self.subdeviceId = content.split('[')[-1].strip(']')
+            self.interfaceModel = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
+
+    def _simplify_device_name(self, name):
+        if 'Intel Corporation' in name:
+            return 'Intel'
+        elif 'Advanced Micro Devices' in name:
+            return 'AMD'
+        elif 'NVIDIA Corporation' in name:
+            return 'NVIDIA'
+        else:
+            return name.replace('Co., Ltd ', '')
 
     def _to_dict(self):
         to_dict = self.__dict__
@@ -582,11 +667,11 @@ class UngenerateSeVfioMdevDevicesRsp(kvmagent.AgentResponse):
 class DeleteVfioMdevDeviceCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(DeleteVfioMdevDeviceCommand, self).__init__()
-        self.MdevDeviceUuid = None      
+        self.MdevDeviceUuid = None
 
 class DeleteVfioMdevDeviceRsp(kvmagent.AgentCommand):
     def __init__(self):
-        super(DeleteVfioMdevDeviceRsp, self).__init__()          
+        super(DeleteVfioMdevDeviceRsp, self).__init__()
 
 class UpdateSpiceChannelConfigResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -803,6 +888,10 @@ class HostPlugin(kvmagent.KvmAgent):
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
     SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
+    CHECK_INTERFACE_VLAN = "/host/checkvlan/networkinterface"
+    GET_INTERFACE_VLAN = "/host/getvlan/networkinterface"
+    GET_INTERFACE_NAME = "/host/getname/networkinterface"
+    SET_SERVICE_TYPE_ON_HOST_NETWORK_INTERFACE = "/host/setservicetype/networkinterface"
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
     HOST_REBOOT = "/host/reboot"
@@ -913,12 +1002,12 @@ class HostPlugin(kvmagent.KvmAgent):
 
         if self.host_socket is not None:
             self.host_socket.close()
-        
+
         try:
             self.host_socket = socket.socket()
         except socket.error as e:
             self.host_socket = None
-            
+
         ip_address = cmd.sendCommandUrl.split('/')[2].split(':')[0]
         try:
             self.host_socket.connect((ip_address, cmd.tcpServerPort))
@@ -961,7 +1050,7 @@ class HostPlugin(kvmagent.KvmAgent):
         if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
             linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     def check_file_on_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -989,7 +1078,7 @@ class HostPlugin(kvmagent.KvmAgent):
             time.sleep(3)
             loop += 1
         return ''
-    
+
     def _cache_units_convert(self, str):
         if str is None or str == '':
             return 0
@@ -1516,11 +1605,15 @@ if __name__ == "__main__":
         elif shell.run("export YUM0={};yum --disablerepo=* --enablerepo=qemu-kvm-ev-mn repoinfo".format(releasever)) != 0:
             rsp.success = False
             rsp.error = "no qemu-kvm-ev-mn repo found, cannot update host os"
-        elif shell.run(yum_cmd) != 0:
-            rsp.success = False
-            rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
         else:
-            logger.debug("successfully run: %s" % yum_cmd)
+            shell_cmd = shell.ShellCmd(yum_cmd, None, False)
+            shell_cmd(False)
+            if shell_cmd.return_code == 0:
+                logger.debug("successfully run: %s" % yum_cmd)
+            else:
+                rsp.success = False
+                rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo, stdout: %s, stderr: %s" % (shell_cmd.stdout, shell_cmd.stderr)
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1924,7 +2017,88 @@ done
             except Exception as e:
                 rsp.error = 'unable to delete ip on %s, because %s' % (cmd.interfaceName, str(e))
                 rsp.success = False
-            
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def check_interface_vlan(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckInterfaceVlanRsp()
+        rsp.success = False
+
+        vlan_dev_name = '%s.%s' % (cmd.interfaceName, cmd.vlanId)
+        output = shell.call('ip link show type vlan %s' % vlan_dev_name)
+        if vlan_dev_name in output:
+            rsp.success = True
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_interface_vlan(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetInterfaceVlanRsp()
+        rsp.success = False
+
+        vlan_ids = []
+        for interface_name in cmd.interfaceNames:
+            output = shell.call("ip link show type vlan | grep %s | awk -F'[.@]' '{print $2}'" % interface_name)
+            interface_vlan_ids = output.strip().split('\n')
+
+            if not interface_vlan_ids:
+                interface_vlan_ids = ['0']
+            else:
+                interface_vlan_ids.append('0')
+
+            if not vlan_ids:
+                vlan_ids = interface_vlan_ids
+            vlan_ids = [vlan for vlan in vlan_ids if vlan and vlan in interface_vlan_ids]
+
+        rsp.success = True
+        rsp.vlanIds = vlan_ids if vlan_ids != [] else ['0']
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_interface_name(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetInterfaceNameRsp()
+        rsp.success = False
+        rsp.interfaceNames = []
+
+        interface_names = []
+        interfaces = iproute.query_links()
+        for interface in interfaces:
+            interface_name = interface.ifname
+            addresses = iproute.query_addresses_by_ifname(ifname=interface_name)
+            ip_addresses = [addr.address for addr in addresses]
+            for addr in ip_addresses:
+                if addr in cmd.ipAddresses:
+                    if interface_name.startswith('br_'):
+                        output = shell.call("brctl show %s | awk '{print $NF}' | grep -vw interfaces" % interface_name).strip().split('\n')
+                        non_virtual_eths = [name for name in output if
+                                  not (name.startswith('outer') or name.startswith('ud') or name.startswith('vnic'))]
+                        interface_name = non_virtual_eths[0]
+                    interface_names.append(interface_name)
+
+        rsp.success = True
+        rsp.interfaceNames = interface_names
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def set_service_type_on_host_network_interface(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetServiceTypeOnHostNetworkInterfaceRsp()
+        rsp.success = False
+
+        dev_name = cmd.interfaceName
+        if cmd.vlanId is not None and cmd.vlanId is not 0:
+            dev_name = '%s.%s' % (cmd.interfaceName, cmd.vlanId)
+
+        register_service_type(dev_name, cmd.serviceType)
+        rsp.success = True
+
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -2553,11 +2727,11 @@ done
         r, o, e = bash_roe("ls /dev/wst-se")
         if r != 0:
             return
-        
+
         check_virtfn_folder = '/sys/devices/virtual/mtty/mtty/mdev_supported_types'
         virt_function_dir_exits = os.path.isdir(check_virtfn_folder)
         if not virt_function_dir_exits:
-            return 
+            return
 
         # parse mtty output
         to = MttyDeviceTO()
@@ -2579,7 +2753,7 @@ done
             to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
         rsp.mttyDeviceInfo = to
         return
-                
+
     @kvmagent.replyerror
     def get_mtty_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -2588,7 +2762,7 @@ done
         # get mtty device info
         self._collect_format_mtty_device_info(rsp)
         return jsonobject.dumps(rsp)
-        
+
     @kvmagent.replyerror
     def generate_se_vfio_mdev_devices(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -2600,7 +2774,7 @@ done
         if cmd.reSplite and os.path.exists(ramdisk):
             logger.debug("no need to re-splite mtty device[uuid:%s] into mdev devices" % mtty_uuid)
             return jsonobject.dumps(rsp)
-        
+
         virt_path = "/sys/devices/virtual/mtty/mtty/mdev_supported_types/mtty-2/"
         virt_path_exits = os.path.exists(virt_path)
         if not virt_path_exits:
@@ -2614,7 +2788,7 @@ done
                 if not cmd.reSplite:
                     rsp.mdevUuids.append(str(uuid.UUID(_uuid)))
                 logger.debug('generate mdev device[uuid:%s] from mtty device[uuid:%s]'% (str(_uuid), mtty_uuid))
-      
+
         # create ramdisk file after mtty device virtualization
         open(ramdisk, 'a').close()
         return jsonobject.dumps(rsp)
@@ -2636,9 +2810,9 @@ done
         for _uuid in os.listdir(virt_function):
             with open(os.path.join("/sys/bus/mdev/devices/", _uuid, "remove"), "w") as f:
                 f.write("1")
-        
+
         return jsonobject.dumps(rsp)
-    
+
     @kvmagent.replyerror
     @in_bash
     def delete_vfio_mdev_device(self, req):
@@ -2652,10 +2826,10 @@ done
             rsp.success = False
             rsp.error = "no vfio mdev devices to ungenerate from mtty device[uuid:%s]" % _uuid
             return jsonobject.dumps(rsp)
-        
+
         with open(os.path.join("/sys/bus/mdev/devices/", _uuid, "remove"), "w") as f:
                 f.write("1")
-        
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -3029,6 +3203,10 @@ done
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
         http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
+        http_server.register_async_uri(self.SET_SERVICE_TYPE_ON_HOST_NETWORK_INTERFACE, self.set_service_type_on_host_network_interface)
+        http_server.register_async_uri(self.CHECK_INTERFACE_VLAN, self.check_interface_vlan)
+        http_server.register_async_uri(self.GET_INTERFACE_VLAN, self.get_interface_vlan)
+        http_server.register_async_uri(self.GET_INTERFACE_NAME, self.get_interface_name)
         http_server.register_async_uri(self.HOST_XFS_SCRAPE_PATH, self.get_xfs_frag_data)
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.HOST_REBOOT, self.reboot_host)

@@ -109,11 +109,20 @@ class LinuxDriver(base.SystemDriverBase):
         """
         self.discovery_target(instance_obj)
         _check_initiator_config(instance_obj.uuid)
-
-        cmd = ['iscsiadm', '-m', 'session', '--rescan']
-        # parameter[delay_on_retry] of func[processutils.execute] will not verify exit_code
-        with bm_utils.transcantion(retries=5, sleep_time=10) as cursor:
-            cursor.execute(processutils.execute, *cmd)
+        
+        target_names = []
+        target_name = ('iqn.2015-01.io.zstack:target'
+                       '.instance.{uuid}').format(uuid=instance_obj.uuid)
+        if instance_obj.custom_iqn:
+            target_name = instance_obj.custom_iqn
+        target_names.append(target_name)
+        
+        for target in target_names:
+            sessionId = 'iscsiadm -m session | grep %s\\| awk \'{print $2}\' ' % target
+            cmd = ['iscsiadm', '-m', 'session', '--rescan', f'--sid={sessionId}']
+            # parameter[delay_on_retry] of func[processutils.execute] will not verify exit_code
+            with bm_utils.transcantion(retries=5, sleep_time=10) as cursor:
+                cursor.execute(processutils.execute, *cmd)
 
     def detach_volume(self, instance_obj, volume_obj):
         """ Detach a given iSCSI lun
@@ -229,7 +238,7 @@ class LinuxDriver(base.SystemDriverBase):
         unknown reasons.
         """
         if not bm_utils.process_is_running('shellinaboxd'):
-            cmd = 'shellinaboxd -b -t -s :SSH:127.0.0.1'
+            cmd = 'shellinaboxd -b -t -s \':SSH:127.0.0.1:%s\'' % bm_utils.get_ssh_port()
             f = os.popen(cmd)
             f.close()
             if not bm_utils.process_is_running('shellinaboxd'):
