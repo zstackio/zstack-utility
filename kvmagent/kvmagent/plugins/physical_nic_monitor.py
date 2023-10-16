@@ -1,4 +1,3 @@
-import os.path
 import time
 
 from kvmagent import kvmagent
@@ -7,10 +6,9 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import thread
-from zstacklib.utils import bash
 from zstacklib.utils import iproute
 from zstacklib.utils import linux
-import zstacklib.utils.ip as ipUtils
+import zstacklib.utils.ip as ip_utils
 
 log.configure_log('/var/log/zstack/zstack-kvmagent.log')
 logger = log.get_logger(__name__)
@@ -21,6 +19,7 @@ class AgentRsp(object):
         self.success = True
         self.error = None
 
+
 class PhysicalNicAlarm(object):
     def __init__(self):
         self.nic = None
@@ -28,6 +27,7 @@ class PhysicalNicAlarm(object):
         self.bond = None
         self.status = None
         self.host = None
+
     def fill_none(self):
         if not self.nic:
             self.nic = 'None'
@@ -39,19 +39,27 @@ class PhysicalNicAlarm(object):
             self.status = 'None'
 
 
+class NicStatusChangeEvent(object):
+    def __init__(self, status):
+        self.status = status
+        self.change_time = time.time()
+
+
 class PhysicalNicMonitor(kvmagent.KvmAgent):
     UPDATE_PHYSICAL_NIC_MONITOR_SETTINGS = "/host/physicalNic/update"
     TEST_PHYSICAL_NIC_MONITOR = "/host/physicalNic/test"
+    ALARM_WAITING_TIME = 3
 
     bond_info = {}
     ip_info = {}
-    nic_info ={}
-    last_sent_alarms = {}
+    nic_info = {}
     history_nics = []
     state = None
     time_lock = 0
+    alarms_to_send = {}
 
     def __init__(self):
+        super(PhysicalNicMonitor, self).__init__()
         self.state = False
 
     def configure(self, config):
@@ -78,21 +86,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
         url = self.config.get(kvmagent.SEND_COMMAND_URL)
         if not url:
             raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit vm operation to management node")
-
-        alarm_key = (physical_nic_alarm.nic, physical_nic_alarm.status)
-        time_limit = 5
-
-        if alarm_key in self.last_sent_alarms:
-            last_sent_time = self.last_sent_alarms[alarm_key]
-            current_time = time.time()
-            time_diff = current_time - last_sent_time
-            if time_diff < time_limit:
-                logger.debug("the same alarm occurs on the nic[%s], with the interval time: %s" % (physical_nic_alarm.nic, time_diff))
-                return
-
         http.json_dump_post(url, physical_nic_alarm, {'commandpath': '/host/physicalNic/alarm'})
-
-        self.last_sent_alarms[alarm_key] = time.time()
 
     def get_nic_info(self, nic, status):
         physical_nic_alarm = PhysicalNicAlarm()
@@ -120,14 +114,41 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
         # fill none when can not collage data
         physical_nic_alarm.fill_none()
         logger.debug('get_nic_info physical_nic alarm info [name:%s, status:%s, ip:%s, bond:%s] to management node' % (
-        physical_nic_alarm.nic, physical_nic_alarm.status, physical_nic_alarm.ip, physical_nic_alarm.bond))
+            physical_nic_alarm.nic, physical_nic_alarm.status, physical_nic_alarm.ip, physical_nic_alarm.bond))
         return physical_nic_alarm
 
-    def send_alarm(self, nic, status):
+    @lock.lock('alarms_to_send')
+    def add_alarm_to_send(self, nic, status):
         if nic not in self.history_nics:
             return
-        self.send_to_mn(self.get_nic_info(nic, status))
+        nic_events = self.alarms_to_send.get(nic, [])
+        nic_events.append(NicStatusChangeEvent(status))
+        self.alarms_to_send[nic] = nic_events
 
+    @lock.lock('alarms_to_send')
+    def send_alarms(self):
+        for nic, events in self.alarms_to_send.items():
+            if len(events) == 0:
+                continue
+
+            last_time = events[-1].change_time
+            current_time = time.time()
+            if current_time - last_time < self.ALARM_WAITING_TIME:
+                continue
+
+            if len(events) % 2 == 0:
+                status = events[-2].status
+                self.send_to_mn(self.get_nic_info(nic, status))
+                status = events[-1].status
+                thread.timer(1, self.send_to_mn, args=(self.get_nic_info(nic, status),)).start()
+
+            else:
+                status = events[-1].status
+                self.send_to_mn(self.get_nic_info(nic, status))
+
+            self.alarms_to_send[nic] = []
+
+        return True
 
     @kvmagent.replyerror
     def test_physical_nic_alarm(self, req):
@@ -143,7 +164,8 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
         if not url:
             raise kvmagent.KvmError("cannot find SEND_COMMAND_URL, unable to transmit vm operation to management node")
         logger.debug(
-            'transmitting physical_nic alarm info [url:%s, host:%s] to management node' % (url, physical_nic_alarm_test.host))
+            'transmitting physical_nic alarm info [url:%s, host:%s] to management node' % (
+                url, physical_nic_alarm_test.host))
         http.json_dump_post(url, physical_nic_alarm_test, {'commandpath': '/host/physicalNic/alarm'})
         return jsonobject.dumps(AgentRsp())
 
@@ -156,6 +178,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
             self.state = True  # start thread
             logger.debug("physical_nic monitor settings :state change to %s", jsonobject.dumps(self.state))
             thread.timer(1, self.physical_nic_monitor).start()
+            thread.timer(1, self.send_alarms).start()
         return jsonobject.dumps(AgentRsp())
 
     @linux.retry(times=2, sleep_time=3)
@@ -170,22 +193,22 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
             if not nic or not status:
                 return
             # update nic record
-            for new_nic in ipUtils.get_host_physicl_nics():
+            for new_nic in ip_utils.get_host_physicl_nics():
                 if new_nic not in self.history_nics:
                     self.history_nics.append(new_nic)
             # old nic alarm
             if nic in self.nic_info:
-                if self.nic_info[nic] != status and ((status == 'down') ^ ipUtils.get_nic_state_by_name(nic)):
+                if self.nic_info[nic] != status and ((status == 'down') ^ linux.get_nic_state_by_name(nic)):
                     logger.info("old physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
                     self.nic_info[nic] = status
-                    self.send_alarm(nic, status)
+                    self.add_alarm_to_send(nic, status)
             # new nic alarm
             else:
                 if status != 'down' and nic in self.history_nics:
-                    if ipUtils.get_nic_state_by_name(nic):
+                    if linux.get_nic_state_by_name(nic):
                         logger.info("new physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
                         self.nic_info[nic] = status
-                        self.send_alarm(nic, status)
+                        self.add_alarm_to_send(nic, status)
                     else:
                         logger.warn("new physical_nic detect, but IfName[%s] has been down" % nic)
 
@@ -199,4 +222,3 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
                 if time_lock_now != self.time_lock:
                     break
                 self.physical_nic_monitor_get(ip)
-
