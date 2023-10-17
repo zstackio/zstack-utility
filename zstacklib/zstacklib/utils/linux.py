@@ -1027,16 +1027,16 @@ def raw_create(dst, size):
     os.chmod(dst, 0o660)
 
 
-def create_template(src, dst, compress=False, shell=shell, progress_output=None, opts=None, dstFormat='qcow2'):
+def create_template(src, dst, dst_format='qcow2', compress=False, shell=shell, progress_output=None, opts=None):
     fmt = get_img_fmt(src)
     if fmt == 'raw':
-        return raw_create_template(src, dst, shell=shell, progress_output=progress_output, dstFormat=dstFormat)
+        return raw_create_template(src, dst, dst_format=dst_format, shell=shell, progress_output=progress_output)
     if fmt == 'qcow2':
-        return qcow2_create_template(src, dst, compress, shell=shell, progress_output=progress_output, opts=opts, dstFormat=dstFormat)
+        return qcow2_create_template(src, dst, compress, dst_format=dst_format, shell=shell, progress_output=progress_output, opts=opts)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
 
-def qcow2_create_template(src, dst, compress, shell=shell, progress_output=None, opts=None, dstFormat='qcow2'):
+def qcow2_create_template(src, dst, compress, dst_format='qcow2', shell=shell, progress_output=None, opts=None):
     redirect, ext_opts = "", []
     if progress_output:
         redirect = " > " + progress_output
@@ -1048,15 +1048,15 @@ def qcow2_create_template(src, dst, compress, shell=shell, progress_output=None,
     if opts:
         ext_opts.append(opts)
 
-    shell.call('%s %s -f qcow2 -O %s %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), dstFormat, src, dst, redirect))
+    shell.call('%s %s -f qcow2 -O %s %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), dst_format, src, dst, redirect))
 
-def raw_create_template(src, dst, shell=shell, progress_output=None, dstFormat='qcow2'):
+def raw_create_template(src, dst, dst_format='qcow2', shell=shell, progress_output=None):
     redirect, ext_opts = "", []
     if progress_output:
         redirect = " > " + progress_output
         ext_opts.append("-p")
 
-    shell.call('%s %s -f raw -O %s %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), dstFormat, src, dst, redirect))
+    shell.call('%s %s -f raw -O %s %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), dst_format, src, dst, redirect))
 
 def qcow2_convert_to_raw(src, dst):
     shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))

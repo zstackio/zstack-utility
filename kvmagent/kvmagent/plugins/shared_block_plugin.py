@@ -1442,7 +1442,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 else:
                     lv_size = int(lvm.get_lv_size(current_abs_path))
                     if linux.qcow2_get_backing_file(current_abs_path) == '':
-                        lv_size = max(lvm.calcLvReservedSize(int(linux.qcow2_measure_required_size(current_abs_path))), lv_size)
+                        measure_size = int(linux.qcow2_measure_required_size(current_abs_path))
+                        if lvm.calcLvReservedSize(measure_size) > lv_size:
+                            struct.put('compressed_qcow2', True)
                 struct.put('lv_size', lv_size)
 
             if lvm.lv_exists(target_abs_path):
@@ -1476,9 +1478,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 with lvm.RecursiveOperateLv(current_abs_path, shared=True):
                     backing_file = None if struct.independent else linux.qcow2_get_backing_file(current_abs_path)
                     opts = "" if not backing_file else " -B %s " % backing_file
-                    qcow2.create_template_with_task_daemon(current_abs_path, target_abs_path, cmd,
+                    if backing_file and not qemu_img.take_default_backing_fmt_for_convert():
+                        opts += " -F %s " % linux.get_img_fmt(backing_file)
+
+                    if struct.compressed_qcow2 or linux.get_img_fmt(current_abs_path) == 'raw':
+                        t_bash = traceable_shell.get_shell(cmd)
+                        t_bash.bash_errorout("pv -n %s > %s" % (current_abs_path, target_abs_path))
+                    else:
+                        qcow2.create_template_with_task_daemon(current_abs_path, target_abs_path, cmd,
                                                            opts=opts,
-                                                           dstFormat=linux.get_img_fmt(current_abs_path),
+                                                           dst_format=linux.get_img_fmt(current_abs_path),
                                                            stage="%s-%s" % (start, end),
                                                            task_name="MigrateVolumes")
 
