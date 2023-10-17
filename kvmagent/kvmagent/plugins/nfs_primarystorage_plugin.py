@@ -364,6 +364,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 backing_file = linux.qcow2_get_backing_file(src_qcow2)
                 if backing_file != "":
                     opts = re.sub("-o preallocation=\w* ", "", opts) + " -B %s " % backing_file
+                    if not qemu_img.take_default_backing_fmt_for_convert():
+                        opts += " -F %s " % linux.get_img_fmt(backing_file)
 
                 qcow2.create_template_with_task_daemon(src_qcow2, dst_qcow2, cmd,
                                                        opts=opts,
