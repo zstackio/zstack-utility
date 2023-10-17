@@ -1480,6 +1480,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     opts = "" if not backing_file else " -B %s " % backing_file
                     qcow2.create_template_with_task_daemon(current_abs_path, target_abs_path, cmd,
                                                            opts=opts,
+                                                           dstFormat=linux.get_img_fmt(current_abs_path),
                                                            stage="%s-%s" % (start, end),
                                                            task_name="MigrateVolumes")
 
