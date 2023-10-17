@@ -2658,6 +2658,9 @@ cs_config_zstack_properties(){
         if [ $? -ne 0 ];then
             fail "failed to update console proxy overridden IP to $CONSOLE_PROXY_ADDRESS"
         fi
+    else
+        zstack-ctl get_configuration consoleProxyOverriddenIp >/dev/null 2>&1
+        [ $? -ne 0 ] && zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
     fi
 
     if [ ! -z $ZSTACK_ANSIBLE_EXECUTABLE ];then
@@ -4418,11 +4421,6 @@ if [ -n "$NEED_DROP_DB" ]; then
 fi
 
 zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
-if [ ! -z $NEED_SET_MN_IP ];then
-    if [ -z $CONSOLE_PROXY_ADDRESS ];then
-        zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
-    fi
-fi
 
 zstack-ctl configure RepoVersion.Strategy="permissive"
 
