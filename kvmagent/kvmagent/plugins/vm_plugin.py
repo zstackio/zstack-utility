@@ -4694,7 +4694,9 @@ class Vm(object):
                 e(hyperv, 'relaxed', attrib={'state': 'on'})
                 e(hyperv, 'vapic', attrib={'state': 'on'})
                 if is_hv_freq_supported(): e(hyperv, 'frequencies', attrib={'state': 'on'})
-                e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '4096'})
+                # refer to: https://access.redhat.com/articles/2470791
+                # increase spinlocks retries
+                e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '8191'})
                 e(hyperv, 'vendor_id', attrib={'state': 'on', 'value': cmd.vendorId})
             # always set ioapic driver to kvm after libvirt 3.4.0
             if is_ioapic_supported():
