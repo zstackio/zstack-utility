@@ -232,6 +232,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     UPLOAD_TO_IMAGESTORE_PATH = "/nfsprimarystorage/imagestore/upload"
     COMMIT_TO_IMAGESTORE_PATH = "/nfsprimarystorage/imagestore/commit"
     DOWNLOAD_FROM_IMAGESTORE_PATH = "/nfsprimarystorage/imagestore/download"
+    CLEAN_IMAGE_META = "/nfsprimarystorage/imagestore/meta/clean"
     MERGE_SNAPSHOT_PATH = "/nfsprimarystorage/mergesnapshot"
     REBASE_MERGE_SNAPSHOT_PATH = "/nfsprimarystorage/rebaseandmergesnapshot"
     MOVE_BITS_PATH = "/nfsprimarystorage/movebits"
@@ -275,6 +276,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
         http_server.register_async_uri(self.DOWNLOAD_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
+        http_server.register_async_uri(self.CLEAN_IMAGE_META, self.clean_image_meta)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.REBASE_MERGE_SNAPSHOT_PATH, self.rebase_and_merge_snapshot)
         http_server.register_async_uri(self.MOVE_BITS_PATH, self.move_bits)
@@ -674,6 +676,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
         rsp = kvmagent.AgentResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def clean_image_meta(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
+
+        rsp = kvmagent.AgentResponse()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
