@@ -1680,7 +1680,7 @@ class HaPlugin(kvmagent.KvmAgent):
         success = 0
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         for i in range(0, cmd.times):
-            if shell.run("nmap --host-timeout 10s -sP -PI %s | grep -q 'Host is up'" % cmd.ip) == 0:
+            if shell.run("nmap --host-timeout 10s -sP -PI %s --disable-arp-ping | grep -q 'Host is up'" % cmd.ip) == 0:
                 success += 1
 
             if success == cmd.successTimes:
@@ -1696,7 +1696,7 @@ class HaPlugin(kvmagent.KvmAgent):
         # WE SUCCEED A FEW TIMES, IT SEEMS THE CONNECTION NOT STABLE
         success = 0
         for i in range(0, cmd.successTimes):
-            if shell.run("nmap --host-timeout 10s -sP -PI %s | grep -q 'Host is up'" % cmd.ip) == 0:
+            if shell.run("nmap --host-timeout 10s -sP -PI %s --disable-arp-ping | grep -q 'Host is up'" % cmd.ip) == 0:
                 success += 1
 
             time.sleep(cmd.successInterval)
