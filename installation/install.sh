@@ -4288,6 +4288,9 @@ if [ x"$UPGRADE" = x'y' ]; then
     [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
     [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | rev | cut -d '-' -f3 | rev`
 
+    # ZStack-ZSphere upgrade rewrite `VERSION`
+    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep 'ZSphere version'|awk '{print $3}'`
+
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         echo_star_line
