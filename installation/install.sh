@@ -4288,10 +4288,6 @@ if [ x"$UPGRADE" = x'y' ]; then
     [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
     [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | rev | cut -d '-' -f3 | rev`
 
-    # ZStack-ZSphere upgrade rewrite `VERSION`
-    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep 'ZSphere version'|awk '{print $3}'`
-
-
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         echo_star_line
         echo -e "$(tput setaf 2)${PRODUCT_NAME,,}-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
@@ -4302,7 +4298,9 @@ if [ x"$UPGRADE" = x'y' ]; then
         exit 0
     fi
 
-    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
+    # Cloud & ZSV read VERSION
+    [ -z $VERSION ] && VERSION=`awk '{print $NF}' $ZSTACK_VERSION`
+
     echo ""
     echo_star_line
     echo -e "$(tput setaf 2)${PRODUCT_NAME} has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
