@@ -191,6 +191,10 @@ else:
 run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
 
 
+def remove_conflict_rpms():
+    yum_remove_package("libvirt-daemon-driver-lxc", host_post_info)
+
+
 def install_kvm_pkg():
     def rpm_based_install():
         os_base_dep = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
@@ -867,6 +871,7 @@ def set_gpu_blacklist():
 
 
 check_nested_kvm(host_post_info)
+remove_conflict_rpms()
 install_kvm_pkg()
 copy_tools()
 copy_kvm_files()
