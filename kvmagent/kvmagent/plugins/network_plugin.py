@@ -470,6 +470,16 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 # zs-bond -c bond1 mode active-backup
                 shell.call('/usr/local/bin/zs-bond -c %s mode %s' % (cmd.bondName, cmd.mode))
 
+            # take the mtu of the smallest interface as the mtu of the bond
+            min_mtu = 1500
+            for slave in cmd.slaves:
+                mtu = self._get_interface_mtu(slave.interfaceName)
+                if mtu < min_mtu:
+                    min_mtu = mtu
+
+            # zs-bond -u mtu 1450
+            shell.call('/usr/local/bin/zs-bond -u %s mtu %s' % (cmd.bondName, min_mtu))
+
             # zs-nic-to-bond -a bond2 nic3
             for slave in cmd.slaves:
                 shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, slave.interfaceName))
