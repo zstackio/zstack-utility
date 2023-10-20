@@ -434,16 +434,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
             # zs-nic-to-bond -a bond2 nic3
             for slave in cmd.slaves:
-                ret = shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, slave.interfaceName))
-                if ret == 0:
-                    shell.call('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
+                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, slave.interfaceName))
 
             # sync to collectd
             config_file = '/var/lib/zstack/kvm/collectd.conf'
             self._add_interface_to_collectd_conf(config_file, cmd.bondName)
             self._restart_collectd(config_file)
         except Exception as e:
-            shell.run('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
+            if "already exists" not in str(e):
+                shell.run('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
             rsp.success = False
