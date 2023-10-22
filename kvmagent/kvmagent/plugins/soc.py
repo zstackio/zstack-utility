@@ -1,11 +1,14 @@
 import ctypes
 import os
+import libvirt
 
 from kvmagent import kvmagent
+from kvmagent.plugins import vm_plugin
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import jsonobject
+from zstacklib.utils import linux
 from soc_handler import soc_handler
 
 logger = log.get_logger(__name__)
@@ -49,6 +52,7 @@ class Soc(kvmagent.KvmAgent):
     SOC_GET_CARD_ID_PATH = "/soc/card/id"
     SOC_CHECK_PATH = "/soc/check"
     SOC_START_VM_ON_NEW_HOST = "/vm/soc/startOnNewHost"
+    UNDEFINE_DOMAIN_PATH = "/undefine/domain"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -64,6 +68,7 @@ class Soc(kvmagent.KvmAgent):
         http_server.register_async_uri(self.SOC_GET_CARD_ID_PATH, self.soc_get_card_id)
         http_server.register_async_uri(self.SOC_START_VM_ON_NEW_HOST, self.soc_start_vm_on_new_host)
         http_server.register_async_uri(self.SOC_CHECK_PATH, self.check_soc)
+        http_server.register_async_uri(self.UNDEFINE_DOMAIN_PATH, self.undefine_domain)
 
     def stop(self):
         pass
@@ -184,6 +189,47 @@ class Soc(kvmagent.KvmAgent):
             rsp.success = True
 
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def undefine_domain(self, req):
+        rsp = AgentRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vm = vm_plugin.get_vm_by_uuid(cmd.vmInstanceUuid, exception_if_not_existing=False)
+        if vm is None:
+            rsp.success = True
+            return jsonobject.dumps(rsp)
+
+        if vm.state != vm_plugin.Vm.VM_STATE_SHUTDOWN:
+            rsp.success = False
+            rsp.error = "we find domain on host, but domain state is not shutoff, can not undefine it"
+            return jsonobject.dumps(rsp)
+
+        def loop_undefine(_):
+            def force_undefine():
+                try:
+                    vm.domain.undefine()
+                except:
+                    logger.warn('cannot undefine the VM[uuid:%s]' % vm.uuid)
+            try:
+                flags = 0
+                for attr in [ "VIR_DOMAIN_UNDEFINE_MANAGED_SAVE", "VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA", "VIR_DOMAIN_UNDEFINE_NVRAM" ]:
+                    if hasattr(libvirt, attr):
+                        flags |= getattr(libvirt, attr)
+                vm.domain.undefineFlags(flags)
+            except libvirt.libvirtError as ex:
+                logger.warn('undefine domain[%s] failed: %s' % (vm.uuid, str(ex)))
+                force_undefine()
+
+            return vm.wait_for_state_change(None)
+
+        rsp.success = True
+        if not linux.wait_callback_success(loop_undefine, None, timeout=60):
+            rsp.success = False
+            rsp.error = "failed to undefine vm, timeout after 60 secs"
+
+        return jsonobject.dumps(rsp)
+
+
 
     @kvmagent.replyerror
     @in_bash
