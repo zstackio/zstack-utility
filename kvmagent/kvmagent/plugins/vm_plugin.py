@@ -3986,6 +3986,10 @@ class Vm(object):
 
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=30):
                 raise Exception('nic device does not show after 30 seconds')
+
+            if cmd.nic.isolated:
+                configNicIsolated(cmd.nic.nicInternalName)
+
         except:
             #  check one more time
             if not check_device(None):
@@ -6283,6 +6287,9 @@ class VmPlugin(kvmagent.KvmAgent):
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
             self._prepare_ebtables_for_mocbr(cmd)
             vm.start(cmd.timeout, cmd.createPaused, wait_console)
+            for nic in cmd.nics:
+                if nic.isolated:
+                    configNicIsolated(nic.nicInternalName)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
 
@@ -11001,3 +11008,8 @@ def touchQmpSocketWhenExists(vmUuid):
     path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
     if os.path.exists(path):
         bash.bash_roe("touch %s" % path)
+
+
+def configNicIsolated(nic):
+    shell.call('echo 1 > /sys/class/net/%s/brport/isolated' % nic, False)
+

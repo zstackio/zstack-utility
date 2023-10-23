@@ -918,6 +918,9 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
     ATTACH_VOLUME_PATH = "/host/volume/attach"
     DETACH_VOLUME_PATH = "/host/volume/detach"
+    IPSET_ATTACH_NIC_PATH = "/host/ipset/attach"
+    IPSET_DETACH_NIC_PATH = "/host/ipset/detach"
+    IPSET_SYNC_PATH = "/host/ipset/sync"
 
     def __init__(self):
         self.IS_YUM = False
@@ -3157,6 +3160,73 @@ done
 
         return jsonobject.dumps(rsp)
 
+
+    @kvmagent.replyerror
+    def attach_nic_to_ipset_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if cmd.l2MacMap:
+            l2_mac_dict = cmd.l2MacMap.__dict__
+            interface_dict = cmd.interfaceMap.__dict__
+            vlan_dict = cmd.vlanMap.__dict__
+            logger.debug(type(l2_mac_dict))
+            for l2, mac_list in l2_mac_dict.items():
+                for mac in mac_list:
+                    shell.call('ipset add isolated_%s.%s %s'
+                               % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)
+                logger.debug('attach nic to ipset [l2PhysicalInterface:%s, vlan:%s, macList:%s] success' % (
+                interface_dict.get(l2), vlan_dict.get(l2), mac_list))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def detach_nic_to_ipset_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if cmd.l2MacMap:
+            l2_mac_dict = cmd.l2MacMap.__dict__
+            interface_dict = cmd.interfaceMap.__dict__
+            vlan_dict = cmd.vlanMap.__dict__
+            logger.debug(type(l2_mac_dict))
+            for l2, mac_list in l2_mac_dict.items():
+                for mac in mac_list:
+                    shell.call('ipset del isolated_%s.%s %s'
+                               % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)
+                logger.debug('detach nic to ipset [l2PhysicalInterface:%s, vlan:%s, macList:%s] success' % (
+                interface_dict.get(l2), vlan_dict.get(l2), mac_list))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def sync_ipset_path(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        if cmd.l2MacMap:
+            l2_mac_dict = cmd.l2MacMap.__dict__
+            interface_dict = cmd.interfaceMap.__dict__
+            vlan_dict = cmd.vlanMap.__dict__
+            logger.debug(type(l2_mac_dict))
+            for l2, mac_list in l2_mac_dict.items():
+                isolated_br = 'isolated_%s.%s' % (interface_dict.get(l2), vlan_dict.get(l2))
+                physdev_in = '%s.%s' % (interface_dict.get(l2), vlan_dict.get(l2))
+                # o = shell.call('ipset list %s | tail -n %s' % (isolated_br, len(mac_list)), exception=False)
+                # check_ipset = all(mac.upper() in o.upper() for mac in mac_list)
+                # if not check_ipset:
+                ipset_list = shell.ShellCmd("ipset list %s" % isolated_br)
+                ipset_list(False)
+                if ipset_list.return_code == 0:
+                    shell.call('iptables -D FORWARD -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                    physdev_in, isolated_br), exception=False)
+                    shell.call('ipset destroy %s' % isolated_br, exception=False)
+                shell.call('ipset create %s hash:mac' % isolated_br)
+                shell.call('iptables -A FORWARD -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                physdev_in, isolated_br))
+                for mac in mac_list:
+                    shell.call('ipset add isolated_%s.%s %s'
+                               % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)
+                logger.debug('sync host with ipset [l2PhysicalInterface:%s, vlan:%s, macList:%s] success' % (
+                    interface_dict.get(l2), vlan_dict.get(l2), mac_list))
+        return jsonobject.dumps(rsp)
+
+
     def start(self):
         self.host_uuid = None
         self.host_socket = None
@@ -3218,6 +3288,9 @@ done
         http_server.register_async_uri(self.GET_NUMA_TOPOLOGY_PATH, self.get_numa_topology)
         http_server.register_async_uri(self.ATTACH_VOLUME_PATH, self.attach_volume_path)
         http_server.register_async_uri(self.DETACH_VOLUME_PATH, self.detach_volume__path)
+        http_server.register_async_uri(self.IPSET_ATTACH_NIC_PATH, self.attach_nic_to_ipset_path)
+        http_server.register_async_uri(self.IPSET_DETACH_NIC_PATH, self.detach_nic_to_ipset_path)
+        http_server.register_async_uri(self.IPSET_SYNC_PATH, self.sync_ipset_path)
 
         self.heartbeat_timer = {}
         self.libvirt_version = linux.get_libvirt_version()

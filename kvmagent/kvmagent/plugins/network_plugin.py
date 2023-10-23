@@ -267,6 +267,20 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         iproute.set_link_up(device_name)
 
+    def _ifdown_device_if_up(self, device_name):
+        state_path = '/sys/class/net/%s/operstate' % device_name
+
+        if not os.path.exists(state_path):
+            raise DeviceNotExistedError('cannot find %s' % state_path)
+
+        with open(state_path, 'r') as fd:
+            state = fd.read()
+
+        if 'down' in state:
+            return
+
+        iproute.set_link_down(device_name)
+
     def modifySysConfiguration(self, name, old_value, new_value):
         sysconf_path = "/etc/sysctl.conf"
         if not os.path.exists(sysconf_path):
@@ -328,6 +342,57 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     def _configure_bridge_learning(self, bridgeName, interf, learning='on'):
         shell.call("bridge link set dev %s learning %s" % (interf, learning))
+
+    def _configure_isolated(self, vlan_interface):
+        isolated_br = "isolated_%s" % vlan_interface
+        cmd = shell.ShellCmd("ipset list %s" % isolated_br)
+        cmd(False)
+        if cmd.return_code != 0:
+            shell.call("ipset create %s hash:mac" % isolated_br)
+            shell.call("iptables -A FORWARD -m physdev --physdev-in %s"
+                       " -m set --match-set %s src -j DROP" % (vlan_interface, isolated_br))
+        return
+
+    def _delete_isolated(self, vlan_interface):
+        isolated_br = "isolated_%s" % vlan_interface
+        cmd = shell.ShellCmd("ipset list %s" % isolated_br)
+        cmd(False)
+        if cmd.return_code != 0:
+            shell.call("iptables -D FORWARD -m physdev --physdev-in %s"
+                       " -m set --match-set %s src -j DROP" % (vlan_interface, isolated_br))
+            shell.call("ipset destroy %s" % isolated_br)
+
+    def _configure_pvlan_veth(self, pvlan, bridge):
+        # Check if 'pvlan://' is in the pvlan string
+        if "pvlan://" not in pvlan:
+            logger.debug("Error: Invalid pvlan format. 'pvlan://' not found.")
+            return
+        pvlan_id = pvlan.replace("pvlan://", "")
+        pvlan_parts = pvlan_id.split("-")
+        if len(pvlan_parts) != 2:
+            logger.debug("Error: Invalid pvlan format. Expected format: 'primary-secondary'.")
+            return
+        pvlan_pri = pvlan_parts[0]
+        pvlan_sec = pvlan_parts[1]
+        if not pvlan_sec:
+            logger.debug("Error: Invalid secondary pvlan value.")
+            return
+        pvlan_type = pvlan_sec[0]
+        master_br = bridge.replace(pvlan_sec, pvlan_pri)
+        if 'p' in pvlan_type:
+            shell.call("ipset create %s hash:mac" % pvlan)
+            return
+        if 'i' in pvlan_type or 'c' in pvlan_type:
+            veth = "v_p%s_%s" % (pvlan_pri, pvlan_sec)
+            veth_peer = "v_%s_p%s" % (pvlan_pri, pvlan_sec)
+            iproute.add_link(veth, 'veth', peer=veth_peer)
+            shell.call("ip link set %s master %s" % (veth, master_br))
+            shell.call("ip link set %s master %s" % (veth_peer, bridge))
+            self._ifup_device_if_down(veth)
+            self._ifup_device_if_down(veth_peer)
+            shell.call("ipset create %s hash:mac" % pvlan)
+            return
+        logger.debug("Error: Unknown pvlan type.")
 
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
@@ -590,6 +655,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         mtu = cmd.mtu
         if oldMtu > cmd.mtu:
             mtu = oldMtu
+        pvlan = getattr(cmd, 'pvlan', None)
+        isolated = getattr(cmd, 'isolated', False)
         try:
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
@@ -597,12 +664,17 @@ class NetworkPlugin(kvmagent.KvmAgent):
             self._configure_bridge_learning(cmd.bridgeName, vlanInterfName)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
+            # TODO only vlan
+            if pvlan:
+                self._ifdown_device_if_up(vlanInterfName)
+                self._configure_pvlan_veth(pvlan, cmd.bridgeName)
+            elif isolated:
+                self._configure_isolated(vlanInterfName)
             logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create vlan bridge[name:%s, vlan:%s] from device[%s], because %s' % (cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName, str(e))
             rsp.success = False
-
         return jsonobject.dumps(rsp)
 
     @lock.lock('bridge')
@@ -924,6 +996,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             linux.delete_vlan_bridge(cmd.bridgeName, vlanInterfName)
             logger.debug('successfully delete vlan bridge[name:%s, vlan:%s] from device[%s]' % (
             cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
+            self._delete_isolated(vlanInterfName)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'failed to delete vlan bridge[name:%s, vlan:%s] from device[%s], because %s' % (
