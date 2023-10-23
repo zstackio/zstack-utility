@@ -1134,10 +1134,9 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
         logger.debug("find vm[uuid: %s] root volume path %s" % (vm_uuid, root_volume_path))
 
     if is_file_system:
+        if "/dev/disk/by-id/wwn" in root_volume_path:
+            return get_block_vm_root_volume_path(vm_uuid, root_volume_path)
         return root_volume_path
-
-    if "/dev/disk/by-id/wwn" in root_volume_path:
-        return get_block_vm_root_volume_path(vm_uuid, root_volume_path)
 
     return root_volume_path.replace("rbd:", "")
 
@@ -1330,7 +1329,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("block storage %s fencer fired!" % cmd.uuid)
 
-                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.uuid, False).keys()
+                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.uuid, True).keys()
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
