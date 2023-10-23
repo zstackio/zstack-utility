@@ -318,10 +318,9 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
         logger.debug("find vm[uuid: %s] root volume path %s" % (vm_uuid, root_volume_path))
 
     if is_file_system:
+        if "/dev/disk/by-id/wwn" in root_volume_path:
+            return get_block_vm_root_volume_path(vm_uuid, root_volume_path)
         return root_volume_path
-
-    if "/dev/disk/by-id/wwn" in root_volume_path:
-        return get_block_vm_root_volume_path(vm_uuid, root_volume_path)
 
     return root_volume_path.replace("rbd:", "")
 
