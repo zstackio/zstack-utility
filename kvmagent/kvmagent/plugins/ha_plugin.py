@@ -580,7 +580,7 @@ class HaPlugin(kvmagent.KvmAgent):
                         if cmd.strategy == 'Permissive':
                             continue
 
-                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.uuid, False).keys()
+                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.uuid, True).keys()
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
