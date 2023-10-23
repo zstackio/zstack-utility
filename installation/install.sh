@@ -4513,7 +4513,8 @@ fi
 
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
-    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
+    # [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
+    [ -z $VERSION ] && VERSION=`awk '{print $NF}' $ZSTACK_VERSION`
 fi
 
 #Install/Upgrade zops
