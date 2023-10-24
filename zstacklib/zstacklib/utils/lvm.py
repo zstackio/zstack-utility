@@ -46,6 +46,7 @@ IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
 ONE_HOUR_IN_SEC = 60 * 60
+ZYJ_FLAG_PATH = "/etc/.zyj.flag"
 
 lv_offset = TTLCache(maxsize=100, ttl=ONE_HOUR_IN_SEC)
 
@@ -576,7 +577,8 @@ def modify_sanlock_config(key, value):
 
 
 def config_lvmlockd(io_timeout=40):
-    content = """[Unit]
+    if not os.path.exists(ZYJ_FLAG_PATH):
+        content = """[Unit]
 Description=LVM2 lock daemon
 Documentation=man:lvmlockd(8)
 After=lvm2-lvmetad.service
@@ -595,12 +597,12 @@ SendSIGKILL=no
 [Install]
 WantedBy=multi-user.target
 """ % io_timeout
-    lvmlockd_service_path = os.path.join("/lib/systemd/system", get_lvmlockd_service_name())
-    with open(lvmlockd_service_path, 'w') as f:
-        f.write(content)
-        f.flush()
-        os.fsync(f.fileno())
-    os.chmod(lvmlockd_service_path, 0o644)
+        lvmlockd_service_path = os.path.join("/lib/systemd/system", get_lvmlockd_service_name())
+        with open(lvmlockd_service_path, 'w') as f:
+            f.write(content)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(lvmlockd_service_path, 0o644)
 
     if not os.path.exists(LVMLOCKD_LOG_RSYSLOG_PATH):
         content = """if $programname == 'lvmlockd' then %s 

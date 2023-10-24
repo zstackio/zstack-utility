@@ -30,6 +30,7 @@ pkg_kvmagent = ""
 libvirtd_status = ""
 libvirtd_conf_status = ""
 qemu_conf_status = ""
+copy_smart_nics_status = ""
 virtualenv_version = "12.1.1"
 remote_user = "root"
 remote_pass = None
@@ -50,7 +51,7 @@ unsupported_iproute_list = ["nfs4"]
 mn_ip = None
 isInstallHostShutdownHook = 'false'
 zyjDistribution = ""
-
+init_install = ''
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy kvm to host')
@@ -81,7 +82,7 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
-if isZYJ and zyjDistribution != "":
+if isZYJ == "true" and zyjDistribution != "":
     host_post_info.distribution = zyjDistribution
 
 host_info = get_remote_host_info_obj(host_post_info)
@@ -94,9 +95,11 @@ IS_MIPS64EL = host_info.host_arch == 'mips64el'
 IS_LOONGARCH64 = host_info.host_arch == 'loongarch64'
 
 repo_dir = "/opt/zstack-dvd/{}".format(host_info.host_arch)
-if not os.path.isdir(repo_dir):
+if isZYJ == "false" and not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_info.host_arch))
 
+
+@skip_on_zyj(isZYJ)
 def update_libvirtd_config(host_post_info):
     command = "grep -i -E '^(host_uuid|listen_tls)' %s" % libvirtd_conf_file
     status, output = run_remote_command(command, host_post_info, True, True)
@@ -116,6 +119,7 @@ def update_libvirtd_config(host_post_info):
         replace_content(libvirtd_conf_file, "regexp='#host_uuid.*' replace='host_uuid=\"%s\"'" % output , host_post_info)
 
     return file_changed_flag
+
 
 @skip_on_zyj(isZYJ)
 @with_arch(todo_list=['x86_64'], host_arch=host_info.host_arch)
@@ -161,6 +165,7 @@ def check_nested_kvm(host_post_info):
     modprobe(modprobe_arg, host_post_info)
 
 
+@skip_on_zyj(isZYJ)
 def load_zstacklib():
     """include zstacklib.py"""
     zstacklib_args = ZstackLibArgs()
@@ -184,18 +189,28 @@ def load_zstacklib():
 load_zstacklib()
 
 
-# name: judge this process is init install or upgrade
-if file_dir_exist("path=" + kvm_root, host_post_info):
-    init_install = False
-else:
-    init_install = True
-    # name: create root directories
-    command = 'mkdir -p %s %s' % (kvm_root, virtenv_path)
-    host_post_info.post_label = "ansible.shell.mkdir"
-    host_post_info.post_label_param = "%s, %s" % (kvm_root, virtenv_path)
-    run_remote_command(command, host_post_info)
+@skip_on_zyj(isZYJ)
+def judge_this_process_is_init_install_or_upgrade():
+    if file_dir_exist("path=" + kvm_root, host_post_info):
+        return False
+    else:
+        # name: create root directories
+        command = 'mkdir -p %s %s' % (kvm_root, virtenv_path)
+        host_post_info.post_label = "ansible.shell.mkdir"
+        host_post_info.post_label_param = "%s, %s" % (kvm_root, virtenv_path)
+        run_remote_command(command, host_post_info)
+        return True
 
-run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
+
+init_install = judge_this_process_is_init_install_or_upgrade()
+
+
+@skip_on_zyj(isZYJ)
+def clean_kvm_root_dir():
+    run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
+
+
+clean_kvm_root_dir()
 
 
 @skip_on_zyj(isZYJ)
@@ -466,6 +481,7 @@ def install_kvm_pkg():
         error("unsupported OS!")
 
 
+@skip_on_zyj(isZYJ)
 def copy_tools():
     """copy binary tools"""
     tool_list = ['collectd_exporter', 'node_exporter', 'dnsmasq', 'zwatch-vm-agent', 'zwatch-vm-agent-freebsd', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
@@ -482,6 +498,8 @@ def copy_tools():
         if os.path.exists(pkg_path):
             copy_to_remote(pkg_path, pkg_dest_path, "mode=755", host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def copy_kvm_files():
     """copy kvmagent files and packages"""
     global qemu_conf_status, copy_zstacklib_status, copy_kvmagent_status, copy_smart_nics_status
@@ -523,6 +541,8 @@ def copy_kvm_files():
     args = "mode=755"
     copy_to_remote(kvmagt_svc_src, kvmagt_svc_dst, args, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def copy_kvmagshutdown():
     if isInstallHostShutdownHook == 'true':
         kvmagshutdown_src = "files/kvm/shutdown_vm"
@@ -538,28 +558,38 @@ def copy_kvmagshutdown():
         run_remote_command("rm -rf /etc/init.d/shutdown_vm && rm -rf /etc/rc1.d/K01shutdown_vm && "
                            "rm -rf /etc/rc6.d/K01shutdown_vm && rm -rf /etc/rc0.d/K01shutdown_vm", host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def copy_gpudriver():
     """copy mxgpu driver"""
     _src = "{}/mxgpu_driver.tar.gz".format(file_root)
     _dst = "/var/lib/zstack/mxgpu_driver.tar.gz"
     copy_to_remote(_src, _dst, None, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def create_virtio_driver_directory():
     _dst_path = "/var/lib/zstack/virtio-drivers/"
     run_remote_command("mkdir -p %s" % _dst_path, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 @on_debian_based(host_info.distro)
 def copy_ovmf_tools():
     _src = "/opt/zstack-dvd/{}/{}/ovmf_tools/".format(host_info.host_arch, releasever)
     _dst = "/usr/share/OVMF/"
     copy_to_remote(_src, _dst, None, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 @on_debian_based(host_info.distro)
 def copy_lsusb_scripts():
     _src = os.path.join(file_root, "lsusb.py")
     _dst = "/usr/local/bin/"
     copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 @on_redhat_based(host_info.distro)
 def copy_zs_scripts():
     """copy zs-xxx from mn_node to host_node"""
@@ -567,6 +597,7 @@ def copy_zs_scripts():
     _dst = '/usr/local/bin/'
     copy_to_remote(_src, _dst, None, host_post_info)
 
+@skip_on_zyj(isZYJ)
 @on_redhat_based(host_info.distro)
 def copy_grubaa64_efi():
     """copy grubaa64.efi from mn_node to bm2 gateway"""
@@ -584,6 +615,7 @@ def set_max_performance():
     host_post_info.post_label_param = "set profile as virtual-host"
     run_remote_command(command, host_post_info)
 
+@skip_on_zyj(isZYJ)
 @on_redhat_based(host_info.distro)
 def copy_bond_conf():
     """copy bond.conf from mn_node to host_node"""
@@ -591,6 +623,8 @@ def copy_bond_conf():
     _dst = "/etc/modprobe.d/"
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def do_libvirt_qemu_config():
     """special configration"""
 
@@ -608,6 +642,7 @@ def do_libvirt_qemu_config():
     run_remote_command(command, host_post_info)
 
 
+@skip_on_zyj(isZYJ)
 def do_network_config():
     """config NetworkManager(fix 40371)"""
     NETWORKMANAGER_CONF_FILE = '/etc/NetworkManager/NetworkManager.conf'
@@ -656,6 +691,7 @@ def do_network_config():
         run_remote_command(command, host_post_info)
 
 
+@skip_on_zyj(isZYJ)
 def copy_spice_certificates_to_host():
     """copy spice certificates"""
 
@@ -692,6 +728,8 @@ def copy_spice_certificates_to_host():
     copy_arg.args = "mode=400"
     copy(copy_arg, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def install_virtualenv():
     """install virtualenv"""
 
@@ -708,6 +746,8 @@ def install_virtualenv():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def install_python_pkg():
     extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
     pip_install_arg = PipInstallArg()
@@ -716,6 +756,8 @@ def install_python_pkg():
     pip_install_arg.virtualenv = virtenv_path
     pip_install_package(pip_install_arg, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def install_agent_pkg():
     """install zstacklib and kvmagent on host"""
 
@@ -735,6 +777,8 @@ def install_agent_pkg():
         agent_install_arg.virtualenv_site_packages = "yes"
         agent_install(agent_install_arg, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def copy_i40e_driver():
     """copy intel i40e ethernet dirver"""
 
@@ -744,6 +788,8 @@ def copy_i40e_driver():
         _dst = "/var/lib/zstack/i40e_driver.tar.gz"
         copy_to_remote(_src, _dst, None, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 @on_debian_based(host_info.distro, exclude=['Kylin'])
 def set_legacy_iptables_ebtables():
     """set legacy mode if needed"""
@@ -754,6 +800,7 @@ def set_legacy_iptables_ebtables():
     run_remote_command(command, host_post_info)
 
 
+@skip_on_zyj(isZYJ)
 def do_auditd_config():
     """add audit rules for signals"""
     AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
@@ -767,6 +814,8 @@ def do_auditd_config():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 def do_systemd_config():
     systemd_config_file = '/etc/systemd/system.conf'
     command = "sed -i 's/\#\?DefaultTimeoutStartSec.*/DefaultTimeoutStartSec=10s/g' {0}; " \
@@ -776,13 +825,18 @@ def do_systemd_config():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+
 def start_kvmagent():
     if chroot_env != 'false':
         return
 
     if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status, copy_smart_nics_status]):
         # name: restart libvirtd if status is stop or cfg changed
-        service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
+        if isZYJ == "false":
+            service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
+        else:
+            run_remote_command("systemctl restart libvirtd;systemctl enable libvirtd", host_post_info, False, False, isZYJ)
+
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
     if host_info.distro in RPM_BASED_OS and host_info.major_version >= 7:
@@ -790,22 +844,26 @@ def start_kvmagent():
         command = "pkill -USR2 -P 1 -ef 'kvmagent import kdaemon' || true && sleep 1"
         host_post_info.post_label = "ansible.shell.dump.service"
         host_post_info.post_label_param = "zstack-kvmagent"
-        run_remote_command(command, host_post_info)
-        command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
+        run_remote_command(command, host_post_info, False, False, isZYJ)
+        command = "service zstack-kvmagent.service stop && service zstack-kvmagent.service start && chkconfig zstack-kvmagent on"
     elif host_info.distro in RPM_BASED_OS:
-        command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
+        command = "service zstack-kvmagent.service stop && service zstack-kvmagent.service start && chkconfig zstack-kvmagent on"
     elif host_info.distro in DEB_BASED_OS:
         command = "update-rc.d zstack-kvmagent start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-kvmagent stop && service zstack-kvmagent start"
     host_post_info.post_label = "ansible.shell.restart.service"
     host_post_info.post_label_param = "zstack-kvmagent"
-    run_remote_command(command, host_post_info)
+    run_remote_command(command, host_post_info, False, False, isZYJ)
 
+
+@skip_on_zyj(isZYJ)
 def modprobe_usb_module():
     command = "modprobe usb-storage; modprobe uas || true"
     host_post_info.post_label = "ansible.shell.modprobe.usb"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+
+@skip_on_zyj(isZYJ)
 @with_arch(todo_list=['aarch64'], host_arch=host_info.host_arch)
 def set_gpu_blacklist():
     if releasever not in ['ns10']:
@@ -824,7 +882,7 @@ def do_kvm_host_config():
     command = "chmod 755 /var/lib/zstack/"
     host_post_info.post_label = "ansible.shell.do.zyj.host.config"
     host_post_info.post_label_param = None
-    run_remote_command(command, host_post_info)
+    run_remote_command(command, host_post_info, False, False, isZYJ)
 
 
 check_nested_kvm(host_post_info)

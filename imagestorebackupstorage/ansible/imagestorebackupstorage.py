@@ -50,6 +50,7 @@ argument_dict = eval(args.e)
 locals().update(argument_dict)
 imagestore_root = "%s/imagestorebackupstorage/package" % zstack_root
 utils_root = "%s/imagestorebackupstorage" % zstack_root
+imagestore_bin = "/usr/local/zstack/imagestore/bin/"
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -63,7 +64,7 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
-if isZYJ and zyjDistribution != "":
+if isZYJ == "true" and zyjDistribution != "":
     host_post_info.distribution = zyjDistribution
 
 # include zstacklib.py
@@ -86,7 +87,9 @@ if client != "true":
     dst_pkg_imagestorebackupstorage = "zstack-store.bin"
 else:
     dst_pkg_imagestorebackupstorage = "zstack-store-client.bin"
+
 dst_pkg_exporter = "collectd_exporter"
+dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
 
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = host_info.distro
@@ -163,47 +166,50 @@ def install_packages():
         error("ERROR: Unsupported distribution")
 
 
-install_packages()
+@skip_on_zyj(isZYJ)
+def copy_binary():
+    # name: copy imagestore binary
+    command = 'rm -rf {};mkdir -p {}'.format(imagestore_root, imagestore_root + "/certs")
+    run_remote_command(command, host_post_info)
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
+    copy_arg.dest = dest_pkg
+    copy(copy_arg, host_post_info)
 
-# name: copy imagestore binary
-command = 'rm -rf {};mkdir -p {}'.format(imagestore_root, imagestore_root + "/certs")
-run_remote_command(command, host_post_info)
-copy_arg = CopyArg()
-dest_pkg = "%s/%s" % (imagestore_root, dst_pkg_imagestorebackupstorage)
-copy_arg.src = "%s/%s" % (file_root, src_pkg_imagestorebackupstorage)
-copy_arg.dest = dest_pkg
-copy(copy_arg, host_post_info)
+    # name: copy exporter binary
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (kvm_file_root, src_pkg_exporter)
+    copy_arg.dest = "%s/%s" % (utils_root, dst_pkg_exporter)
+    copy(copy_arg, host_post_info)
 
-# name: copy exporter binary
-copy_arg = CopyArg()
-copy_arg.src = "%s/%s" % (kvm_file_root, src_pkg_exporter)
-copy_arg.dest = "%s/%s" % (utils_root, dst_pkg_exporter)
-copy(copy_arg, host_post_info)
+    # name: copy iptables-scrpit
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/zstore-iptables" % file_root
+    copy_arg.dest = "%s/zstore-iptables" % imagestore_root
+    copy_arg.args = "force=yes"
+    copy(copy_arg, host_post_info)
 
-# name: copy iptables-scrpit
-copy_arg = CopyArg()
-copy_arg.src = "%s/zstore-iptables" % file_root
-copy_arg.dest = "%s/zstore-iptables" % imagestore_root
-copy_arg.args = "force=yes"
-copy(copy_arg, host_post_info)
 
-# name: copy necessary certificates
-xs = current_dir.split('/')
-local_install_dir = '/'.join(xs[:xs.index('ansible')])
-local_cert_dir = os.path.join(local_install_dir, "imagestore", "bin", "certs")
+def copy_certificates():
+    # name: copy necessary certificates
+    xs = current_dir.split('/')
+    local_install_dir = '/'.join(xs[:xs.index('ansible')])
+    local_cert_dir = os.path.join(local_install_dir, "imagestore", "bin", "certs")
 
-copy_arg = CopyArg()
-copy_arg.src = "%s/%s" % (local_cert_dir, "ca.pem")
-copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
-copy_arg.args = "mode=644 force=yes"
-copy(copy_arg, host_post_info)
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "ca.pem")
+    copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
+    copy_arg.args = "mode=644 force=yes"
+    copy(copy_arg, host_post_info, isZYJ)
 
-copy_arg = CopyArg()
-copy_arg.src = "%s/%s" % (local_cert_dir, "privkey.pem")
-copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
-copy_arg.args = "mode=400 force=yes"
-copy(copy_arg, host_post_info)
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (local_cert_dir, "privkey.pem")
+    copy_arg.dest = "%s/%s/" % (imagestore_root, "certs")
+    copy_arg.args = "mode=400 force=yes"
+    copy(copy_arg, host_post_info, isZYJ)
 
+
+@skip_on_zyj(isZYJ)
 def load_nbd():
     command = "modinfo nbd"
     status = run_remote_command(command, host_post_info, True, False)
@@ -222,28 +228,43 @@ def load_nbd():
         command = "echo 'nbd' > /etc/modules-load.d/nbd.conf; echo 'options nbd nbds_max=128 max_part=16' > /etc/modprobe.d/nbd.conf; dracut -f;"
         run_remote_command(command, host_post_info)
 
-load_nbd()
 
-# name: install zstack-store
-if client == "false":
-    command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
-else:
-    command = "bash " + dest_pkg
-run_remote_command(command, host_post_info)
+def install_zstore():
+    if isZYJ == "false":
+        if client == "false":
+            command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
+        else:
+            command = "bash " + dest_pkg
+        run_remote_command(command, host_post_info)
+    else:
+        if client != "true":
+            command = '''sed -i 's/.*rootdirectory:.*/        rootdirectory: %s/' %s/zstore.yaml''' % (
+            fs_rootpath.replace("/", "\/"), imagestore_bin)
+            run_remote_command(command, host_post_info)
+            command = '''sed -i 's/.*quota:.*/        quota: %s/' %s/zstore.yaml''' % (max_capacity, imagestore_bin)
+            run_remote_command(command, host_post_info, False, False, isZYJ)
+
+
+install_packages()
+copy_binary()
+copy_certificates()
+load_nbd()
+install_zstore()
+
 
 # if user is not root , Change the owner of the directory to ordinary user
 if fs_rootpath != '' and remote_user != 'root':
-    run_remote_command("sudo chown -R -H --dereference %s: %s" % (remote_user, fs_rootpath), host_post_info)
+    run_remote_command("sudo chown -R -H --dereference %s: %s" % (remote_user, fs_rootpath), host_post_info, False, False, isZYJ)
 
 # name: restart image store server
 if client != "true":
     # integrate zstack-store with init.d
-    run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
+    run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info, False, False, isZYJ)
     if host_info.distro in RPM_BASED_OS:
         command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
     elif host_info.distro in DEB_BASED_OS:
         command = "update-rc.d zstack-imagestorebackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start"
-    run_remote_command(command, host_post_info)
+    run_remote_command(command, host_post_info, False, False, isZYJ)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy imagestore backupstore successful", host_post_info, "INFO")

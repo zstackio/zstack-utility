@@ -69,7 +69,7 @@ host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
 
-if isZYJ and zyjDistribution != "":
+if isZYJ == "true" and zyjDistribution != "":
     host_post_info.distribution = zyjDistribution
 
 # include zstacklib.py
@@ -124,63 +124,71 @@ def install_packages():
 
 install_packages()
 
-run_remote_command(add_true_in_command("rm -rf %s/*" % zsn_root), host_post_info)
-command = 'mkdir -p %s ' % (zsn_root)
-run_remote_command(add_true_in_command(command), host_post_info)
 
-# name: copy zsn binary
-# HOST_ARCH = get_remote_host_arch(host_post_info)
-if host_info.host_arch == 'x86_64':
-    src_pkg_zsn = "zsn-agent.bin"
-else:
-    src_pkg_zsn = "zsn-agent.{}.bin".format(host_info.host_arch)
-
-copy_arg = CopyArg()
-dest_pkg = "%s/%s" % (zsn_root, dst_pkg_zsnagent)
-copy_arg.src = "%s/%s" % (file_root, src_pkg_zsnagent)
-copy_arg.dest = dest_pkg
-copy(copy_arg, host_post_info)
-
-
-command = "/bin/cp /usr/local/zstack/zsn-agent/bin/zsn-agent /usr/local/zstack/zsn-agent/bin/zsn-agent.bak || touch /usr/local/zstack/zsn-agent/bin/zsn-agent.bak"
-run_remote_command(add_true_in_command(command), host_post_info)
-
-# name: install zstack-network
-command = "bash %s %s " % (dest_pkg, fs_rootpath)
-run_remote_command(add_true_in_command(command), host_post_info)
-
-# integrate zstack-network with systemd
-run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/"), host_post_info)
-
-if tmout is None:
-    tmout = 960
-
-successTmout, stdoutTmout = run_remote_command("grep -- '-tmout %s' /usr/lib/systemd/system/zstack-network-agent.service" % int(tmout), host_post_info, True, True)
-successMd5, stdoutMd5 = run_remote_command(add_true_in_command("md5sum /usr/local/zstack/zsn-agent/bin/zsn-agent"), host_post_info, True, True)
-successOldMd5, oldMd5 = run_remote_command(add_true_in_command("md5sum /usr/local/zstack/zsn-agent/bin/zsn-agent.bak"), host_post_info, True, True)
-
-msg = Msg()
-post_url = host_post_info.post_url
-msg.details = "zsn agent deploying %s, %s, %s, %s, %s, %s" % (successTmout, stdoutTmout, successMd5, stdoutMd5, successOldMd5, oldMd5)
-msg.label = "ansible.zsn"
-msg.parameters = host_post_info.post_label_param
-msg.level = "WARNING"
-post_msg(msg, post_url)
-
-if successTmout is True and len(stdoutMd5.strip()) != 0 and stdoutMd5.split(" ")[0] == oldMd5.split(" ")[0]:
-    host_post_info.start_time = start_time
-    command = "systemctl daemon-reload && systemctl enable zstack-network-agent.service && systemctl start zstack-network-agent.service"
+@skip_on_zyj(isZYJ)
+def config_zsn(tmout):
+    run_remote_command(add_true_in_command("rm -rf %s/*" % zsn_root), host_post_info)
+    command = 'mkdir -p %s ' % (zsn_root)
     run_remote_command(add_true_in_command(command), host_post_info)
-    handle_ansible_info("SUCC: Deploy zstack network agent successful(only enable and start)", host_post_info, "INFO")
-    sys.exit(0)
 
-run_remote_command(add_true_in_command("pkill zsn-agent; /bin/rm /etc/init.d/zstack-network-agent"), host_post_info)
+    # name: copy zsn binary
+    copy_arg = CopyArg()
+    dest_pkg = "%s/%s" % (zsn_root, dst_pkg_zsnagent)
+    copy_arg.src = "%s/%s" % (file_root, src_pkg_zsnagent)
+    copy_arg.dest = dest_pkg
+    copy(copy_arg, host_post_info)
 
-service_env = "ZSNARGS=-log-file /var/log/zstack/zsn-agent/zsn-agent.log -tmout %s" % int(tmout)
-replace_content("/usr/lib/systemd/system/zstack-network-agent.service", '''regexp='.*Environment=.*' replace="Environment='%s'"''' % service_env, host_post_info)
+    # backup zsn binary
+    command = "/bin/cp /usr/local/zstack/zsn-agent/bin/zsn-agent /usr/local/zstack/zsn-agent/bin/zsn-agent.bak || touch /usr/local/zstack/zsn-agent/bin/zsn-agent.bak"
+    run_remote_command(add_true_in_command(command), host_post_info)
+
+    # name: install zstack-network
+    command = "bash %s %s " % (dest_pkg, fs_rootpath)
+    run_remote_command(add_true_in_command(command), host_post_info)
+
+    # integrate zstack-network with systemd
+    run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsn-agent/bin/zstack-network-agent.service /usr/lib/systemd/system/"), host_post_info)
+
+    if tmout is None:
+        tmout = 960
+
+    successTmout, stdoutTmout = run_remote_command("grep -- '-tmout %s' /usr/lib/systemd/system/zstack-network-agent.service" % int(tmout), host_post_info, True, True)
+    successMd5, stdoutMd5 = run_remote_command(add_true_in_command("md5sum /usr/local/zstack/zsn-agent/bin/zsn-agent"), host_post_info, True, True)
+    successOldMd5, oldMd5 = run_remote_command(add_true_in_command("md5sum /usr/local/zstack/zsn-agent/bin/zsn-agent.bak"), host_post_info, True, True)
+
+    msg = Msg()
+    post_url = host_post_info.post_url
+    msg.details = "zsn agent deploying %s, %s, %s, %s, %s, %s" % (successTmout, stdoutTmout, successMd5, stdoutMd5, successOldMd5, oldMd5)
+    msg.label = "ansible.zsn"
+    msg.parameters = host_post_info.post_label_param
+    msg.level = "WARNING"
+    post_msg(msg, post_url)
+
+    if successTmout is True and len(stdoutMd5.strip()) != 0 and stdoutMd5.split(" ")[0] == oldMd5.split(" ")[0]:
+        host_post_info.start_time = start_time
+        command = "systemctl daemon-reload && systemctl enable zstack-network-agent.service && systemctl start zstack-network-agent.service"
+        run_remote_command(add_true_in_command(command), host_post_info)
+        handle_ansible_info("SUCC: Deploy zstack network agent successful(only enable and start)", host_post_info, "INFO")
+        sys.exit(0)
+
+
+config_zsn(tmout)
+
+
+run_remote_command(add_true_in_command("pkill zsn-agent; /bin/rm /etc/init.d/zstack-network-agent"), host_post_info, False, False, isZYJ)
+
+
+@skip_on_zyj(isZYJ)
+def replace_service_content():
+    service_env = "ZSNARGS=-log-file /var/log/zstack/zsn-agent/zsn-agent.log -tmout %s" % int(tmout)
+    replace_content("/usr/lib/systemd/system/zstack-network-agent.service", '''regexp='.*Environment=.*' replace="Environment='%s'"''' % service_env, host_post_info)
+
+
+replace_service_content()
+
 
 command = "systemctl daemon-reload && systemctl enable zstack-network-agent.service && systemctl restart zstack-network-agent.service"
-run_remote_command(add_true_in_command(command), host_post_info)
+run_remote_command(add_true_in_command(command), host_post_info, False, False, isZYJ)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy zstack network agent successful(killed old one and restart)", host_post_info, "INFO")
