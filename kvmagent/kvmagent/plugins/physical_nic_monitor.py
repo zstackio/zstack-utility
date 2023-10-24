@@ -198,7 +198,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
                     self.history_nics.append(new_nic)
             # old nic alarm
             if nic in self.nic_info:
-                if self.nic_info[nic] != status and ((status == 'down') ^ linux.get_nic_state_by_name(nic)):
+                if self.nic_info[nic] != status and ((status == 'down') or linux.get_nic_state_by_name(nic)):
                     logger.info("old physical_nic active detect, IfName[%s]---State[%s]" % (nic, status))
                     self.nic_info[nic] = status
                     self.add_alarm_to_send(nic, status)
