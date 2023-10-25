@@ -161,6 +161,25 @@ def retry(times=3, sleep_time=3):
         return inner
     return wrap
 
+def retry_if_unexpected_value(unexpected_value, times=3, sleep_time=3):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            ret = None
+            for i in range(0, times):
+                try:
+                    ret = f(*args, **kwargs)
+                    if ret == unexpected_value:
+                        time.sleep(sleep_time)
+                    else:
+                        return ret
+                except Exception as e:
+                    time.sleep(sleep_time)
+            return ret
+
+        return inner
+    return wrap
+
 def retry_with_check(handler=None):
     def wrap(f):
         @functools.wraps(f)
