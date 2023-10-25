@@ -289,6 +289,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def trigger_events_for_block(self):
+        bash.bash_r("udevadm trigger --subsystem-match=block")
+
     @lock.lock('iscsiadm')
     @kvmagent.replyerror
     @bash.in_bash
@@ -404,6 +407,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
                 # refresh mpath dev if any
                 refresh_mpath(disks)
+                self.trigger_events_for_block()
 
                 if len(disks) == 0:
                     rsp.iscsiTargetStructList.append(t)
@@ -499,6 +503,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 if os.path.exists(p):
                     shell.run('multipathd resize map '+os.path.realpath(p))
         linux.set_fail_if_no_path()
+        paths = [lun.path for lun in rsp.fiberChannelLunStructs]
+        self.trigger_events_for_block()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
