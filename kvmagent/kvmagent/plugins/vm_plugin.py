@@ -6118,7 +6118,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_SYNC_VM_DEVICEINFO_PATH = "/sync/vm/deviceinfo"
     CLEAN_FIRMWARE_FLASH = "/clean/firmware/flash"
     APPLY_MEMORY_BALLOON_PATH = "/vm/apply/memory/balloon"
-
+    KVM_NOTIFY_TF_NIC_PATH = "/vm/nodifytfnic"
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
     SET_VM_IOTHREADPIN_PATH = "/vm/setiothreadpin"
@@ -6381,14 +6381,14 @@ class VmPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def update_nic(self, req):
+    def notify_tf_nic(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         # Deal with update nic request form migration
-        if cmd.notifySugonSdn:
-            for nic in cmd.nics:
-                if nic.type != 'TFVNIC':
-                    continue
+        for nic in cmd.nics:
+            if nic.type != 'TFVNIC':
+                continue
+            if "add" == cmd.sugonSdnAction:
                 vrouter_cmd = [
                     'vrouter-port-control',
                     '--oper=add',
@@ -6406,7 +6406,21 @@ class VmPlugin(kvmagent.KvmAgent):
                     '--rx_vlan_id=-1',
                 ]
                 notify_vrouter(vrouter_cmd)
-            return jsonobject.dumps(rsp)
+            elif "delete" == cmd.sugonNicCfg.sugonSdnAction:
+                # notify vrouter agent nic removed from dest host when migrate failed
+                # when migrate success, notify vrouter agent removed src host.
+                vrouter_cmd = [
+                    'vrouter-port-control',
+                    '--oper=delete',
+                    '--uuid=%s' % transform_to_tf_uuid(nic.uuid)
+                ]
+                notify_vrouter(vrouter_cmd)
+        return jsonobject.dumps(rsp)
+    
+    @kvmagent.replyerror
+    def update_nic(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
         vm = get_vm_by_uuid(cmd.vmInstanceUuid)
         vm.update_nic(cmd)
 
@@ -7128,15 +7142,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
                 vm = get_vm_by_uuid(cmd.vmUuid)
                 vm.migrate(cmd)
-            # notify vrouter agent nic removed from source host
-            for nic in cmd.nics:
-                if nic.type == 'TFVNIC':
-                    vrouter_cmd = [
-                        'vrouter-port-control',
-                        '--oper=delete',
-                        '--uuid=%s' % transform_to_tf_uuid(nic.uuid)
-                    ]
-                    notify_vrouter(vrouter_cmd)
 
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -9878,7 +9883,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SSH_KEY_PAIR_ATTACH_TO_VM, self.attach_ssh_key_pair)
         http_server.register_async_uri(self.SSH_KEY_PAIR_DETACH_FROM_VM, self.detach_ssh_key_pair)
         http_server.register_async_uri(self.APPLY_MEMORY_BALLOON_PATH, self.apply_memory_balloon)
-
+        http_server.register_async_uri(self.KVM_NOTIFY_TF_NIC_PATH, self.notify_tf_nic)
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
         self.register_qemu_log_cleaner()
