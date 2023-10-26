@@ -62,9 +62,14 @@ class CephDriver(object):
         return rsp
 
     @linux.retry(times=30, sleep_time=5)
-    def do_deletion(self, cmd, path, skip_if_not_exist=False):
+    def do_deletion(self, cmd, path, skip_if_not_exist=False, defer=False):
         if shell.run('rbd info %s' % path) != 0 and skip_if_not_exist:
             return
+
+        if defer and ceph.support_defer_deleting():
+            if cmd.expirationTime is not None and cmd.expirationTime > 0:
+                shell.call("rbd trash mv %s %s" % (path, ceph.get_defer_deleting_options(cmd)))
+                return
 
         shell.call('rbd rm %s' % path)
 
