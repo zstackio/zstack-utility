@@ -6859,7 +6859,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    def get_device_address_info(self, device):
+    def get_device_address_info(self, device, resource_uuid=None):
         virtualDeviceInfo = VirtualDeviceInfo()
         virtualDeviceInfo.deviceAddress.bus = device.address.bus_ if device.address.bus__ else None
         virtualDeviceInfo.deviceAddress.domain = device.address.domain_ if device.address.domain__ else None
@@ -6872,6 +6872,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
         if device.has_element('serial'):
             virtualDeviceInfo.resourceUuid = device.serial.text_
+        elif resource_uuid:
+            virtualDeviceInfo.resourceUuid = resource_uuid
 
         return virtualDeviceInfo
 
@@ -6904,7 +6906,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm.refresh()
 
             disk, _ = vm._get_target_disk(volume)
-            rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk))
+            rsp.virtualDeviceInfoList.append(self.get_device_address_info(disk, volume.volumeUuid))
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
