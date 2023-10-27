@@ -1414,6 +1414,15 @@ def get_interface_ip_addresses(interface):
     output = shell.call("ip -4 -o a show %s | awk '{print $4}'" % interface.strip())
     return output.splitlines() if output else []
 
+@retry(times=2, sleep_time=1)
+def ip_link_set_net_device_master(net_device, master):
+    shell.call("ip link set %s master %s" % (net_device, master))
+
+    # double check, because sometimes the master is not set successfully, see jira: ZSTAC-54905, ZSV-3260
+    actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % net_device).strip('\n')
+    if not actual_result or actual_result != master:
+        raise Exception("set net device[%s] master to [%s] failed, try again now" % (net_device, master))
+
 def delete_novlan_bridge(bridge_name, interface, move_route=True):
     if not is_network_device_existing(bridge_name):
         logger.debug("can not find bridge %s" % bridge_name)
@@ -1477,24 +1486,8 @@ def create_bridge(bridge_name, interface, move_route=True):
     if br_name == bridge_name:
         logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (bridge_name, interface))
     else:
-        #Problem phenomenon
-        #The NM-managed bond fails to be added to the bridge regularly during 
-        # cluster attaching and detaching on the L2 network.  
-        # 
-        #Temporary situation
-        #Before adding the bond to the bridge, set the bond managed by nm to
-        # unmanaged, after adding the bond to the bridge, restore the bond.
-        nm_connection_type = shell.call("nmcli -g connection.type connection show %s" % interface, exception=False)
-        if nm_connection_type.strip() == 'bond':
-            nm_device = shell.call("nmcli -g GENERAL.DEVICES connection show %s" % interface, exception=False).strip()
-            if nm_device:
-                modify_device_state_in_networkmanager(nm_device, 'no')
-                shell.call("brctl addif %s %s" % (bridge_name, interface))
-                modify_device_state_in_networkmanager(nm_device, 'yes')
-            else:
-                shell.call("brctl addif %s %s" % (bridge_name, interface))  
-        else:
-            shell.call("brctl addif %s %s" % (bridge_name, interface))
+        ip_link_set_net_device_master(interface, bridge_name)
+
     #Set bridge MAC address as network device MAC address. It will avoid of 
     # bridge MAC address is reset to other new added dummy network device's 
     # MAC address.
