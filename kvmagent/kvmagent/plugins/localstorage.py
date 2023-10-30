@@ -824,7 +824,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
         if cmd.path:
             try:
-                kvmagent.deleteImage(cmd.path)
+                kvmagent.deleteImage(cmd.path, cmd.zeroed)
             except linux.VolumeInUseError:
                 rsp.success = False
                 rsp.error = "file %s is still in use, unable to delete" % cmd.path

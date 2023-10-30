@@ -825,6 +825,23 @@ def do_systemd_config():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+def modprobe_modules():
+    # command = "modprobe nbd;modprobe multipath;modprobe dm_multipath;"
+    # host_post_info.post_label = "ansible.shell.modprobe.nbd"
+    # host_post_info.post_label_param = None
+    # run_remote_command(command, host_post_info)
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = 'nbd'
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = 'multipath'
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = 'dm_multipath'
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
 
 def start_kvmagent():
     if chroot_env != 'false':
@@ -911,6 +928,7 @@ do_systemd_config()
 modprobe_usb_module()
 set_gpu_blacklist()
 do_kvm_host_config()
+modprobe_modules()
 start_kvmagent()
 
 host_post_info.start_time = start_time

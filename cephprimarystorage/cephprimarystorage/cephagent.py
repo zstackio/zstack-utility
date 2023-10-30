@@ -31,6 +31,7 @@ from zstacklib.utils import qemu_img
 from zstacklib.utils import traceable_shell
 from zstacklib.utils import nbd_client
 from zstacklib.utils import thread
+from zstacklib.utils import nbd
 from imagestore import ImageStoreClient
 from zstacklib.utils.linux import remote_shell_quote
 from cephdriver import CephDriver
@@ -1077,6 +1078,20 @@ class CephAgent(plugin.TaskManager):
 
         driver = self.get_driver(cmd)
         driver.do_deletion(cmd)
+
+        @linux.retry(times=30, sleep_time=5)
+        def do_deletion():
+            shell.call('rbd rm %s' % path)
+
+        def do_zeroed():
+            nbd_dev = nbd.connect(path)
+            linux.zeroed_file_dev(nbd_dev)
+            nbd.disconnect(nbd_dev)
+
+        if cmd.zeroed:
+            do_zeroed(path)
+            
+        do_deletion()
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
