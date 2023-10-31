@@ -7,7 +7,7 @@ import tempfile
 
 logger = log.get_logger(__name__)
 
-def create_template_with_task_daemon(src, dst, task_spec, opts=None, **daemonargs):
+def create_template_with_task_daemon(src, dst, task_spec, dst_format='qcow2', opts=None, **daemonargs):
     t_shell = traceable_shell.get_shell(task_spec)
     p_file = tempfile.mktemp()
 
@@ -37,4 +37,4 @@ def create_template_with_task_daemon(src, dst, task_spec, opts=None, **daemonarg
             return report.get_exact_percent(percent, self.stage)
 
     with ConvertTaskDaemon(dst, task_spec):
-        linux.create_template(src, dst, shell=t_shell, progress_output=p_file, opts=opts)
+        linux.create_template(src, dst, dst_format=dst_format, shell=t_shell, progress_output=p_file, opts=opts)

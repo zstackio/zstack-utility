@@ -1426,27 +1426,27 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         lvm.update_pv_allocate_strategy(cmd)
 
-        top = filter(lambda s: s.snapshotUuid is None, cmd.migrateVolumeStructs)[0].currentInstallPath
-        top = translate_absolute_path_from_install_path(top)
+        top = translate_absolute_path_from_install_path(cmd.volumePath)
 
         for struct in cmd.migrateVolumeStructs:
             target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
             current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
-
-            if top == current_abs_path:
-                with lvm.OperateLv(current_abs_path, shared=True):
+            with lvm.RecursiveOperateLv(current_abs_path, shared=True):
+                if linux.get_img_fmt(current_abs_path) == 'raw':
+                    lv_size = int(lvm.get_lv_size(current_abs_path))
+                elif top == current_abs_path:
                     lv_size = int(linux.qcow2_virtualsize(current_abs_path))
                     lv_size = lvm.calcLvReservedSize(lv_size)
-                    struct.put('lv_size', lv_size)
-            elif struct.independent:
-                with lvm.RecursiveOperateLv(current_abs_path, shared=True):
+                elif struct.independent:
                     lv_size = int(linux.qcow2_measure_required_size(current_abs_path))
                     lv_size = lvm.calcLvReservedSize(lv_size)
-                    struct.put('lv_size', lv_size)
-            else:
-                with lvm.OperateLv(current_abs_path, shared=True):
+                else:
                     lv_size = int(lvm.get_lv_size(current_abs_path))
-                    struct.put('lv_size', lv_size)
+                    if linux.qcow2_get_backing_file(current_abs_path) == '':
+                        measure_size = int(linux.qcow2_measure_required_size(current_abs_path))
+                        if lvm.calcLvReservedSize(measure_size) > lv_size:
+                            struct.put('compressed_qcow2', True)
+                struct.put('lv_size', lv_size)
 
             if lvm.lv_exists(target_abs_path):
                 if struct.skipIfExisting:
@@ -1479,8 +1479,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 with lvm.RecursiveOperateLv(current_abs_path, shared=True):
                     backing_file = None if struct.independent else linux.qcow2_get_backing_file(current_abs_path)
                     opts = "" if not backing_file else " -B %s " % backing_file
-                    qcow2.create_template_with_task_daemon(current_abs_path, target_abs_path, cmd,
+                    if backing_file and not qemu_img.take_default_backing_fmt_for_convert():
+                        opts += " -F %s " % linux.get_img_fmt(backing_file)
+
+                    if struct.compressed_qcow2 or linux.get_img_fmt(current_abs_path) == 'raw':
+                        t_bash = traceable_shell.get_shell(cmd)
+                        t_bash.bash_errorout("pv -n %s > %s" % (current_abs_path, target_abs_path))
+                    else:
+                        qcow2.create_template_with_task_daemon(current_abs_path, target_abs_path, cmd,
                                                            opts=opts,
+                                                           dst_format=linux.get_img_fmt(current_abs_path),
                                                            stage="%s-%s" % (start, end),
                                                            task_name="MigrateVolumes")
 
