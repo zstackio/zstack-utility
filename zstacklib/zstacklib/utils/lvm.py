@@ -640,12 +640,19 @@ def config_lvmlocal_conf(node, value):
     cmd = shell.ShellCmd("lvmconfig --mergedconfig --config %s=%s -f /etc/lvm/lvmlocal.conf" % (node, value))
     cmd(is_exception=True)
 
+@bash.in_bash
+@linux.retry(3, 1)
+def get_lvm_version():
+    cmd = shell.ShellCmd("lvm version")
+    cmd(is_exception=True)
+    return cmd.stdout
 
 @bash.in_bash
 def start_lvmlockd(io_timeout=40):
     if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
+    logger.info("get lvm version info:\n %s" % get_lvm_version())
     config_lvmlockd(io_timeout)
     running_lockd_version = get_running_lvmlockd_version()
     if running_lockd_version and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version()):
