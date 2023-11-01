@@ -1,9 +1,12 @@
 import json
 import os
+import mock
+import time
+
 
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
-from zstacklib.utils import bash
+from zstacklib.utils import bash,lvm,jsonobject
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 import pytest
@@ -101,9 +104,9 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         bash.bash_errorout("lvchange -aey %s" % "/dev/{}/{}".format(vgUuid,volumeUuid))
         o = bash.bash_o("qemu-img map %s --output=json" % "/dev/{}/{}".format(vgUuid,volumeUuid))
         o = json.loads(o.strip())
-        self.assertEqual(1, len(o))
-        self.assertEqual(10485760, o[0].get("length"))
-        self.assertEqual(False, o[0].get("data"))
+        self.assertEqual(2, len(o))
+        self.assertEqual(10485760-2097152, o[1].get("length"))
+        self.assertEqual(False, o[1].get("data"))
 
         # size=1G
         volumeUuid = misc.uuid()
@@ -120,9 +123,9 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         bash.bash_errorout("lvchange -aey %s" % "/dev/{}/{}".format(vgUuid,volumeUuid))
         o = bash.bash_o("qemu-img map %s --output=json" % "/dev/{}/{}".format(vgUuid,volumeUuid))
         o = json.loads(o.strip())
-        self.assertEqual(1, len(o))
-        self.assertEqual(1024**3, o[0].get("length"))
-        self.assertEqual(False, o[0].get("data"))
+        self.assertEqual(2, len(o))
+        self.assertEqual(1024**3-2097152, o[1].get("length"))
+        self.assertEqual(False, o[1].get("data"))
 
         # size=3.1G
         volumeUuid = misc.uuid()
@@ -139,6 +142,53 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         bash.bash_errorout("lvchange -aey %s" % "/dev/{}/{}".format(vgUuid,volumeUuid))
         o = bash.bash_o("qemu-img map %s --output=json" % "/dev/{}/{}".format(vgUuid,volumeUuid))
         o = json.loads(o.strip())
-        self.assertEqual(1, len(o))
-        self.assertEqual(3326083072, o[0].get("length"))
-        self.assertEqual(False, o[0].get("data"))
+        self.assertEqual(2, len(o))
+        self.assertEqual(3326083072-2097152, o[1].get("length"))
+        self.assertEqual(False, o[1].get("data"))
+
+        # test create lv task timeout
+        create_time = 61
+        def slow_create_lv(path, size, tag="zs::sharedblock::volume", lock=True, exact_size=False, pe_ranges=None):
+            time.sleep(create_time)
+            bash.bash_errorout("lvcreate --size 24M --name %s %s" % (volumeUuid, vgUuid))
+
+        lvm.create_lv_from_absolute_path = mock.Mock(side_effect=slow_create_lv)
+        volumeUuid = misc.uuid()
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
+            volumeUuid=volumeUuid,
+            size=1048576,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid,
+            taskContext={"__messagetimeout__":"70000","__messagedeadline__":"9698656265904"}
+        )
+        self.assertEqual(False, rsp.success, rsp.error)
+        self.assertEqual("create lv timeout, timeout" in rsp.error, True)
+        self.assertEqual(False, lvm.lv_exists("/dev/{}/{}".format(vgUuid,volumeUuid)))
+
+        # test create lv task no timeout
+        create_time = 50
+        volumeUuid = misc.uuid()
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
+            volumeUuid=volumeUuid,
+            size=1048576,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid,
+            taskContext={"__messagetimeout__":"62000","__messagedeadline__":"9698656265904"}
+        )
+        self.assertEqual(True, rsp.success, rsp.error)
+        self.assertEqual(True, lvm.lv_exists("/dev/{}/{}".format(vgUuid,volumeUuid)))
+
+        create_time = 1
+        volumeUuid = misc.uuid()
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,volumeUuid),
+            volumeUuid=volumeUuid,
+            size=1048576,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid,
+            taskContext={"__messagetimeout__":"62000","__messagedeadline__":"9698656265904"}
+        )
+        self.assertEqual(True, rsp.success, rsp.error)
+        self.assertEqual(True, lvm.lv_exists("/dev/{}/{}".format(vgUuid,volumeUuid)))
