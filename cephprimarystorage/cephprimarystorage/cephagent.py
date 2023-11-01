@@ -594,6 +594,7 @@ class CephAgent(plugin.TaskManager):
                 r, o, e = bash_roe("rbd trash rm %s/%s %s" % (pool_name, trash.id, force))
                 if r == 0:
                     rsp.pool2TrashResult.get(pool_name).append(trash.name)
+        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     @replyerror
