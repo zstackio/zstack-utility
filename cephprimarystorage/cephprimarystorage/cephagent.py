@@ -73,6 +73,11 @@ class AgentResponse(object):
         self.success = False
         self.error = err
 
+class CleanTrashRsp(AgentResponse):
+    def __init__(self):
+        super(CleanTrashRsp, self).__init__()
+        self.pool2TrashResult = {} # type: dict[str,list]
+
 
 class CephToCephMigrateVolumeSegmentCmd(AgentCommand):
     @log.sensitive_fields("dstMonSshPassword")
@@ -322,6 +327,7 @@ class CephAgent(plugin.TaskManager):
     DOWNLOAD_IMAGESTORE_PATH = "/ceph/primarystorage/imagestore/backupstorage/download"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download"
     DOWNLOAD_BITS_FROM_NBD_EXPT_PATH = "/ceph/primarystorage/nbd/download"
+    CLAEN_TRASH_PATH = "/ceph/primarystorage/trash/clean"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/ceph/primarystorage/kvmhost/download/progress"
     JOB_CANCEL = "/job/cancel"
@@ -398,6 +404,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.JOB_CANCEL, self.cancel)
         self.http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_NBD_EXPT_PATH, self.download_from_nbd)
+        self.http_server.register_async_uri(self.CLAEN_TRASH_PATH, self.clean_trash)
 
         self.http_server.register_async_uri(self.XSKY_GET_BLOCK_VOLUME_ACCESS_PATH, self.get_block_volume_access)
         self.http_server.register_async_uri(self.XSKY_RESIZE_BLOCK_VOLUME, self.resize_block_volume)
@@ -565,6 +572,28 @@ class CephAgent(plugin.TaskManager):
         bash_roe('rbd snap purge {{IMAGE_PATH}}')
         bash_errorout('rbd rm {{IMAGE_PATH}}')
         self._set_capacity_to_response(rsp)
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    @bash.in_bash
+    def clean_trash(self, req):
+        rsp = CleanTrashRsp()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if not cmd.pools or not ceph.support_defer_deleting():
+            return jsonobject.dumps(rsp)
+
+        force = "--force" if cmd.force else ""
+        for pool_name in cmd.pools:
+            r, o, e = bash_roe("rbd trash list -p %s --format json" % pool_name)
+            if r != 0 or o.strip() == '':
+                continue
+
+            rsp.pool2TrashResult.update({pool_name: []})
+            trash_list = jsonobject.loads(o)
+            for trash in trash_list:
+                r, o, e = bash_roe("rbd trash rm %s/%s %s" % (pool_name, trash.id, force))
+                if r == 0:
+                    rsp.pool2TrashResult.get(pool_name).append(trash.name)
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -1174,7 +1203,7 @@ class CephAgent(plugin.TaskManager):
             return jsonobject.dumps(rsp)
 
         driver = self.get_driver(cmd)
-        driver.do_deletion(cmd, path)
+        driver.do_deletion(cmd, path, defer=True)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)

@@ -21,6 +21,7 @@ CEPH_KEYRING_CONFIG_NAME = 'client.zstack.keyring'
 QEMU_NBD_SOCKET_DIR = "/var/lock/"
 QEMU_NBD_SOCKET_PREFIX = "qemu-nbd-nbd"
 NBD_DEV_PREFIX = "/dev/nbd"
+SUPPORT_DEFER_DELETING = None
 
 def get_fsid(conffile='/etc/ceph/ceph.conf'):
     import rados
@@ -34,6 +35,22 @@ def is_xsky():
 
 def is_sandstone():
     return os.path.exists("/opt/sandstone/bin/sds") or os.path.exists("/var/lib/ceph/bin/ceph")
+
+def support_defer_deleting():
+    global SUPPORT_DEFER_DELETING
+    if SUPPORT_DEFER_DELETING is None:
+        SUPPORT_DEFER_DELETING = bash.bash_r("rbd help trash list") == 0
+    return SUPPORT_DEFER_DELETING
+
+def get_defer_deleting_options(cmd):
+    help_info = shell.call("rbd help trash mv")
+    opts = ''
+    if "--expires-at" in help_info:
+        opts += "--expires-at '%s seconds'" % cmd.expirationTime
+    elif "--delay" in help_info:
+        opts += "--delay %s" % cmd.expirationTime
+
+    return opts
 
 
 def get_ceph_manufacturer():
