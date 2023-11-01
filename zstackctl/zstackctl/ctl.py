@@ -2026,6 +2026,12 @@ class TailLogCmd(Command):
                                               ' keep alive if not set.', default=None, type=int)
 
     def run(self, args):
+        websocket_path = os.path.join(ctl.zstack_home, "WEB-INF/classes/tools/websocketd")
+        if not os.path.isfile(websocket_path):
+            raise CtlError('cannot find %s' % websocket_path)
+        if not os.access(websocket_path, os.X_OK):
+            ShellCmd('chmod +x %s' % websocket_path)
+
         log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
         log_path = os.path.normpath(log_path)
         if not os.path.isfile(log_path):
