@@ -4,6 +4,7 @@ import commands
 import datetime
 import functools
 import logging
+import re
 from logging import handlers as logging_handlers
 import json
 import os
@@ -1319,7 +1320,7 @@ def check_host_reachable(host_post_info, warning=False):
 
 @retry(times=3, sleep_time=3)
 def run_remote_command(command, host_post_info, return_status=False,
-                       return_output=False):
+                       return_output=False, stderr_match_regexp=''):
     '''return status all the time except return_status is False,
     return output is set to True'''
     if 'yum' in command:
@@ -1364,6 +1365,14 @@ def run_remote_command(command, host_post_info, return_status=False,
         else:
             status = ret['rc']
             if status == 0:
+                if ret['stderr'] and stderr_match_regexp and re.search(stderr_match_regexp, ret['stderr']):
+                    description = \
+                        "ERROR: run shell command: %s failed!" % command
+                    host_post_info.post_label = \
+                        host_post_info.post_label + ".fail"
+                    handle_ansible_failed(description, result, host_post_info)
+                    sys.exit(1)
+
                 details = "SUCC: run shell command: %s successfully " % command
                 host_post_info.post_label = host_post_info.post_label + ".succ"
                 handle_ansible_info(details, host_post_info, "INFO")
@@ -2380,7 +2389,7 @@ class ZstackLib(object):
                                 zstack_repo)
         self.host_post_info.post_label = "ansible.shell.install.pkg"
         self.host_post_info.post_label_param = ",".join(required_rpm_set)
-        run_remote_command(command, self.host_post_info)
+        run_remote_command(command, self.host_post_info, stderr_match_regexp=r'.*pre-existing rpmdb problem.*(?:lvm2|librados).*')
         if "chrony" in required_rpm_set:
             # enable chrony service for RedHat
             enable_chrony(trusted_host, self.host_post_info, self.distro)
