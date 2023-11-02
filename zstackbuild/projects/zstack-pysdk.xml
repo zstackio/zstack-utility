@@ -3,7 +3,7 @@
 <project name="zstack pysdk builder" basedir="../">
     <target name="assemble-zstack-pysdk">
         <copy todir="${tools.dir}">
-            <fileset dir="/root/">
+            <fileset dir="${user.home}">
                 <include name="zssdk.py" />
             </fileset>
         </copy>
