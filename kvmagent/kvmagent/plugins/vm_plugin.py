@@ -117,6 +117,15 @@ class VolumeTO(object):
                 return v
 
 
+    @staticmethod
+    def get_volume_actual_installpath(install_path):
+        if install_path.startswith('sharedblock'):
+            return shared_block_to_file(install_path)
+        elif install_path.startswith('block'):
+            return block_to_path(install_path)
+        return install_path
+
+
 class RemoteStorageFactory(object):
     @staticmethod
     def get_remote_storage(cmd):
@@ -1843,6 +1852,9 @@ def cleanup_stale_vnc_iptable_chains():
 
 def shared_block_to_file(sbkpath):
     return sbkpath.replace("sharedblock:/", "/dev")
+
+def block_to_path(blockpath):
+    return blockpath.replace("block://", "/dev/disk/by-id/wwn-0x")
 
 class VmOperationJudger(object):
     def __init__(self, op):
@@ -5589,6 +5601,33 @@ def check_mirror_jobs(domain_id, migrate_without_bitmaps):
                                        '{"capabilities":[ {"capability": "dirty-bitmaps", "state":false}]}}')
 
 
+def get_block_file_content_by_disk_name(domain_id, disk_name):
+    all_blocks = get_vm_blocks(domain_id)
+    no_prefix_name = disk_name.replace("drive-", "")
+    block = filter(lambda b: b.get('device') == disk_name or b.get('device') == no_prefix_name or
+                             (b.get('inserted') and b['inserted'].get('node-name') == disk_name) or
+                             (b.get('qdev') and no_prefix_name in b['qdev'].split("/")), all_blocks)
+
+    if len(block) == 0:
+        raise kvmagent.KvmError("No blocks found[uuid:{}, disk_name:{}]".format(domain_id, disk_name))
+    return block[0]['inserted']['file']
+
+
+def check_install_path_by_qmp(domain_id, disk_name, path):
+    file_content = get_block_file_content_by_disk_name(domain_id, disk_name)
+    logger.info("get %s file content from qmp: %s" % (disk_name, file_content))
+    r_path = VolumeTO.get_volume_actual_installpath(path)
+    if r_path in file_content:
+        return True
+
+    # ceph file example: "json:{\"driver\": \"raw\", \"file\": {\"pool\": \"11111\", \"image\": \"ca46af50ab8742b68e464e9b23b05598\"}"
+    if r_path.startswith("ceph://"):
+        strs = path.replace('ceph://', '').split('/')
+        return strs[0] in file_content and strs[1] in file_content
+
+    return False
+
+
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
     KVM_STOP_VM_PATH = "/vm/stop"
@@ -6811,7 +6850,11 @@ class VmPlugin(kvmagent.KvmAgent):
 
         def check_volume():
             vm = get_vm_by_uuid(vmUuid)
-            return vm._get_target_disk_by_path(task_spec.newVolume.installPath, is_exception=False) is not None
+            d, _ = vm._get_target_disk_by_path(task_spec.newVolume.installPath, is_exception=False)
+            if d is None:
+                return False
+
+            return check_install_path_by_qmp(vmUuid, d.alias.name_, task_spec.newVolume.installPath)
 
         with BlockCopyDaemon(task_spec, get_vm_by_uuid(vmUuid).domain, disk_name):
             cmd = 'virsh blockcopy --domain {} {} --xml {} --pivot --wait --transient-job --reuse-external'.format(vmUuid, disk_name, disk_xml)
