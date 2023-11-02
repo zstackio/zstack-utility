@@ -12,6 +12,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import remoteStorage
 from zstacklib.utils.bash import bash_r
 from zstacklib.utils.linux import get_fs_type, check_nbd
+from zstacklib.utils.zstone import ZStoneCephPoolCapacityGetter
 
 logger = log.get_logger(__name__)
 
@@ -52,12 +53,17 @@ def get_defer_deleting_options(cmd):
 
     return opts
 
+def is_zstone():
+    return os.path.exists("/opt/zstone/bin/zstnlet")
+
 
 def get_ceph_manufacturer():
     if is_xsky():
         return "xsky"
     elif is_sandstone():
         return "sandstone"
+    elif is_zstone():
+        return "zstone"
     else:
         return "open-source"
 
@@ -210,37 +216,7 @@ def get_pools_capacity():
                 osd_nodes.add(node.name)
         pool_capacity.crush_item_osds = sorted(osd_nodes)
 
-    # fill crush_item_osds_total_size, poolTotalSize
-    o = shell.call('ceph osd df -f json')
-    # In the open source Ceph 10 version, the value returned by executing 'ceph osd df -f json' might have '-nan', causing json parsing to fail.
-    o = o.replace("-nan", "\"\"")
-    manufacturer = get_ceph_manufacturer()
-    osds = jsonobject.loads(o)
-    if not osds.nodes:
-        return result
-    for pool_capacity in result:
-        if not pool_capacity.crush_item_osds:
-            continue
-        for osd_name in pool_capacity.crush_item_osds:
-            for osd in osds.nodes:
-                if osd.name != osd_name:
-                    continue
-                pool_capacity.crush_item_osds_total_size = pool_capacity.crush_item_osds_total_size + osd.kb * 1024
-                pool_capacity.available_capacity = pool_capacity.available_capacity + osd.kb_avail * 1024
-                pool_capacity.used_capacity = pool_capacity.used_capacity + osd.kb_used * 1024
-                if manufacturer == "open-source":
-                    pool_capacity.related_osd_capacity.update({osd_name : CephOsdCapacity(osd.kb * 1024, osd.kb_avail * 1024, osd.kb_used * 1024)})
-
-        if not pool_capacity.disk_utilization:
-            continue
-
-        if pool_capacity.crush_item_osds_total_size:
-            pool_capacity.pool_total_size = int(pool_capacity.crush_item_osds_total_size * pool_capacity.disk_utilization)
-        if pool_capacity.available_capacity:
-            pool_capacity.available_capacity = int(pool_capacity.available_capacity * pool_capacity.disk_utilization)
-        if pool_capacity.used_capacity:
-            pool_capacity.used_capacity = int(pool_capacity.used_capacity * pool_capacity.disk_utilization)
-
+    pool_capacity_getter_mapping.get(get_ceph_manufacturer(), DefaultCephPoolCapacityGetter()).fill_pool_capacity(result)
     return result
 
 
@@ -376,3 +352,39 @@ class NbdRemoteStorage(remoteStorage.RemoteStorage):
         if len(device_and_mount_path) != 0:
             shell.call('umount -f %s' % self.mount_path)
         shell.call("qemu-nbd -d %s" % self.volume_mounted_device)
+
+class DefaultCephPoolCapacityGetter:
+    def fill_pool_capacity(self, result):
+        # fill crush_item_osds_total_size, poolTotalSize
+        o = shell.call('ceph osd df -f json')
+        # In the open source Ceph 10 version, the value returned by executing 'ceph osd df -f json' might have '-nan', causing json parsing to fail.
+        o = o.replace("-nan", "\"\"")
+        osds = jsonobject.loads(o)
+        if not osds.nodes:
+            return
+
+        for pool_capacity in result:
+            if not pool_capacity.crush_item_osds:
+                continue
+            for osd_name in pool_capacity.crush_item_osds:
+                for osd in osds.nodes:
+                    if osd.name != osd_name:
+                        continue
+                    pool_capacity.crush_item_osds_total_size = pool_capacity.crush_item_osds_total_size + osd.kb * 1024
+                    pool_capacity.available_capacity = pool_capacity.available_capacity + osd.kb_avail * 1024
+                    pool_capacity.used_capacity = pool_capacity.used_capacity + osd.kb_used * 1024
+                    pool_capacity.related_osd_capacity.update({osd_name : CephOsdCapacity(osd.kb * 1024, osd.kb_avail * 1024, osd.kb_used * 1024)})
+
+            if not pool_capacity.disk_utilization:
+                continue
+
+            if pool_capacity.crush_item_osds_total_size:
+                pool_capacity.pool_total_size = int(pool_capacity.crush_item_osds_total_size * pool_capacity.disk_utilization)
+            if pool_capacity.available_capacity:
+                pool_capacity.available_capacity = int(pool_capacity.available_capacity * pool_capacity.disk_utilization)
+            if pool_capacity.used_capacity:
+                pool_capacity.used_capacity = int(pool_capacity.used_capacity * pool_capacity.disk_utilization)
+
+pool_capacity_getter_mapping = {
+    "zstone":ZStoneCephPoolCapacityGetter()
+}
