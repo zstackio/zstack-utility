@@ -43,7 +43,6 @@ zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
 skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
-isMini = 'false'
 isBareMetal2Gateway='false'
 releasever = ''
 unsupported_iproute_list = ["nfs4"]
@@ -246,12 +245,6 @@ def install_kvm_pkg():
             common_no_update_list = "librbd1"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
-
-            # zstack mini needs higher version kernel etc.
-            C76_KERNEL_OR_HIGHER = '3.10.0-957' in host_info.kernel_version
-            if isMini == 'true':
-                mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
-                common_dep_list += mini_dep_list
 
             if isCube:
                 cube_dep_list = " lm_sensors"
