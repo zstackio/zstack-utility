@@ -8130,6 +8130,16 @@ host side snapshot files chian:
                 volumeType = "qcow2"
 
             try:
+                vm = get_vm_by_uuid(cmd.vmUuid)
+                states = vm.domain.jobStats()
+                if libvirt.VIR_DOMAIN_JOB_DATA_REMAINING in states and libvirt.VIR_DOMAIN_JOB_DATA_TOTAL in states:
+                    rsp.error = "domain already has migrate job, cannot do drive mirror right now."
+                    rsp.success = False
+                    return jsonobject.dumps(rsp)
+            except libvirt.libvirtError:
+                pass
+
+            try:
                 volumes = isc.query_mirror_volumes(cmd.vmUuid)
                 if volumes is None:
                     volumes = {}
