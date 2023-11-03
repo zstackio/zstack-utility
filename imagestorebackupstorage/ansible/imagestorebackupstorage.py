@@ -33,6 +33,7 @@ remote_port = None
 host_uuid = None
 require_python_env = "false"
 skip_packages = ""
+new_add = "false"
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy image backupstorage to host')
@@ -228,6 +229,11 @@ def load_nbd():
         run_remote_command(command, host_post_info)
 
 load_nbd()
+
+if client == "false" and new_add == "false":
+    dst_dir = os.path.join(fs_rootpath, "registry")
+    if not file_dir_exist("path=" + dst_dir, host_post_info):
+        error("ERROR: registry directory is missing, imagestore metadata may have been lost. Check it immediately!")
 
 # name: install zstack-store
 if client == "false":
