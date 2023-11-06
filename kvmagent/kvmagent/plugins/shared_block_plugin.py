@@ -288,7 +288,7 @@ class CheckDisk(object):
         r, o, e = bash.bash_roe(command, errorout=False)
 
         if r != 0 and e and re.search(r'VG(.*)lock failed', e):
-            lvm.check_stuck_vglk()
+            lvm.check_stuck_vglk_and_gllk()
             r, o, e = bash.bash_roe(command, errorout=True)
         logger.debug("resized pv %s (wwid: %s), return code: %s, stdout %s, stderr: %s" %
                      (disk_name, self.identifier, r, o, e))
@@ -680,7 +680,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         retry_times_for_checking_vg_lockspace = get_retry_times_for_checking_vg_lockspace()
 
-        lvm.check_stuck_vglk()
+        lvm.check_stuck_vglk_and_gllk()
         logger.debug("starting vg %s lock..." % cmd.vgUuid)
         lvm.start_vg_lock(cmd.vgUuid, retry_times_for_checking_vg_lockspace)
 
@@ -1688,6 +1688,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def check_vg_state(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+        lvm.check_stuck_vglk_and_gllk()
+
         if cmd.vgUuids is None or len(cmd.vgUuids) == 0:
             return jsonobject.dumps(rsp)
 
