@@ -8,8 +8,9 @@ from zstacklib.utils import bash
 GLLK_BEGIN = 65
 VGLK_BEGIN = 66
 SMALL_ALIGN_SIZE = 1*1024**2
+SECTOR_SIZE_512 = 512
+SECTOR_SIZE_4K = 8*512
 BIG_ALIGN_SIZE = 8*1024**2
-RESOURCE_SIZE = 1*1024**2
 
 
 logger = log.get_logger(__name__)
@@ -192,8 +193,9 @@ def check_stuck_vglk_and_gllk():
 
 
 class Resource(object):
-    def __init__(self, lines, host_id):
+    def __init__(self, lines, host_id=None, align_size=SMALL_ALIGN_SIZE):
         self.host_id = host_id
+        self.align_size = align_size
         self.owners = []
         self.shared = None
         self._update(lines)
@@ -204,7 +206,9 @@ class Resource(object):
         for line in lines.strip().splitlines():
             line = line.strip()
             if ' lvm_' in line:
-                self.offset, self.lockspace_name, self.resource_name, self.timestamp, own, self.gen, self.lver = line.split()
+                self.offset, self.lockspace_name, self.resource_name, self.timestamp, own, self.gen = line.split()[:6]
+                if len(line.split()) == 7:
+                    self.lver = line.split()[6]
                 self.vg_name = self.lockspace_name.strip("lvm_")
                 if self.timestamp.strip("0") != '':
                     self.owners.append(str(int(own)))
@@ -222,7 +226,7 @@ class Resource(object):
             return 'un'
 
     def refresh(self):
-        r, o, e = direct_dump_resource("/dev/mapper/%s-lvmlock" % self.vg_name, self.offset)
+        r, o, e = direct_dump_resource("/dev/mapper/%s-lvmlock" % self.vg_name, self.offset, size=self.align_size)
         self._update(o)
 
     def in_use(self):
@@ -327,9 +331,16 @@ def direct_dump(path, offset, length):
 
 
 @bash.in_bash
-def direct_dump_resource(path, offset):
-    return bash.bash_roe("sanlock direct dump %s:%s:%s" % (path, offset, RESOURCE_SIZE))
+def direct_dump_resource(path, offset, size=SMALL_ALIGN_SIZE):
+    return bash.bash_roe("sanlock direct dump %s:%s:%s" % (path, offset, size))
 
+@bash.in_bash
+def vertify_delta_lease(vg_uuid, host_id):
+    return bash.bash_r("sanlock client read -s lvm_%s:%s:/dev/mapper/%s-lvmlock:0" % (vg_uuid, host_id, vg_uuid))
+
+@bash.in_bash
+def vertify_paxos_lease(vg_uuid, resource_name, offset):
+    return bash.bash_roe("sanlock client read -r lvm_%s:%s:/dev/mapper/%s-lvmlock:%s" % (vg_uuid, resource_name, vg_uuid, offset))
 
 def get_vglks():
     result = []
@@ -337,11 +348,13 @@ def get_vglks():
         path = lockspace.split(":")[2]
         host_id = lockspace.split(":")[1]
         r, o, e = direct_dump_resource(path, VGLK_BEGIN * SMALL_ALIGN_SIZE)
-        # vglk may be stored at 66M or 528M
-        if ' VGLK ' not in o:
-            r, o, e = direct_dump_resource(path, VGLK_BEGIN * BIG_ALIGN_SIZE)
         if ' VGLK ' in o:
             result.append(Resource(o, host_id))
+            continue
+        # vglk may be stored at 66M or 528M
+        r, o, e = direct_dump_resource(path, VGLK_BEGIN * BIG_ALIGN_SIZE, size=BIG_ALIGN_SIZE)
+        if ' VGLK ' in o:
+            result.append(Resource(o, host_id, align_size=BIG_ALIGN_SIZE))
     return result
 
 
@@ -351,11 +364,15 @@ def get_gllks():
         path = lockspace.split(":")[2]
         host_id = lockspace.split(":")[1]
         r, o, e = direct_dump_resource(path, GLLK_BEGIN * SMALL_ALIGN_SIZE)
-        # gllk may be stored at 65M or 520M
-        if ' GLLK ' not in o and '_GLLK_disabled' not in o:
-            r, o, e = direct_dump_resource(path, GLLK_BEGIN * BIG_ALIGN_SIZE)
         if ' GLLK ' in o:
             result.append(Resource(o, host_id))
+            continue
+        elif '_GLLK_disabled' in o:
+            continue
+        # gllk may be stored at 65M or 520M
+        r, o, e = direct_dump_resource(path, GLLK_BEGIN * BIG_ALIGN_SIZE, size=BIG_ALIGN_SIZE)
+        if ' GLLK ' in o:
+            result.append(Resource(o, host_id, align_size=BIG_ALIGN_SIZE))
     return result
 
 
@@ -365,6 +382,32 @@ def get_lockspaces():
     if r != 0 or o.strip() == '':
         return result
     return [line.split()[1].strip() for line in o.strip().splitlines() if 's lvm_' in line]
+
+
+@bash.in_bash
+def check_delta_lease(vg_uuid, host_id):
+    r = vertify_delta_lease(vg_uuid, host_id)
+    if r == 0:
+        return False
+    sector_size = get_sector_size(vg_uuid)
+    seek = int(host_id) - 1
+    bash.bash_r("dd if=/dev/mapper/{0}-lvmlock bs={1} count=1 skip=1999 iflag=direct | "
+                "dd of=/dev/mapper/{0}-lvmlock bs={1} seek={2} count=1 oflag=direct".format(vg_uuid, sector_size, seek))
+    return True
+
+
+def dd_check_lockspace(path):
+    return bash.bash_r("dd if=%s of=/dev/null bs=1M count=1 iflag=direct" % path)
+
+
+def get_sector_size(vg_uuid):
+    r = bash.bash_r("dd if=/dev/mapper/%s-lvmlock bs=%s count=2 skip=%s | grep -E 'VGLK|GLLK'" % (vg_uuid, SMALL_ALIGN_SIZE, GLLK_BEGIN))
+    if r == 0:
+        return SECTOR_SIZE_512
+    r = bash.bash_r("dd if=/dev/mapper/%s-lvmlock bs=%s count=2 skip=%s | grep -E 'VGLK|GLLK'" % (vg_uuid, BIG_ALIGN_SIZE, GLLK_BEGIN))
+    if r == 0:
+        return SECTOR_SIZE_4K
+    raise Exception("unable to find sector size")
 
 
 class RetryException(Exception):
