@@ -100,7 +100,7 @@ class VmQga(object):
     VM_OS_LINUX_REDHAT = "rhel"
     VM_OS_LINUX_DEBIAN = "debian"
     VM_OS_LINUX_FEDORA = "fedora"
-    VM_OS_LINUX_OPENEULER = "openEuler"
+    VM_OS_LINUX_OPENEULER = "openeuler"
     VM_OS_WINDOWS = "mswindows"
 
     ZS_TOOLS_PATN_WIN = "C:\Program Files\GuestTools\zs-tools\zs-tools.exe"
