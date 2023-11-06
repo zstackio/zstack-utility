@@ -6406,7 +6406,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     '--rx_vlan_id=-1',
                 ]
                 notify_vrouter(vrouter_cmd)
-            elif "delete" == cmd.sugonNicCfg.sugonSdnAction:
+            elif "delete" == cmd.sugonSdnAction:
                 # notify vrouter agent nic removed from dest host when migrate failed
                 # when migrate success, notify vrouter agent removed src host.
                 vrouter_cmd = [
