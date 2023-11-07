@@ -1162,6 +1162,7 @@ def compare_version(version1, version2):
     return cmp(normalize(version1), normalize(version2))
 
 
+KERNEL_VERSION = platform.release()
 LIBVIRT_VERSION = linux.get_libvirt_version()
 LIBVIRT_MAJOR_VERSION = LIBVIRT_VERSION.split('.')[0]
 
@@ -1171,7 +1172,10 @@ def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
 def is_hv_freq_supported():
-    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(platform.release()) >= LooseVersion('3.10.0-957')
+    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) >= LooseVersion('3.10.0-957')
+
+def is_hv_synic_supported():
+    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) > LooseVersion('3.10.0')
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
@@ -4715,6 +4719,12 @@ class Vm(object):
                 e(hyperv, 'relaxed', attrib={'state': 'on'})
                 e(hyperv, 'vapic', attrib={'state': 'on'})
                 if is_hv_freq_supported(): e(hyperv, 'frequencies', attrib={'state': 'on'})
+                if is_hv_synic_supported() and cmd.hypervClock:
+                    e(hyperv, 'vpindex', attrib={'state': 'on'})
+                    # Requires: hv-vpindex
+                    e(hyperv, 'synic', attrib={'state': 'on'})
+                    # Requires: hv-vpindex, hv-synic, hv-time
+                    e(hyperv, 'stimer', attrib={'state': 'on'})
                 # refer to: https://access.redhat.com/articles/2470791
                 # increase spinlocks retries
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '8191'})
