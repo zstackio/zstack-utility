@@ -93,6 +93,8 @@ startVmCmdBody = {
     "kvmHiddenState": False,
     "vmPortOff": False,
     "emulateHyperV": False,
+    "hypervClock": False,
+    "vendorId": "zstack.io",
     "additionalQmp": True,
     "isApplianceVm": False,
     "systemSerialNumber": "4f3e9046-776d-4095-8edd-909523ede46d",
