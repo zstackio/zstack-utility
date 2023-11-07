@@ -230,6 +230,18 @@ def load_nbd():
 
 load_nbd()
 
+def load_nvme():
+    command = "modinfo nvme_fabrics"
+    status = run_remote_command(command, host_post_info, True, False)
+    if status is False:
+        return "nvme-fabics kernel module not found!"
+    command = "/sbin/modprobe nvme nvme_core nvme_fabrics"
+    status = run_remote_command(command, host_post_info, True, False)
+    if status is False:
+        return "failed to load nvme kernel module"
+
+load_nvme()
+
 # name: install zstack-store
 if client == "false":
     command = "bash %s %s %s" % (dest_pkg, fs_rootpath, max_capacity)
