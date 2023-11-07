@@ -105,7 +105,7 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if host_info.distro in RPM_BASED_OS:
-    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace"
+    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace nvme-cli"
 
     releasever_mapping = {
         'h84r': ' collectd-disk pyparted',
@@ -240,6 +240,18 @@ if client == "false" and new_add == "false":
     reg_dir = os.path.join(fs_rootpath, "registry")
     if not file_dir_exist("path=" + exp_dir, host_post_info) and not file_dir_exist("path=" + reg_dir, host_post_info):
         error("ERROR: registry directory is missing, imagestore metadata may have been lost. Check it immediately!")
+
+def load_nvme():
+    command = "modinfo nvme_fabrics"
+    status = run_remote_command(command, host_post_info, True, False)
+    if status is False:
+        return "nvme-fabics kernel module not found!"
+    command = "/sbin/modprobe nvme nvme_core nvme_fabrics"
+    status = run_remote_command(command, host_post_info, True, False)
+    if status is False:
+        return "failed to load nvme kernel module"
+
+load_nvme()
 
 # name: install zstack-store
 if client == "false":
