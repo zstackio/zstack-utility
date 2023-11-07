@@ -1174,6 +1174,9 @@ def is_namespace_used():
 def is_hv_freq_supported():
     return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) >= LooseVersion('3.10.0-957')
 
+def is_hv_synic_supported():
+    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) > LooseVersion('3.10.0')
+
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
     return compare_version(LIBVIRT_VERSION, '3.4.0') >= 0
@@ -4716,6 +4719,12 @@ class Vm(object):
                 e(hyperv, 'relaxed', attrib={'state': 'on'})
                 e(hyperv, 'vapic', attrib={'state': 'on'})
                 if is_hv_freq_supported(): e(hyperv, 'frequencies', attrib={'state': 'on'})
+                if is_hv_synic_supported() and cmd.hypervClock:
+                    e(hyperv, 'vpindex', attrib={'state': 'on'})
+                    # Requires: hv-vpindex
+                    e(hyperv, 'synic', attrib={'state': 'on'})
+                    # Requires: hv-vpindex, hv-synic, hv-time
+                    e(hyperv, 'stimer', attrib={'state': 'on'})
                 # refer to: https://access.redhat.com/articles/2470791
                 # increase spinlocks retries
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '8191'})
