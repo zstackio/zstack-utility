@@ -13,6 +13,7 @@ from zstacklib.utils import linux
 from zstacklib.utils import iproute
 from zstacklib.utils.bash import *
 from zstacklib.utils import ovs
+from jinja2 import Template
 import os
 import traceback
 import netaddr
@@ -25,6 +26,8 @@ UPDATE_BONDING_PATH = '/network/bonding/update'
 DELETE_BONDING_PATH = '/network/bonding/delete'
 ATTACH_NIC_TO_BONDING_PATH = '/network/bonding/attachnic'
 DETACH_NIC_FROM_BONDING_PATH = '/network/bonding/detachnic'
+KVM_CHANGE_LLDP_MODE_PATH = '/network/lldp/changemode'
+KVM_GET_LLDP_INFO_PATH = '/network/lldp/get'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
@@ -56,7 +59,7 @@ class CheckPhysicalNetworkInterfaceCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(CheckPhysicalNetworkInterfaceCmd, self).__init__()
         self.interfaceNames = None
-        
+
 class CheckPhysicalNetworkInterfaceResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CheckPhysicalNetworkInterfaceResponse, self).__init__()
@@ -234,6 +237,41 @@ class DetachNicFromBondCmd(kvmagent.AgentCommand):
 class DetachNicFromBondResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(DetachNicFromBondResponse, self).__init__()
+
+class ChangeLldpModeCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ChangeLldpModeCmd, self).__init__()
+        self.physicalInterfaceNames = None
+        self.mode = None
+
+class ChangeLldpModeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ChangeLldpModeResponse, self).__init__()
+
+class GetLldpInfoCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetLldpInfoCmd, self).__init__()
+        self.physicalInterfaceName = None
+
+class GetLldpInfoResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetLldpInfoResponse, self).__init__()
+        self.lldpInfo = None  # type: HostNetworkInterfaceLldpStruct
+
+class HostNetworkInterfaceLldpStruct(object):
+    def __init__(self):
+        self.chassisId = None
+        self.timeToLive = None
+        self.managementAddress = None
+        self.systemName = None
+        self.systemDescription = None
+        self.systemCapabilities = None
+        self.portId = None
+        self.portDescription = None
+        self.vlanId = None
+        self.linkAggregation = None
+        self.aggregationPortId = None
+        self.mtu = None
 
 class HostNetworkInterfaceStruct(object):
     def __init__(self):
@@ -547,6 +585,132 @@ class NetworkPlugin(kvmagent.KvmAgent):
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to delete bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @linux.retry(times=3, sleep_time=5)
+    def _restart_lldpd(self):
+        shell.call('systemctl restart lldpd.service')
+
+    def _init_lldpd(self, config_file):
+        conf = '''# Configuration from ZStack
+ configure system name 'ZStack-{{NAME}}'
+ configure lldp status rx-only
+ '''
+        tmpt = Template(conf)
+        conf = tmpt.render({
+            'NAME': linux.get_hostname()
+        })
+
+        if not os.path.exists(config_file):
+            with open(config_file, 'w') as f:
+                f.write(conf)
+                self._restart_lldpd()
+
+    def _update_lldp_conf(self, config_file, interface_names, mode):
+        with open(config_file, 'r') as f:
+            lines = f.readlines()
+
+        for interface_name in interface_names:
+            updated_existing_line = False
+            for index, line in enumerate(lines):
+                if 'configure ports %s lldp status' % interface_name in line:
+                    parts = line.split(' ')
+                    if len(parts) >= 6:
+                        old_mode = parts[5]
+                        lines[index] = line.replace('configure ports %s lldp status %s' % (interface_name, old_mode),
+                                                    'configure ports %s lldp status %s' % (interface_name, mode))
+                        updated_existing_line = True
+                        break
+            if not updated_existing_line:
+                lines.append('configure ports %s lldp status %s' % (interface_name, mode))
+
+        with open(config_file, 'w') as f:
+            f.writelines(lines)
+
+        self._restart_lldpd()
+
+    @lock.lock('lldp')
+    @kvmagent.replyerror
+    def change_lldp_mode(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ChangeLldpModeResponse()
+
+        config_file = '/etc/lldpd.d/lldpd.conf'
+
+        try:
+            # create and write a new configuration initially
+            if not linux.find_process_by_command('lldpd') or not os.path.exists(config_file):
+                self._init_lldpd(config_file)
+
+            # subsequently update the configuration file
+            self._update_lldp_conf(config_file, cmd.physicalInterfaceNames, cmd.mode)
+
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to change lldp mode to [%s], because %s' % (cmd.mode, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    def _parse_lldp_json(self, json_data, interface_name):
+        data_dict = jsonobject.loads(json_data)
+        interface_data = data_dict.get(interface_name, {})
+
+        # Adapted switch: Centec Huawei H3C
+        interface_lldp_info = HostNetworkInterfaceLldpStruct()
+        interface_lldp_info.chassisId = interface_data.get("chassis", {}).get("id", {}).get("value")
+        interface_lldp_info.timeToLive = interface_data.get("port", {}).get("ttl")
+        # no mgmt-ip field for Huawei and H3C
+        interface_lldp_info.managementAddress = interface_data.get("chassis", {}).get("mgmt-ip", [])[
+            0] if interface_data.get("chassis", {}).get("mgmt-ip") else None
+        interface_lldp_info.managementAddress = interface_data.get("chassis", {}).get("mgmt-ip", [])[0]
+        interface_lldp_info.system_name = list(interface_data.get("chassis", {}).keys())[0]
+        interface_lldp_info.systemDescription = interface_data.get("chassis", {}).get("descr")
+        capabilities_enabled_list = [capability.get("type") for capability in
+                                     interface_data.get("chassis", {}).get("capability", [])
+                                     if capability.get("enabled", False)]
+        capabilities_enabled_string = ', '.join(capabilities_enabled_list)
+        interface_lldp_info.systemCapabilities = capabilities_enabled_string if capabilities_enabled_list else None
+        interface_lldp_info.portId = interface_data.get("port", {}).get("id", {}).get("value")
+        interface_lldp_info.portDescription = interface_data.get("port", {}).get("descr")
+        interface_lldp_info.vlanId = interface_data.get("vlan", {}).get("vlan-id")
+        # no aggregation field for H3C
+        interface_lldp_info.aggregationPortId = interface_data.get("port", {}).get("aggregation")
+        interface_lldp_info.mtu = interface_data.get("port", {}).get("mfs")
+
+        return interface_lldp_info
+
+    def _get_interface_lldp(self, interface_name):
+        lldpinfo = None
+        r, info = bash_ro('lldpctl ports %s -f json' % interface_name)
+        if r != 0:
+            return lldpinfo
+
+        lldpinfo = self._parse_lldp_json(info, interface_name)
+
+        return lldpinfo
+
+    @lock.lock('lldp')
+    @kvmagent.replyerror
+    def get_lldp_info(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetLldpInfoResponse()
+
+        config_file = '/etc/lldpd.d/lldpd.conf'
+
+        try:
+            # create and write a new configuration initially
+            if not linux.find_process_by_command('lldpd') or not os.path.exists(config_file):
+                self._init_lldpd(config_file)
+
+            # subsequently call lldp tool to obtain lldp information
+            rsp.lldpInfo = self._get_interface_lldp(cmd.physicalInterfaceName)
+
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to get lldp info for [%s], because %s' % (cmd.physicalInterfaceName, str(e))
             rsp.success = False
 
         return jsonobject.dumps(rsp)
@@ -975,6 +1139,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(DELETE_BONDING_PATH, self.delete_bonding)
         http_server.register_async_uri(ATTACH_NIC_TO_BONDING_PATH, self.attach_nic_to_bonding)
         http_server.register_async_uri(DETACH_NIC_FROM_BONDING_PATH, self.detach_nic_from_bonding)
+        http_server.register_async_uri(KVM_CHANGE_LLDP_MODE_PATH, self.change_lldp_mode)
+        http_server.register_async_uri(KVM_GET_LLDP_INFO_PATH, self.get_lldp_info)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
         http_server.register_async_uri(KVM_REALIZE_MACVLAN_L2VLAN_NETWORK_PATH, self.create_mac_vlan_eth)
