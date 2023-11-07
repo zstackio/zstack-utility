@@ -156,7 +156,7 @@ def sharedblock_offline_merge_snapshots(fullRebase=False, srcPath=None, destPath
     }))
 
 @misc.return_jsonobject()
-def shareblock_create_empty_volume(installPath=None, backingFile=None,size=None, volumeUuid=None, hostUuid=None, vgUuid=None, kvmHostAddons={}):
+def shareblock_create_empty_volume(installPath=None, backingFile=None,size=None, volumeUuid=None, hostUuid=None, vgUuid=None, kvmHostAddons={},taskContext={}):
     return get_sharedblock_plugin().create_empty_volume(misc.make_a_request({
         "installPath": installPath ,# vguuid/volumeuuid
         "backingFile": backingFile,
@@ -164,7 +164,8 @@ def shareblock_create_empty_volume(installPath=None, backingFile=None,size=None,
         "volumeUuid": volumeUuid,
         "hostUuid":hostUuid,
         "vgUuid":vgUuid,
-        "kvmHostAddons":kvmHostAddons
+        "kvmHostAddons":kvmHostAddons,
+        "taskContext":taskContext
     }))
 
 @misc.return_jsonobject()
