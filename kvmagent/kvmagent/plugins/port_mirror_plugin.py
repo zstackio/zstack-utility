@@ -123,7 +123,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
                 shell_cmd_add = shell.ShellCmd("tc qdisc add dev %s handle 1: root prio" % device_name)
                 shell_cmd_add(False)
                 if shell_cmd_add.return_code != 0:
-                    shell.call("tc qdisc replace dev %s root" % device_name)
+                    shell.call("tc qdisc replace dev %s handle 1: root prio" % device_name)
             shell_cmd = shell.ShellCmd(" tc filter list dev %s parent 1: |grep '%s'" % (device_name, mirror_device_name))
             shell_cmd(False)
             if shell_cmd.return_code != 0:
