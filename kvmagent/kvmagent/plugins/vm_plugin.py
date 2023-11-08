@@ -53,6 +53,7 @@ from zstacklib.utils import qemu_img, qemu
 from zstacklib.utils import ebtables
 from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
+from zstacklib.utils import image
 from zstacklib.utils import iproute
 from zstacklib.utils import ovs
 from zstacklib.utils import drbd
@@ -1005,6 +1006,18 @@ class VmDeviceAddress(object):
         self.deviceType = device_type
         self.addressType = address_type
         self.address = address
+
+
+class TakeVmConsoleScreenshotCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(TakeVmConsoleScreenshotCmd, self).__init__()
+        self.vmUuid = None
+
+
+class TakeVmConsoleScreenshotRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(TakeVmConsoleScreenshotRsp, self).__init__()
+        self.imageData = None
 
 
 class VncPortIptableRule(object):
@@ -6237,6 +6250,7 @@ class VmPlugin(kvmagent.KvmAgent):
     CLEAN_FIRMWARE_FLASH = "/clean/firmware/flash"
     APPLY_MEMORY_BALLOON_PATH = "/vm/apply/memory/balloon"
     KVM_NOTIFY_TF_NIC_PATH = "/vm/nodifytfnic"
+    TAKE_VM_CONSOLE_SCREENSHOT_PATH = "/vm/console/screenshot"
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
     SET_VM_IOTHREADPIN_PATH = "/vm/setiothreadpin"
@@ -6979,6 +6993,26 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def take_console_screenshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = TakeVmConsoleScreenshotRsp()
+        
+        tmp_ppm = "/tmp/%s.ppm" % cmd.vmUuid
+        r, o, e = bash.bash_roe("virsh screenshot %s %s" % (cmd.vmUuid, tmp_ppm))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to take vm console screenshot, because: %s" % e
+            return jsonobject.dumps(rsp)
+        tmp_img = image.convert_image(tmp_ppm)
+        with open(tmp_img, 'rb') as f:
+            img_data = f.read()
+
+        rsp.imageData = 'data:image/png;base64,' + base64.b64encode(img_data).decode('utf-8')
+        os.remove(tmp_ppm)
+        os.remove(tmp_img)
         return jsonobject.dumps(rsp)
 
     def _stop_vm(self, cmd):
@@ -10047,6 +10081,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SSH_KEY_PAIR_DETACH_FROM_VM, self.detach_ssh_key_pair)
         http_server.register_async_uri(self.APPLY_MEMORY_BALLOON_PATH, self.apply_memory_balloon)
         http_server.register_async_uri(self.KVM_NOTIFY_TF_NIC_PATH, self.notify_tf_nic)
+        http_server.register_async_uri(self.TAKE_VM_CONSOLE_SCREENSHOT_PATH, self.take_console_screenshot)
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
         self.register_qemu_log_cleaner()
