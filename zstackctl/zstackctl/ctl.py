@@ -8091,6 +8091,17 @@ class UpgradeManagementNodeCmd(Command):
 
                 copyfile(custom_pcidevice_xml_backup_path, os.path.join(custom_pcidevice_xml_path, 'customPciDevices.xml'))
                 info('successfully restored the customPciDevices.xml')
+                
+            def update_gray_upgrade_json():
+                info('update the grayUpgrade.json ...')
+                gray_upgrade_json_backup_path = os.path.join(upgrade_tmp_dir, 'zstack/WEB-INF/classes/conf/grayUpgrade/grayUpgrade.json')
+                gray_upgrade_json_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'apache-tomcat/webapps/zstack/WEB-INF/classes/conf/grayUpgrade/')
+                if not os.path.exists(gray_upgrade_json_backup_path):
+                    info('no backup grayUpgrade.json found')
+                    return
+
+                copyfile(gray_upgrade_json_backup_path, os.path.join(gray_upgrade_json_path, 'old_grayUpgrade.json'))
+                info('successfully update the grayUpgrade.json')
 
             def copy_tools():
                 info("copy third-party tools to zstack install path ...")
@@ -8124,6 +8135,7 @@ class UpgradeManagementNodeCmd(Command):
             upgrade()
             restore_config()
             restore_custom_pcidevice_xml()
+            update_gray_upgrade_json()
             copy_tools()
             install_tools()
             save_new_war()
