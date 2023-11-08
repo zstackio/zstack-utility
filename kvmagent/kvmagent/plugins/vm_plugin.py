@@ -1175,7 +1175,7 @@ def is_hv_freq_supported():
     return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) >= LooseVersion('3.10.0-957')
 
 def is_hv_synic_supported():
-    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) > LooseVersion('3.10.0')
+    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) > LooseVersion('3.10.0-1160')
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
