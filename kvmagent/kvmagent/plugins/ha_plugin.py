@@ -1,4 +1,5 @@
 from kvmagent import kvmagent
+from kvmagent.plugins import vm_plugin
 from zstacklib.utils import bash
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
@@ -11,6 +12,7 @@ from zstacklib.utils import qemu
 from zstacklib.utils import qemu_img
 from zstacklib.utils import ceph
 from zstacklib.utils import sanlock
+from zstacklib.utils import xmlobject
 import os.path
 import time
 import traceback
@@ -1080,6 +1082,20 @@ def kill_progresses_using_mount_path(mount_path):
     logger.warn('kill the progresses with mount path: %s, killed process: %s' % (mount_path, o.stdout))
 
 
+def get_block_vm_root_volume_path(vm_uuid, root_volume_path):
+    vm = vm_plugin.get_vm_by_uuid(vm_uuid)
+    sysinfo = vm.domain_xmlobject.sysinfo
+    if xmlobject.has_element(sysinfo, "oemStrings") is not True:
+        return root_volume_path
+
+    oem_strings = sysinfo.oemStrings.get_child_node_as_list('entry')
+    for oem_string in oem_strings:
+        if oem_string.text_.startswith("storage:"):
+            return oem_string.text_.replace("storage:", "") + root_volume_path
+
+    return root_volume_path
+
+
 def get_running_vm_root_volume_path(vm_uuid, is_file_system):
     # 1. get "-drive ... -device ... bootindex=1,
     # 2. get "-boot order=dc ... -drive id=drive-virtio-disk"
@@ -1107,10 +1123,13 @@ def get_running_vm_root_volume_path(vm_uuid, is_file_system):
     else:
         logger.debug("find vm[uuid: %s] root volume path %s" % (vm_uuid, root_volume_path))
 
-    if not is_file_system:
-        return root_volume_path.replace("rbd:", "")
+    if is_file_system:
+        if "/dev/disk/by-id/wwn" in root_volume_path:
+            return get_block_vm_root_volume_path(vm_uuid, root_volume_path)
+        return root_volume_path
 
-    return root_volume_path
+    return root_volume_path.replace("rbd:", "")
+
 
 def find_root_volume_with_bootindex_and_file_system_from_ps_output(cmdline):
     parts = cmdline.split("bootindex=1")
@@ -1334,7 +1353,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("block storage %s fencer fired!" % cmd.uuid)
 
-                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.strategy).keys()
+                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.strategy, cmd.uuid, True).keys()
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
