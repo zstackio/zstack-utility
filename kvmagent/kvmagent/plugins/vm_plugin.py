@@ -826,6 +826,10 @@ class BlockStreamResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BlockStreamResponse, self).__init__()
 
+class BlockCommitResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(BlockCommitResponse, self).__init__()
+
 class AttachGuestToolsIsoToVmCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(AttachGuestToolsIsoToVmCmd, self).__init__()
@@ -1697,6 +1701,27 @@ class VirtioIscsi(object):
         secret = call_libvirt()
         secret.setValue(self.chap_password)
         return secret.UUIDString()
+
+
+class BlockCommitDaemon(plugin.TaskDaemon):
+    def __init__(self, task_spec, vm, disk_name, top, base=None, timeout=0, active_commit=False):
+        # type: (object, Vm, str, str, str, int, bool) -> None
+        super(BlockCommitDaemon, self).__init__(task_spec, 'blockCommit', timeout)
+        self.vm = vm  # type: Vm
+        self.top = top
+        self.base = base
+        self.disk_name = disk_name
+        self.active_commit = active_commit
+
+    def _cancel(self):
+        # if canceled with task success, need pivot abort
+        self.vm.domain.blockJobAbort(self.disk_name, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_ASYNC)
+
+    def _get_percent(self):  # type: () -> int
+        cur, end = self.vm.get_block_job_info(self.disk_name)
+        if end != 0:
+            percent = min(99, cur * 100.0 / end)
+            return get_exact_percent(percent, self.stage)
 
 
 class MergeSnapshotDaemon(plugin.TaskDaemon):
@@ -3339,6 +3364,70 @@ class Vm(object):
             if memory_snapshot_required:
                 self.dump_vm_xml_to_log()
 
+    def do_block_commit(self, task_spec, volume):
+        target_disk, disk_name = self._get_target_disk(volume)
+        top = VolumeTO.get_volume_actual_installpath(task_spec.top)
+        base = VolumeTO.get_volume_actual_installpath(task_spec.base)
+        install_path = VmPlugin.get_source_file_by_disk(target_disk)
+        active_commit = top == install_path
+        with BlockCommitDaemon(task_spec, self, disk_name, top=top, base=base, active_commit=active_commit, timeout=task_spec.timeout - 10):
+            return self._do_block_commit_disk(task_spec, disk_name, task_spec.top, task_spec.base, active_commit)
+
+    def _do_block_commit_disk(self, task_spec, disk_name, top, base, active_commit):
+        def wait_job(_):
+            logger.debug('block commit is waiting for %s blockCommit job completion' % disk_name)
+            return not self._wait_for_block_job(disk_name, abort_on_error=True)
+
+        def check_overlay_file(path):
+            if not active_commit:
+                return True
+
+            return self._check_target_disk_existing_by_path(path, True)
+
+        def abort_block_commit_job(_):
+            flag = libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_ASYNC
+            if active_commit:
+                logger.debug('active commit, abort with pivot flag')
+                flag = libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_PIVOT
+
+            try:
+                if not self.domain.blockJobInfo(disk_name, 0):
+                    logger.info("block commit job finished automatic, no need to abort")
+                    return True
+
+                self.domain.blockJobAbort(disk_name, flag)
+                logger.debug('block commit abort success, check overlay file path')
+                return True
+            except Exception as e:
+                logger.warn("pivot active layer failed, %s" % e)
+                return False
+
+        logger.debug('start block commit for disk %s, from %s, to %s, active commit: %s'
+                     % (disk_name, top, base, active_commit))
+        flags = libvirt.VIR_DOMAIN_BLOCK_COMMIT_RELATIVE
+
+        # currently we only handle active commit
+        if active_commit:
+            # Pass a flag to libvirt to indicate that we expect a two phase
+            # block job. We must tell libvirt to pivot to the new active layer (base).
+            flags |= libvirt.VIR_DOMAIN_BLOCK_COMMIT_ACTIVE
+
+        self.domain.blockCommit(disk_name, base, top, 0, flags)
+        touchQmpSocketWhenExists(task_spec.vmUuid)
+        logger.debug('block commit for disk %s in processing' % disk_name)
+
+        if not linux.wait_callback_success(wait_job, timeout=task_spec.timeout, ignore_exception_in_callback=True):
+            if not check_overlay_file(base):
+                raise kvmagent.KvmError('block commit failed')
+            logger.debug("although the block commit job failed, device install path has been changed to %s" % base)
+
+        if not linux.wait_callback_success(abort_block_commit_job, timeout=60, ignore_exception_in_callback=True):
+            raise kvmagent.KvmError('block commit abort failed')
+
+        if not linux.wait_callback_success(check_overlay_file, base, timeout=60, ignore_exception_in_callback=True):
+            raise kvmagent.KvmError('block commit succeeded, but overlay file is not cleared')
+
+        return base
 
     def take_volume_snapshot(self, task_spec, volume, install_path, full_snapshot=False):
         device_id = volume.deviceId
@@ -6102,6 +6191,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH = "/vm/volume/querylatencyboundary"
     KVM_QUERY_BLOCKJOB_STATUS = "/vm/volume/queryblockjobstatus"
     KVM_BLOCK_STREAM_VOLUME_PATH = "/vm/volume/blockstream"
+    KVM_BLOCK_COMMIT_VOLUME_PATH = "/vm/volume/blockcommit"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
     KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH = "/vm/volume/cancel/backupjobs"
@@ -8277,6 +8367,36 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def block_commit(self, req):
+        def block_commit_with_qemu_img():
+            top = VolumeTO.get_volume_actual_installpath(cmd.top)
+            base = VolumeTO.get_volume_actual_installpath(cmd.base)
+            linux.qcow2_commit(top, base)
+            return base
+
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = BlockCommitResponse()
+        try:
+            if not cmd.vmUuid:
+                rsp.newVolumeInstallPath = block_commit_with_qemu_img()
+            else:
+                vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+                vm_state = Vm.VM_STATE_SHUTDOWN if vm is None else vm.state
+                if vm and (vm_state == vm.VM_STATE_RUNNING or vm_state == vm.VM_STATE_PAUSED):
+                    rsp.newVolumeInstallPath = vm.do_block_commit(cmd, cmd.volume)
+                else:
+                    rsp.newVolumeInstallPath = block_commit_with_qemu_img()
+
+        except kvmagent.KvmError as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = str(e)
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        rsp.size = VmPlugin._get_snapshot_size(rsp.newVolumeInstallPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     @lock.lock('iscsiadm')
     def logout_iscsi_target(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -9882,6 +10002,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOB_PATH, self.cancel_backup_job)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
+        http_server.register_async_uri(self.KVM_BLOCK_COMMIT_VOLUME_PATH, self.block_commit)
         http_server.register_async_uri(self.KVM_MERGE_SNAPSHOT_PATH, self.merge_snapshot_to_volume)
         http_server.register_async_uri(self.KVM_LOGOUT_ISCSI_TARGET_PATH, self.logout_iscsi_target, cmd=LoginIscsiTargetCmd())
         http_server.register_async_uri(self.KVM_LOGIN_ISCSI_TARGET_PATH, self.login_iscsi_target)
