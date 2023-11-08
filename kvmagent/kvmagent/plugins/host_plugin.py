@@ -1580,7 +1580,7 @@ if __name__ == "__main__":
             yum_cmd = yum_cmd + update_qemu_cmd.format(releasever,
                                                        ',zstack-experimental-mn' if cmd.enableExpRepo else '')
         if "libvirt" in updates or (cmd.releaseVersion is not None and "libvirt" not in exclude):
-            update_libvirt_cmd = "export YUM0={};yum remove libvirt libvirt-libs libvirt-client libvirt-python libvirt-admin libvirt-bash-completion -y && " \
+            update_libvirt_cmd = "export YUM0={};yum remove libvirt libvirt-libs libvirt-client libvirt-python libvirt-admin libvirt-bash-completion libvirt-daemon-driver-lxc -y && " \
                                  "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} install libvirt libvirt-client libvirt-python -y && "
             yum_cmd = yum_cmd + update_libvirt_cmd.format(releasever,
                                                           ',zstack-experimental-mn' if cmd.enableExpRepo else '')
