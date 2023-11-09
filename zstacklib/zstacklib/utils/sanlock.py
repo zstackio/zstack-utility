@@ -230,7 +230,7 @@ class Resource(object):
         self._update(o)
 
     def in_use(self):
-        return bash.bash_r("sanlock client status | grep %s:%s" % (self.lockspace_name, self.resource_name)) == 0
+        return bash.bash_r("sanlock client status | grep %s:%s | grep -v 'ADD' " % (self.lockspace_name, self.resource_name)) == 0
 
     # the current host holds the resource lock, but the process holding the lock cannot be found or held by a dead host
     def abnormal_held(self):
