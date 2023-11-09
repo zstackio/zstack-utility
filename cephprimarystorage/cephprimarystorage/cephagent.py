@@ -584,7 +584,7 @@ class CephAgent(plugin.TaskManager):
             return jsonobject.dumps(rsp)
 
         force = "--force" if cmd.force else ""
-        for pool_name in cmd.pools:
+        for pool_name in set(cmd.pools):
             r, o, e = bash_roe("rbd trash list -p %s --format json" % pool_name)
             if r != 0 or o.strip() == '':
                 continue
