@@ -51,6 +51,7 @@ PV_DISCARD_MIN_SIZE_IN_BYTES = 1*1024**3
 ONE_HOUR_IN_SEC = 60 * 60
 
 lv_offset = TTLCache(maxsize=100, ttl=ONE_HOUR_IN_SEC)
+continue_lockspace_track = {}  # type: dict[str, bool]
 
 class VolumeProvisioningStrategy(object):
     ThinProvisioning = "ThinProvisioning"
@@ -738,7 +739,7 @@ def stop_lvmlockd():
         linux.kill_process(pid)
 
 @bash.in_bash
-def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
+def start_vg_lock(vgUuid, hostId, retry_times_for_checking_vg_lockspace):
     @linux.retry(times=60, sleep_time=random.uniform(1, 10))
     def vg_lock_is_adding(vgUuid):
         # NOTE(weiw): this means vg locking is adding rather than complete
@@ -755,7 +756,19 @@ def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
         elif vg_lock_is_adding(vgUuid) is True:
             raise RetryException("lock space for vg %s is adding" % vgUuid)
         else:
+            continue_lockspace_track.update({vgUuid: True})
             return True
+
+    def check_lockspace():
+        r = sanlock.dd_check_lockspace("/dev/mapper/%s-lvmlock" % vgUuid)
+        if r != 0:
+            bash.bash_roe("dmsetup remove %s-lvmlock" % vgUuid)
+            return
+        elif continue_lockspace_track.get(vgUuid) is False:
+            logger.debug("direct init lockspace[%s] has already been executed but the lockspace has not been restored, skip it" % vgUuid)
+            return
+        sanlock.check_delta_lease(vgUuid, hostId)
+        continue_lockspace_track.update({vgUuid: False})
 
     @linux.retry(times=5, sleep_time=random.uniform(0.1, 10))
     def start_lock(vgUuid):
@@ -765,14 +778,13 @@ def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
         modify_sanlock_config("use_zstack_vglock_timeout", 0)
         modify_sanlock_config("use_zstack_vglock_large_delay", 0)
 
-        if r != 0:
-            if "Device or resource busy" in o+e:
-                bash.bash_roe("dmsetup remove %s-lvmlock" % vgUuid)
-            raise Exception("vgchange --lock-start failed: return code: %s, stdout: %s, stderr: %s" %
-                            (r, o, e))
-
-        vg_lock_exists(vgUuid)
-
+        try:
+            if r != 0:
+                raise Exception("vgchange --lock-start failed: return code: %s, stdout: %s, stderr: %s" % (r, o, e))
+            vg_lock_exists(vgUuid)
+        except Exception:
+            check_lockspace()
+            raise
     try:
         vg_lock_exists(vgUuid)
     except RetryException:
