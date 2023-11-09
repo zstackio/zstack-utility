@@ -11,6 +11,7 @@ import rados
 import rbd
 import Queue
 import threading
+import simplejson
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
@@ -590,6 +591,10 @@ class CephAgent(plugin.TaskManager):
 
             rsp.pool2TrashResult.update({pool_name: []})
             trash_list = jsonobject.loads(o)
+            if len(trash_list) != 0 and isinstance(trash_list[0], str):
+                trash_list = [{"id": trash_list[idx], "name": trash_list[idx+1]} for idx in range(0, len(trash_list), 2)]
+                trash_list = jsonobject.loads(simplejson.dumps(trash_list))
+
             for trash in trash_list:
                 r, o, e = bash_roe("rbd trash rm %s/%s %s" % (pool_name, trash.id, force))
                 if r == 0:
