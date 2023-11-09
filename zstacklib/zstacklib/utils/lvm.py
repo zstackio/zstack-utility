@@ -144,6 +144,9 @@ class SharedBlockCandidateStruct:
         self.type = None  # type: str
         self.size = None  # type: long
         self.path = None  # type: str
+        self.source = None  # type: str
+        self.transport = None  # type: str
+        self.targetIdentifier = None  # type: str
 
 def get_vg_uuid(path):
     # type: (str) -> str
@@ -161,8 +164,69 @@ def get_block_devices():
     # 3. get nvme block devices
     block_devices.extend(get_nvme_block_devices())
 
+    device_iqn = get_dev_iqn()
+    for d in block_devices:
+        if d.source == 'fc':
+            d.targetIdentifier = get_storage_wwnn(d.hctl)
+        elif d.source == 'iscsi':
+            d.targetIdentifier = device_iqn.get(d.dev_name)
+        elif d.source == 'nvme':
+            d.targetIdentifier = get_nqn(d.dev_name)
+
     return block_devices
 
+def get_nvme_transport(dev_name):
+    transport = linux.read_file("/sys/class/block/%s/device/transport" % dev_name)
+    if transport:
+        return transport.strip()
+
+    nvme_subsystems = []
+    if os.path.exists("/sys/class/nvme-subsystem/"):
+        nvme_subsystems = os.listdir("/sys/class/nvme-subsystem/")
+
+    for target in nvme_subsystems:
+        for fpath in linux.walk("/sys/class/nvme-subsystem/%s" % target, depth=2):
+            if os.path.basename(fpath) != dev_name:
+                continue
+            transport = linux.read_file(fpath + "/../transport")
+            if transport:
+                return transport.strip()
+
+def get_storage_wwnn(hctl):
+    o = shell.call(
+        "systool -c fc_transport -A node_name | grep '\"target%s\"' -B2 | awk '/node_name/{print $NF}'" % ":".join(hctl.split(":")[0:3]))
+    return o.strip().strip('"')
+
+def get_dev_iqn():
+    device_iqn = {}
+    r, o, e = bash.bash_roe("iscsiadm -m session -P 3 | grep -E 'Target: iqn|Attached scsi disk'")
+    if r != 0 or o is None:
+        return device_iqn
+
+    iqn = None
+    for line in o.splitlines():
+        line = line.strip()
+        if "Target: iqn" in line:
+            iqn = line.split(' ')[1]
+        elif "Attached scsi disk" in line:
+            device_iqn.update({line.split('\t')[0].split(' ')[-1] : iqn})
+
+    return device_iqn
+
+def get_nqn(dev_name):
+    nqn = linux.read_file("/sys/class/block/%s/device/subsysnqn" % dev_name)
+    if nqn:
+        return nqn.strip()
+
+    nvme_subsystems = []
+    if os.path.exists("/sys/class/nvme-subsystem/"):
+        nvme_subsystems = os.listdir("/sys/class/nvme-subsystem/")
+
+    for target in nvme_subsystems:
+        nqn = linux.read_file("/sys/class/nvme-subsystem/%s/subsysnqn" % target)
+        if nqn and any(os.path.basename(fpath) == dev_name for fpath in
+                       linux.walk("/sys/class/nvme-subsystem/%s" % target, depth=2)):
+            return nqn.strip()
 
 def get_nvme_block_devices():
     if not os.path.exists('/usr/sbin/nvme') and not os.path.exists('/sbin/nvme'):
@@ -183,7 +247,11 @@ def get_nvme_block_devices():
 
             wwid = linux.read_file("/sys/block/%s/wwid" % dev)
             if wwid:
-                devices.append(get_device_info(dev, {dev: wwid.strip()}))
+                device_info = get_device_info(dev, {dev: wwid.strip()})
+                device_info.transport = get_nvme_transport(dev)
+                device_info.source = 'nvme'
+                device_info.dev_name = dev
+                devices.append(device_info)
         return devices
     except Exception as e:
         logger.error(traceback.format_exc())
@@ -208,6 +276,7 @@ def get_mpath_block_devices(scsi_info):
             if struct is None:
                 return
             struct.type = "mpath"
+            struct.dev_name = slave
             block_devices_list[i] = struct
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -254,6 +323,7 @@ def get_disk_block_devices(slave_devices, scsi_info):
                 return
             if bash.bash_r('wipefs -n %s | grep LVM2  > /dev/null' % disk.strip()) == 0:
                 struct.type = "lvm-pv"
+            struct.dev_name = os.path.basename(disk)
             block_devices_list[i] = struct
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
@@ -419,7 +489,7 @@ def lsblk_info(dev_name):
     # type: (str) -> SharedBlockCandidateStruct
     s = SharedBlockCandidateStruct()
 
-    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE /dev/%s" % dev_name,
+    r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE,TRAN /dev/%s" % dev_name,
                             False)
     if r != 0 or o.strip() == "":
         logger.warn("can not get device information from %s" % dev_name)
@@ -443,6 +513,9 @@ def lsblk_info(dev_name):
             s.size = get_data(entry)
         elif entry.startswith('TYPE'):
             s.type = get_data(entry)
+        elif entry.startswith('TRAN'):
+            s.transport = get_data(entry)
+            s.source = s.transport
 
     return s
 

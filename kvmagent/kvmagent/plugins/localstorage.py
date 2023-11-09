@@ -203,6 +203,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     UPLOAD_TO_IMAGESTORE_PATH = "/localstorage/imagestore/upload"
     COMMIT_TO_IMAGESTORE_PATH = "/localstorage/imagestore/commit"
     DOWNLOAD_FROM_IMAGESTORE_PATH = "/localstorage/imagestore/download"
+    CLEAN_IMAGE_META = "/localstorage/imagestore/meta/clean"
     REVERT_SNAPSHOT_PATH = "/localstorage/snapshot/revert"
     MERGE_SNAPSHOT_PATH = "/localstorage/snapshot/merge"
     MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase"
@@ -251,6 +252,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.UPLOAD_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
         http_server.register_async_uri(self.DOWNLOAD_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
+        http_server.register_async_uri(self.CLEAN_IMAGE_META, self.clean_image_meta)
         http_server.register_async_uri(self.REVERT_SNAPSHOT_PATH, self.revert_snapshot)
         http_server.register_async_uri(self.REINIT_IMAGE_PATH, self.reinit_image)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
@@ -1008,6 +1010,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
         rsp = AgentResponse()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def clean_image_meta(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
+
+        rsp = kvmagent.AgentResponse()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

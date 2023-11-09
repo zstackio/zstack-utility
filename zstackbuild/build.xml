@@ -13,7 +13,14 @@
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="pypi.parent.dir" location="${war.dir}/static/" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
-    <property name="zstack.trial.license" location="${zstackutility.source}/installation/zstack_trial_license" />
+    <property name="deploy.conf.file" location="${zstackutility.source}/installation/deploy.properties" />
+    <property file="${deploy.conf.file}" />
+
+    <condition property="zstack.trial.license" value="${zstackutility.source}/installation/zsv_trial_license" else="${zstackutility.source}/installation/zstack_trial_license">
+        <equals arg1="${deploy.mode}" arg2="ZSV" />
+    </condition>
+    <echo message="deploy.mode is ${deploy.mode}, trial license file is ${zstack.trial.license}" />
+
     <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.${build.num}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
         <and>
             <isset property="build.num"/>

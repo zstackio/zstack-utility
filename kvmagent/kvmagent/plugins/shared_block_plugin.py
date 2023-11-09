@@ -329,6 +329,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     UPLOAD_BITS_TO_IMAGESTORE_PATH = "/sharedblock/imagestore/upload"
     COMMIT_BITS_TO_IMAGESTORE_PATH = "/sharedblock/imagestore/commit"
     DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/sharedblock/imagestore/download"
+    CLEAN_LV_META = "/sharedblock/lv/meta/clean"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedblock/volume/revertfromsnapshot"
     MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/merge"
     EXTEND_MERGE_TARGET_PATH = "/sharedblock/snapshot/extendmergetarget"
@@ -380,6 +381,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.UPLOAD_BITS_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_BITS_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
+        http_server.register_async_uri(self.CLEAN_LV_META, self.clean_lv_meta)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.EXTEND_MERGE_TARGET_PATH, self.extend_merge_target)
@@ -1124,6 +1126,15 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                         cmd.primaryStorageInstallPath, cmd.concurrency,
                                                         failure_action=clean)
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
+        rsp = AgentRsp()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def clean_lv_meta(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        install_abs_path = translate_absolute_path_from_install_path(cmd.primaryStorageInstallPath)
+        lvm.delete_lv_meta(install_abs_path)
+
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 

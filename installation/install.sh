@@ -135,6 +135,12 @@ SETUP_EPEL=''
 CONSOLE_PROXY_ADDRESS=''
 CURRENT_VERSION=''
 
+DEPLOY_CONFIG_PATH='./deploy.properties'
+ZSV_INSTALL='n'
+if [ -s "$DEPLOY_CONFIG_PATH" ]; then
+    grep "deploy.mode" $DEPLOY_CONFIG_PATH | grep "ZSV" &> /dev/null && ZSV_INSTALL='y'
+fi
+
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
@@ -1501,7 +1507,6 @@ upgrade_zstack(){
     [ ! -z "$upgrade_persist_params" ] && zstack-ctl configure $upgrade_persist_params
     done
 
-
     # set ticket.sns.topic.http.url if not exists
     zstack-ctl show_configuration | grep 'ticket.sns.topic.http.url' >/dev/null 2>&1
     [ $? -ne 0 ] && zstack-ctl configure ticket.sns.topic.http.url=http://localhost:5000/zwatch/webhook
@@ -1515,6 +1520,10 @@ upgrade_zstack(){
 
     # configure deploy_mode if it is cube
     do_config_deploy_node
+
+    # configure deploy_mode if it is zsv
+    zstack-ctl show_configuration | grep 'deploy_mode' | grep zsv >/dev/null 2>&1
+    [ $? -eq 0 ] && show_spinner iz_upgrade_zsphere_tools
 
     # update consoleProxyCertFile if necessary
     certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
@@ -2421,6 +2430,29 @@ cp_third_party_tools(){
     pass
 }
 
+iz_install_zsphere_tools(){
+    echo_subtitle "Install ZSphere Tools"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    inner_install_zsphere_tools
+    pass
+}
+
+iz_upgrade_zsphere_tools(){
+    echo_subtitle "Upgrade ZSphere Tools"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    inner_install_zsphere_tools
+    pass
+}
+
+inner_install_zsphere_tools(){
+    ZSV_SOURCE_DIR=/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zsphere_config
+    ZSV_CONFIG_DIR=$ZSTACK_HOME/WEB-INF/classes/zsphere_config
+
+    /bin/rm -rf $ZSV_CONFIG_DIR
+    mkdir -p $ZSV_CONFIG_DIR
+    /bin/cp -f $ZSV_SOURCE_DIR/version $ZSV_CONFIG_DIR/version
+}
+
 install_zstack(){
     echo_title "Install ${PRODUCT_NAME} Tools"
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -2433,6 +2465,10 @@ install_zstack(){
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
         show_spinner sd_install_zstack_ui
         zstack-ctl config_ui --restore
+    fi
+    # zsphere is zsv env
+    if [ x"$ZSV_INSTALL" = x"y" ]; then
+        show_spinner iz_install_zsphere_tools
     fi
 }
 
@@ -2529,8 +2565,8 @@ il_install_license(){
         else
             fail "License path ${LICENSE_PATH} does not exists."
         fi
-    elif [ x"$INSTALL_ENTERPRISE" = x'y' ]; then
-      # if -E is set
+    elif [ x"$INSTALL_ENTERPRISE" = x'y' -o x"$ZSV_INSTALL" = x'y' ]; then
+      # if "-E" or "--zsv" is set
       zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     chown -R zstack:zstack /var/lib/zstack/license >>$ZSTACK_INSTALL_LOG 2>&1
@@ -2622,6 +2658,9 @@ cs_config_zstack_properties(){
         if [ $? -ne 0 ];then
             fail "failed to update console proxy overridden IP to $CONSOLE_PROXY_ADDRESS"
         fi
+    else
+        zstack-ctl get_configuration consoleProxyOverriddenIp >/dev/null 2>&1
+        [ $? -ne 0 ] && zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
     fi
 
     if [ ! -z $ZSTACK_ANSIBLE_EXECUTABLE ];then
@@ -3779,7 +3818,7 @@ load_install_conf() {
 
 load_install_conf
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,cube,SY,sds,no-zops -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,zsv,cube,SY,sds,no-zops -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3837,6 +3876,7 @@ do
         --chrony-server-ip ) check_myarg $1 $2;CHRONY_SERVER_IP=$2;shift 2;;
         --grayscale ) check_myarg $1 $2;GRAYSCALE_UPGRADE=$2;shift 2;;
         --mini) MINI_INSTALL='y';shift;;
+        --zsv) ZSV_INSTALL='y';shift;;
         --cube) CUBE_INSTALL='y';shift;;
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
@@ -3845,6 +3885,10 @@ do
         * ) usage;;
     esac
 done
+
+if [ x"$ZSV_INSTALL" = x"y" ] && [ x"$CUBE_INSTALL" = x"y" ];then
+    fail2 "\n\tYou can not install use both cube and zsv mode.\n\n"
+fi
 
 # Fix bug ZSTAC-14090
 [ $# -eq $((OPTIND-1)) ] || usage
@@ -3942,7 +3986,7 @@ echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 # Copy zstack trial license into /var/lib/zstack/license
 if [ -f $ZSTACK_TRIAL_LICENSE ]; then
   mkdir -p /var/lib/zstack/license
-  /bin/cp -f $ZSTACK_TRIAL_LICENSE /var/lib/zstack/license
+  /bin/cp -f $ZSTACK_TRIAL_LICENSE /var/lib/zstack/license/zstack_trial_license
 fi
 
 if [ -f $PRODUCT_TITLE_FILE ]; then
@@ -4247,7 +4291,6 @@ if [ x"$UPGRADE" = x'y' ]; then
     [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
     [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | rev | cut -d '-' -f3 | rev`
 
-
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         echo_star_line
         echo -e "$(tput setaf 2)${PRODUCT_NAME,,}-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
@@ -4258,7 +4301,9 @@ if [ x"$UPGRADE" = x'y' ]; then
         exit 0
     fi
 
-    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
+    # Cloud & ZSV read VERSION
+    [ -z $VERSION ] && VERSION=`awk '{print $NF}' $ZSTACK_VERSION`
+
     echo ""
     echo_star_line
     echo -e "$(tput setaf 2)${PRODUCT_NAME} has been successfully upgraded to version: ${VERSION}$(tput sgr0)"
@@ -4376,11 +4421,6 @@ if [ -n "$NEED_DROP_DB" ]; then
 fi
 
 zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
-if [ ! -z $NEED_SET_MN_IP ];then
-    if [ -z $CONSOLE_PROXY_ADDRESS ];then
-        zstack-ctl configure consoleProxyOverriddenIp="${MANAGEMENT_IP}"
-    fi
-fi
 
 zstack-ctl configure RepoVersion.Strategy="permissive"
 
@@ -4396,6 +4436,10 @@ fi
 # deploy by cube mode
 if [ x"$CUBE_INSTALL" = x"y" ];then
     zstack-ctl configure deploy_mode="cube"
+fi
+
+if [ x"$ZSV_INSTALL" = x"y" ];then
+    zstack-ctl configure deploy_mode="zsv"
 fi
 
 #Install license
@@ -4467,7 +4511,8 @@ fi
 
 #Print all installation message
 if [ -z $NOT_START_ZSTACK ]; then
-    [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
+    # [ -z $VERSION ] && VERSION=`zstack-ctl status 2>/dev/null|grep version|awk '{print $2}'`
+    [ -z $VERSION ] && VERSION=`awk '{print $NF}' $ZSTACK_VERSION`
 fi
 
 #Install/Upgrade zops

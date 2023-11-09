@@ -1133,11 +1133,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             linux.write_file("/sys/block/%s/device/rescan" % dev_name, "1")
             logger.debug("rescaned disk %s" % dev_name)
 
-        def get_storage_wwnn(hctl):
-            o = shell.call(
-                "systool -c fc_transport -A node_name | grep '\"target%s\"' -B2 | awk '/node_name/{print $NF}'" % ":".join(hctl.split(":")[0:3]))
-            return o.strip().strip('"')
-
         blk_info = lvm.lsblk_info(dev_name)
         if not blk_info:
             return None
@@ -1151,7 +1146,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         s.type = 'mpath' if lvm.is_slave_of_multipath("/dev/%s" % dev_name) else blk_info.type
         s.wwids = [wwid]
         s.path = lvm.get_device_path(dev_name)
-        s.storageWwnn = get_storage_wwnn(s.hctl)
+        s.storageWwnn = lvm.get_storage_wwnn(s.hctl)
         return s
 
 

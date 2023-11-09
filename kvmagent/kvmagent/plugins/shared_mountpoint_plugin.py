@@ -138,6 +138,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     UPLOAD_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointprimarystorage/imagestore/upload"
     COMMIT_BITS_TO_IMAGESTORE_PATH = "/sharedmountpointprimarystorage/imagestore/commit"
     DOWNLOAD_BITS_FROM_IMAGESTORE_PATH = "/sharedmountpointprimarystorage/imagestore/download"
+    CLEAN_IMAGE_META = "/sharedmountpointprimarystorage/imagestore/meta/clean"
     REVERT_VOLUME_FROM_SNAPSHOT_PATH = "/sharedmountpointprimarystorage/volume/revertfromsnapshot"
     MERGE_SNAPSHOT_PATH = "/sharedmountpointprimarystorage/snapshot/merge"
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedmountpointprimarystorage/snapshot/offlinemerge"
@@ -168,6 +169,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.UPLOAD_BITS_TO_IMAGESTORE_PATH, self.upload_to_imagestore)
         http_server.register_async_uri(self.COMMIT_BITS_TO_IMAGESTORE_PATH, self.commit_to_imagestore)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_IMAGESTORE_PATH, self.download_from_imagestore)
+        http_server.register_async_uri(self.CLEAN_IMAGE_META, self.clean_image_meta)
         http_server.register_async_uri(self.REVERT_VOLUME_FROM_SNAPSHOT_PATH, self.revert_volume_from_snapshot)
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
@@ -410,6 +412,14 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
             self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
         rsp = AgentRsp()
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def clean_image_meta(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
+
+        rsp = kvmagent.AgentResponse()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

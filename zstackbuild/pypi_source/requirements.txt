@@ -48,3 +48,4 @@ xxhash==2.0.2
 mock==3.0.5
 futures==3.4.0
 setuptools==21.0.0
+Pillow==2.9.0
