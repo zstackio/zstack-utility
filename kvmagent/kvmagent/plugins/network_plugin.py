@@ -614,7 +614,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             rsp.success = False
         return jsonobject.dumps(rsp)
 
-    def create_novlan_bridge(self, cmd):
+    def create_novlan_bridge(self, cmd, rsp):
         self._ifup_device_if_down(cmd.physicalInterfaceName)
 
         oldMtu = self._get_interface_mtu(cmd.physicalInterfaceName)
