@@ -644,7 +644,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if cmd.vlan == 0:
             try:
-                self.create_novlan_bridge(cmd)
+                self.create_novlan_bridge(cmd, rsp)
             except Exception as e:
                 logger.warning(traceback.format_exc())
                 rsp.error = 'unable to create bridge[%s] from device[%s], because %s' % (
