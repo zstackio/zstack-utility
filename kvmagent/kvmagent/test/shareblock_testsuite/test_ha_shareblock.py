@@ -4,8 +4,9 @@ from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import Shar
 from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils, vm_utils, ha_utils, network_utils
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
-from zstacklib.utils import jsonobject, xmlobject, bash, linux, log
+from zstacklib.utils import jsonobject, xmlobject, bash, linux, log, lvm
 import pytest
+import json
 
 from zstacklib.utils.linux import retry
 
@@ -170,6 +171,8 @@ class TestHaShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         rsp = ha_utils.setup_sharedblock_self_fencer(vgUuid, hostUuid, "None", addons, "None", 1, 1, 5, "Force", ["hostStorageState"])
         self.assertEqual(True, rsp.success)
 
+        self.save_record_vm_uuids(vgUuid, hostUuid, [vm.vmInstanceUuid])
+
         time.sleep(10)
         self.check_record_vm_uuids_exists(hostUuid, vgUuid, vm.vmInstanceUuid)
 
@@ -213,4 +216,31 @@ class TestHaShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
     def lv_exists(self, path):
         r = bash.bash_r("lvs --nolocking -t %s" % path)
         assert r == 0
+
+
+    def save_record_vm_uuids(self, vg_uuid, host_uuid, vm_uuids):
+        def write_content_to_lv(content):
+            with open(volume_abs_path, "w+") as f:
+                f.write(json.dumps(content) + "this_is_end")
+                f.flush()
+                os.fsync(f.fileno())
+            return True
+
+        volume_abs_path = '/dev/%s/host_%s' % (vg_uuid, host_uuid)
+        if not lvm.lv_exists(volume_abs_path):
+            lvm.create_lv_from_absolute_path(volume_abs_path, 4 * 1024 * 1024, tag="zs::sharedblock::runningVm",
+                                             exact_size=True)
+
+        content = {"heartbeat_time": time.time(),
+                   "vm_uuids": None if len(vm_uuids) == 0 else ','.join(str(x) for x in vm_uuids)}
+
+        if os.path.exists(volume_abs_path):
+            return write_content_to_lv(content)
+
+        r, o, e = bash.bash_roe("timeout -s SIGKILL %s lvchange -asy %s" % (10, volume_abs_path))
+        if r == 0:
+            return write_content_to_lv(content)
+
+        return False
+
 

@@ -385,6 +385,7 @@ class SanlockHealthChecker(AbstractStorageFencer):
         vg_uuid = fencer_cmd.vgUuid
         self.all_vgs[vg_uuid] = fencer_cmd
         self.fencer_created_time[vg_uuid] = created_time
+        self.update_vm_ha_params(list(self.all_vgs.keys()))
 
     def delvg(self, vg_uuid):
         self.all_vgs.pop(vg_uuid, None)
@@ -392,6 +393,25 @@ class SanlockHealthChecker(AbstractStorageFencer):
         self.fencer_created_time.pop(vg_uuid, None)
         self.fencer_fire_cnt.pop(vg_uuid, None)
         self.fired_vgs.pop(vg_uuid, None)
+        self.update_vm_ha_params(list(self.all_vgs.keys()))
+
+    def update_vm_ha_params(self, vg_uuids):
+        if len(vg_uuids) == 0:
+            return
+
+        if not os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH):
+            return
+
+        with open(SHAREBLOCK_VM_HA_PARAMS_PATH, 'r+') as f:
+            cmd = f.read().strip()
+            if len(cmd) == 0:
+                return
+
+            cmd_json = json.loads(cmd)
+            cmd_json["vgUuids"] = vg_uuids
+            f.seek(0)
+            f.truncate(0)
+            f.write(jsonobject.dumps(cmd_json))
 
     def firevg(self, vg_uuid):
         self.fired_vgs[vg_uuid] = time.time()
@@ -443,11 +463,8 @@ class SanlockHealthChecker(AbstractStorageFencer):
         for vg in self.all_vgs:
             r = p.get_lockspace_record(vg)
             try:
-                # The storage is normal, the sanlock process is down,
-                # and we can write the heartbeat normally
-                heartbeat_success = self.save_record_vm_uuids(vg)
                 cnt, failure = self._do_health_check_vg(vg, lockspaces, r)
-                if cnt == 0 or heartbeat_success:
+                if cnt == 0:
                     self.reset_vg_failure_cnt(vg)
                 else:
                     logger.info("vg %s failure count: %d" % (vg, cnt))
@@ -497,35 +514,6 @@ class SanlockHealthChecker(AbstractStorageFencer):
             return read_content_from_lv()
 
         return None, None
-
-    def save_record_vm_uuids(self, vg_uuid):
-        def write_content_to_lv(content):
-            with open(volume_abs_path, "w+") as f:
-                f.write(json.dumps(content) + "this_is_end")
-                f.flush()
-                os.fsync(f.fileno())
-            return True
-
-        vm_in_ps_uuid_list = find_ps_running_vm(vg_uuid)
-        if len(vm_in_ps_uuid_list) == 0:
-            return True
-
-        volume_abs_path = self.get_record_vm_lun(vg_uuid, self.host_uuid)
-        if not lvm.lv_exists(volume_abs_path):
-            lvm.update_pv_allocate_strategy(self.get_vg_fencer_cmd(vg_uuid))
-            lvm.create_lv_from_absolute_path(volume_abs_path, 4*1024*1024, tag="zs::sharedblock::runningVm", exact_size = True)
-
-        content = {"heartbeat_time": time.time(),
-                   "vm_uuids": None if len(vm_in_ps_uuid_list) == 0 else ','.join(str(x) for x in vm_in_ps_uuid_list)}
-
-        if os.path.exists(volume_abs_path):
-            return write_content_to_lv(content)
-
-        r, o, e = bash.bash_roe("timeout -s SIGKILL %s lvchange -asy %s" % (self.storage_timeout, volume_abs_path))
-        if r == 0:
-            return write_content_to_lv(content)
-
-        return False
 
     def runonce(self, storage_timeout, max_failure):
         if len(self.all_vgs) == 0:
@@ -882,7 +870,7 @@ LIVE_LIBVIRT_XML_DIR = "/var/run/libvirt/qemu"
 global_allow_fencer_rule = {} # type: dict[str, list]
 global_block_fencer_rule = {} # type: dict[str, list]
 global_fencer_rule_lock = threading.Lock()
-
+SHAREBLOCK_VM_HA_PARAMS_PATH = "/var/run/zstack/shareBlockVmHaParams"
 
 def add_fencer_rule(cmd):
     with global_fencer_rule_lock:
@@ -1385,6 +1373,8 @@ class HaPlugin(kvmagent.KvmAgent):
     def cancel_sharedblock_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.cancel_fencer(cmd.vgUuid)
+        if os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH) and len(self.sblk_health_checker.all_vgs) == 0:
+            os.remove(SHAREBLOCK_VM_HA_PARAMS_PATH)
         return jsonobject.dumps(AgentRsp())
 
     def do_heartbeat_on_sharedblock(self, cmd):
@@ -1502,9 +1492,7 @@ class HaPlugin(kvmagent.KvmAgent):
             content = traceback.format_exc()
             logger.warn(content)
 
-    @kvmagent.replyerror
-    def setup_sharedblock_self_fencer(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+    def setup_sharedblock_self_fencer_from_json(self, cmd):
         fencer_list = []
         if cmd.fencers is not None:
             fencer_list = cmd.fencers
@@ -1556,6 +1544,14 @@ class HaPlugin(kvmagent.KvmAgent):
                 logger.debug("sharedblock fencer already running, just add vg[%s %s]" %
                              (cmd.vgUuid, jsonobject.dumps(self.sblk_health_checker.get_vg_fencer_cmd(cmd.vgUuid))))
 
+    @kvmagent.replyerror
+    def setup_sharedblock_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if not os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH):
+            with open(SHAREBLOCK_VM_HA_PARAMS_PATH, 'w') as f:
+                f.write(jsonobject.dumps(cmd))
+
+        self.setup_sharedblock_self_fencer_from_json(cmd)
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -1934,6 +1930,7 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ADD_VM_FENCER_RULE_TO_HOST, self.add_vm_fencer_rule_to_host)
         http_server.register_async_uri(self.REMOVE_VM_FENCER_RULE_FROM_HOST, self.remove_vm_fencer_rule_from_host)
         http_server.register_async_uri(self.GET_VM_FENCER_RULE, self.get_vm_fencer_rule)
+
 
     def stop(self):
         pass
