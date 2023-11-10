@@ -254,7 +254,7 @@ upgrade_mini_zwatch_webhook(){
 }
 
 # configure deploy_mode if it is cube
-do_config_deploy_node(){
+do_config_deploy_mode(){
     if [ -f "/usr/local/hyperconverged/conf/deployed_info" ]; then
         zstack-ctl configure deploy_mode="cube" > /dev/null 2>&1
         return
@@ -1519,7 +1519,7 @@ upgrade_zstack(){
     upgrade_mini_zwatch_webhook
 
     # configure deploy_mode if it is cube
-    do_config_deploy_node
+    do_config_deploy_mode
 
     # configure deploy_mode if it is zsv
     zstack-ctl show_configuration | grep 'deploy_mode' | grep zsv >/dev/null 2>&1
