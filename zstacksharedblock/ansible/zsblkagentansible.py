@@ -70,7 +70,7 @@ host_post_info.remote_pass = remote_pass
 host_post_info.remote_port = remote_port
 if remote_pass is not None and remote_user != 'root':
     host_post_info.become = True
-if isZYJ and zyjDistribution != "":
+if isZYJ == "true" and zyjDistribution != "":
     host_post_info.distribution = zyjDistribution
 
 # include zstacklib.py
@@ -104,31 +104,37 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 
-run_remote_command(add_true_in_command("rm -rf %s/*" % zsblk_root), host_post_info)
-command = 'mkdir -p %s ' % (zsblk_root)
-run_remote_command(add_true_in_command(command), host_post_info)
+@skip_on_zyj(isZYJ)
+def config_zsblk():
+    run_remote_command(add_true_in_command("rm -rf %s/*" % zsblk_root), host_post_info)
+    command = 'mkdir -p %s ' % (zsblk_root)
+    run_remote_command(add_true_in_command(command), host_post_info)
 
-# name: copy zsblk binary
-copy_arg = CopyArg()
-dest_pkg = "%s/%s" % (zsblk_root, pkg_zsblk)
-copy_arg.src = "%s/%s" % (file_root, src_pkg_zsblk)
-copy_arg.dest = dest_pkg
-copy(copy_arg, host_post_info)
+    # name: copy zsblk binary
+    copy_arg = CopyArg()
+    copy_arg.src = "%s/%s" % (file_root, src_pkg_zsblk)
+    dest_pkg = "%s/%s" % (zsblk_root, pkg_zsblk)
+    copy_arg.dest = dest_pkg
+    copy(copy_arg, host_post_info)
+    # name: install zstack-sharedblock
+    command = "bash %s %s " % (dest_pkg, fs_rootpath)
+    run_remote_command(add_true_in_command(command), host_post_info)
+
+    # copy service
+    run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsblk-agent/bin/zstack-sharedblock-agent.service /usr/lib/systemd/system/"), host_post_info)
+
+    # replace service content
+    service_env = "ZSBLKARGS=-free-space %s -increment %s -log-file %s -qmp-socket-dir %s -utilization-percent %s " \
+                  "-lk-helper-max-times %s -lk-helper-scan-interval %s -verbose %s" \
+                  % (int(free_spcae), int(increment), log_file, qmp_socket_dir, utilization_percent, maxLockButNotUsedTimes, scanInterval, verboseLog)
+    replace_content("/usr/lib/systemd/system/zstack-sharedblock-agent.service", '''regexp='.*Environment=.*' replace="Environment='%s'"''' % service_env, host_post_info)
 
 
-# name: install zstack-sharedblock
-command = "bash %s %s " % (dest_pkg, fs_rootpath)
-run_remote_command(add_true_in_command(command), host_post_info)
+config_zsblk()
 
-run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsblk-agent/bin/zstack-sharedblock-agent.service /usr/lib/systemd/system/"), host_post_info)
 
-service_env = "ZSBLKARGS=-free-space %s -increment %s -log-file %s -qmp-socket-dir %s -utilization-percent %s " \
-              "-lk-helper-max-times %s -lk-helper-scan-interval %s -verbose %s" \
-              % (int(free_spcae), int(increment), log_file, qmp_socket_dir, utilization_percent, maxLockButNotUsedTimes, scanInterval, verboseLog)
-
-replace_content("/usr/lib/systemd/system/zstack-sharedblock-agent.service", '''regexp='.*Environment=.*' replace="Environment='%s'"''' % service_env, host_post_info)
 command = "systemctl daemon-reload && systemctl enable zstack-sharedblock-agent.service && systemctl restart zstack-sharedblock-agent.service"
-run_remote_command(add_true_in_command(command), host_post_info)
+run_remote_command(add_true_in_command(command), host_post_info, False, False, isZYJ)
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy zstack sharedblock successful", host_post_info, "INFO")

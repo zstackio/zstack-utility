@@ -25,6 +25,7 @@ import jinja2
 import time
 import urllib2
 import yaml
+import subprocess
 
 
 __metaclass__ = type
@@ -522,7 +523,7 @@ def get_host_releasever(host_info):
         "kylin_sword sword 10": "ns10",
         "kylin_lance lance 10": "ns10",
         "kylin_zstack zstack 10": "ns10",
-        "kylin_zyj zyj 10": "ns10",
+        "kylin_zyj 10 zyj": "ns10",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
@@ -1081,7 +1082,7 @@ def cron(name, arg, host_post_info):
             # pass the copy result to outside
             return True
 
-def copy(copy_arg, host_post_info):
+def copy(copy_arg, host_post_info, isZYJ="false"):
     start_time = datetime.datetime.now()
     host_post_info.start_time = start_time
     src = copy_arg.src
@@ -1096,6 +1097,18 @@ def copy(copy_arg, host_post_info):
         copy_args = 'src=' + src + ' dest=' + dest + ' ' + args
     else:
         copy_args = 'src=' + src + ' dest=' + dest
+
+    if isZYJ == "true":
+        command = ("sshpass -p '%s' scp -q -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no -o "
+                   "StrictHostKeyChecking=no -P %s %s %s@%s:%s") % (
+            host_post_info.remote_pass, host_post_info.remote_port, src, host_post_info.remote_user, host_post_info.host, dest)
+        handle_ansible_info("INFO: starting copy file [ %s ] ..." % command, host_post_info, "INFO")
+        remote_command_call(command, host_post_info, False)
+        details = "SUCC: copy %s to %s successfully" % (src, dest)
+        host_post_info.post_label = host_post_info.post_label + ".succ"
+        handle_ansible_info(details, host_post_info, "INFO")
+        return True
+
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'copy'
@@ -1240,8 +1253,72 @@ def check_host_reachable(host_post_info, warning=False):
             warn("Unknown error when check host %s is reachable" % host)
         return False
 
+def remote_command_call(command, host_post_info, return_status=False):
+    if return_status:
+        e = False
+    else:
+        e = True
+    return call(command, exception=e)
+
+def get_process(cmd, shell=None, workdir=None, pipe=None, executable=None):
+    if pipe:
+        return subprocess.Popen(cmd, shell=shell, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                close_fds=True, executable=executable, cwd=workdir)
+    else:
+        return subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                close_fds=True, executable=executable, cwd=workdir)
+
+class ShellError(Exception):
+    '''shell error'''
+
+class ShellCmd(object):
+    '''
+    classdocs
+    '''
+
+    def __init__(self, cmd, workdir=None, pipe=True):
+        '''
+        Constructor
+        '''
+        self.cmd = cmd
+        self.process = get_process(cmd, True, workdir, pipe, "/bin/bash")
+
+        self.stdout = None
+        self.stderr = None
+        self.return_code = None
+
+    def raise_error(self):
+        err = []
+        err.append('failed to execute shell command: %s' % self.cmd.split(' ', 1)[0])
+        err.append('return code: %s' % self.process.returncode)
+        err.append('stdout: %s' % self.stdout)
+        err.append('stderr: %s' % self.stderr)
+        raise ShellError('\n'.join(err))
+
+    def __call__(self, is_exception=True, logcmd=True):
+        (self.stdout, self.stderr) = self.process.communicate()
+        if is_exception and self.process.returncode != 0:
+            self.raise_error()
+
+        self.return_code = self.process.returncode
+        return self.return_code
+
+def call(cmd, exception=True, workdir=None):
+    # type: (str, bool, bool) -> str
+    return ShellCmd(cmd, workdir)(exception)
+
+def run(cmd, workdir=None):
+    s = ShellCmd(cmd, workdir, False)
+    s(False)
+    return s.return_code
+
+def check_run(cmd, workdir=None):
+    s = ShellCmd(cmd, workdir, False)
+    s(True)
+    return s.return_code
+
 @retry(times=3, sleep_time=3)
-def run_remote_command(command, host_post_info, return_status=False, return_output=False):
+def run_remote_command(command, host_post_info, return_status=False, return_output=False, isZYJ="false"):
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
         set_yum0 = '''rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;\
@@ -1254,6 +1331,18 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
     if host_post_info.post_label is None:
         host_post_info.post_label = "ansible.command"
         host_post_info.post_label_param = command
+
+    if isZYJ == "true":
+        command = ("sshpass -p '%s' ssh -q -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=no -o "
+                   "StrictHostKeyChecking=no -p %s %s@%s \"\"\"%s\"\"\"") % (
+            host_post_info.remote_pass, host_post_info.remote_port, host_post_info.remote_user, host_post_info.host, command)
+        handle_ansible_info("INFO: starting run command [ %s ] ..." % command, host_post_info, "INFO")
+        remote_command_call(command, host_post_info, return_status)
+        details = "SUCC: run shell command: %s successfully " % command
+        host_post_info.post_label = host_post_info.post_label + ".succ"
+        handle_ansible_info(details, host_post_info, "INFO")
+        return True
+
     handle_ansible_info("INFO: starting run command [ %s ] ..." % command, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
@@ -1461,6 +1550,16 @@ def get_remote_host_info_obj(host_post_info):
         host_post_info,
         "INFO")
 
+    # support customized host distribution
+    if host_post_info.distribution is not None:
+        host_info.distro = host_post_info.distribution.split(' ')[0]
+        host_info.distro_release = host_post_info.distribution.split(' ')[1]
+        host_info.distro_version = host_post_info.distribution.split(' ')[2]
+        host_info.major_version_str = host_post_info.distribution.split(' ')[3]
+        host_info.host_arch = host_post_info.distribution.split(' ')[4]
+
+        return host_info
+
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'setup'
@@ -1504,12 +1603,6 @@ def get_remote_host_info_obj(host_post_info):
         host_post_info.post_label = "ansible.get.host.info.fail"
         logger.warning("get_remote_host_info on host %s failed!" % host)
         raise Exception(result)
-
-    # support customized host distribution
-    if host_post_info.distribution is not None:
-        host_info.distro = host_post_info.distribution.split(' ')[0]
-        host_info.distro_release = host_post_info.distribution.split(' ')[1]
-        host_info.distro_version = host_post_info.distribution.split(' ')[2]
 
     return host_info
 
@@ -2038,14 +2131,18 @@ class ZstackLib(object):
         else:
             self.require_python_env = "true"
 
-        # enforce history
-        enforce_history(trusted_host, self.host_post_info)
         check_umask(self.host_post_info)
         configure_hosts(self.host_post_info)
 
         host_info = args.host_info
         if not host_info:
             host_info = get_remote_host_info_obj(self.host_post_info)
+
+        if host_info.distro_version == "zyj":
+            return
+
+        # enforce history
+        enforce_history(trusted_host, self.host_post_info)
 
         if self.distro in RPM_BASED_OS:
             repair_rpmdb_if_damaged(self.host_post_info)

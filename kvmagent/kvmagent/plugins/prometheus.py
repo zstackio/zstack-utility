@@ -24,6 +24,7 @@ collector_dict = {}  # type: Dict[str, threading.Thread]
 latest_collect_result = {}
 collectResultLock = threading.RLock()
 QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
+ZYJ_FLAG_PATH = "/etc/.zyj.flag"
 
 def read_number(fname):
     res = linux.read_file(fname)
@@ -868,7 +869,6 @@ LoadPlugin virt
 
             service_name = get_systemd_name(binPath)
             service_path = '/etc/systemd/system/%s.service' % service_name
-
             service_conf = '''
 [Unit]
 Description=prometheus %s
@@ -884,17 +884,24 @@ RestartSec=30s
 WantedBy=multi-user.target
 ''' % (service_name, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log, binPath)
 
-            if not os.path.exists(service_path):
-                linux.write_file(service_path, service_conf, True)
+            def update_service_content():
+                if os.path.exists(ZYJ_FLAG_PATH):
+                    return
+
+                if not os.path.exists(service_path):
+                    linux.write_file(service_path, service_conf, True)
+                    os.chmod(service_path, 0o644)
+                    reload_and_restart_service(service_name)
+                    return
+
+                if linux.read_file(service_path) != service_conf:
+                    linux.write_file(service_path, service_conf, True)
+                    logger.info("%s.service conf changed" % service_name)
+
+                os.chmod(binPath, 0o755)
                 os.chmod(service_path, 0o644)
-                reload_and_restart_service(service_name)
-                return
 
-            if linux.read_file(service_path) != service_conf:
-                linux.write_file(service_path, service_conf, True)
-                logger.info("%s.service conf changed" % service_name)
-
-            os.chmod(service_path, 0o644)
+            update_service_content()
             # restart service regardless of conf changes, for ZSTAC-23539
             reload_and_restart_service(service_name)
 
@@ -910,7 +917,6 @@ WantedBy=multi-user.target
             ARGUMENTS = cmd.startupArguments
             if not ARGUMENTS:
                 ARGUMENTS = ""
-            os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
         para = jsonobject.loads(req[http.REQUEST_BODY])
