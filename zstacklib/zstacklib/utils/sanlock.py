@@ -316,7 +316,10 @@ class HostsState(object):
         return self.hosts.get(host_id) == "DEAD"
     
     def get_live_min_hostid(self):
-        return min([int(id) for id in self.hosts.keys() if self.is_host_live(id)])
+        ids = [int(id) for id in self.hosts.keys() if self.is_host_live(id)]
+        if len(ids) == 0:
+            return None
+        return min(ids)
 
 
 def get_hosts_state(lockspace_name):
@@ -340,7 +343,7 @@ def vertify_delta_lease(vg_uuid, host_id):
 
 @bash.in_bash
 def vertify_paxos_lease(vg_uuid, resource_name, offset):
-    return bash.bash_roe("sanlock client read -r lvm_%s:%s:/dev/mapper/%s-lvmlock:%s" % (vg_uuid, resource_name, vg_uuid, offset))
+    return bash.bash_r("sanlock client read -r lvm_%s:%s:/dev/mapper/%s-lvmlock:%s" % (vg_uuid, resource_name, vg_uuid, offset))
 
 def get_vglks():
     result = []
@@ -356,6 +359,23 @@ def get_vglks():
         if ' VGLK ' in o:
             result.append(Resource(o, host_id, align_size=BIG_ALIGN_SIZE))
     return result
+
+
+def get_vglk(vg_uuid):
+    lockspace = get_lockspace(vg_uuid)
+    if lockspace is None:
+        return None
+
+    path = lockspace.split(":")[2]
+    host_id = lockspace.split(":")[1]
+    r, o, e = direct_dump_resource(path, VGLK_BEGIN * SMALL_ALIGN_SIZE)
+    if ' VGLK ' in o:
+        return Resource(o, host_id)
+    # vglk may be stored at 66M or 528M
+    r, o, e = direct_dump_resource(path, VGLK_BEGIN * BIG_ALIGN_SIZE, size=BIG_ALIGN_SIZE)
+    if ' VGLK ' in o:
+        return Resource(o, host_id, align_size=BIG_ALIGN_SIZE)
+    return None
 
 
 def get_gllks():
@@ -384,6 +404,12 @@ def get_lockspaces():
     return [line.split()[1].strip() for line in o.strip().splitlines() if 's lvm_' in line]
 
 
+def get_lockspace(vg_uuid):
+    r, o, e = bash.bash_roe("sanlock client gets | grep %s" % vg_uuid)
+    if r == 0:
+        return o.split()[1].strip()
+    return None
+
 @bash.in_bash
 def check_delta_lease(vg_uuid, host_id):
     r = vertify_delta_lease(vg_uuid, host_id)
@@ -394,6 +420,10 @@ def check_delta_lease(vg_uuid, host_id):
     bash.bash_r("dd if=/dev/mapper/{0}-lvmlock bs={1} count=1 skip=1999 iflag=direct | "
                 "dd of=/dev/mapper/{0}-lvmlock bs={1} seek={2} count=1 oflag=direct".format(vg_uuid, sector_size, seek))
     return True
+
+def check_vglk_paxos_lease(vg_uuid):
+    sector_size = get_sector_size(vg_uuid)
+    return vertify_paxos_lease(vg_uuid, "VGLK", VGLK_BEGIN * sector_size_to_align_size(sector_size)) == 0
 
 
 def dd_check_lockspace(path):
@@ -408,6 +438,13 @@ def get_sector_size(vg_uuid):
     if r == 0:
         return SECTOR_SIZE_4K
     raise Exception("unable to find sector size")
+
+def sector_size_to_align_size(sector_size):
+    if sector_size == SECTOR_SIZE_512:
+        return SMALL_ALIGN_SIZE
+    elif sector_size == SECTOR_SIZE_4K:
+        return BIG_ALIGN_SIZE
+    raise Exception("invalid sector size %s" % sector_size)
 
 
 class RetryException(Exception):
