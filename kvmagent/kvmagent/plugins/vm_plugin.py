@@ -4150,6 +4150,8 @@ class Vm(object):
                 self.domain.updateDeviceFlags(xml)
             if not linux.wait_callback_success(check_device, nic, interval=0.5, timeout=30):
                 raise Exception('nic device does not show after 30 seconds')
+            if nic.isolated:
+                configNicIsolated(nic.nicInternalName)
 
     def _check_qemuga_info(self, info):
         if info:
