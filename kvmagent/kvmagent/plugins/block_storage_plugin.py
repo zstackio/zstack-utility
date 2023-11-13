@@ -271,6 +271,20 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         rsp = CreateHeartbeatRsp()
         rsp.success = True
 
+        # enable iscsid service
+        ret, out, err = bash.bash_roe("systemctl is-enabled iscsid || systemctl enable iscsid")
+        if ret != 0:
+            rsp.success = False
+            rsp.error = "fail to enable iscsid service, which is block storage required feature"
+            return jsonobject.dumps(rsp)
+
+        # start iscsid service
+        ret, out, err = bash.bash_roe("service iscsid status || service iscsid  start")
+        if ret != 0:
+            rsp.success = False
+            rsp.error = "fail to start iscsid service, which is block storage required feature"
+            return jsonobject.dumps(rsp)
+
         logger.debug("start to discover target:" + cmd.target)
         self.discovery_iscsi(cmd)
         logger.debug("start to login")
