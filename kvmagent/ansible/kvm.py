@@ -218,8 +218,8 @@ def install_kvm_pkg():
             'h79c': ('%s qemu-kvm libvirt-admin seabios-bin nping '
                      'elfutils-libelf-devel vconfig OVMF libicu') % helix_rhel_rpms,
             'h84r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm '
-                     'seabios-bin elfutils-libelf-devel collectd-disk') % helix_rhel_rpms,
-            'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel',
+                     'seabios-bin elfutils-libelf-devel collectd-disk lldpd') % helix_rhel_rpms,
+            'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel lldpd',
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'oe2203sp1': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'h2203sp1o': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
