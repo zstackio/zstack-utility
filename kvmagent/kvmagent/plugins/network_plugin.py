@@ -357,7 +357,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         isolated_br = "isolated_%s" % vlan_interface
         cmd = shell.ShellCmd("ipset list %s" % isolated_br)
         cmd(False)
-        if cmd.return_code != 0:
+        if cmd.return_code == 0:
             shell.call("iptables -D FORWARD -m physdev --physdev-in %s"
                        " -m set --match-set %s src -j DROP" % (vlan_interface, isolated_br))
             shell.call("ipset destroy %s" % isolated_br)
