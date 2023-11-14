@@ -349,7 +349,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd(False)
         if cmd.return_code != 0:
             shell.call("ipset create %s hash:mac" % isolated_br)
-            shell.call("iptables -A FORWARD -m physdev --physdev-in %s"
+            shell.call("iptables -w -A FORWARD -m physdev --physdev-in %s"
                        " -m set --match-set %s src -j DROP" % (vlan_interface, isolated_br))
         return
 
@@ -358,7 +358,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = shell.ShellCmd("ipset list %s" % isolated_br)
         cmd(False)
         if cmd.return_code == 0:
-            shell.call("iptables -D FORWARD -m physdev --physdev-in %s"
+            shell.call("iptables -w -D FORWARD -m physdev --physdev-in %s"
                        " -m set --match-set %s src -j DROP" % (vlan_interface, isolated_br))
             shell.call("ipset destroy %s" % isolated_br)
 

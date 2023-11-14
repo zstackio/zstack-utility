@@ -3191,6 +3191,9 @@ done
                 for mac in mac_list:
                     shell.call('ipset del isolated_%s.%s %s'
                                % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)
+                # hot migrate will not update nic info, it necessary to set nic isolated manually after migrate
+                for nic_name in iproute.get_link_list_by_mac_list(mac_list):
+                    iproute.config_link_isolated(nic_name)
                 logger.debug('detach nic to ipset [l2PhysicalInterface:%s, vlan:%s, macList:%s] success' % (
                 interface_dict.get(l2), vlan_dict.get(l2), mac_list))
         return jsonobject.dumps(rsp)
@@ -3213,11 +3216,11 @@ done
                 ipset_list = shell.ShellCmd("ipset list %s" % isolated_br)
                 ipset_list(False)
                 if ipset_list.return_code == 0:
-                    shell.call('iptables -D FORWARD -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                    shell.call('iptables -w -D FORWARD -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
                     physdev_in, isolated_br), exception=False)
                     shell.call('ipset destroy %s' % isolated_br, exception=False)
                 shell.call('ipset create %s hash:mac' % isolated_br)
-                shell.call('iptables -A FORWARD -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                shell.call('iptables -w -A FORWARD -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
                 physdev_in, isolated_br))
                 for mac in mac_list:
                     shell.call('ipset add isolated_%s.%s %s'
