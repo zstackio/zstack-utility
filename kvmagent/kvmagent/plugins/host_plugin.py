@@ -3192,7 +3192,7 @@ done
                     shell.call('ipset del isolated_%s.%s %s'
                                % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)
                 # hot migrate will not update nic info, it necessary to set nic isolated manually after migrate
-                for nic_name in iproute.get_link_list_by_mac_list(mac_list):
+                for nic_name in linux.get_nic_names_by_mac_list(mac_list):
                     iproute.config_link_isolated(nic_name)
                 logger.debug('detach nic to ipset [l2PhysicalInterface:%s, vlan:%s, macList:%s] success' % (
                 interface_dict.get(l2), vlan_dict.get(l2), mac_list))

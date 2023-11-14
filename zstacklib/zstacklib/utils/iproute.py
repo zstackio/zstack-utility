@@ -795,6 +795,9 @@ def del_fdb_entry(ifname, lladdr):
         except Exception as e:
             logger.debug("del fdb mac: %s interface: %s, failed: %s" % (lladdr, ifname, e))
 
+def config_link_isolated(nic):
+    shell.call('echo 1 > /sys/class/net/%s/brport/isolated' % nic, False)
+
 
 class VnicInfo:
     def __init__(self):
@@ -948,26 +951,6 @@ class IpNetnsShell:
 
         logger.debug("finding mac for link name: %s, ret %s" % (link_name, mac))
         return mac
-
-    def config_link_isolated(nic):
-        shell.call('echo 1 > /sys/class/net/%s/brport/isolated' % nic, False)
-
-    def get_link_list_by_mac_list(self, mac_list):
-        link_list = []
-        vnics = self.get_links()
-        for nic in vnics:
-            if nic.mac in mac_list:
-                link_list.append(nic.name)
-        return link_list
-
-    def get_link_name_by_mac(self, mac):
-        link_name = None
-        vnics = self.get_links()
-        for nic in vnics:
-            if nic.mac == mac:
-                link_name = nic.name
-                break
-        return link_name
 
     def get_link_name_by_ip(self, address, ip_version):
         link_name = None
