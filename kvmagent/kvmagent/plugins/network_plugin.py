@@ -18,6 +18,7 @@ import os
 import traceback
 import netaddr
 import subprocess
+import json
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
 ADD_INTERFACE_TO_BRIDGE_PATH = '/network/bridge/addif'
@@ -594,6 +595,20 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.call('systemctl restart lldpd.service')
 
     def _init_lldpd(self, config_file):
+        lspci_output = shell.call("lspci | grep -i -E 'eth.*X710|eth.*X722'")
+        lldp_stop_command = "lldp stop\n"
+
+        for line in lspci_output:
+            nic_pci_address = line.split()[0]
+            nic_pci_address_path = '/sys/kernel/debug/i40e/0000:%s' % nic_pci_address
+            if os.path.exists(nic_pci_address_path):
+                command_file_path = os.path.join(nic_pci_address_path, "command")
+                if not os.path.exists(command_file_path) or lldp_stop_command not in open(command_file_path).read():
+                    with open(command_file_path, "a") as command_file:
+                        command_file.write(lldp_stop_command)
+            else:
+                logger.debug('failed to update x710/x722 nic lldp configure, because directory does not exist: %s' % nic_pci_address_path)
+
         conf = '''# Configuration from ZStack
  configure system name 'ZStack-{{NAME}}'
  configure lldp status rx-only
@@ -624,7 +639,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
                         updated_existing_line = True
                         break
             if not updated_existing_line:
-                lines.append('configure ports %s lldp status %s' % (interface_name, mode))
+                lines.append('configure ports %s lldp status %s \n' % (interface_name, mode))
 
         with open(config_file, 'w') as f:
             f.writelines(lines)
@@ -655,8 +670,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     def _parse_lldp_json(self, json_data, interface_name):
-        data_dict = jsonobject.loads(json_data)
+        data_dict = json.loads(json_data)
         interface_data = data_dict.get(interface_name, {})
+
+        if not interface_data:
+            return None
 
         # Adapted switch: Centec Huawei H3C
         interface_lldp_info = HostNetworkInterfaceLldpStruct()
