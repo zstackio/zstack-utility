@@ -7,6 +7,7 @@ import time
 import traceback
 import weakref
 import re
+import datetime
 import xml.etree.ElementTree as etree
 
 import simplejson
@@ -1914,6 +1915,14 @@ def fix_global_lock():
         bash.bash_roe("lvmlockctl --gl-disable %s" % vg_name)
     bash.bash_roe("lvmlockctl --gl-enable %s" % vg_names[0])
 
+def fix_vglk(vg_uuid):
+    vglk = sanlock.get_vglk(vg_uuid)
+    if not vglk:
+        return
+    hosts_state = sanlock.get_hosts_state("lvm_" + vg_uuid)
+    if hosts_state is not None and hosts_state.get_live_min_hostid() == int(get_running_host_id(vg_uuid)):
+        sanlock.direct_init_resource("{}:{}:/dev/mapper/{}-lvmlock:{}".format(vglk.lockspace_name, vglk.resource_name, vglk.vg_name, vglk.offset))
+
 
 def list_pvs(vgUuid, timeout=10):
     r, o = bash.bash_ro("timeout -s SIGKILL %s pvs --noheading --nolocking -t -Svg_name=%s -oname" % (timeout, vgUuid))
@@ -1966,8 +1975,14 @@ def check_pv_status(vgUuid, timeout):
 def vgck(vgUuid, timeout):
     return bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (timeout, vgUuid))
 
+@bash.in_bash
+def lvmlockd_log_search(lvmlockd_match_regexp, since, until):
+    return bash.bash_r('''journalctl --since '%s' --until '%s' --unit %s | grep -E '%s' ''' % (since, until, get_lvmlockd_service_name(), lvmlockd_match_regexp)) == 0
+
 def lvm_vgck(vgUuid, timeout):
+    start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     health, o, e = vgck(vgUuid, 360 if timeout < 360 else timeout)
+    end_time = (datetime.datetime.now() + datetime.timedelta(seconds=1)).strftime("%Y-%m-%d %H:%M:%S")
     check_stuck_vglk_and_gllk()
 
     if health != 0:
@@ -1993,6 +2008,13 @@ def lvm_vgck(vgUuid, timeout):
                 continue
             if es.strip() == "":
                 continue
+            # fix ZSTAC-61116
+            if es.strip().endswith("lock skipped: error -22") and lvmlockd_log_search("S lvm_%s R VGLK res_lock invalid val_blk" % vgUuid,
+                                                                                      start_time, end_time):
+                fix_vglk(vgUuid)
+            elif es.strip().endswith("lock failed: removed"):
+            # fix ZSTAC-57545
+                fix_vglk(vgUuid)
             s = "vgck %s failed, details: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, health, o, e)
             logger.warn(s)
             return False, s
