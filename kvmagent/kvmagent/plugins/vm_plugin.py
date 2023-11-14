@@ -3988,7 +3988,7 @@ class Vm(object):
                 raise Exception('nic device does not show after 30 seconds')
 
             if cmd.nic.isolated:
-                configNicIsolated(cmd.nic.nicInternalName)
+                iproute.config_link_isolated(cmd.nic.nicInternalName)
 
         except:
             #  check one more time
@@ -4151,7 +4151,7 @@ class Vm(object):
             if not linux.wait_callback_success(check_device, nic, interval=0.5, timeout=30):
                 raise Exception('nic device does not show after 30 seconds')
             if nic.isolated:
-                configNicIsolated(nic.nicInternalName)
+                iproute.config_link_isolated(nic.nicInternalName)
 
     def _check_qemuga_info(self, info):
         if info:
@@ -6291,7 +6291,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm.start(cmd.timeout, cmd.createPaused, wait_console)
             for nic in cmd.nics:
                 if nic.isolated:
-                    configNicIsolated(nic.nicInternalName)
+                    iproute.config_link_isolated(nic.nicInternalName)
         except libvirt.libvirtError as e:
             logger.warn(linux.get_exception_stacktrace())
 
@@ -11010,8 +11010,4 @@ def touchQmpSocketWhenExists(vmUuid):
     path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
     if os.path.exists(path):
         bash.bash_roe("touch %s" % path)
-
-
-def configNicIsolated(nic):
-    shell.call('echo 1 > /sys/class/net/%s/brport/isolated' % nic, False)
 
