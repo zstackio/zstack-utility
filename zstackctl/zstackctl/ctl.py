@@ -7928,8 +7928,8 @@ class UpgradeManagementNodeCmd(Command):
                 
             def update_gray_upgrade_json():
                 info('update the grayUpgrade.json ...')
-                gray_upgrade_json_backup_path = os.path.join(upgrade_tmp_dir, 'zstack/WEB-INF/classes/conf/grayUpgrade/grayUpgrade.json')
-                gray_upgrade_json_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'apache-tomcat/webapps/zstack/WEB-INF/classes/conf/grayUpgrade/')
+                gray_upgrade_json_backup_path = os.path.join(upgrade_tmp_dir, 'zstack/WEB-INF/classes/grayUpgrade/grayUpgrade.json')
+                gray_upgrade_json_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'apache-tomcat/webapps/zstack/WEB-INF/classes/grayUpgrade/')
                 if not os.path.exists(gray_upgrade_json_backup_path):
                     info('no backup grayUpgrade.json found')
                     return
