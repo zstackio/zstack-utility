@@ -598,16 +598,17 @@ class NetworkPlugin(kvmagent.KvmAgent):
         lspci_output = shell.call("lspci | grep -i -E 'eth.*X710|eth.*X722'")
         lldp_stop_command = "lldp stop\n"
 
-        for line in lspci_output:
-            nic_pci_address = line.split()[0]
-            nic_pci_address_path = '/sys/kernel/debug/i40e/0000:%s' % nic_pci_address
-            if os.path.exists(nic_pci_address_path):
-                command_file_path = os.path.join(nic_pci_address_path, "command")
-                if not os.path.exists(command_file_path) or lldp_stop_command not in open(command_file_path).read():
-                    with open(command_file_path, "a") as command_file:
-                        command_file.write(lldp_stop_command)
-            else:
-                logger.debug('failed to update x710/x722 nic lldp configure, because directory does not exist: %s' % nic_pci_address_path)
+        if lspci_output is not None:
+            for line in lspci_output.splitlines():
+                nic_pci_address = line.split()[0]
+                nic_pci_address_path = '/sys/kernel/debug/i40e/0000:%s' % nic_pci_address
+                if os.path.exists(nic_pci_address_path):
+                    command_file_path = os.path.join(nic_pci_address_path, "command")
+                    if not os.path.exists(command_file_path) or lldp_stop_command not in open(command_file_path).read():
+                        with open(command_file_path, "a") as command_file:
+                            command_file.write(lldp_stop_command)
+                else:
+                    logger.debug('failed to update x710/x722 nic lldp configure, because directory does not exist: %s' % nic_pci_address_path)
 
         conf = '''# Configuration from ZStack
  configure system name 'ZStack-{{NAME}}'
@@ -671,26 +672,29 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     def _parse_lldp_json(self, json_data, interface_name):
         data_dict = json.loads(json_data)
-        interface_data = data_dict.get(interface_name, {})
+        interface_data = data_dict.get("lldp", {}).get("interface", {}).get(interface_name, {})
 
         if not interface_data:
+            logger.debug('failed to get lldp info for %s, because no data found for the interface' % interface_name)
             return None
 
         # Adapted switch: Centec Huawei H3C
         interface_lldp_info = HostNetworkInterfaceLldpStruct()
-        interface_lldp_info.chassisId = interface_data.get("chassis", {}).get("id", {}).get("value")
+        # Chassis information
+        chassis_data = interface_data.get("chassis", {})
+        for chassis_key, chassis_value in chassis_data.items():
+            interface_lldp_info.chassisId = chassis_value.get("id", {}).get("value")
+            # no mgmt-ip field for Huawei and H3C
+            interface_lldp_info.managementAddress = chassis_value.get("mgmt-ip")
+            interface_lldp_info.systemName = chassis_key
+            interface_lldp_info.systemDescription = chassis_value.get("descr")
+            capabilities_enabled_list = [capability.get("type") for capability in
+                                         chassis_value.get("capability", []) if capability.get("enabled", False)]
+            capabilities_enabled_string = ', '.join(capabilities_enabled_list)
+            interface_lldp_info.systemCapabilities = capabilities_enabled_string if capabilities_enabled_list else None
+
+        # Port information
         interface_lldp_info.timeToLive = interface_data.get("port", {}).get("ttl")
-        # no mgmt-ip field for Huawei and H3C
-        interface_lldp_info.managementAddress = interface_data.get("chassis", {}).get("mgmt-ip", [])[
-            0] if interface_data.get("chassis", {}).get("mgmt-ip") else None
-        interface_lldp_info.managementAddress = interface_data.get("chassis", {}).get("mgmt-ip", [])[0]
-        interface_lldp_info.system_name = list(interface_data.get("chassis", {}).keys())[0]
-        interface_lldp_info.systemDescription = interface_data.get("chassis", {}).get("descr")
-        capabilities_enabled_list = [capability.get("type") for capability in
-                                     interface_data.get("chassis", {}).get("capability", [])
-                                     if capability.get("enabled", False)]
-        capabilities_enabled_string = ', '.join(capabilities_enabled_list)
-        interface_lldp_info.systemCapabilities = capabilities_enabled_string if capabilities_enabled_list else None
         interface_lldp_info.portId = interface_data.get("port", {}).get("id", {}).get("value")
         interface_lldp_info.portDescription = interface_data.get("port", {}).get("descr")
         interface_lldp_info.vlanId = interface_data.get("vlan", {}).get("vlan-id")
