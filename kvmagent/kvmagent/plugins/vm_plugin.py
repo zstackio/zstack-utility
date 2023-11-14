@@ -5296,7 +5296,7 @@ class Vm(object):
                     raise Exception('unexpected recover path: %s' % _v.installPath)
 
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-                driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': _v.cacheMode}
+                driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': _v.cacheMode, 'discard': 'unmap'}
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
                 e(disk, 'driver', None, driver_elements)
