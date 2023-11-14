@@ -2236,6 +2236,7 @@ class ConfigureCmd(Command):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to set properties in zstack.properties on the remote machine')
         parser.add_argument('--duplicate-to-remote', help='SSH URL, for example, root@192.168.0.10, to copy zstack.properties on this machine to the remote machine')
         parser.add_argument('--use-file', help='path to a file that will be used to as zstack.properties')
+        parser.add_argument('--delete', '-d', help='delete the property in zstack.properties by name with ctl')
 
     def _configure_remote_node(self, args):
         shell_no_pipe('ssh %s "/usr/bin/zstack-ctl configure %s"' % (args.host, ' '.join(ctl.extra_arguments)))
@@ -2290,6 +2291,11 @@ EOF
 
         if args.duplicate_to_remote:
             self._duplicate_remote_node(args)
+            return
+
+        if args.delete:
+            ctl.delete_properties([args.delete])
+            self._report_property_updated()
             return
 
         if not ctl.extra_arguments:
