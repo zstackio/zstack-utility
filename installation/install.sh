@@ -48,6 +48,7 @@ MINI_INSTALL='n'
 CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
 SDS_INSTALL='n'
+SKIP_PJNUM_CHECK='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 ZSTACK_INSTALL_LOG="/tmp/zstack_installation-$(date +%Y-%m-%d-%H:%M:%S).log"
 ZSTACKCTL_INSTALL_LOG="/tmp/zstack_ctl_installation-$(date +%Y-%m-%d-%H:%M:%S).log"
@@ -325,21 +326,15 @@ check_zstack_release(){
 check_project_num() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
-    attempts=0
-
-    if [[ -f ${CURRENT_PROJECT_NUM} ]]; then
-        current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
+    if [ -f ${CURRENT_PROJECT_NUM} ]; then
+      current_project_num=`cat ${CURRENT_PROJECT_NUM} | awk -F "=" '{print $2}'`
+    elif [ -f ${ZSTACK_HOME}/PJNUM ]; then
+      current_project_num=`cat ${ZSTACK_HOME}/PJNUM | awk -F "=" '{print $2}'`
     else
-      CURRENT_PROJECT_NUM=${ZSTACK_HOME}/PJNUM
-      if [[ -f ${CURRENT_PROJECT_NUM} ]]; then
-        current_project_num=`cat ${CURRENT_PROJECT_NUM}|awk -F "=" '{print $2}'`
-      else
-        current_project_num=""
-      fi
+      current_project_num=""
     fi
 
     upgrade_project_num=${UPGRADE_PROJECT_NUM}
-
     if [[ $current_project_num == $upgrade_project_num ]]; then
         return 0
     fi
@@ -348,33 +343,13 @@ check_project_num() {
         if [[ $upgrade_project_num =~ ^[0-9]{3}$ ]]; then
             return 0
         else
-            echo "Will upgrade to the custom version ($upgrade_project_num), this operation is a risk operation, please confirm"
-            while [ ${attempts} -lt 3 ]; do
-              read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
-              if [[ $confirm == "confirmed the risk" ]]; then
-                  return 0
-              else
-                  ((attempts++))
-                  echo "This key is wrong"
-              fi
-            done
-            fail2 "This key is wrong three times, will exit the installation"
+            fail2 "Will upgrade to the custom version ($upgrade_project_num), this operation is risky, will exit the installation!!! If you want to ignore this risk, need to add the parameter and try again: --skip-pjnum"
         fi
     fi
 
     if [[ -n $current_project_num ]]; then
         if [[ $current_project_num != $upgrade_project_num ]]; then
-            echo "Will upgrade to a different custom version ($current_project_num -> $upgrade_project_num), this operation is a risk operation, please confirm"
-            while [ ${attempts} -lt 3 ]; do
-              read -p "Continue to upgrade, if continue to upgrade, please enter <confirmed the risk> to continue:  " confirm
-              if [[ $confirm == "confirmed the risk" ]]; then
-                  return 0
-              else
-                  ((attempts++))
-                  echo "This key is wrong"
-              fi
-            done
-            fail2 "This key is wrong three times, will exit the installation"
+            fail2 "Will upgrade to a different custom version ($current_project_num -> $upgrade_project_num), this operation is risky, will exit the installation!!! If you want to ignore this risk, need to add the parameter and try again: --skip-pjnum"
         fi
     fi
 }
@@ -3747,6 +3722,8 @@ Options:
         Upgrade ${PRODUCT_NAME,,} management node and database using grayscale. The '-u' must be added before '--grayscale'. for example: bash zstack-installer.bin -u --grayscale true.
 
   -z    Only install ${PRODUCT_NAME}, without start ${PRODUCT_NAME} management node.
+
+  --skip-pjnum    Ignore customized version checking.
 ------------
 Example:
 
@@ -3818,7 +3795,7 @@ load_install_conf() {
 
 load_install_conf
 OPTIND=1
-TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,zsv,cube,SY,sds,no-zops -- "$@"`
+TEMP=`getopt -o f:H:I:n:p:P:r:R:t:y:acC:L:T:dDEFhiklmMNoOqsuz --long chrony-server-ip:,grayscale:,mini,zsv,cube,SY,sds,no-zops,skip-pjnum -- "$@"`
 if [ $? != 0 ]; then
     usage
 fi
@@ -3881,6 +3858,7 @@ do
         --SY) SANYUAN_INSTALL='y';shift;;
         --sds) SDS_INSTALL='y';shift;;
         --no-zops) SKIP_ZOPS_INSTALL='y';shift;;
+        --skip-pjnum) SKIP_PJNUM_CHECK='y';shift;;
         --) shift;;
         * ) usage;;
     esac
@@ -3901,7 +3879,9 @@ get_mn_port
 pre_scripts_to_adjust_iptables_rules
 
 # Fix ZSTAC-55831
-check_project_num
+if [ x"$SKIP_PJNUM_CHECK" = x"n" ]; then
+  check_project_num
+fi
 
 which yum >>$ZSTACK_INSTALL_LOG 2>&1 && IS_YUM='y'
 which apt >>$ZSTACK_INSTALL_LOG 2>&1 && IS_APT='y'
