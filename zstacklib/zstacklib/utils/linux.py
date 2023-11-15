@@ -1731,18 +1731,6 @@ def get_nic_names_by_mac(mac):
             names.append(e.interface)
     return names
 
-def get_nic_names_by_mac_list(mac_list):
-    eths = get_ethernet_info()
-    names = []
-    mac = [mac.lower() for mac in mac_list]
-    for e in eths:
-        if not e.mac or e.mac not in mac:
-            continue
-
-        if e.interface:
-            names.append(e.interface)
-    return names
-
 def get_nic_name_by_ip(ip):
     eths = get_ethernet_info()
     for e in eths:
