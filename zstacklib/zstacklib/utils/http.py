@@ -156,8 +156,9 @@ class AsyncUirHandler(SyncUriHandler):
             headers[ERROR_CODE] = content
 
         try:
+            logger.debug("async http call handler finished[task uuid: %s] to %s: %s" % (task_uuid, callback_uri, content))
             json_post(callback_uri, content, headers)
-            logger.debug("async http reply[task uuid: %s] to %s: %s" % (task_uuid, callback_uri, content))
+            logger.debug("async http reply[task uuid: %s]" % task_uuid)
         finally:
             with self.HANDLER_DICT_LOCK:
                 self.HANDLER_DICT.pop(task_uuid, None)
