@@ -29,6 +29,7 @@ ATTACH_NIC_TO_BONDING_PATH = '/network/bonding/attachnic'
 DETACH_NIC_FROM_BONDING_PATH = '/network/bonding/detachnic'
 KVM_CHANGE_LLDP_MODE_PATH = '/network/lldp/changemode'
 KVM_GET_LLDP_INFO_PATH = '/network/lldp/get'
+KVM_APPLY_LLDP_CONFIG_PATH = '/network/lldp/apply'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
@@ -259,6 +260,15 @@ class GetLldpInfoResponse(kvmagent.AgentResponse):
         super(GetLldpInfoResponse, self).__init__()
         self.lldpInfo = None  # type: HostNetworkInterfaceLldpStruct
 
+class ApplyLldpConfigCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ApplyLldpConfigCmd, self).__init__()
+        self.lldpConfig = None # type: list[HostNetworkLldpConfigureStruct]
+
+class ApplyLldpConfigResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ApplyLldpConfigResponse, self).__init__()
+
 class HostNetworkInterfaceLldpStruct(object):
     def __init__(self):
         self.chassisId = None
@@ -273,6 +283,11 @@ class HostNetworkInterfaceLldpStruct(object):
         self.linkAggregation = None
         self.aggregationPortId = None
         self.mtu = None
+
+class HostNetworkLldpConfigStruct(object):
+    def __init__(self):
+        self.physicalInterfaceName = None
+        self.mode = None
 
 class HostNetworkInterfaceStruct(object):
     def __init__(self):
@@ -611,9 +626,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
                     logger.debug('failed to update x710/x722 nic lldp configure, because directory does not exist: %s' % nic_pci_address_path)
 
         conf = '''# Configuration from ZStack
- configure system name 'ZStack-{{NAME}}'
- configure lldp status rx-only
- '''
+configure system name 'ZStack-{{NAME}}'
+configure lldp status rx-only \n
+'''
         tmpt = Template(conf)
         conf = tmpt.render({
             'NAME': linux.get_hostname()
@@ -733,6 +748,31 @@ class NetworkPlugin(kvmagent.KvmAgent):
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to get lldp info for [%s], because %s' % (cmd.physicalInterfaceName, str(e))
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+
+    @lock.lock('lldp')
+    @kvmagent.replyerror
+    def apply_lldp_config(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ApplyLldpConfigResponse()
+
+        config_file = '/etc/lldpd.d/lldpd.conf'
+
+        try:
+            # create and write a new configuration initially
+            if not linux.find_process_by_command('lldpd') or not os.path.exists(config_file):
+                self._init_lldpd(config_file)
+
+            # subsequently update the configuration file
+            for interfaceConfig in cmd.lldpConfig:
+                self._update_lldp_conf(config_file, interfaceConfig.physicalInterfaceName, interfaceConfig.mode)
+
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to apply lldp config, because %s', str(e)
             rsp.success = False
 
         return jsonobject.dumps(rsp)
@@ -1163,6 +1203,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(DETACH_NIC_FROM_BONDING_PATH, self.detach_nic_from_bonding)
         http_server.register_async_uri(KVM_CHANGE_LLDP_MODE_PATH, self.change_lldp_mode)
         http_server.register_async_uri(KVM_GET_LLDP_INFO_PATH, self.get_lldp_info)
+        http_server.register_async_uri(KVM_APPLY_LLDP_CONFIG_PATH, self.apply_lldp_config)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
         http_server.register_async_uri(KVM_REALIZE_MACVLAN_L2VLAN_NETWORK_PATH, self.create_mac_vlan_eth)
