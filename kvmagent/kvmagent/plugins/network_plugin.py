@@ -626,9 +626,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
                     logger.debug('failed to update x710/x722 nic lldp configure, because directory does not exist: %s' % nic_pci_address_path)
 
         conf = '''# Configuration from ZStack
- configure system name 'ZStack-{{NAME}}'
- configure lldp status rx-only
- '''
+configure system name 'ZStack-{{NAME}}'
+configure lldp status rx-only \n
+'''
         tmpt = Template(conf)
         conf = tmpt.render({
             'NAME': linux.get_hostname()
