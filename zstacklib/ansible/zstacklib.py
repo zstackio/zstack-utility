@@ -2470,8 +2470,10 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo; sync
         # copy module may not supported due to libselinux-python requirement
         # manually create yum repo to /etc/yum.repos.d/
         command = """
-echo -e "%s" > /etc/yum.repos.d/%s
-                """ % ("".join(yum_repo_contents), repo_conf_name)
+cat << 'EOF' > /etc/yum.repos.d/%s
+%s
+EOF
+""" % (repo_conf_name, "".join(yum_repo_contents))
         run_remote_command(command, self.host_post_info)
 
     # copy zstack-163-yum.repo to /etc/yum.repos.d/

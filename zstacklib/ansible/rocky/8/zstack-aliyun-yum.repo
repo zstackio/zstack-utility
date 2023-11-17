@@ -4,6 +4,7 @@ name=Rocky-$releasever - Base - mirrors.aliyun.com
 baseurl=https://mirrors.aliyun.com/rockylinux/$releasever/BaseOS/$basearch/os/
 gpgcheck=0
 enabled=0
+module_hotfixes=true
 
 #released updates
 [aliupdates]
@@ -11,15 +12,25 @@ name=Rocky-$releasever - Updates - mirrors.aliyun.com
 baseurl=http://mirrors.aliyun.com/rockylinux/$releasever/AppStream/$basearch/os/
 enabled=0
 gpgcheck=0
+module_hotfixes=true
 
 [aliextras]
 name=Rocky-$releasever - Extras - mirrors.aliyun.com
 baseurl=https://mirrors.aliyun.com/rockylinux/$releasever/extras/$basearch/os/
 enabled=0
 gpgcheck=0
+module_hotfixes=true
 
 [aliepel]
 name=Extra Packages for Enterprise Linux $releasever - $basearce - mirrors.aliyun.com
-baseurl=http://mirrors.aliyun.com/epel/$releasever/$basearch
+baseurl=http://mirrors.aliyun.com/epel/$releasever/Everything/$basearch
 enabled=0
 gpgcheck=0
+module_hotfixes=true
+
+[aliepel-modular]
+name=Extra Packages for Enterprise Linux Modular $releasever - $basearce - mirrors.aliyun.com
+baseurl=http://mirrors.aliyun.com/epel/$releasever/Modular/$basearch
+enabled=0
+gpgcheck=0
+module_hotfixes=true

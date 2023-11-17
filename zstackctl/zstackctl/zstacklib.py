@@ -1626,32 +1626,35 @@ enabled=0" >  /etc/yum.repos.d/zstack-mn.repo
         run_remote_command(generate_mn_repo_command, self.host_post_info)
         run_remote_command("sync", self.host_post_info)
 
-    def generate_yum_repo_config_from_zstack_lib(self, yum_repo_file):
-        # read yum repo content from repo_file
-        yum_repo_content = None
-        with open(yum_repo_file, 'r') as f:
-            yum_repo_content = f.read()
+    def generate_yum_repo_config_from_zstack_lib(self, repo_conf_name):
+        yum_repo_file_path = self.find_preferred_yum_repo_conf_path(
+            repo_conf_name)
 
-        if not yum_repo_content:
+        # read yum repo content from repo_file
+        yum_repo_contents = []
+        with open(yum_repo_file_path, 'r') as f:
+            yum_repo_contents = f.readlines()
+
+        if len(yum_repo_contents) == 0:
             raise Exception(
-                "failed to read yum repo content from %s" % yum_repo_file)
+                "failed to read yum repo content from %s" % yum_repo_file_path)
 
         # copy module may not supported due to libselinux-python requirement
         # manually create yum repo to /etc/yum.repos.d/
         command = """
-echo -e "%s" > /etc/yum.repos.d/%s
-                """ % (yum_repo_content, yum_repo_file)
+cat << 'EOF' > /etc/yum.repos.d/%s
+%s
+EOF
+""" % (repo_conf_name, "".join(yum_repo_contents))
         run_remote_command(command, self.host_post_info)
 
     # copy zstack-163-yum.repo to /etc/yum.repos.d/
     def generate_163_yum_repo(self):
-        repo_163_repo = "files/zstacklib/zstack-163-yum.repo"
-        self.generate_yum_repo_config_from_zstack_lib(repo_163_repo)
+        self.generate_yum_repo_config_from_zstack_lib("zstack-163-yum.repo")
 
     # copy zstack-aliyun-yum.repo to /etc/yum.repos.d/
     def generate_aliyun_yum_repo(self):
-        repo_aliyun_repo = "files/zstacklib/zstack-aliyun-yum.repo"
-        self.generate_yum_repo_config_from_zstack_lib(repo_aliyun_repo)
+        self.generate_yum_repo_config_from_zstack_lib("zstack-aliyun-yum.repo")
 
     def generate_epel_yum_repo(self):
         epel_repo_exist = file_dir_exist(
@@ -1660,8 +1663,25 @@ echo -e "%s" > /etc/yum.repos.d/%s
             return
 
         # read eple release source from local
-        repo_epel = "files/zstacklib/epel-release-source.repo"
-        self.generate_yum_repo_config_from_zstack_lib(repo_epel)
+        self.generate_yum_repo_config_from_zstack_lib("epel-release-source.repo")
+
+    def find_preferred_yum_repo_conf_path(self, conf_file_name):
+        repo_conf_path = "files/zstacklib/%s/%s/%s" % (self.distro,
+                                                       self.distro_version,
+                                                       conf_file_name)
+        # if distro based config not exist, use default repo config
+        logger.debug("try to read yum repo config file %s" % repo_conf_path)
+        if os.path.exists(repo_conf_path):
+            return repo_conf_path
+
+        logger.debug("yum repo config file %s not exists" % repo_conf_path)
+        repo_conf_path = "files/zstacklib/%s" % conf_file_name
+        logger.debug("try to read yum repo config file %s" % repo_conf_path)
+        if not os.path.exists(repo_conf_path):
+            raise Exception("cannot find yum repo config file %s" %
+                            conf_file_name)
+
+        return repo_conf_path
 
     def install_packages_with_user_defined_repo(self, zstack_repo):
         # To avoid systemd bug :https://github.com/systemd/systemd/issues/1961

@@ -21,7 +21,7 @@ enabled=0
 gpgcheck=0
 [ustcepel]
 name=Extra Packages for Enterprise Linux $releasever - $basearch - ustc
-baseurl=http://centos.ustc.edu.cn/epel/$releasever/$basearch
+baseurl=http://mirrors.ustc.edu.cn/epel/$releasever/$basearch
 failovermethod=priority
 enabled=0
 gpgcheck=0

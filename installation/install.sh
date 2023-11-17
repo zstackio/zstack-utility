@@ -975,22 +975,6 @@ cs_check_epel(){
             if [ x"$UPGRADE" != x'n' ]; then
                 [ ! -z $ZSTACK_YUM_REPOS ] && return
             fi
-#            if [ -z $QUIET_INSTALLATION ]; then
-#                fail2 'You need to set /etc/yum.repos.d/epel.repo to install ZStack required libs from online. 
-#
-#Or you can choose to use -R 163 or -R aliyun to install.
-#
-#Or if you have set the epel in other file, rather than /etc/yum.repos.d/epel.repo, you can add -q to ask installer to ignore checking. The example for /etc/yum.repos.d/epel.repo is like:
-#
-##cat /etc/yum.repos.d/epel.repo
-#[epel]
-#name=Extra Packages for Enterprise Linux \$releasever - \$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-\$releasever&arch=\$basearch
-#enabled=1
-#gpgcheck=0
-#
-#'
-#            else
                 cat > /etc/yum.repos.d/epel.repo << EOF
 [epel]
 name=Extra Packages for Enterprise Linux \$releasever - \$basearch
@@ -999,7 +983,6 @@ enabled=1
 gpgcheck=0
 EOF
                 SETUP_EPEL='y'
-#            fi
         fi
     elif [ "$OS" = $RHEL7 -o "$OS" = $ISOFT4 ]; then
         if [ ! -f /etc/yum.repos.d/epel.repo ]; then
@@ -3251,104 +3234,145 @@ EOF
 #create zstack local yum repo
 create_yum_repo(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat > $zstack_163_repo_file << EOF
-#163 base
-[163base]
-name=CentOS-\$releasever - Base - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/os/\$basearch/
-#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=os
-gpgcheck=0
-enabled=0
-gpgkey=http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-\$releasever
- 
-#released updates 
-[163updates]
-name=CentOS-\$releasever - Updates - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/updates/\$basearch/
-#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=updates
-enabled=0
-gpgcheck=0
-gpgkey=http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-\$releasever
- 
-#additional packages that may be useful
-[163extras]
-name=CentOS-\$releasever - Extras - mirrors.163.com
-failovermethod=priority
-baseurl=http://mirrors.163.com/centos/\$releasever/extras/\$basearch/
-#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=extras
-enabled=0
-gpgcheck=0
-gpgkey=http://mirrors.163.com/centos/RPM-GPG-KEY-CentOS-\$releasever
- 
-[ustcepel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearce - USTC EPEL
-baseurl=http://centos.ustc.edu.cn/epel/\$releasever/\$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/met163nk?repo=epel-7&arch=\$basearch
-failovermethod=priority
-enabled=0
-gpgcheck=0
-gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-\$releasever
-
-[163-qemu-ev]
-name=CentOS-\$releasever - QEMU EV
-baseurl=http://mirrors.163.com/centos/\$releasever/virt/\$basearch/kvm-common/
-gpgcheck=0
-enabled=0
-
-EOF
-
-    cat > $zstack_ali_repo_file << EOF
+    if [ -f /etc/redhat-release ]; then
+        os_release=`cat /etc/redhat-release`
+        if [[ $os_release =~ ' 8' ]]; then
+            cat << 'EOF' > $zstack_ali_repo_file
 #aliyun base
 [alibase]
-name=CentOS-\$releasever - Base - mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/os/\$basearch/
-#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=os
+name=Rocky-$releasever - Base - mirrors.aliyun.com
+baseurl=https://mirrors.aliyun.com/rockylinux/$releasever/BaseOS/$basearch/os/
 gpgcheck=0
 enabled=0
-gpgkey=http://mirrors.aliyun.com/centos/RPM-GPG-KEY-CentOS-\$releasever
- 
-#released updates 
+module_hotfixes=true
+
+#released updates
 [aliupdates]
-name=CentOS-\$releasever - Updates - mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/updates/\$basearch/
-#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=updates
+name=Rocky-$releasever - Updates - mirrors.aliyun.com
+baseurl=http://mirrors.aliyun.com/rockylinux/$releasever/AppStream/$basearch/os/
 enabled=0
 gpgcheck=0
-gpgkey=http://mirrors.aliyun.com/centos/RPM-GPG-KEY-CentOS-\$releasever
- 
-#additional packages that may be useful
+module_hotfixes=true
+
 [aliextras]
-name=CentOS-\$releasever - Extras - mirrors.aliyun.com
-failovermethod=priority
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/extras/\$basearch/
-#mirrorlist=http://mirrorlist.centos.org/?release=\$releasever&arch=\$basearch&repo=extras
+name=Rocky-$releasever - Extras - mirrors.aliyun.com
+baseurl=https://mirrors.aliyun.com/rockylinux/$releasever/extras/$basearch/os/
 enabled=0
 gpgcheck=0
-gpgkey=http://mirrors.aliyun.com/centos/RPM-GPG-KEY-CentOS-\$releasever
- 
+module_hotfixes=true
+
 [aliepel]
-name=Extra Packages for Enterprise Linux \$releasever - \$basearce - mirrors.aliyun.com
-baseurl=http://mirrors.aliyun.com/epel/\$releasever/\$basearch
-#mirrorlist=https://mirrors.fedoraproject.org/metalink?repo=epel-7&arch=\$basearch
+name=Extra Packages for Enterprise Linux $releasever - $basearce - mirrors.aliyun.com
+baseurl=http://mirrors.aliyun.com/epel/$releasever/Everything/$basearch
+enabled=0
+gpgcheck=0
+module_hotfixes=true
+
+[aliepel-modular]
+name=Extra Packages for Enterprise Linux Modular $releasever - $basearce - mirrors.aliyun.com
+baseurl=http://mirrors.aliyun.com/epel/$releasever/Modular/$basearch
+enabled=0
+gpgcheck=0
+module_hotfixes=true
+EOF
+            cat << 'EOF' > $zstack_163_repo_file
+#163 base
+[163base]
+name=Rocky-$releasever - Base - mirrors.163.com
+baseurl=http://mirrors.163.com/rocky/$releasever/BaseOS/$basearch/os/
+gpgcheck=0
+enabled=0
+module_hotfixes=true
+
+#released updates
+[163updates]
+name=Rocky-$releasever - Updates - mirrors.163.com
+baseurl=http://mirrors.163.com/rocky/$releasever/AppStream/$basearch/os/
+enabled=0
+gpgcheck=0
+module_hotfixes=true
+
+#additional packages that may be useful
+[163extras]
+name=Rocky-$releasever - Extras - mirrors.163.com
+baseurl=http://mirrors.163.com/rocky/$releasever/extras/$basearch/os/
+enabled=0
+gpgcheck=0
+module_hotfixes=true
+
+[ustcepel]
+name=Extra Packages for Enterprise Linux $releasever - $basearch - ustc
+baseurl=http://mirrors.ustc.edu.cn/epel/$releasever/Everything/$basearch
+enabled=0
+gpgcheck=0
+module_hotfixes=true
+
+[ustcepel-modular]
+name=Extra Packages for Enterprise Linux Modular $releasever - $basearch - ustc
+baseurl=http://mirrors.ustc.edu.cn/epel/$releasever/Modular/$basearch
+enabled=0
+gpgcheck=0
+module_hotfixes=true
+EOF
+        else
+            cat << 'EOF' > $zstack_ali_repo_file
+#aliyun base
+[alibase]
+name=CentOS-$releasever - Base - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/$releasever/os/$basearch/
+gpgcheck=0
+enabled=0
+#released updates
+[aliupdates]
+name=CentOS-$releasever - Updates -mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/$releasever/updates/$basearch/
+enabled=0
+gpgcheck=0
+[aliextras]
+name=CentOS-$releasever - Extras - mirrors.aliyun.com
+failovermethod=priority
+baseurl=http://mirrors.aliyun.com/centos/$releasever/extras/$basearch/
+enabled=0
+gpgcheck=0
+[aliepel]
+name=Extra Packages for Enterprise Linux $releasever - $basearce - mirrors.aliyun.com
+baseurl=http://mirrors.aliyun.com/epel/$releasever/$basearch
 failovermethod=priority
 enabled=0
 gpgcheck=0
-gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-EPEL-\$releasever
-
-[ali-qemu-ev]
-name=CentOS-\$releasever - QEMU EV
-baseurl=http://mirrors.aliyun.com/centos/\$releasever/virt/\$basearch/kvm-common/
+EOF
+            cat << 'EOF' > $zstack_163_repo_file
+#163 base
+[163base]
+name=CentOS-$releasever - Base - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/$releasever/os/$basearch/
 gpgcheck=0
 enabled=0
-
+#released updates
+[163updates]
+name=CentOS-$releasever - Updates - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/$releasever/updates/$basearch/
+enabled=0
+gpgcheck=0
+#additional packages that may be useful
+[163extras]
+name=CentOS-$releasever - Extras - mirrors.163.com
+failovermethod=priority
+baseurl=http://mirrors.163.com/centos/$releasever/extras/$basearch/
+enabled=0
+gpgcheck=0
+[ustcepel]
+name=Extra Packages for Enterprise Linux $releasever - $basearch - ustc
+baseurl=http://mirrors.ustc.edu.cn/epel/$releasever/$basearch
+failovermethod=priority
+enabled=0
+gpgcheck=0
 EOF
-
-    if [ x"$OS" = x"ROCKY8" ]; then
-        sed -i '/failovermethod=priority/d'  $zstack_163_repo_file $zstack_ali_repo_file
+        fi
     fi
 }
 
