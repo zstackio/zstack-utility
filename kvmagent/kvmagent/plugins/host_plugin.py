@@ -64,6 +64,8 @@ BOND_MODE_ACTIVE_4 = "802.3ad"
 BOND_MODE_ACTIVE_5 = "balance-tlb"
 BOND_MODE_ACTIVE_6 = "balance-alb"
 
+PVLAN_ISOLATED_CHAIN = "pvlan-isolated"
+
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
@@ -3216,12 +3218,12 @@ done
                 ipset_list = shell.ShellCmd("ipset list %s" % isolated_br)
                 ipset_list(False)
                 if ipset_list.return_code == 0:
-                    shell.call('iptables -w -D FORWARD -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
-                    physdev_in, isolated_br), exception=False)
+                    shell.call('iptables -w -D %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                        PVLAN_ISOLATED_CHAIN, physdev_in, isolated_br), exception=False)
                     shell.call('ipset destroy %s' % isolated_br, exception=False)
                 shell.call('ipset create %s hash:mac' % isolated_br)
-                shell.call('iptables -w -A FORWARD -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
-                physdev_in, isolated_br))
+                shell.call('iptables -w -I %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                    PVLAN_ISOLATED_CHAIN, physdev_in, isolated_br))
                 for mac in mac_list:
                     shell.call('ipset add isolated_%s.%s %s'
                                % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)

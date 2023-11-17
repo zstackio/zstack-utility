@@ -11,6 +11,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import iproute
+from zstacklib.utils import iptables_v2
 from zstacklib.utils.bash import *
 from zstacklib.utils import ovs
 import os
@@ -44,6 +45,7 @@ KVM_DELETE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/deletebridge"
 KVM_DELETE_MACVLAN_L2VLAN_NETWORK_PATH = "/network/l2vlan/macvlan/deletebridge"
 VXLAN_DEFAULT_PORT = 8472
 
+PVLAN_ISOLATED_CHAIN = "pvlan-isolated"
 
 logger = log.get_logger(__name__)
 
@@ -349,8 +351,19 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd(False)
         if cmd.return_code != 0:
             shell.call("ipset create %s hash:mac" % isolated_br)
-            shell.call("iptables -w -A FORWARD -m physdev --physdev-in %s"
-                       " -m set --match-set %s src -j DROP" % (vlan_interface, isolated_br))
+            filter_table = iptables_v2.from_iptables_save()
+            forward_chain = filter_table.add_chain_if_not_exist(iptables_v2.FORWARD_CHAIN_NAME)
+            pvlan_isolated_chain = filter_table.get_chain_by_name(PVLAN_ISOLATED_CHAIN)
+            if not pvlan_isolated_chain:
+                filter_table.add_chain_if_not_exist(PVLAN_ISOLATED_CHAIN)
+                forward_chain.add_rule('-I FORWARD -j %s' % PVLAN_ISOLATED_CHAIN)
+                filter_table.iptables_restore()
+            filter_table = iptables_v2.from_iptables_save()
+            pvlan_isolated_chain = filter_table.get_chain_by_name(PVLAN_ISOLATED_CHAIN)
+            if pvlan_isolated_chain:
+                pvlan_isolated_chain.add_rule('-I %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                    PVLAN_ISOLATED_CHAIN, vlan_interface, isolated_br))
+                filter_table.iptables_restore()
         return
 
     def _delete_isolated(self, vlan_interface):
@@ -358,8 +371,12 @@ class NetworkPlugin(kvmagent.KvmAgent):
         cmd = shell.ShellCmd("ipset list %s" % isolated_br)
         cmd(False)
         if cmd.return_code == 0:
-            shell.call("iptables -w -D FORWARD -m physdev --physdev-in %s"
-                       " -m set --match-set %s src -j DROP" % (vlan_interface, isolated_br))
+            filter_table = iptables_v2.from_iptables_save()
+            pvlan_isolated_chain = filter_table.get_chain_by_name(PVLAN_ISOLATED_CHAIN)
+            if pvlan_isolated_chain:
+                pvlan_isolated_chain.add_rule('-D %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                    PVLAN_ISOLATED_CHAIN, vlan_interface, isolated_br))
+                filter_table.iptables_restore()
             shell.call("ipset destroy %s" % isolated_br)
 
     def _configure_pvlan_veth(self, pvlan, bridge):
