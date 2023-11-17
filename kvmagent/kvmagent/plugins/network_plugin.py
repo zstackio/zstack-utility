@@ -626,7 +626,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
                     logger.debug('failed to update x710/x722 nic lldp configure, because directory does not exist: %s' % nic_pci_address_path)
 
         conf = '''# Configuration from ZStack
-configure system name 'ZStack-{{NAME}}'
+configure system hostname 'ZStack-{{NAME}}'
 configure lldp status rx-only \n
 '''
         tmpt = Template(conf)
@@ -676,11 +676,11 @@ configure lldp status rx-only \n
                 self._init_lldpd(config_file)
 
             # subsequently update the configuration file
-            self._update_lldp_conf(config_file, cmd.physicalInterfaceNames, cmd.mode)
+            self._update_lldp_conf(config_file, cmd.physicalInterfaceNames, cmd.mode.replace('_', '-'))
 
         except Exception as e:
             logger.warning(traceback.format_exc())
-            rsp.error = 'unable to change lldp mode to [%s], because %s' % (cmd.mode, str(e))
+            rsp.error = 'unable to change lldp mode to [%s], because %s' % (cmd.mode.replace('_', '-'), str(e))
             rsp.success = False
 
         return jsonobject.dumps(rsp)
