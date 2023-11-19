@@ -702,7 +702,7 @@ configure lldp status rx-only \n
             # no mgmt-ip field for Huawei and H3C
             interface_lldp_info.managementAddress = chassis_value.get("mgmt-ip")
             interface_lldp_info.systemName = chassis_key
-            interface_lldp_info.systemDescription = chassis_value.get("descr")
+            interface_lldp_info.systemDescription = chassis_value.get("descr").replace("\r\n", ";")
             capabilities_enabled_list = [capability.get("type") for capability in
                                          chassis_value.get("capability", []) if capability.get("enabled", False)]
             capabilities_enabled_string = ', '.join(capabilities_enabled_list)
@@ -768,7 +768,7 @@ configure lldp status rx-only \n
 
             # subsequently update the configuration file
             for interfaceConfig in cmd.lldpConfig:
-                self._update_lldp_conf(config_file, interfaceConfig.physicalInterfaceName, interfaceConfig.mode)
+                self._update_lldp_conf(config_file, [interfaceConfig.physicalInterfaceName], interfaceConfig.mode)
 
         except Exception as e:
             logger.warning(traceback.format_exc())
