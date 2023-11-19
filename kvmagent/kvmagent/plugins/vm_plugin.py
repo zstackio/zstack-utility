@@ -4,6 +4,7 @@
 import contextlib
 import difflib
 import os.path
+import glob
 import tempfile
 import time
 import datetime
@@ -40,7 +41,7 @@ from kvmagent.plugins.baremetal_v2_gateway_agent import \
     BaremetalV2GatewayAgentPlugin as BmV2GwAgent
 from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import bash, plugin
+from zstacklib.utils import bash, plugin, iscsi
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import lvm
 from zstacklib.utils import ft
@@ -861,6 +862,7 @@ class IsoTo(object):
         self.imageUuid = None
         self.deviceId = None
         self.isEmpty = False
+        self.protocol = None
 
 class AttachIsoCmd(object):
     def __init__(self):
@@ -1485,48 +1487,6 @@ class LibvirtAutoReconnect(object):
             else:
                 raise
 
-class IscsiLogin(object):
-    def __init__(self):
-        self.server_hostname = None
-        self.server_port = None
-        self.target = None
-        self.chap_username = None
-        self.chap_password = None
-        self.lun = 1
-
-    @lock.lock('iscsiadm')
-    def login(self):
-        assert self.server_hostname, "hostname cannot be None"
-        assert self.server_port, "port cannot be None"
-        assert self.target, "target cannot be None"
-
-        device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (
-            self.server_hostname, self.server_port, self.target, self.lun))
-
-        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
-
-        if self.chap_username and self.chap_password:
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (
-                    self.target, self.server_hostname, self.server_port))
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (
-                    self.target, self.server_hostname, self.server_port, self.chap_username))
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
-                    self.target, self.server_hostname, self.server_port, self.chap_password))
-
-        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
-            self.target, self.server_hostname, self.server_port))
-
-        def wait_device_to_show(_):
-            return os.path.exists(device_path)
-
-        if not linux.wait_callback_success(wait_device_to_show, timeout=30, interval=0.5):
-            raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
-
-        return device_path
-
 
 class BlkIscsi(object):
     def __init__(self):
@@ -1543,7 +1503,7 @@ class BlkIscsi(object):
         self.lun = None
 
     def _login_portal(self):
-        login = IscsiLogin()
+        login = iscsi.IscsiLogin()
         login.server_hostname = self.server_hostname
         login.server_port = self.server_port
         login.target = self.target
@@ -4023,11 +3983,21 @@ class Vm(object):
             cdrom = ic.to_xmlobject(dev, bus)
         else:
             iso.path = VolumeTO.get_volume_actual_installpath(iso.path)
+            if iso.path.startswith('iscsi://'):
+                login = iscsi.IscsiLogin(iso.path)
+                login.login()
+                login.rescan()
+                iso.path = login.get_device_path()
+                iso.type = 'block'
 
             iso = iso_check(iso)
             cdrom = etree.Element('disk', {'type': iso.type, 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-            e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
+            if iso.type == 'vhostuser':
+                source = e(cdrom, 'source', None, {'type': 'unix', 'path': iso.path})
+                e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
+            else:
+                e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
             e(cdrom, 'target', None, {'dev': dev, 'bus': bus})
             e(cdrom, 'readonly', None)
 
@@ -5216,7 +5186,18 @@ class Vm(object):
                     ic = IsoCeph()
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
+                elif iso.type == "vhostuser":
+                    cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
+                    source = e(cdrom, 'source', None, {'type': 'unix', 'path': iso.path})
+                    e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
                 else:
+                    if iso.path.startswith('iscsi://'):
+                        login = iscsi.IscsiLogin(iso.path)
+                        login.login()
+                        login.rescan()
+                        iso.path = login.get_device_path()
+                        iso.type = 'block'
+
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
 
@@ -6297,6 +6278,9 @@ def iso_check(iso):
         return iso
     if iso.path.startswith("/dev/") and block_device_use_block_type():
         iso.type = "block"
+
+    if iso.protocol and iso.protocol.lower() == "vhost":
+        iso.type = "vhostuser"
 
     return iso
 
@@ -8700,7 +8684,7 @@ host side snapshot files chian:
     def login_iscsi_target(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        login = IscsiLogin()
+        login = iscsi.IscsiLogin()
         login.server_hostname = cmd.hostname
         login.server_port = cmd.port
         login.chap_password = cmd.chapPassword

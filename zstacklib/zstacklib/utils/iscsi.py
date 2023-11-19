@@ -1,0 +1,70 @@
+import glob
+import os
+import urlparse
+
+import linux
+import lock
+import shell
+
+
+class IscsiLogin(object):
+    def __init__(self, url=None):
+        if url:
+            u = urlparse.urlparse(url)
+            self.server_hostname = u.hostname
+            self.server_port = u.port
+            self.target = u.path.split('/')[1]
+            self.chap_username = u.username
+            self.chap_password = u.password
+            self.disk_id = u.path.split('/')[2]
+            self.lun = "*"
+        else:
+            self.server_hostname = None
+            self.server_port = None
+            self.target = None
+            self.chap_username = None
+            self.chap_password = None
+            self.lun = 0
+
+    @lock.lock('iscsiadm')
+    def login(self):
+        assert self.server_hostname, "hostname cannot be None"
+        assert self.server_port, "port cannot be None"
+        assert self.target, "target cannot be None"
+
+        device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (
+            self.server_hostname, self.server_port, self.target, self.lun))
+
+        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
+
+        if self.chap_username and self.chap_password:
+            shell.call(
+                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (
+                    self.target, self.server_hostname, self.server_port))
+            shell.call(
+                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (
+                    self.target, self.server_hostname, self.server_port, self.chap_username))
+            shell.call(
+                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
+                    self.target, self.server_hostname, self.server_port, self.chap_password))
+
+        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
+            self.target, self.server_hostname, self.server_port))
+
+        def wait_device_to_show(_):
+            return bool(glob.glob(device_path))
+
+        if not linux.wait_callback_success(wait_device_to_show, timeout=30, interval=0.5):
+            raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
+
+        return device_path
+
+    def rescan(self):
+        shell.call('iscsiadm -m session --rescan')
+
+    def get_device_path(self):
+        fnames = os.listdir('/dev/disk/by-id/')
+        for fname in fnames:
+            if fname.startswith('scsi-') and fname.endswith(self.disk_id):
+                return os.path.join('/dev/disk/by-id/', fname)
+
