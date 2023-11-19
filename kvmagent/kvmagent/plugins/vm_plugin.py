@@ -1402,13 +1402,23 @@ class LibvirtAutoReconnect(object):
                 raise
 
 class IscsiLogin(object):
-    def __init__(self):
-        self.server_hostname = None
-        self.server_port = None
-        self.target = None
-        self.chap_username = None
-        self.chap_password = None
-        self.lun = 1
+    def __init__(self, url=None):
+        if url:
+            u = urlparse.urlparse(url)
+            self.server_hostname = u.hostname
+            self.server_port = u.port
+            self.target = u.path.split('/')[1]
+            self.chap_username = u.username
+            self.chap_password = u.password
+            self.disk_id = u.path.split('/')[2]
+        else:
+            self.server_hostname = None
+            self.server_port = None
+            self.target = None
+            self.chap_username = None
+            self.chap_password = None
+
+        self.lun = 0
 
     @lock.lock('iscsiadm')
     def login(self):
@@ -1442,6 +1452,15 @@ class IscsiLogin(object):
             raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
 
         return device_path
+
+    def rescan(self):
+        shell.call('iscsiadm -m session --rescan')
+
+    def get_device_path(self):
+        fnames = os.listdir('/dev/disk/by-id/')
+        for fname in fnames:
+            if fname.startswith('scsi-') and fname.endswith(self.disk_id):
+                return os.path.join('/dev/disk/by-id/', fname)
 
 
 class BlkIscsi(object):
@@ -3724,6 +3743,15 @@ class Vm(object):
             cdrom = ic.to_xmlobject(dev, bus)
         else:
             iso.path = VolumeTO.get_volume_actual_installpath(iso.path)
+            if iso.path.startswith('iscsi://'):
+                login = IscsiLogin(iso.path)
+                login.server_hostname = cmd.hostname
+                login.server_port = cmd.port
+                login.target = cmd.target
+                login.login()
+                login.rescan()
+                iso.path = login.get_device_path()
+                iso.type = 'block'
 
             iso = iso_check(iso)
             cdrom = etree.Element('disk', {'type': iso.type, 'device': 'cdrom'})
@@ -4899,6 +4927,16 @@ class Vm(object):
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 else:
+                    if iso.path.startswith('iscsi://'):
+                        login = IscsiLogin(iso.path)
+                        login.server_hostname = cmd.hostname
+                        login.server_port = cmd.port
+                        login.target = cmd.target
+                        login.login()
+                        login.rescan()
+                        iso.path = login.get_device_path()
+                        iso.type = 'block'
+
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
 

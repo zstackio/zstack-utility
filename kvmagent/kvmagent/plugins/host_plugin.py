@@ -93,6 +93,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.eptFlag = None
         self.libvirtCapabilities = []
         self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
+        self.iscsiInitiatorName = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -1138,6 +1139,7 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
         rsp.uptime = shell.call('uptime -s').strip()
+        rsp.iscsiInitiatorName = linux.get_iscsi_initiator_name()
 
         if not IS_LOONGARCH64:
             libvirtCapabilitiesList = []
