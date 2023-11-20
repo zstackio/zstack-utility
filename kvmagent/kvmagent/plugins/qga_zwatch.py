@@ -67,44 +67,45 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
     def stop(self):
         pass
 
-    @lock.lock('zwatch_qga_monitor')
+    @thread.AsyncThread
     def zwatch_qga_monitor(self):
-        try:
-            if self.state:
-                while True:
-                    if not self.state or http.AsyncUirHandler.STOP_WORLD:
-                        break
-                    logger.debug('update vm list')
-                    domains = get_domains()
-                    vm_states, vm_dict = get_guest_tools_states(domains)
-                    self.report_vm_qga_state({
-                        vmUuid: qgaStatus.qgaRunning for vmUuid, qgaStatus in vm_states.items()
-                    }, {
-                        vmUuid: qgaStatus.zsToolsFound for vmUuid, qgaStatus in vm_states.items()
-                    })
-                    # remove stopped vm which in running_vm_list
-                    logger.debug('debug: vm list: %s' % self.running_vm_list)
-                    last_monitor_vm_list = self.running_vm_list[:]
-                    with self.running_vm_lock:
-                        self.running_vm_list = [
-                            vmUuid for vmUuid, qgaStatus in vm_states.items() if qgaStatus.qgaRunning
-                        ]
-                    new_vm_list = set(self.running_vm_list) - set(last_monitor_vm_list)
-                    logger.debug('debug: new vm list: %s' % new_vm_list)
-                    for vmUuid in new_vm_list:
-                        # new vm found
-                        qga = vm_dict.get(vmUuid)
-                        if qga:
-                            self.zwatch_qga_monitor_vm(vmUuid, qga)
-                    for vmUuid in self.running_vm_list:
-                        qga = vm_dict.get(vmUuid)
-                        if qga:
-                            self.qga_get_vm_nic(vmUuid, qga)
-                    time.sleep(self.scan_interval_time)
-        except Exception as e:
-            logger.debug('qga zwatch monitor reboot, crash due to [%s]' % str(e))
-            time.sleep(self.scan_interval_time)
-            self.zwatch_qga_monitor()
+        if not self.state:
+            return
+
+        while True:
+            try:
+                if not self.state or http.AsyncUirHandler.STOP_WORLD:
+                    break
+                logger.debug('update vm list')
+                domains = get_domains()
+                vm_states, vm_dict = get_guest_tools_states(domains)
+                self.report_vm_qga_state({
+                    vmUuid: qgaStatus.qgaRunning for vmUuid, qgaStatus in vm_states.items()
+                }, {
+                    vmUuid: qgaStatus.zsToolsFound for vmUuid, qgaStatus in vm_states.items()
+                })
+                # remove stopped vm which in running_vm_list
+                logger.debug('debug: vm list: %s' % self.running_vm_list)
+                last_monitor_vm_list = self.running_vm_list[:]
+                with self.running_vm_lock:
+                    self.running_vm_list = [
+                        vmUuid for vmUuid, qgaStatus in vm_states.items() if qgaStatus.qgaRunning
+                    ]
+                new_vm_list = set(self.running_vm_list) - set(last_monitor_vm_list)
+                logger.debug('debug: new vm list: %s' % new_vm_list)
+                for vmUuid in new_vm_list:
+                    # new vm found
+                    qga = vm_dict.get(vmUuid)
+                    if qga:
+                        self.zwatch_qga_monitor_vm(vmUuid, qga)
+                for vmUuid in self.running_vm_list:
+                    qga = vm_dict.get(vmUuid)
+                    if qga:
+                        self.qga_get_vm_nic(vmUuid, qga)
+                time.sleep(self.scan_interval_time)
+            except Exception as e:
+                logger.debug('qga zwatch monitor reboot, crash due to [%s]' % str(e))
+                time.sleep(self.scan_interval_time)
 
     @thread.AsyncThread
     def qga_get_vm_nic(self, uuid, qga):
