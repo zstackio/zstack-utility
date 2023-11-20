@@ -7611,12 +7611,16 @@ class VmPlugin(kvmagent.KvmAgent):
                     logger.debug(linux.get_exception_stacktrace())
 
         def check_volume():
+            # type: () -> tuple[bool, str]
             vm = get_vm_by_uuid(vmUuid)
-            d, _ = vm._get_target_disk_by_path(task_spec.newVolume.installPath, is_exception=False)
+            target_install_path = task_spec.newVolume.installPath
+            logger.debug("start checking for volume[install_path=%s] in the VM[uuid=%s]" % (target_install_path, vmUuid))
+            d, _ = vm._get_target_disk_by_path(target_install_path, is_exception=False)
             if d is None:
-                return False
+                return False, "fail to find disk[install_path=%s] in domain XML[VMUuid=%s]" % (target_install_path, vmUuid)
 
-            return check_install_path_by_qmp(vmUuid, d.alias.name_, task_spec.newVolume.installPath)
+            valid = check_install_path_by_qmp(vmUuid, d.alias.name_, target_install_path)
+            return (True, None) if valid else (False, "fail to find disk[install_path=%s] in VM[uuid=%s] by qemu-monitor-command" % (target_install_path, vmUuid))
 
         job_over = False
         @thread.AsyncThread
@@ -7643,9 +7647,12 @@ class VmPlugin(kvmagent.KvmAgent):
             shell_cmd = shell.ShellCmd(cmd)
             shell_cmd(False)
             job_over = True
-            if shell_cmd.return_code != 0 or not check_volume():
+            if shell_cmd.return_code != 0:
                 logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, shell_cmd.stderr))
                 return False, shell_cmd.stderr
+            valid, errText = check_volume()
+            if not valid:
+                return False, errText
 
         logger.info("completed copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
         return True, None
