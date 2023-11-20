@@ -1605,6 +1605,14 @@ def get_cpu_speed():
     #logger.warn('%s is not existing, getting cpu speed from "cpu MHZ" of /proc/cpuinfo which may not be accurate' % max_freq)
     return int(float(speed))
 
+def get_iscsi_initiator_name():
+    content = read_file('/etc/iscsi/initiatorname.iscsi')
+    if not content:
+        return None
+    for line in content.splitlines():
+        if line.startswith('InitiatorName='):
+            return line.split('=')[1].strip()
+
 def full_path(path):
     if path.startswith('~'):
         return os.path.expanduser(path)
