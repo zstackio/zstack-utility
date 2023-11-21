@@ -50,9 +50,12 @@ LVMLOCKD_VERSION = None
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
 PV_DISCARD_MIN_SIZE_IN_BYTES = 1*1024**3
 ONE_HOUR_IN_SEC = 60 * 60
+LV_UUID_REFRESH_INTERVAL_IN_SEC = 60 * 30
 
 lv_offset = TTLCache(maxsize=100, ttl=ONE_HOUR_IN_SEC)
 continue_lockspace_track = {}  # type: dict[str, bool]
+lv_uuid_cache = {}  # type: dict[str, str]
+lv_uuid_cache_last_refresh_time = 0
 
 class VolumeProvisioningStrategy(object):
     ThinProvisioning = "ThinProvisioning"
@@ -1418,17 +1421,26 @@ def deactive_lv(path, raise_exception=True):
     else:
         _deactive_lv(path, raise_exception)
 
-
 @bash.in_bash
-@linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
 def _active_lv(path, shared=False):
+    @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
+    def active():
+        bash.bash_errorout("lvchange %s %s" % (flag, path))
+        if lv_is_active(path) is False:
+            raise Exception("active lv %s with %s failed" % (path, flag))
+
+    def lv_lock_not_exists():
+        return bash.bash_r("lvmlockctl -i | grep %s" % lv_uuid(path)) != 0
+
     flag = "-ay"
     if shared:
         flag = "-asy"
 
-    bash.bash_errorout("lvchange %s %s" % (flag, path))
-    if lv_is_active(path) is False:
-        raise Exception("active lv %s with %s failed" % (path, flag))
+    # if lv does not have a lock, we will try to reactivate it
+    if os.path.exists(path) and lv_lock_not_exists():
+        _deactive_lv(path, raise_exception=False)
+
+    active()
 
 
 @bash.in_bash
@@ -1500,11 +1512,35 @@ def vg_exists(vgUuid):
     cmd(is_exception=False)
     return cmd.return_code == 0
 
+@lock.file_lock("/var/run/zstack/sharedblock.ping.lock")
+def refresh_lv_uuid_cache_if_need():
+    global lv_uuid_cache_last_refresh_time
+    if linux.get_current_timestamp() - lv_uuid_cache_last_refresh_time <= LV_UUID_REFRESH_INTERVAL_IN_SEC:
+        return
+
+    lv_uuid_cache.clear()
+    cmd = shell.ShellCmd("lvs -olv_path,uuid,lv_tags --nolocking -t --noheading | grep %s" % COMMON_TAG)
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        logger.debug("refresh lv uuid cache error: %s" % cmd.stderr)
+        return
+    for line in cmd.stdout.strip().splitlines():
+        lv_path = line.strip().split()[0]
+        uuid = line.strip().split()[1]
+        lv_uuid_cache.update({lv_path: uuid})
+    lv_uuid_cache_last_refresh_time = linux.get_current_timestamp()
+    logger.debug("lv uuid cache refreshed")
+
 
 def lv_uuid(path):
+    if path in lv_uuid_cache:
+        return lv_uuid_cache.get(path)
     cmd = shell.ShellCmd("lvs --nolocking -t --noheadings %s -ouuid" % path)
     cmd(is_exception=False)
-    return cmd.stdout.strip()
+    uuid = cmd.stdout.strip()
+    if cmd.return_code == 0 and uuid != '':
+        lv_uuid_cache.update({path: uuid})
+    return uuid
 
 
 def lv_is_active(lv_path):

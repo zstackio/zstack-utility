@@ -134,3 +134,20 @@ class TestSharedBlockPlugin(TestCase,SharedBlockPluginTestStub):
         self.assertEqual(True, rsp.success, rsp.error)
         self.assertEqual(1, lvm.get_lv_locking_type("/dev/{}/{}".format(vgUuid, volumeUuid)))
         self.assertEqual(2, lvm.get_lv_locking_type("/dev/{}/{}".format(vgUuid, top)))
+
+        volumeUuid = misc.uuid()
+        bash.bash_r("lvcreate --size 4M --name %s %s --addtag zs::sharedblock::volume" % (volumeUuid, vgUuid))
+        lvUuid = bash.bash_o("lvs -ouuid --noheading /dev/%s/%s" % (vgUuid, volumeUuid)).strip()
+        lvm.lv_uuid_cache_last_refresh_time = 0
+        # test ping update lv uuid cache
+        rsp = sharedblock_utils.sharedblock_ping(vgUuid)
+        self.assertEqual(lvm.lv_uuid_cache.get("/dev/%s/%s" % (vgUuid, volumeUuid) ), lvUuid)
+
+        volumeUuid = misc.uuid()
+        bash.bash_r("lvcreate --size 4M --name %s %s --addtag zs::sharedblock::volume" % (volumeUuid, vgUuid))
+        lvUuid = bash.bash_o("lvs -ouuid --noheading /dev/%s/%s" % (vgUuid, volumeUuid)).strip()
+        self.assertEqual(lvm.lv_uuid_cache.get("/dev/%s/%s" % (vgUuid, volumeUuid)), None)
+
+        uuid = lvm.lv_uuid("/dev/%s/%s" % (vgUuid, volumeUuid))
+        self.assertEqual(lvUuid, uuid)
+        self.assertEqual(lvm.lv_uuid_cache.get("/dev/%s/%s" % (vgUuid, volumeUuid)), lvUuid)

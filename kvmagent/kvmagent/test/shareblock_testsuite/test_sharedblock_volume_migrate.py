@@ -98,7 +98,8 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                     "skipIfExisting" : False
                 }
             ],
-            provisioning=lvm.VolumeProvisioningStrategy.ThickProvisioning
+            provisioning=lvm.VolumeProvisioningStrategy.ThickProvisioning,
+            volumePath="sharedblock://{}/{}".format(vgUuid,snaphostUuid)
         )
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vg2Uuid, volumeUuid)))
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vg2Uuid, snaphostUuid)))
@@ -131,6 +132,7 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                 }
             ],
             provisioning=lvm.VolumeProvisioningStrategy.ThinProvisioning,
+            volumePath="sharedblock://{}/{}".format(vg2Uuid,snaphostUuid),
             addons={"thinProvisioningInitializeSize":5368709120}
         )
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vgUuid, volumeUuid)))
@@ -166,6 +168,7 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                 }
             ],
             provisioning=lvm.VolumeProvisioningStrategy.ThinProvisioning,
+            volumePath="sharedblock://{}/{}".format(vg2Uuid,snaphostUuid),
             addons={"thinProvisioningInitializeSize":5368709120}
         )
 
@@ -197,7 +200,8 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                     "compareQcow2" : False, # backing file different
                     "skipIfExisting" : True
                 }
-            ]
+            ],
+            volumePath="sharedblock://{}/{}".format(vgUuid,snaphostUuid)
         )
 
         self.assertEqual(True, rsp.success, rsp.error)
