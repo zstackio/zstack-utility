@@ -106,7 +106,14 @@ zstacklib = ZstackLib(zstacklib_args)
 
 if host_info.distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace"
-    qemu_pkg = qemu_pkg + ' python2-pyparted nettle' if releasever in kylin else qemu_pkg + ' pyparted'
+
+    releasever_mapping = {
+        'h84r': ' collectd-disk pyparted',
+    }
+
+    for k in kylin:
+        releasever_mapping[k] = ' python2-pyparted nettle'
+    qemu_pkg += releasever_mapping.get(releasever, ' pyparted')
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         pkg = 'qemu-img-ev' if releasever in ['c74'] else 'qemu-img'
