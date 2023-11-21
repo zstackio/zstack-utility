@@ -48,6 +48,7 @@ releasever = ''
 unsupported_iproute_list = ["nfs4"]
 mn_ip = None
 isInstallHostShutdownHook = 'false'
+isRemoteCube = False
 
 
 # get parameter from shell
@@ -195,21 +196,20 @@ def install_kvm_pkg():
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
-                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel libicu cryptsetup \
-                      lm_sensors-libs lm_sensors edac-utils"
+                      qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf nvme-cli python-pyudev kernel-devel libicu cryptsetup"
 
         x86_64_c76 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                       usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python libvirt-admin lighttpd lsof \
                       net-tools nfs-utils nmap openssh-clients OpenIPMI-modalias pciutils pv rsync sed \
                       smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                       qemu-kvm collectd-virt OVMF edk2-ovmf edk2.git-ovmf-x64 mcelog MegaCli storcli Arcconf \
-                      nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel libicu cryptsetup lm_sensors-libs lm_sensors edac-utils"
+                      nvme-cli python-pyudev seabios-bin nping kernel-devel elfutils-libelf-devel libicu cryptsetup edac-utils"
 
         aarch64_ns10 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar \
-                        qemu collectd-virt storcli nvme-cli edk2-aarch64 python2-pyudev collectd-disk lm_sensors edac-utils"
+                        qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
 
         aarch64_uos1021a = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
@@ -249,7 +249,13 @@ def install_kvm_pkg():
                         usbredir-server iputils open-iscsi libvirt libvirt-client libvirt-python lighttpd lsof \
                         net-tools nfs-utils nmap openssh-clients OpenIPMI pciutils pv rsync sed nettle libselinux-devel \
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq tar python2-psutil \
-                        qemu-kvm collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk libicu cryptsetup lm_sensors edac-utils Arcconf nvme-cli"
+                        qemu-kvm collectd-virt storcli edk2.git-ovmf-x64 python2-pyudev collectd-disk libicu cryptsetup"
+
+        # cube rpm list
+        cube_x86_64_c74 = "lm_sensors-libs lm_sensors edac-utils"
+        cube_x86_64_c76 = "lm_sensors-libs lm_sensors"
+        cube_aarch64_ns10 = "nvme-cli lm_sensors edac-utils"
+        cube_x86_64_ns10 = "lm_sensors edac-utils Arcconf nvme-cli"
 
         # handle zstack_repo
         if zstack_repo != 'false':
@@ -265,6 +271,14 @@ def install_kvm_pkg():
             if isMini == 'true':
                 mini_dep_list = " drbd84-utils kmod-drbd84" if C76_KERNEL_OR_HIGHER and not IS_AARCH64 else ""
                 common_dep_list += mini_dep_list
+
+            if isRemoteCube:
+                try:
+                    cube_dep_list = eval("cube_%s_%s" % (host_info.host_arch, releasever))
+                    common_dep_list = "%s %s" % (common_dep_list, cube_dep_list)
+                except Exception:
+                    # os that cube not supported yet
+                    pass
 
             if host_info.host_arch == "x86_64" and releasever == "ns10":
                 common_no_update_list = common_no_update_list + " edk2-ovmf"
@@ -589,7 +603,7 @@ def copy_cube_tools():
     """copy cube required tools from mn_node to host_node"""
     cube_root_dst = "/usr/local/hyperconverged/"
     _src = os.path.join(cube_root_dst, "tools/hd_ctl")
-    if os.path.exists(_src):
+    if isRemoteCube and os.path.exists(_src):
         _dst = os.path.join(cube_root_dst, "tools")
         copy_to_remote(_src, _dst, "mode=755", host_post_info)
         command = "ln -sf /usr/local/hyperconverged/tools/hd_ctl/hd_ctl /bin/"
@@ -824,6 +838,14 @@ def set_gpu_blacklist():
     run_remote_command(command, host_post_info)
 
 
+def check_is_remote_cube():
+    command = "ls /usr/local/hyperconverged"
+    status = run_remote_command(command, host_post_info, return_status=True)
+    global isRemoteCube
+    isRemoteCube = status
+
+
+check_is_remote_cube()
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
