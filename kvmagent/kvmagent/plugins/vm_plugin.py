@@ -4,6 +4,7 @@
 import contextlib
 import difflib
 import os.path
+import glob
 import tempfile
 import time
 import datetime
@@ -1411,14 +1412,14 @@ class IscsiLogin(object):
             self.chap_username = u.username
             self.chap_password = u.password
             self.disk_id = u.path.split('/')[2]
+            self.lun = "*"
         else:
             self.server_hostname = None
             self.server_port = None
             self.target = None
             self.chap_username = None
             self.chap_password = None
-
-        self.lun = 0
+            self.lun = 0
 
     @lock.lock('iscsiadm')
     def login(self):
@@ -1446,7 +1447,7 @@ class IscsiLogin(object):
             self.target, self.server_hostname, self.server_port))
 
         def wait_device_to_show(_):
-            return os.path.exists(device_path)
+            return bool(glob.glob(device_path))
 
         if not linux.wait_callback_success(wait_device_to_show, timeout=30, interval=0.5):
             raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
@@ -3745,9 +3746,6 @@ class Vm(object):
             iso.path = VolumeTO.get_volume_actual_installpath(iso.path)
             if iso.path.startswith('iscsi://'):
                 login = IscsiLogin(iso.path)
-                login.server_hostname = cmd.hostname
-                login.server_port = cmd.port
-                login.target = cmd.target
                 login.login()
                 login.rescan()
                 iso.path = login.get_device_path()
@@ -3756,7 +3754,11 @@ class Vm(object):
             iso = iso_check(iso)
             cdrom = etree.Element('disk', {'type': iso.type, 'device': 'cdrom'})
             e(cdrom, 'driver', None, {'name': 'qemu', 'type': 'raw'})
-            e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
+            if iso.type == 'vhostuser':
+                source = e(cdrom, 'source', None, {'type': 'unix', 'path': iso.path})
+                e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
+            else:
+                e(cdrom, 'source', None, {Vm.disk_source_attrname.get(iso.type): iso.path})
             e(cdrom, 'target', None, {'dev': dev, 'bus': bus})
             e(cdrom, 'readonly', None)
 
@@ -4926,12 +4928,13 @@ class Vm(object):
                     ic = IsoCeph()
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
+                elif iso.type == "vhostuser":
+                    cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
+                    source = e(cdrom, 'source', None, {'type': 'unix', 'path': iso.path})
+                    e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
                 else:
                     if iso.path.startswith('iscsi://'):
                         login = IscsiLogin(iso.path)
-                        login.server_hostname = cmd.hostname
-                        login.server_port = cmd.port
-                        login.target = cmd.target
                         login.login()
                         login.rescan()
                         iso.path = login.get_device_path()
@@ -5942,6 +5945,9 @@ def iso_check(iso):
         return iso
     if iso.path.startswith("/dev/") and block_device_use_block_type():
         iso.type = "block"
+
+    if iso.protocol.lower() == "vhost":
+        iso.type = "vhostuser"
 
     return iso
 
