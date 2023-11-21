@@ -9324,7 +9324,6 @@ class InstallLicenseCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--license', '-f', help="path to the license file", required=True)
         parser.add_argument('--prikey', help="[OPTIONAL] the path to the private key used to generate license request")
-        parser.add_argument('--addon', '-a', help="install add one license file", action='store_true', default=False)
 
         parser.add_argument('--xsky', '-x', help="path to the xsky license file", required=False)
         parser.add_argument('--user', '-u', help="the monitor user", required=False)
