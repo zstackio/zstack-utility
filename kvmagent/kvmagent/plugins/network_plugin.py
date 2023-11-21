@@ -610,10 +610,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.call('systemctl restart lldpd.service')
 
     def _init_lldpd(self, config_file):
-        lspci_output = shell.call("lspci | grep -i -E 'eth.*X710|eth.*X722'")
+        r, lspci_output = bash_ro("lspci | grep -i -E 'eth.*X710|eth.*X722'")
         lldp_stop_command = "lldp stop\n"
 
-        if lspci_output is not None:
+        if r == 0:
             for line in lspci_output.splitlines():
                 nic_pci_address = line.split()[0]
                 nic_pci_address_path = '/sys/kernel/debug/i40e/0000:%s' % nic_pci_address
