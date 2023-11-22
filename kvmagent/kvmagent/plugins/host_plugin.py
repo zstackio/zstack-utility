@@ -3171,7 +3171,6 @@ done
             l2_mac_dict = cmd.l2MacMap.__dict__
             interface_dict = cmd.interfaceMap.__dict__
             vlan_dict = cmd.vlanMap.__dict__
-            logger.debug(type(l2_mac_dict))
             for l2, mac_list in l2_mac_dict.items():
                 for mac in mac_list:
                     shell.call('ipset add isolated_%s.%s %s'
@@ -3188,7 +3187,6 @@ done
             l2_mac_dict = cmd.l2MacMap.__dict__
             interface_dict = cmd.interfaceMap.__dict__
             vlan_dict = cmd.vlanMap.__dict__
-            logger.debug(type(l2_mac_dict))
             for l2, mac_list in l2_mac_dict.items():
                 for mac in mac_list:
                     shell.call('ipset del isolated_%s.%s %s'
@@ -3208,7 +3206,6 @@ done
             l2_mac_dict = cmd.l2MacMap.__dict__
             interface_dict = cmd.interfaceMap.__dict__
             vlan_dict = cmd.vlanMap.__dict__
-            logger.debug(type(l2_mac_dict))
             for l2, mac_list in l2_mac_dict.items():
                 isolated_br = 'isolated_%s.%s' % (interface_dict.get(l2), vlan_dict.get(l2))
                 physdev_in = '%s.%s' % (interface_dict.get(l2), vlan_dict.get(l2))
