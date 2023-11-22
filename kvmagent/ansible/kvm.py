@@ -345,6 +345,10 @@ def install_kvm_pkg():
             run_remote_command(command, host_post_info)
             if releasever in enable_networkmanager_list:
                 # name: enable NetworkManager in euler20, arm and x86 ky10
+                """config NetworkManager(fix 40371)"""
+                NETWORKMANAGER_CONF_FILE = '/etc/NetworkManager/NetworkManager.conf'
+                replace_content(NETWORKMANAGER_CONF_FILE, "regexp='.*no-auto-default=.*' replace='no-auto-default=*'",
+                                host_post_info)
                 service_status("NetworkManager", "state=started enabled=yes", host_post_info, ignore_error=True)
             else:
                 # name: disable NetworkManager in RHEL7 and Centos7
@@ -627,10 +631,6 @@ def do_libvirt_qemu_config():
 
 
 def do_network_config():
-    """config NetworkManager(fix 40371)"""
-    NETWORKMANAGER_CONF_FILE = '/etc/NetworkManager/NetworkManager.conf'
-    replace_content(NETWORKMANAGER_CONF_FILE, "regexp='.*no-auto-default=.*' replace='no-auto-default=*'", host_post_info)
-
     # name: enable bridge forward
     if bridgeDisableIptables == "true":
         command = " [ `sysctl -n net.bridge.bridge-nf-call-iptables` -eq 1 ] && sysctl -w net.bridge.bridge-nf-call-iptables=0 >> /etc/sysctl.conf ; echo 1 > /proc/sys/net/bridge/bridge-nf-filter-vlan-tagged ; echo 1 > /proc/sys/net/ipv4/conf/default/forwarding"
