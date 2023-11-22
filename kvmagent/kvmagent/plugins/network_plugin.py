@@ -352,18 +352,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if cmd.return_code != 0:
             shell.call("ipset create %s hash:mac" % isolated_br)
             filter_table = iptables_v2.from_iptables_save()
-            forward_chain = filter_table.add_chain_if_not_exist(iptables_v2.FORWARD_CHAIN_NAME)
+            forward_chain = filter_table.get_chain_by_name(iptables_v2.FORWARD_CHAIN_NAME)
             pvlan_isolated_chain = filter_table.get_chain_by_name(PVLAN_ISOLATED_CHAIN)
             if not pvlan_isolated_chain:
-                filter_table.add_chain_if_not_exist(PVLAN_ISOLATED_CHAIN)
+                pvlan_isolated_chain = filter_table.add_chain_if_not_exist(PVLAN_ISOLATED_CHAIN)
                 forward_chain.add_rule('-I FORWARD -j %s' % PVLAN_ISOLATED_CHAIN)
-                filter_table.iptables_restore()
-            filter_table = iptables_v2.from_iptables_save()
-            pvlan_isolated_chain = filter_table.get_chain_by_name(PVLAN_ISOLATED_CHAIN)
-            if pvlan_isolated_chain:
-                pvlan_isolated_chain.add_rule('-I %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
-                    PVLAN_ISOLATED_CHAIN, vlan_interface, isolated_br))
-                filter_table.iptables_restore()
+            pvlan_isolated_chain.add_rule('-I %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                PVLAN_ISOLATED_CHAIN, vlan_interface, isolated_br))
+            filter_table.iptables_restore()
         return
 
     def _delete_isolated(self, vlan_interface):
