@@ -4716,7 +4716,17 @@ class Vm(object):
                 if cmd.cpuHypervisorFeature is False:
                     e(cpu, 'feature', attrib={'name': 'hypervisor', 'policy': 'disable'})
 
+            def make_cpu_vendor():
+                if HOST_ARCH != "x86_64":
+                    return
+                
+                if cmd.vmCpuVendorId and cmd.vmCpuVendorId != "None":
+                    if cmd.nestedVirtualization in ['host-model', 'custom']:
+                        e(cpu, 'model', attrib={'vendor_id': cmd.vmCpuVendorId})
+
             make_cpu_features()
+
+            make_cpu_vendor()
 
         def make_memory():
             root = elements['root']
@@ -4847,8 +4857,10 @@ class Vm(object):
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
             if "hygon" in model_name.lower() and cmd.vmCpuModel == 'Hygon_Customized':
-                e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
-                e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
+                # zsv hygon_customized
+                if cmd.nestedVirtualization == 'host-passthrough':
+                    e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
+                    e(qcmd, "qemu:arg", attrib={"value": "EPYC,vendor=AuthenticAMD,model_id={} Processor,+svm".format(" ".join(model_name.split(" ")[0:3]))})
 
             e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
             e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
@@ -5864,6 +5876,29 @@ class Vm(object):
                 for i in xrange(cmd.predefinedPciBridgeNum):
                     e(devices, 'controller', None, {'type': 'pci', 'index': str(i + 1), 'model': 'pci-bridge'})
 
+        def add_cpu_vendor_id_to_cpu_flags():
+
+            def get_cpu_flags_from_xml(libvirtXml):
+                with tempfile.NamedTemporaryFile(delete=False) as f:
+                    f.write(libvirtXml)
+                    tmpFile = f.name
+
+                r, o, e = bash.bash_roe('''virsh domxml-to-native qemu-argv --xml {} | grep -oE '\-cpu [^ ]+' | cut -d' ' -f2'''.format(tmpFile))
+                os.remove(tmpFile)
+
+                if r == 0 and o.strip() != "":
+                    return o.strip()
+
+            if cmd.nestedVirtualization in ['host-passthrough', 'none']:
+                root = elements['root']
+                libvirtXml = etree.tostring(root)
+                cpuFlags = get_cpu_flags_from_xml(libvirtXml)
+                if not cpuFlags:
+                    return
+
+                qcmd = e(root, 'qemu:commandline')
+                e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
+                e(qcmd, "qemu:arg", attrib={"value": "{},vendor={}".format(cpuFlags, cmd.vmCpuVendorId)})
 
         make_root()
         make_meta()
@@ -5898,6 +5933,9 @@ class Vm(object):
 
         if cmd.useHugePage or cmd.MemAccess in "shared":
             make_memory_backing()
+
+        if HOST_ARCH == "x86_64" and cmd.vmCpuVendorId and cmd.vmCpuVendorId != "None":
+            add_cpu_vendor_id_to_cpu_flags()    
 
         root = elements['root']
         xml = etree.tostring(root)
