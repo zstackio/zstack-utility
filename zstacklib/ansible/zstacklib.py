@@ -2344,7 +2344,7 @@ class ZstackLib(object):
             "vim-minimal",
         }
 
-        if self.distro in ["kylin_zstack", "kylin_tercel", "kylin_sword"]:
+        if self.distro in ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance"]:
             basic.add("chrony")
             basic.add("iptables")
             basic.add("python2-libselinux")
