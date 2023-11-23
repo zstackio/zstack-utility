@@ -1712,7 +1712,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
             vgUuid = vg_group.pop(0)
             r, o, e = lvm.vgck(vgUuid, 10)
-
             if o is not None and o != "":
                 for es in o.strip().splitlines():
                     if "lock start in progress" in es:
@@ -1722,12 +1721,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     elif "Reading VG %s without a lock" % vgUuid in es:
                         rsp.failedVgs.update({vgUuid : o})
                         break
-
-            if vgUuid not in rsp.failedVgs:
-                pvs_outs = bash.bash_o(
-                    "timeout -s SIGKILL 10 pvs --noheading --nolocking -t -Svg_name=%s -ouuid,name,missing" % vgUuid).strip()
-                if "missing" in pvs_outs:
-                    rsp.failedVgs.update({vgUuid : "vg %s was missing pv" % vgUuid})
+                    elif 'Volume group "%s" not found' % vgUuid in es or re.search(r"volume group is missing \d physical volumes", es):
+                        rsp.failedVgs.update({vgUuid : o})
+                        break
 
             vgck(vg_group)
 
