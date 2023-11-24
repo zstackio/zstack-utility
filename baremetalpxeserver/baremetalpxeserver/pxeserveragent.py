@@ -600,7 +600,7 @@ chmod a+x /usr/bin/zwatch-vm-agent
 echo "\npushGatewayUrl:  http://{PXESERVER_DHCP_NIC_IP}:9093" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 echo "vmInstanceUuid: {BMUUID}" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
 echo "versionFileUrl:  ftp://{PXESERVER_DHCP_NIC_IP}/agent_version" >> /usr/local/zstack/zwatch-vm-agent/conf.yaml
-echo "vmInstanceUuid: {BMUUID}" > /usr/local/zstack/baremetalInstanceUuid
+echo "{BMUUID}" > /usr/local/zstack/baremetalInstanceUuid
 systemctl start zwatch-vm-agent.service
 
 # baby agent
