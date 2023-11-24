@@ -1467,11 +1467,30 @@ mimetype.assign = (
                 if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-j RETURN' > /dev/null") != 0:
                     bash_r(EBTABLES_CMD + ' -A ZSTACK-VF-DHCP -j RETURN')
 
-                if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
-                    bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                if dhcpInfo.ipVersion == 4:
+                    if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                        bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
-                if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
-                    bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                    if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                        bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                elif dhcpInfo.ipVersion == 6:
+                    if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv6 -s {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT' > /dev/null") != 0:
+                        bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv6 -s {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT')
+
+                    if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv6 -d {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT' > /dev/null") != 0:
+                        bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv6 -d {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT')
+                else:
+                    if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                        bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+                    if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT' > /dev/null") != 0:
+                        bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+                    if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv6 -s {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT' > /dev/null") != 0:
+                        bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv6 -s {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT')
+
+                    if bash_r(EBTABLES_CMD + " -L ZSTACK-VF-DHCP | grep -- '-p IPv6 -d {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT' > /dev/null") != 0:
+                        bash_r(EBTABLES_CMD + ' -I ZSTACK-VF-DHCP -p IPv6 -d {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT')
 
         @in_bash
         def apply(dhcp):
@@ -1860,8 +1879,18 @@ sed -i '/^$/d' {{DNS}}
             if dhcp_ip:
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
                 VF_NIC_MAC = dhcpInfo.mac
-                bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
-                bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+
+                if dhcpInfo.ipVersion == 4:
+                    bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                    bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                elif dhcpInfo.ipVersion == 6:
+                    bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv6 -s {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT')
+                    bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv6 -d {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT')
+                else:
+                    bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                    bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
+                    bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv6 -s {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT')
+                    bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv6 -d {{VF_NIC_MAC}} --ip6-proto udp --ip6-sport 546:547 -j ACCEPT')
 
         @in_bash
         def release(dhcp):
