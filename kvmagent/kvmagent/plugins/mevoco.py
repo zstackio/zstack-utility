@@ -255,7 +255,7 @@ class DhcpEnv(object):
 
                 ret = bash_r(EBTABLES_CMD + " -L FORWARD | grep -- '-j {{CHAIN_NAME}}' > /dev/null")
                 if ret != 0:
-                    bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
+                    bash_errorout(EBTABLES_CMD + ' -A FORWARD -j {{CHAIN_NAME}}')
 
             ns_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-solicitation -j DROP"
             _add_ebtables_rule6(ns_rule_o)
@@ -534,12 +534,10 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
 
     @in_bash
-    def _delete_dhcp6(self, namspace):
-        items = namspace.split('_')
-        l3_uuid = items[-1]
-        DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]  #this case is for old version dhcp6 namespace
-
-        o = bash_o("ebtables-save | grep {{DHCP6_CHAIN_NAME}} | grep -- -A")
+    def _delete_ebtables_chain_by_name(self, chain_name):
+        if not chain_name:
+            return
+        o = bash_o("ebtables-save | grep {{chain_name}} | grep -- -A")
         o = o.strip(" \t\r\n")
         if o:
             cmds = []
@@ -548,14 +546,28 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
             bash_r("\n".join(cmds))
 
-        ret = bash_r("ebtables-save | grep '\-A {{DHCP6_CHAIN_NAME}} -j RETURN'")
+        ret = bash_r("ebtables-save | grep '\-A {{chain_name}} -j RETURN'")
         if ret != 0:
-            bash_r(EBTABLES_CMD + ' -D {{DHCP6_CHAIN_NAME}} -j RETURN')
+            bash_r(EBTABLES_CMD + ' -D {{chain_name}} -j RETURN')
 
-        ret = bash_r("ebtables-save | grep '\-A FORWARD -j {{DHCP6_CHAIN_NAME}}'")
+        ret = bash_r("ebtables-save | grep '\-A FORWARD -j {{chain_name}}'")
         if ret != 0:
-            bash_r(EBTABLES_CMD + ' -D FORWARD -j {{DHCP6_CHAIN_NAME}}')
-            bash_r(EBTABLES_CMD + ' -X {{DHCP6_CHAIN_NAME}}')
+            bash_r(EBTABLES_CMD + ' -D FORWARD -j {{chain_name}}')
+            bash_r(EBTABLES_CMD + ' -X {{chain_name}}')
+
+    @in_bash
+    def _delete_dhcp6(self, namspace):
+        items = namspace.split('_')
+        l3_uuid = items[-1]
+        OLD_DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]  #this case is for old version dhcp6 namespace
+        self._delete_ebtables_chain_by_name(OLD_DHCP6_CHAIN_NAME)
+
+        ns_id = iproute.IpNetnsShell.get_netns_id(namspace)
+        INNER_DEV = "inner" + ns_id
+        dhcp6_ip = iproute.IpNetnsShell(namspace).get_ip_address(6, INNER_DEV)
+        if dhcp6_ip:
+            NEW_DHCP6_CHAIN_NAME = getDhcpEbtableChainName(dhcp6_ip)
+            self._delete_ebtables_chain_by_name(NEW_DHCP6_CHAIN_NAME)
 
     @in_bash
     def _delete_dhcp4(self, namspace):
@@ -565,24 +577,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         if dhcp_ip is not None:
             CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
-
-            o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
-            o = o.strip(" \t\r\n")
-            if o:
-                cmds = []
-                for l in o.split("\n"):
-                    cmds.append(EBTABLES_CMD + " %s" % l.replace("-A", "-D"))
-
-                bash_r("\n".join(cmds))
-
-            ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
-            if ret != 0:
-                bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -j RETURN')
-
-            ret = bash_r("ebtables-save | grep '\-A FORWARD -j {{CHAIN_NAME}}'")
-            if ret != 0:
-                bash_r(EBTABLES_CMD + ' -D FORWARD -j {{CHAIN_NAME}}')
-                bash_r(EBTABLES_CMD + ' -X {{CHAIN_NAME}}')
+            self._delete_ebtables_chain_by_name(CHAIN_NAME)
 
     @kvmagent.replyerror
     @in_bash
