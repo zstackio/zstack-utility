@@ -4722,7 +4722,11 @@ class Vm(object):
                 
                 if cmd.vmCpuVendorId and cmd.vmCpuVendorId != "None":
                     if cmd.nestedVirtualization in ['host-model', 'custom']:
-                        e(cpu, 'model', attrib={'vendor_id': cmd.vmCpuVendorId})
+                        model = root.find('cpu/model')
+                        if model is not None:
+                            model.set('vendor_id', cmd.vmCpuVendorId)
+                        else:
+                            model = e(cpu, 'model', attrib={'vendor_id': cmd.vmCpuVendorId})
 
             make_cpu_features()
 
