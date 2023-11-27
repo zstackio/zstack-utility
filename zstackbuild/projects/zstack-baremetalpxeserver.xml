@@ -29,7 +29,7 @@
         </copy>
     </target>
 
-    <target name="assemble-baremetalpxeserver">
+    <target name="assemble-baremetalpxeserver" depends="assemble-zstack-zwatch">
         <makeDir dir="${baremetalpxeserver.ansible.dir}" />
 
         <copy todir="${baremetalpxeserver.ansible.dir}">
@@ -42,5 +42,8 @@
         </copy>
 
         <copy file="${baremetalpxeserver.serviceFile}" todir="${baremetalpxeserver.ansible.dir}" />
+
+        <delete file="${baremetalpxeserver.ansible.dir}/agent_version" />
+        <copy file="${build.dir}/kvmagent/ansible/agent_version" todir="${baremetalpxeserver.ansible.dir}" />
     </target>
 </project>
