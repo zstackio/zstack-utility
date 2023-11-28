@@ -114,6 +114,7 @@ def _parse_version(version_output):
     return "-".join(filter(lambda s: s[0].isdigit(), full_ver.split("-")))
 
 # QEMU emulator version 2.12.0 (qemu-kvm-ev-2.12.0-44.1.el7_9.1)
+# QEMU emulator version 4.2.0 (qemu-kvm-4.2.0-640.g70d8f25.el7)
 # return 2.12.0
 def _parse_version2(version_output):
     return version_output.splitlines()[0].strip().split(" ")[3]
