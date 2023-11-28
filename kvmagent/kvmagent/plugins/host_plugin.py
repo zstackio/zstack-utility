@@ -54,8 +54,9 @@ EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
 COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
-HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
+HOST_TAKEOVER_FLAG_PATH = '/var/run/zstack/takeOver'
 NODE_INFO_PATH = '/sys/devices/system/node/'
+KVMAGENT_VERSION_PATH = '/var/lib/zstack/kvmagent_version'
 
 BOND_MODE_ACTIVE_0 = "balance-rr"
 BOND_MODE_ACTIVE_1 = "active-backup"
@@ -996,6 +997,9 @@ class HostPlugin(kvmagent.KvmAgent):
         logger.debug(http.path_msg(self.CONNECT_PATH, 'host[uuid: %s] connected' % cmd.hostUuid))
         rsp.libvirtVersion = self.libvirt_version
         rsp.qemuVersion = self.qemu_version
+        
+        # save kvmagent version
+        self.save_kvmagent_version(cmd.version)
 
         # create udev rule
         self.handle_usb_device_events()
@@ -1055,6 +1059,11 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.hostUuid = self.host_uuid
         rsp.sendCommandUrl = self.config.get(kvmagent.SEND_COMMAND_URL)
         rsp.version = self.config.get(kvmagent.VERSION)
+        
+        if rsp.version is None and os.path.exists(KVMAGENT_VERSION_PATH):
+            with open(KVMAGENT_VERSION_PATH, 'r') as rfd:
+                rsp.version = rfd.read().strip()
+        
         if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
             linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
         return jsonobject.dumps(rsp)
@@ -1573,6 +1582,18 @@ if __name__ == "__main__":
             os.makedirs(rule_path)
         with open(rule_file, 'w') as f:
             f.write(rule_str)
+
+    @thread.AsyncThread
+    def save_kvmagent_version(self, version):
+        if os.path.exists(KVMAGENT_VERSION_PATH):
+            with open(KVMAGENT_VERSION_PATH, 'r') as rfd:
+                flag = True if version != rfd.read().strip() else False
+        else:
+            flag = True
+        
+        if flag:
+            with open(KVMAGENT_VERSION_PATH, 'w') as fd:
+                fd.write(version)
 
     @kvmagent.replyerror
     @in_bash
