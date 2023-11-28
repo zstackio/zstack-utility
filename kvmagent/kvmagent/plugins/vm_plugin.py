@@ -59,6 +59,7 @@ from zstacklib.utils import ovs
 from zstacklib.utils import drbd
 from zstacklib.utils.qga import *
 from zstacklib.utils import jsonobject
+from zstacklib.utils.qmp import get_block_node_name_and_file, QmpResult
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
@@ -3050,7 +3051,9 @@ class Vm(object):
                     return not bool(disk)
 
                 try:
-                    self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                    disk_is_unplugging = "is already in the process of unplug"
+                    with misc.ignore_exception(libvirt.libvirtError, disk_is_unplugging):
+                        self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
 
                     if not linux.wait_callback_success(wait_for_detach, None, 5, 1):
                         raise Exception("unable to detach the volume[uuid:%s] from the vm[uuid:%s];"
@@ -3078,12 +3081,12 @@ class Vm(object):
 
             def clean_block_node():
                 if volume.deviceType == 'ceph':
-                    orphan_block_nodes = []
-                    try :
+                    node_name_and_file = None
+                    with misc.ignore_exception(Exception):
                         node_name_and_file = get_block_node_name_and_file(self.uuid)
-                    except Exception as exception:
-                        logger.debug(str(exception))
+                    if node_name_and_file is None:
                         return
+
                     installPath = volume.installPath.replace('ceph://', '').split('/')
                     # ceph file example: "json:{"driver": "raw", "file": {"pool": "pool", "image": "ca46af50ab8742b68e464e9b23b05598"}"
                     format_nodes = []
@@ -3104,10 +3107,10 @@ class Vm(object):
                     def do_clean_orphan_block_nodes(node):
                         r, o, err = execute_qmp_command(self.uuid, '{ "execute": "blockdev-del", "arguments": { "node-name": "%s" } }' % node)
                         if r == 0:
-                            libvirtError = LibvirtError(jsonobject.loads(o.strip()))
-                            if libvirtError.error is not None:
-                                logger.debug("failed to execute blockdev-del, because %s", libvirtError.error_desc)
-                                raise Exception("failed to execute blockdev-del, because %s", libvirtError.error_desc)
+                            qmpResult = QmpResult(jsonobject.loads(o.strip()))
+                            if qmpResult.error is not None:
+                                logger.debug("failed to execute blockdev-del, because %s", qmpResult.error_desc)
+                                raise Exception("failed to execute blockdev-del, because %s", qmpResult.error_desc)
                             logger.debug("delete vm[%s] orphan block node[%s] success" % (self.uuid, node))
                         else:
                             logger.debug("failed to delete vm[%s] orphan block node[%s], because %s" % (self.uuid, node, str(err)))
@@ -6198,25 +6201,6 @@ def get_block_node_name_by_disk_name(domain_id, disk_name):
         return block['device']
     return block["inserted"]['node-name']
 
-def get_vm_block_nodes(domain_uuid):
-    r, o, err = execute_qmp_command(domain_uuid, '{ "execute": "query-named-block-nodes" }')
-    if r != 0:
-        raise kvmagent.KvmError("failed to query block nodes on vm[uuid:{}], libvirt error:{}".format(domain_uuid, err))
-
-    block_nodes = json.loads(o)["return"]
-    if not block_nodes:
-        raise kvmagent.KvmError("no block nodes found on vm[uuid:{}]".format(domain_uuid))
-
-    return block_nodes
-
-def get_block_node_name_and_file(domain_id):
-    block_nodes = get_vm_block_nodes(domain_id)
-    node_name_and_files = {}
-    for block_node in block_nodes:
-        node_name_and_files[block_node['node-name']] = block_node["file"]
-    return node_name_and_files
-
-
 def get_vm_migration_caps(domain_id, cap_key):
     r, o, e = execute_qmp_command(domain_id, '{"execute": "query-migrate-capabilities"}')
     if r != 0:
@@ -6273,16 +6257,6 @@ def check_install_path_by_qmp(domain_id, disk_name, path):
 
     return False
 
-
-class LibvirtError(object):
-    def __init__(self, err):
-        self.id = err["id"]
-        self.error = err["error"]
-        self.error_class = None
-        self.error_desc = None
-        if self.error is not None:
-            self.error_class = self.error["class"]
-            self.error_desc = self.error["desc"]
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
