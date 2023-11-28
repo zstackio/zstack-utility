@@ -216,6 +216,23 @@ def get_pools_capacity():
                 osd_nodes.add(node.name)
         pool_capacity.crush_item_osds = sorted(osd_nodes)
 
+    # fill osds capacity
+    o = shell.call('ceph osd df -f json')
+    # In the open source Ceph 10 version, the value returned by executing 'ceph osd df -f json' might have '-nan', causing json parsing to fail.
+    o = o.replace("-nan", "\"\"")
+    osds = jsonobject.loads(o)
+    if not osds.nodes:
+        return result
+
+    for pool_capacity in result:
+        if not pool_capacity.crush_item_osds:
+            continue
+        for osd_name in pool_capacity.crush_item_osds:
+            for osd in osds.nodes:
+                if osd.name != osd_name:
+                    continue
+                pool_capacity.related_osd_capacity.update({osd_name : CephOsdCapacity(osd.kb * 1024, osd.kb_avail * 1024, osd.kb_used * 1024)})
+
     pool_capacity_getter_mapping.get(get_ceph_manufacturer(), DefaultCephPoolCapacityGetter()).fill_pool_capacity(result)
     return result
 
@@ -225,6 +242,15 @@ class CephOsdCapacity:
         self.size = crush_item_osd_size
         self.availableCapacity = crush_item_osd_available_capacity
         self.usedCapacity = crush_item_osd_used_capacity
+
+    def get_size(self):
+        return self.size
+
+    def get_available_capacity(self):
+        return self.availableCapacity
+
+    def get_used_capacity(self):
+        return self.usedCapacity
 
 
 def get_mon_addr(monmap, route_protocol=None):
@@ -255,7 +281,7 @@ class CephPoolCapacity:
         self.crush_item_osds = []
         self.crush_item_osds_total_size = 0
         self.pool_total_size = 0
-        self.related_osd_capacity = {}
+        self.related_osd_capacity = {} # type: dict[str, CephOsdCapacity]
 
 
     def get_related_osds(self):
@@ -355,25 +381,13 @@ class NbdRemoteStorage(remoteStorage.RemoteStorage):
 
 class DefaultCephPoolCapacityGetter:
     def fill_pool_capacity(self, result):
-        # fill crush_item_osds_total_size, poolTotalSize
-        o = shell.call('ceph osd df -f json')
-        # In the open source Ceph 10 version, the value returned by executing 'ceph osd df -f json' might have '-nan', causing json parsing to fail.
-        o = o.replace("-nan", "\"\"")
-        osds = jsonobject.loads(o)
-        if not osds.nodes:
-            return
-
         for pool_capacity in result:
-            if not pool_capacity.crush_item_osds:
+            if not pool_capacity.related_osd_capacity:
                 continue
-            for osd_name in pool_capacity.crush_item_osds:
-                for osd in osds.nodes:
-                    if osd.name != osd_name:
-                        continue
-                    pool_capacity.crush_item_osds_total_size = pool_capacity.crush_item_osds_total_size + osd.kb * 1024
-                    pool_capacity.available_capacity = pool_capacity.available_capacity + osd.kb_avail * 1024
-                    pool_capacity.used_capacity = pool_capacity.used_capacity + osd.kb_used * 1024
-                    pool_capacity.related_osd_capacity.update({osd_name : CephOsdCapacity(osd.kb * 1024, osd.kb_avail * 1024, osd.kb_used * 1024)})
+            for osd_capacity in pool_capacity.related_osd_capacity.values():
+                pool_capacity.crush_item_osds_total_size = pool_capacity.crush_item_osds_total_size + osd_capacity.get_size()
+                pool_capacity.available_capacity = pool_capacity.available_capacity + osd_capacity.get_available_capacity()
+                pool_capacity.used_capacity = pool_capacity.used_capacity + osd_capacity.get_used_capacity()
 
             if not pool_capacity.disk_utilization:
                 continue
