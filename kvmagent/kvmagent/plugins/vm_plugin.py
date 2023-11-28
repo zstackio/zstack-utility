@@ -5887,7 +5887,8 @@ class Vm(object):
                     f.write(libvirtXml)
                     tmpFile = f.name
 
-                r, o, e = bash.bash_roe('''virsh domxml-to-native qemu-argv --xml {} | grep -oE '\-cpu [^ ]+' | cut -d' ' -f2'''.format(tmpFile))
+                cmd = r'''virsh domxml-to-native qemu-argv --xml %s | grep -oE "\-cpu '[^']+'|\-cpu [^ ]+" | awk -F '-cpu[ ]*' '{print $2}' | sed -e "s/^'//;s/'$//" ''' % tmpFile
+                r, o, e = bash.bash_roe(cmd)
                 os.remove(tmpFile)
 
                 if r == 0 and o.strip() != "":
