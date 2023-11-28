@@ -5400,13 +5400,17 @@ class Vm(object):
 
             volumes.sort(key=lambda d: d.deviceId)
             Vm.check_device_exceed_limit(volumes[-1].deviceId)
-            scsi_device_ids = [v.deviceId for v in volumes if v.useVirtioSCSI]
+
+            def need_reverse(v):
+                return v.useVirtioSCSI and v.deviceId != 0
+
+            scsi_device_ids = [v.deviceId for v in volumes if need_reverse(v)]
             # {
             #     'vm-uuid': { 'target-dev': etree.Element-object, ...},
             # }
             rvols = {}
             for v in volumes:
-                dev_letter_index = v.deviceId if not v.useVirtioSCSI else scsi_device_ids.pop()
+                dev_letter_index = v.deviceId if not need_reverse(v) else scsi_device_ids.pop()
                 dev_letter = DEVICE_LETTERS[dev_letter_index]
 
                 r = get_recover_path(v)
