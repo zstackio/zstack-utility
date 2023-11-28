@@ -3039,7 +3039,9 @@ class Vm(object):
                     return not bool(disk)
 
                 try:
-                    self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                    disk_is_unplugging = "is already in the process of unplug"
+                    with misc.ignore_exception(libvirt.libvirtError, disk_is_unplugging):
+                        self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
 
                     if not linux.wait_callback_success(wait_for_detach, None, 5, 1):
                         raise Exception("unable to detach the volume[uuid:%s] from the vm[uuid:%s];"
@@ -3064,7 +3066,6 @@ class Vm(object):
             if volume.deviceType == 'iscsi':
                 if not volume.useVirtio:
                     logout_iscsi()
-
 
         except libvirt.libvirtError as ex:
             vm = get_vm_by_uuid(self.uuid)
