@@ -3316,6 +3316,8 @@ class Vm(object):
             xml = etree.tostring(snapshot)
             logger.debug('creating snapshot for vm[uuid:{0}] volume[id:{1}]:\n{2}'.format(self.uuid, device_id, xml))
             snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA
+            if os.path.exists(install_path):
+                snap_flags = snap_flags | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_REUSE_EXT
 
             try:
                 self.domain.snapshotCreateXML(xml, snap_flags)
