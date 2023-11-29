@@ -205,7 +205,7 @@ class DownloadBitsFromKvmHostRsp(NfsResponse):
 class GetQcow2HashValueRsp(NfsResponse):
     def __init__(self):
         super(GetQcow2HashValueRsp, self).__init__()
-        self.hash = None
+        self.hashValue = None
 
 
 class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
@@ -1028,5 +1028,5 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetQcow2HashValueRsp()
 
-        rsp.hash = secret.get_image_hash(cmd.installPath)
+        rsp.hashValue = secret.get_image_hash(cmd.installPath)
         return jsonobject.dumps(rsp)
