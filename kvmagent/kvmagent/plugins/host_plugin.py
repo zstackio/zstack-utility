@@ -1581,7 +1581,7 @@ if __name__ == "__main__":
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
         releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
-        yum_cmd = ""
+        yum_cmd = "yum --enablerepo=* clean all && "
         # If upgrade qemu-kvm and libvirt at the same time
         # you need to upgrade qemu-kvm and then upgrade libvirt
         # to ensure that libvirtd is rebooted after upgrading qemu-kvm
