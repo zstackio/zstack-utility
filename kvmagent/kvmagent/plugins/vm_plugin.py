@@ -7742,8 +7742,8 @@ class VmPlugin(kvmagent.KvmAgent):
         vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=True)
         if os.path.exists("/root/mergefail"):
             raise Exception("on purpose")
-        if vm.state != vm.VM_STATE_RUNNING:
-            rsp.error = 'vm[uuid:%s] is not running, cannot do live snapshot chain merge' % vm.uuid
+        if vm.state not in Vm.SNAPSHOT_VM_STATE_DICT[LIVE_SNAPSHOT]:
+            rsp.error = 'vm[uuid:%s] is not in [running, paused], cannot do live snapshot chain merge' % vm.uuid
             rsp.success = False
             return jsonobject.dumps(rsp)
 
