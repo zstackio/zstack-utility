@@ -1287,7 +1287,7 @@ def login_heartbeat_path(url):
     login.login()
     login.rescan()
 
-    heartbeat_path = login.get_device_path()
+    heartbeat_path = login.retry_get_device_path()
 
     def wait_device_to_show(_):
         return os.path.exists(heartbeat_path)

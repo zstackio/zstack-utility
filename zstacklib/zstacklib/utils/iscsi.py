@@ -59,12 +59,29 @@ class IscsiLogin(object):
 
         return device_path
 
-    def rescan(self):
-        shell.call('iscsiadm -m session --rescan')
+    @staticmethod
+    def rescan():
+        shell.run("timeout 30 iscsiadm -m session -R")
+        shell.run("timeout 120 /usr/bin/rescan-scsi-bus.sh -r")
+        # only affect wwn devices
+        shell.run("udevadm trigger --subsystem-match=block")
 
     def get_device_path(self):
         fnames = os.listdir('/dev/disk/by-id/')
         for fname in fnames:
-            if fname.startswith('scsi-') and fname.endswith(self.disk_id):
-                return os.path.join('/dev/disk/by-id/', fname)
+            if not fname.startswith('wwn-') or not fname.endswith(self.disk_id):
+                continue
+            link_path = os.path.join('/dev/disk/by-id/', fname)
+            dev = os.readlink(link_path)
+            wwid = linux.read_file(os.path.join('/sys/block/', os.path.basename(dev),  'device/wwid'))
+            if self.disk_id in wwid:
+                return link_path
 
+    def retry_get_device_path(self):
+        def _get_device_path(_):
+            return self.get_device_path()
+
+        path = linux.wait_callback_success(_get_device_path, timeout=30, interval=0.5)
+        if not path:
+            raise Exception('unable to find device path for disk id[%s]' % self.disk_id)
+        return path
