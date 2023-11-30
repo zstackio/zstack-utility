@@ -397,9 +397,11 @@ class DhcpEnv(object):
             # add bridge fdb entry for inner dev
             iproute.add_fdb_entry(PHY_DEV, INNER_MAC)
 
+        if DHCP_IP or DHCP6_IP:
+            _add_bridge_fdb_entry_for_inner_dev()
+
         if DHCP_IP is not None:
             _prepare_dhcp4_iptables()
-            _add_bridge_fdb_entry_for_inner_dev()
 
         if DHCP6_IP is not None:
             _prepare_dhcp6_iptables(DHCP_IP is not None)
