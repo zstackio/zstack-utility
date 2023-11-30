@@ -2917,7 +2917,7 @@ class Vm(object):
                 memory_snapshot_path = None
                 if vs_struct.installPath.startswith("/dev/"):
                     lvm.active_lv(vs_struct.installPath)
-                    shell.call("mkfs.ext4 -F %s" % vs_struct.installPath)
+                    shell.call("mkfs.xfs -f %s" % vs_struct.installPath)
                     mount_path = vs_struct.installPath.replace("/dev/", "/tmp/")
                     if not os.path.exists(mount_path):
                         linux.mkdir(mount_path)
