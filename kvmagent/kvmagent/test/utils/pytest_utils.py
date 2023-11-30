@@ -1,7 +1,10 @@
 import os
 import coverage
+import mock
+
 from zstacklib.test.utils import env
 from zstacklib.utils import debug
+from kvmagent.plugins.imagestore import ImageStoreClient
 
 Out_flag = True
 
@@ -26,12 +29,29 @@ class PytestExtension(object):
         PytestExtension.cov.stop()
         PytestExtension.cov.save()
 
+    @staticmethod
+    def setup_modules_mock():
+        modules_to_mock = {
+            ImageStoreClient: {
+                'stop_mirror': None,
+                'query_mirror_volumes': None,
+                'mirror_volume': None,
+            }
+        }
+
+        for k, v in modules_to_mock.items():
+            for m, r in v.items():
+                p = mock.patch.object(k, m, return_value=r)
+                p.start()
+
+
     def setup_class(self):
         self.start_coverage()
+        self.setup_modules_mock()
 
     def teardown_class(self):
         self.stop_coverage()
-
+        
         if Out_flag:
             os._exit(0)
 
