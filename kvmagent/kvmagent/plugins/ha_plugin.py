@@ -12,7 +12,7 @@ from zstacklib.utils import qemu_img
 from zstacklib.utils import ceph
 from zstacklib.utils import sanlock
 from zstacklib.utils import jsonobject
-from vm_plugin import IscsiLogin
+from kvmagent.plugins.vm_plugin import IscsiLogin
 import os.path
 import time
 import traceback
