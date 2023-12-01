@@ -1278,8 +1278,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if cmd.volumeFormat != 'raw':
                 qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, False, cmd.provisioning)
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                    discard = 'preallocation=metadata' in qcow2_options and not lvm.is_slow_discard_lv(install_abs_path)
-                    linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options, discard_on_metadata=discard)
+                    linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
                     linux.qcow2_fill(0, 1048576, install_abs_path)
                     rsp.size = linux.qcow2_virtualsize(install_abs_path)
 
