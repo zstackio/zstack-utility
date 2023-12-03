@@ -536,6 +536,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             finally:
                 self.pvs_in_progress.remove(cmd.vgUuid)
 
+        lvm.refresh_lv_uuid_cache_if_need()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

@@ -225,13 +225,14 @@ def sharedblock_add_disk(vgUuid=None, hostUuid=None, diskUuid=None, allSharedBlo
     }))
 
 @misc.return_jsonobject()
-def sharedblock_migrate_volumes(vgUuid=None, hostUuid=None, migrateVolumeStructs=None, provisioning=None, addons={}):
+def sharedblock_migrate_volumes(vgUuid=None, hostUuid=None, migrateVolumeStructs=None, provisioning=None, volumePath=None, addons={}):
     return get_sharedblock_plugin().migrate_volumes(misc.make_a_request({
         "vgUuid": vgUuid ,# random uuid
         "hostUuid": hostUuid,
         "migrateVolumeStructs":migrateVolumeStructs,
         "provisioning":provisioning,
-        "addons":addons
+        "addons":addons,
+        "volumePath":volumePath
     }))
 
 @misc.return_jsonobject()
