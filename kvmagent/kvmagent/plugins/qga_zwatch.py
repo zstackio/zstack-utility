@@ -30,6 +30,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
     CONFIG_ZWATCH_METRIC_MONITOR = "/host/zwatchMetricMonitor/config"
 
     ZWATCH_RESTART_CMD = "/bin/systemctl restart zwatch-vm-agent.service"
+    ZWATCH_RESTART_CMD_EL6 = "service zwatch-vm-agent restart"
     ZWATCH_VM_INFO_PATH = "/var/log/zstack/vm.info"
     ZWATCH_VM_METRIC_PATH = "/var/log/zstack/vm_metrics.prom"
     ZWATCH_GET_NIC_INFO_PATH = "/usr/local/zstack/zs-tools/nic_info_linux.sh"
@@ -115,7 +116,10 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
             nicInfoStatus = qga.guest_file_is_exist(zwatch_nic_info_path)
             if not nicInfoStatus:
                 return
-            nicInfo = qga.guest_exec_cmd_no_exitcode(zwatch_nic_info_path)
+            if is_windows_2008(qga):
+                nicInfo = get_nic_info_for_windows_2008(uuid, qga)
+            else:
+                nicInfo = qga.guest_exec_cmd_no_exitcode(zwatch_nic_info_path)
             nicInfo = str(nicInfo).strip()
             need_update = False
             if not self.vm_nic_info.get(uuid):
@@ -144,6 +148,9 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                     zwatch_vm_info_path = self.ZWATCH_VM_INFO_PATH
                     zwatch_vm_metric_path = self.ZWATCH_VM_METRIC_PATH
                     zwatch_restart_cmd = self.ZWATCH_RESTART_CMD
+                    # centos version 6.x need special cmd
+                    if qga.os_version == '6':
+                        zwatch_restart_cmd = self.ZWATCH_RESTART_CMD_EL6
                 dhcpStatus = not qga.guest_file_is_exist(zwatch_vm_info_path)
                 _, qgaZWatch = qga.guest_file_read(zwatch_vm_info_path)
                 # skip when dhcp enable
@@ -309,3 +316,50 @@ def push_metrics_to_gateway(url, uuid, metrics):
     }
     rsp = http.json_post(url, body=metrics, headers=headers)
     logger.debug('vm[%s] push metric with rsp[%s]' % (uuid, rsp))
+
+
+def is_windows_2008(qga):
+    return qga.os and 'mswindows' in qga.os and '2008r2' in qga.os_version
+
+
+def subnet_mask_to_prefix_length(mask):
+    return sum(bin(int(x)).count('1') for x in mask.split('.'))
+
+
+def get_nic_info_for_windows_2008(uuid, qga):
+    exitcode, ret_data = qga.guest_exec_wmic(
+        "nicconfig where IPEnabled=True get InterfaceIndex, IPaddress, IPSubnet, MACAddress /FORMAT:csv")
+    if exitcode != 0:
+        logger.debug('vm[%s] get nic info failed: %s' % (uuid, ret_data))
+        return None
+
+    lines = ret_data.replace('\r', '').strip().split('\n')
+    mac_to_ip = {}
+    for line in lines:
+        logger.debug('vm[%s] get nic info line: [%s]' % (uuid, line))
+        columns = line.split(',')
+        if len(columns) < 5:
+            logger.debug('vm[%s] skipping line: [%s]' % (uuid, line))
+            continue
+        else:
+            raw_ip_addresses = columns[2].strip('{}').split(';')
+            raw_ip_subnets = columns[3].strip('{}').split(';')
+            mac_address = columns[4].strip().lower()
+
+            if not len(mac_address.split(':')) == 6:
+                continue
+
+            ip_addresses_with_subnets = []
+            for ip, subnet in zip(raw_ip_addresses, raw_ip_subnets):
+                if '.' in subnet:  # Check if this is an IPv4 subnet mask
+                    prefix_length = subnet_mask_to_prefix_length(subnet)
+                    ip_addresses_with_subnets.append("{}/{}".format(ip, prefix_length))
+                else:  # Assume this is an IPv6 subnet in prefix length format
+                    ip_addresses_with_subnets.append("{}/{}".format(ip, subnet))
+
+            mac_to_ip[mac_address] = ip_addresses_with_subnets
+
+    mac_to_ip_json = json.dumps(mac_to_ip, indent=4)
+    logger.debug('vm[%s] get nic info all: [%s]' % (uuid, mac_to_ip_json))
+    return mac_to_ip_json
+
