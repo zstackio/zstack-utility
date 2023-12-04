@@ -40,3 +40,5 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
         rsp = vm_utils.attach_vm_nic(cmd)
         self.assertEqual(True, rsp.success, rsp.error)
 
+        # clean
+        self._destroy_vm(vm_uuid)

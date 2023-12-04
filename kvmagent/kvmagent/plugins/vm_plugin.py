@@ -5894,13 +5894,19 @@ class Vm(object):
                 if r == 0 and o.strip() != "":
                     return o.strip()
 
-            if cmd.nestedVirtualization in ['host-passthrough', 'none']:
-                root = elements['root']
-                libvirtXml = etree.tostring(root)
-                cpuFlags = get_cpu_flags_from_xml(libvirtXml)
-                if not cpuFlags:
-                    return
+            if cmd.nestedVirtualization not in ['host-passthrough', 'none']:
+                return
+            
+            root = elements['root']
+            libvirtXml = etree.tostring(root)
+            cpuFlags = get_cpu_flags_from_xml(libvirtXml)
 
+            # qemu64 is used for x86_64 guests, when no -cpu argument is given to QEMU, 
+            # or no <cpu> is provided in libvirt XML.
+            if not cpuFlags and cmd.nestedVirtualization == 'none':
+                cpuFlags = "qemu64"
+
+            if cpuFlags:
                 qcmd = e(root, 'qemu:commandline')
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
                 e(qcmd, "qemu:arg", attrib={"value": "{},vendor={}".format(cpuFlags, cmd.vmCpuVendorId)})

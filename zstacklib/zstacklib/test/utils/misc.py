@@ -1,7 +1,6 @@
 import functools
 import os
 import uuid as uid
-import simplejson
 import env
 from zstacklib.utils import jsonobject, log
 from zstacklib.utils.http import REQUEST_BODY
@@ -17,7 +16,7 @@ def make_a_request(body):
     # type: (dict) -> dict
 
     return {
-        REQUEST_BODY: simplejson.dumps(body, ensure_ascii=True)
+        REQUEST_BODY: jsonobject.dumps(body)
     }
 
 
