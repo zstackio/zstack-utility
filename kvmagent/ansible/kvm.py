@@ -209,7 +209,7 @@ def install_kvm_pkg():
                            'edac-utils')
 
         releasever_mapping = {
-            'c74': 'qemu-kvm-ev ',
+            'c74': 'qemu-kvm ',
             'c76': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
             'c79': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
             'h76c': ('%s qemu-kvm libvirt-admin seabios-bin nping '
@@ -436,11 +436,12 @@ def install_kvm_pkg():
         rpm_deprecated = {
             "x86_64_c76": "",
             "x86_64_c79": "",
+            "x86_64_c74": "",
         }
 
         rpm_deprecated_list = rpm_deprecated.get(host_info.host_arch + releasever, "")
         # new-add host
-        if releasever in ['c76', 'c79', 'h76c', 'h79c'] and "qemu-kvm" not in skip_packages:
+        if releasever in ['c76', 'c79', 'h76c', 'h79c', 'c74'] and "qemu-kvm" not in skip_packages:
             rpm_deprecated_list += " qemu-img-ev qemu-kvm-ev qemu-kvm-common-ev"
 
         for rpm in rpm_deprecated_list.split():
