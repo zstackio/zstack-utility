@@ -1438,7 +1438,7 @@ def _active_lv(path, shared=False):
 
     # if lv does not have a lock, we will try to reactivate it
     if os.path.exists(path) and lv_lock_not_exists():
-        _deactive_lv(path, raise_exception=False)
+        bash.bash_r("lvchange -an %s" % path)
 
     active()
 
