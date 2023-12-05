@@ -145,7 +145,8 @@ class VmConfigPlugin(kvmagent.KvmAgent):
     VM_QGA_SET_HOSTNAME_EL6 = "/usr/local/zstack/zs-tools/set_hostname_linux_el6.py"
     VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
         VmQga.VM_OS_LINUX_CENTOS: ("6", "7", "8"),
-        VmQga.VM_OS_LINUX_KYLIN: ("4", "v7", "v10",),
+        VmQga.VM_OS_LINUX_NEO_KYLIN: ("v7",),
+        VmQga.VM_OS_LINUX_KYLIN: ("4", "v10",),
         VmQga.VM_OS_LINUX_UOS: ("20",),
         VmQga.VM_OS_LINUX_OPEN_SUSE: ("12", "15",),
         VmQga.VM_OS_LINUX_SUSE_S: ("12", "15",),
@@ -156,7 +157,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         VmQga.VM_OS_LINUX_DEBIAN: ("9", "10",),
         VmQga.VM_OS_LINUX_FEDORA: ("30", "31",),
         VmQga.VM_OS_LINUX_OPENEULER: ("20", "22",),
-        VmQga.VM_OS_WINDOWS: ("10", "2012", "2012r2", "2016", "2019", "2022", "2008r2",)
+        VmQga.VM_OS_WINDOWS: ("10", "10.0", "2012", "2012r2", "2016", "2019", "2022", "2008r2",)
     }
 
     @lock.lock('config_vm_by_qga')
