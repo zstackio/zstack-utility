@@ -90,6 +90,7 @@ class VmQga(object):
     QGA_STATE_NOT_RUNNING = "NotRunning"
 
     VM_OS_LINUX_KYLIN = "kylin"
+    VM_OS_LINUX_NEO_KYLIN = "neokylin"
     VM_OS_LINUX_UOS = "uos"
     VM_OS_LINUX_UBUNTU = "ubuntu"
     VM_OS_LINUX_CENTOS = "centos"
@@ -460,7 +461,8 @@ class VmQga(object):
         if ret and "id" in ret and "version-id" in ret:
             vm_os = ret["id"].lower()
             version = ret["version-id"].lower().split(".")[0]
-            return vm_os, version
+            kernel_version = ret["kernel-version"].lower().split(".")[0]
+            return vm_os, version, kernel_version
         raise Exception('get vm %s os info failed' % self.vm_uuid)
 
     def guest_get_os_id_like(self):
@@ -537,9 +539,11 @@ class VmQga(object):
         try:
             if 'guest-get-osinfo' in self.supported_commands and \
                     self.supported_commands['guest-get-osinfo']:
-                self.os, self.os_version = self.guest_exec_get_os_info()
+                self.os, self.os_version, kernel_version = self.guest_exec_get_os_info()
                 if self.os == VmQga.VM_OS_WINDOWS:
                     self.os_id_like = "windows"
+                    if 'n/a' in self.os_version:
+                        self.os_version = kernel_version
                 else:
                     self.os_id_like = self.guest_get_os_id_like()
             else:
