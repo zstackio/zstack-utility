@@ -46,7 +46,6 @@ IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
 ONE_HOUR_IN_SEC = 60 * 60
-ZYJ_FLAG_PATH = "/etc/.zyj.flag"
 
 lv_offset = TTLCache(maxsize=100, ttl=ONE_HOUR_IN_SEC)
 
@@ -577,7 +576,7 @@ def modify_sanlock_config(key, value):
 
 
 def config_lvmlockd(io_timeout=40):
-    if not os.path.exists(ZYJ_FLAG_PATH):
+    if not linux.is_zyj():
         content = """[Unit]
 Description=LVM2 lock daemon
 Documentation=man:lvmlockd(8)
