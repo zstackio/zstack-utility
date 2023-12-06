@@ -2423,6 +2423,12 @@ class Vm(object):
 
     def get_migratable_xml(self):
         try:
+            libvirt_version, libvirt_release = linux.get_libvirt_rpm_info()
+            if ((libvirt_version != '' and libvirt_release != '')
+                and (LooseVersion(libvirt_version) == LooseVersion('6.0.0'))
+                and (LooseVersion(libvirt_release) < LooseVersion('560'))):
+                return self.domain_xml
+
             return self.domain.XMLDesc(libvirt.VIR_DOMAIN_XML_MIGRATABLE)
         except Exception as e:
             logger.warn("unable to get migratable xml for vm[uuid:%s], %s" % (self.uuid, str(e)))
