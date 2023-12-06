@@ -473,31 +473,46 @@ def sshfs_mount_with_vm_xml(vm_xml_obj, username, hostname, port, password, url,
     return sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth, not is_aio, uid)
 
 def sshfs_mount(username, hostname, port, password, url, mountpoint, writebandwidth=None, direct_io=True, uid=0):
+    cmd = ""
     fd, fname = tempfile.mkstemp()
     os.chmod(fname, 0o500)
 
     if not writebandwidth:
-        os.write(fd,
-                 "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
-                 "-o StrictHostKeyChecking=no "
-                 "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
-                 shellquote(password), port))
+        if is_zyj():
+            cmd = "/usr/bin/sshpass -p %s ssh " \
+                  "-o StrictHostKeyChecking=no " \
+                  "-o UserKnownHostsFile=/dev/null -p %d -x -a -oClearAllForwardings=yes -ocompression=no -2" % (
+                  shellquote(password), port)
+        else:
+            os.write(fd,
+                     "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
+                     "-o StrictHostKeyChecking=no "
+                     "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
+                     shellquote(password), port))
     else:
-        os.write(fd,
-                 "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
-                 "-o 'ProxyCommand pv -q -L %sk | nc %s %s' "
-                 "-o StrictHostKeyChecking=no "
-                 "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
-                     shellquote(password), writebandwidth / 1024 / 8, hostname, port, port))
+        if is_zyj():
+            cmd = "/usr/bin/sshpass -p %s ssh " \
+                  "-o 'ProxyCommand pv -q -L %sk | nc %s %s' " \
+                  "-o StrictHostKeyChecking=no " \
+                  "-o UserKnownHostsFile=/dev/null -p %d -x -a -oClearAllForwardings=yes -ocompression=no -2" % (
+                      shellquote(password), writebandwidth / 1024 / 8, hostname, port, port)
+        else:
+            os.write(fd,
+                     "#!/bin/bash\n/usr/bin/sshpass -p %s ssh "
+                     "-o 'ProxyCommand pv -q -L %sk | nc %s %s' "
+                     "-o StrictHostKeyChecking=no "
+                     "-o UserKnownHostsFile=/dev/null -p %d $*\n" % (
+                         shellquote(password), writebandwidth / 1024 / 8, hostname, port, port))
 
     os.close(fd)
 
     allow = 'allow_root' if uid == 0 else 'allow_other'
+    ssh_command = fname if not is_zyj() else cmd
     try:
         if direct_io:
-            ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o %s,direct_io,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, allow, fname))
+            ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o %s,direct_io,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, allow, ssh_command))
         else:
-            ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o %s,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, allow, fname))
+            ret = shell.check_run("/usr/bin/sshfs %s@%s:%s %s -o %s,compression=no,ssh_command='%s'" % (username, hostname, url, mountpoint, allow, ssh_command))
     finally:
         os.remove(fname)
     return ret
@@ -1247,6 +1262,9 @@ def download_chain_from_filesystem(converter, first_node_path, dst_vol_dir, over
     download(first_node_path)
     return downloaded_chain_info
 
+def is_zyj():
+    path = "/etc/.zyj.flag"
+    return os.path.exists(path)
 
 def rmdir_if_empty(dirpath):
     try:

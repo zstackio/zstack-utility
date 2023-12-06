@@ -24,7 +24,6 @@ collector_dict = {}  # type: Dict[str, threading.Thread]
 latest_collect_result = {}
 collectResultLock = threading.RLock()
 QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
-ZYJ_FLAG_PATH = "/etc/.zyj.flag"
 
 def read_number(fname):
     res = linux.read_file(fname)
@@ -885,7 +884,7 @@ WantedBy=multi-user.target
 ''' % (service_name, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log, binPath)
 
             def update_service_content():
-                if os.path.exists(ZYJ_FLAG_PATH):
+                if linux.is_zyj():
                     return
 
                 if not os.path.exists(service_path):
