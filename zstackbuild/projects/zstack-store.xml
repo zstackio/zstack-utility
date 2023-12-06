@@ -18,7 +18,7 @@
 
         <exec executable="make" dir="${imagestore.source}" failonerror="true">
             <arg value="package" />
-            <arg value="ARCH=amd64 arm64 mips64le" />
+            <arg value="ARCH=amd64 arm64 mips64le loong64" />
         </exec>
 
         <copy todir="${imagestore.bdir}/">
