@@ -16,6 +16,7 @@
 
         <exec executable="make" dir="${zstacksharedblock.source}" failonerror="true">
             <arg value="package" />
+            <arg value="ARCH= amd64 arm64 mips64le loong64" />
         </exec>
 
         <copy todir="${zsblk.bdir}/">
