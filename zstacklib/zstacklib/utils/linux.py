@@ -2506,6 +2506,18 @@ def get_libvirt_version():
     return shell.call("libvirtd --version").split()[-1]
 
 
+def get_libvirt_rpm_info():
+    cmd_get_version = shell.ShellCmd("rpm -q --qf '%{VERSION}' libvirt")
+    cmd_get_version(False)
+    cmd_get_release = shell.ShellCmd("rpm -q --qf '%{RELEASE}' libvirt")
+    cmd_get_release(False)
+    if cmd_get_version.return_code != 0 or cmd_get_release.return_code != 0:
+        return '', ''
+    libvirt_release = cmd_get_release.stdout.strip().split('.')[0]
+    libvirt_version = cmd_get_version.stdout.strip()
+    return libvirt_version, libvirt_release
+
+
 def get_unmanaged_vms(include_not_zstack_but_in_virsh = False):
     libvirt_uuid_pattern = "'[0-9a-z]{8}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{4}-[0-9a-z]{12}'"
     cmd = shell.ShellCmd("pgrep -a 'qemu-kvm|qemu-system' | grep -E -o '\-uuid %s' | awk '{print $2}'" % libvirt_uuid_pattern)
