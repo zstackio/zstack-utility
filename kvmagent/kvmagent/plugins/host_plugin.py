@@ -3205,7 +3205,7 @@ done
 
     @property
     def qemu_version(self):
-        return qemu.get_version_from_exe_file(qemu.get_path(), error_out=True)
+        return qemu.get_version()
 
     def start(self):
         self.host_uuid = None
