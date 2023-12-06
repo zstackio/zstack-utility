@@ -105,7 +105,7 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if host_info.distro in RPM_BASED_OS:
-    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace nvme-cli"
+    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace sg3_utils nvme-cli"
 
     releasever_mapping = {
         'h84r': ' collectd-disk pyparted',
@@ -113,8 +113,8 @@ if host_info.distro in RPM_BASED_OS:
     }
 
     for k in kylin:
-        releasever_mapping[k] = ' python2-pyparted nettle'
-    qemu_pkg += releasever_mapping.get(releasever, ' pyparted')
+        releasever_mapping[k] = ' python2-pyparted nettle open-iscsi'
+    qemu_pkg += releasever_mapping.get(releasever, ' pyparted iscsi-initiator-utils')
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         qemu_pkg += ' qemu-img'
