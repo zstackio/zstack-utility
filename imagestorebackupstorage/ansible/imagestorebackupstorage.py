@@ -109,7 +109,7 @@ run_remote_command(command, host_post_info)
 
 if host_info.distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar net-tools"
-    qemu_pkg = qemu_pkg + ' python2-pyparted nettle' if releasever in kylin else qemu_pkg + ' pyparted'
+    qemu_pkg = qemu_pkg + ' python2-pyparted nettle open-iscsi' if releasever in kylin else qemu_pkg + ' pyparted iscsi-initiator-utils'
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         pkg = 'qemu-img-ev' if releasever in ['c74'] else 'qemu-img'
