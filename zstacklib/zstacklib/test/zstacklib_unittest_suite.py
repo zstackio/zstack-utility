@@ -18,6 +18,7 @@ class TestZStacklibUnittest(TestCase):
         return
 
     @pytest_utils.ztest_decorater
+    @bash.in_bash
     def test_zstacklib_with_unittest(self):
         r, o, e = bash.bash_roe("cd %s; python -m unittest discover -s %s" % (os.path.join(env.ZSTACK_UTILITY_SOURCE_DIR, 'zstacklib/'), os.path.join(env.ZSTACK_UTILITY_SOURCE_DIR, 'zstacklib/zstacklib/test/')))
         if r == 0:
