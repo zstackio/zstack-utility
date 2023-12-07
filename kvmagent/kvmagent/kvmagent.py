@@ -157,6 +157,8 @@ def replyerror(func):
 
 
 def deleteImage(path):
+     if zeroed:
+        linux.zeroed_file_dev(path)
      linux.rm_file_checked(path)
      logger.debug('successfully delete %s' % path)
      if (path.endswith('.qcow2')):
