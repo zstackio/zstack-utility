@@ -3,7 +3,10 @@ from kvmagent.test.utils import vm_utils, network_utils, pytest_utils
 from kvmagent.test.utils.stub import *
 from zstacklib.test.utils import misc
 from zstacklib.utils import sizeunit
+from zstacklib.utils import log
 from unittest import TestCase
+
+logger = log.get_logger(__name__)
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
@@ -27,6 +30,11 @@ class TestApplyMemoryBalloon(TestCase, vm_utils.VmPluginTestStub):
         vm = vm_utils.create_startvm_body_jsonobject()
         vm.useNuma = False
         vm_utils.create_vm(vm)
+        r, o = bash.bash_ro("virsh dommemstat %s | grep 'usable'" % vm.vmInstanceUuid)
+        if r != 0:
+            logger.debug("skip test_vm_apply_memory_balloon")
+            return
+
         mem_size = vm.memory - vm.memory * 5 / 100
 
         vm_utils.apply_memory_balloon([vm.vmInstanceUuid], 'Decrease', 5)
