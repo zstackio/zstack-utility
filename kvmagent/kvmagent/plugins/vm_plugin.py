@@ -3316,6 +3316,8 @@ class Vm(object):
             xml = etree.tostring(snapshot)
             logger.debug('creating snapshot for vm[uuid:{0}] volume[id:{1}]:\n{2}'.format(self.uuid, device_id, xml))
             snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA
+            if os.path.exists(install_path):
+                snap_flags = snap_flags | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_REUSE_EXT
 
             try:
                 self.domain.snapshotCreateXML(xml, snap_flags)
@@ -5941,15 +5943,15 @@ def get_vm_migration_caps(domain_id, cap_key):
 
 
 def check_mirror_jobs(domain_id, migrate_without_bitmaps):
-    if not get_vm_migration_caps(domain_id, "dirty-bitmaps"):
-        return
-
     isc = ImageStoreClient()
     volumes = isc.query_mirror_volumes(domain_id)
     if volumes:
         for v in volumes.keys():
             logger.info("stop mirror for %s:%s" % (domain_id, v))
             isc.stop_mirror(domain_id, False, v)
+
+    if not get_vm_migration_caps(domain_id, "dirty-bitmaps"):
+        return
 
     if migrate_without_bitmaps:
         execute_qmp_command(domain_id, '{"execute": "migrate-set-capabilities","arguments":'
@@ -7959,6 +7961,16 @@ host side snapshot files chian:
                 lastVolume = cmd.lastMirrorVolume
                 currVolume = installPath.split(":/")[-1]
                 volumeType = "qcow2"
+
+            try:
+                vm = get_vm_by_uuid(cmd.vmUuid)
+                states = vm.domain.jobStats()
+                if libvirt.VIR_DOMAIN_JOB_DATA_REMAINING in states and libvirt.VIR_DOMAIN_JOB_DATA_TOTAL in states:
+                    rsp.error = "domain already has migrate job, cannot do drive mirror right now."
+                    rsp.success = False
+                    return jsonobject.dumps(rsp)
+            except libvirt.libvirtError:
+                pass
 
             try:
                 volumes = isc.query_mirror_volumes(cmd.vmUuid)
