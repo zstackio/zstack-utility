@@ -465,6 +465,13 @@ class VmSyncResponse(kvmagent.AgentResponse):
         self.vmInShutdowns = None
 
 
+last_inactive_vol_paths = {}  # type: dict[str, set[str]]
+class VolumeSyncResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(VolumeSyncResponse, self).__init__()
+        self.inactiveVolumePaths = {}  # type: dict[str, list[str]]
+
+
 class AttachDataVolumeCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(AttachDataVolumeCmd, self).__init__()
@@ -918,7 +925,7 @@ class GetVirtualizerInfoRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVirtualizerInfoRsp, self).__init__()
         self.hostInfo = VirtualizerInfoTO()
-        self.vmInfoList = [] # type: VirtualizerInfoTO[]
+        self.vmInfoList = []  # type: list[VirtualizerInfoTO]
 
 class VirtualizerInfoTO(object):
     def __init__(self):
@@ -6377,6 +6384,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ONLINE_INCREASE_MEMORY_PATH = "/vm/increase/mem"
     KVM_GET_CONSOLE_PORT_PATH = "/vm/getvncport"
     KVM_VM_SYNC_PATH = "/vm/vmsync"
+    KVM_VOLUME_SYNC_PATH = "/vm/volumesync"
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
@@ -7100,6 +7108,44 @@ class VmPlugin(kvmagent.KvmAgent):
         for vm in no_qemu_process_running_vms:
             rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @lock.lock('volume-sync-task')
+    def volume_sync(self, req):
+        rsp = VolumeSyncResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        global last_inactive_vol_paths
+        current_inactive_vol_paths = {}  # type: dict[str, set[str]]
+
+        def get_inactive_vols_from_file_path(fpath):
+            file_dir = fpath if os.path.isdir(fpath) else os.path.dirname(fpath)
+            o = bash.bash_o('grep -Eo "%s[_/a-z0-9\\-]*" %s' % (file_dir, os.path.join(linux.LIVE_LIBVIRT_XML_DIR, "*.xml")))
+            active_vol_paths = set(line.split(":")[-1].strip() for line in o.splitlines())
+
+            file_name = "" if os.path.isdir(fpath) else os.path.basename(fpath)
+            wildcard_name = file_name if "*" in file_name else "%s*" % file_name
+            all_vol_paths = set(glob.glob(os.path.join(file_dir, wildcard_name)))
+
+            return all_vol_paths - active_vol_paths
+
+        for storage_url in cmd.storagePaths:
+            # TODO support other protocols
+            if storage_url.startswith("file://"):
+                inactive_vol_paths = get_inactive_vols_from_file_path(storage_url[7:])
+            else:
+                inactive_vol_paths = set()
+
+            current_inactive_vol_paths[storage_url] = inactive_vol_paths
+
+        for storage_url in current_inactive_vol_paths:
+            if storage_url in last_inactive_vol_paths:
+                twice_inactive_vol_paths = current_inactive_vol_paths[storage_url] & last_inactive_vol_paths[storage_url]
+                if twice_inactive_vol_paths:
+                    rsp.inactiveVolumePaths[storage_url] = list(twice_inactive_vol_paths)
+
+        last_inactive_vol_paths = current_inactive_vol_paths
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -10313,6 +10359,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_ONLINE_INCREASE_CPU_PATH, self.online_increase_cpu)
         http_server.register_async_uri(self.KVM_ONLINE_INCREASE_MEMORY_PATH, self.online_increase_mem)
         http_server.register_async_uri(self.KVM_VM_SYNC_PATH, self.vm_sync)
+        http_server.register_async_uri(self.KVM_VOLUME_SYNC_PATH, self.volume_sync)
         http_server.register_async_uri(self.KVM_ATTACH_VOLUME, self.attach_data_volume)
         http_server.register_async_uri(self.KVM_DETACH_VOLUME, self.detach_data_volume)
         http_server.register_async_uri(self.KVM_ATTACH_ISO_PATH, self.attach_iso)
