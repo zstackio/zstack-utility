@@ -4358,7 +4358,7 @@ class Vm(object):
             root = elements['root']
             qcmd = e(root, 'qemu:commandline')
             vendor_id, model_name = linux.get_cpu_model()
-            if bash.bash_r('getenforce | grep -i dis') != 0:
+            if linux.is_zyj():
                 e(qcmd, "qemu:arg", attrib={"value": "--device"})
                 e(qcmd, "qemu:arg", attrib={"value": "lkmc_pci,addr=1c.0"})
                 e(qcmd, "qemu:arg", attrib={"value": "--device"})
