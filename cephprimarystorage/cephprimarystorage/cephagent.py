@@ -1083,10 +1083,15 @@ class CephAgent(plugin.TaskManager):
         def do_deletion():
             shell.call('rbd rm %s' % path)
 
-        def do_zeroed():
-            nbd_dev = nbd.connect(path)
-            linux.zeroed_file_dev(nbd_dev)
-            nbd.disconnect(nbd_dev)
+        def do_zeroed(path):
+            try:
+                nbd_dev = nbd.connect(path)
+                linux.zeroed_file_dev(nbd_dev)
+            except Exception as e:
+                logger.warn('Failed to zero out device %s: %s' % (nbd_dev, str(e)))
+            finally:
+                if 'nbd_dev' in locals():
+                    nbd.disconnect(nbd_dev)
 
         if cmd.zeroed:
             do_zeroed(path)
