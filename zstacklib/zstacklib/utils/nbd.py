@@ -54,7 +54,7 @@ def connect(src):
     return nbd_dev
 
 def disconnect(nbd_dev):
-    shell.call("qemu-nbd -d {}".format(ndb_dev))
+    shell.call("qemu-nbd -d {}".format(nbd_dev))
     nbd_id = nbd_dev.lstrip("/dev/").replace("nbd", "")
     if not check_nbd_dev_empty(nbd_id):
-        raise Exception("Nbd device {} is disconnected, but size is not empty.")
+        raise Exception("Nbd device {} is disconnected, but size is not empty.".format(nbd_dev))
