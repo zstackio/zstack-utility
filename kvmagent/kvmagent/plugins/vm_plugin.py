@@ -3675,9 +3675,16 @@ class Vm(object):
         elif cmd.storageMigrationPolicy == 'IncCopy':
             flag |= libvirt.VIR_MIGRATE_NON_SHARED_INC
 
+        def is_external_shared_storage():
+            from zstacklib.utils.linux import get_fs_type
+            share_list_type = ["fuseblk"] 
+            vdisk_source_type = (get_fs_type(s) for s in self.list_blk_sources())
+            if any(s.startswith('/dev/') for s in self.list_blk_sources()) or any(item in share_list_type for item in vdisk_source_type):
+                return True
+
         # to workaround libvirt bug (c.f. RHBZ#1494454)
         if LIBVIRT_MAJOR_VERSION >= 4:
-            if any(s.startswith('/dev/') for s in self.list_blk_sources()):
+            if is_external_shared_storage():
                 flag |= libvirt.VIR_MIGRATE_UNSAFE
 
         if cmd.useNuma or storage_migration_required:
