@@ -108,7 +108,7 @@ command = 'if [ -d /opt/zstack/chroot/usr/lib64 ]; then grep -c  "^/opt/zstack/c
 run_remote_command(command, host_post_info)
 
 if host_info.distro in RPM_BASED_OS:
-    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools"
+    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools sg3_utils nvme-cli"
     qemu_pkg = qemu_pkg + ' python2-pyparted nettle open-iscsi' if releasever in kylin else qemu_pkg + ' pyparted iscsi-initiator-utils'
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
