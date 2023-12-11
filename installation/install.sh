@@ -44,6 +44,7 @@ REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
 UPGRADE='n'
 FORCE='n'
+ZSV_INSTALL='n'
 MINI_INSTALL='n'
 CUBE_INSTALL='n'
 SANYUAN_INSTALL='n'
@@ -136,16 +137,10 @@ SETUP_EPEL=''
 CONSOLE_PROXY_ADDRESS=''
 CURRENT_VERSION=''
 
-DEPLOY_CONFIG_PATH='./deploy.properties'
-ZSV_INSTALL='n'
-if [ -s "$DEPLOY_CONFIG_PATH" ]; then
-    grep "deploy.mode" $DEPLOY_CONFIG_PATH | grep "ZSV" &> /dev/null && ZSV_INSTALL='y'
-fi
-
 LICENSE_PATH=''
 LICENSE_FILE='zstack-license'
 LICENSE_FOLDER='/var/lib/zstack/license/'
-ZSTACK_TRIAL_LICENSE='./zstack_trial_license'
+ZSTACK_TRIAL_LICENSE=''
 ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 
 DEFAULT_MN_PORT='8080'
@@ -2403,12 +2398,11 @@ iz_upgrade_zsphere_tools(){
 }
 
 inner_install_zsphere_tools(){
-    ZSV_SOURCE_DIR=/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zsphere_config
     ZSV_CONFIG_DIR=$ZSTACK_HOME/WEB-INF/classes/zsphere_config
 
     /bin/rm -rf $ZSV_CONFIG_DIR
     mkdir -p $ZSV_CONFIG_DIR
-    /bin/cp -f $ZSV_SOURCE_DIR/version $ZSV_CONFIG_DIR/version
+    /bin/cp -f $ZSV_SOURCE_FILE $ZSV_CONFIG_DIR/version
 }
 
 install_zstack(){
@@ -3888,10 +3882,6 @@ do
     esac
 done
 
-if [ x"$ZSV_INSTALL" = x"y" ] && [ x"$CUBE_INSTALL" = x"y" ];then
-    fail2 "\n\tYou can not install use both cube and zsv mode.\n\n"
-fi
-
 # Fix bug ZSTAC-14090
 [ $# -eq $((OPTIND-1)) ] || usage
 OPTIND=1
@@ -3920,6 +3910,15 @@ if [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ]; then
     else
         check_zstack_release
     fi
+fi
+
+ZSV_SOURCE_FILE=/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zsphere_config/version
+if [ -s "$ZSV_SOURCE_FILE" ]; then
+    ZSV_INSTALL='y'
+fi
+
+if [ x"$ZSV_INSTALL" = x"y" ] && [ x"$CUBE_INSTALL" = x"y" ];then
+    fail2 "\n\tYou can not install use both cube and zsv mode.\n\n"
 fi
 
 if [ ! -z $ZSTACK_PKG_MIRROR ]; then
@@ -3988,9 +3987,9 @@ fi
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
 # Copy zstack trial license into /var/lib/zstack/license
+ZSTACK_TRIAL_LICENSE="/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/license/zstack_trial_license"
 if [ -f $ZSTACK_TRIAL_LICENSE ]; then
-  mkdir -p /var/lib/zstack/license
-  /bin/cp -f $ZSTACK_TRIAL_LICENSE /var/lib/zstack/license/zstack_trial_license
+  mkdir -p $LICENSE_FOLDER && /bin/cp -f $ZSTACK_TRIAL_LICENSE $LICENSE_FOLDER || fail "Failed to copy ZStack trial license to $LICENSE_FOLDER"
 fi
 
 if [ -f $PRODUCT_TITLE_FILE ]; then
