@@ -326,6 +326,12 @@ def install_kvm_pkg():
             host_post_info.post_label = "ansible.shell.install.pkg"
             host_post_info.post_label_param = dep_list
             run_remote_command(command, host_post_info)
+
+            if releasever == 'ns10':
+                if host_info.host_arch == 'loongarch64' and yum_check_package("qemu", host_post_info):
+                    command = "yum --disablerepo=* --enablerepo={0} install -y qemu-block-rbd;".format(zstack_repo)
+                    host_post_info.post_label_param = "qemu-block-rbd"
+                    run_remote_command(command, host_post_info)
         else:
             # name: install kvm related packages on RedHat based OS from online
             for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',

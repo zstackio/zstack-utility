@@ -5869,7 +5869,6 @@ class ScanDatabaseBackupCmd(Command):
 
 def runImageStoreCliCmd(raw_bs_url, registry_port, command, is_exception=True):
     ZSTORE_CLI_PATH = "/usr/local/zstack/imagestore/bin/zstcli"
-    ZSTORE_CLI_PATH = "GODEBUG=x509ignoreCN=0 " + ZSTORE_CLI_PATH if platform.machine() == 'loongarch64' else ZSTORE_CLI_PATH
     ZSTORE_CLI_CA = "/var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem"
     ZSTORE_DEF_PORT = 8000
 

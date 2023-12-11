@@ -4292,7 +4292,7 @@ class Vm(object):
 
             def on_loongarch64():
                 e(os, 'type', 'hvm', attrib={'arch': 'loongarch64', 'machine': 'loongson7a'})
-                e(os, 'loader', '/usr/share/qemu-kvm/loongarch_bios.bin', attrib={'readonly': 'yes', 'type': 'rom'})
+                e(os, 'loader', '{}loongarch_bios.bin'.format(qemu.get_bin_dir()), attrib={'readonly': 'yes', 'type': 'rom'})
 
             VmPlugin.clean_vm_firmware_flash(cmd.vmInstanceUuid)
             eval("on_{}".format(host_arch))()

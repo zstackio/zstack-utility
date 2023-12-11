@@ -24,6 +24,16 @@ def get_path():
             % HOST_ARCH)
 
 
+def get_bin_dir():
+    if os.path.exists('/usr/share/qemu-kvm/'):
+        return '/usr/share/qemu-kvm/'
+    elif os.path.exists('/usr/share/qemu/'):
+        return '/usr/share/qemu/'
+    else:
+        raise Exception(
+            'Could not find qemu/qemu-kvm bin directory in /usr/share/qemu-kvm/ or /usr/share/qemu/')
+
+
 def get_version():
     version = shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'", False).strip()
 
