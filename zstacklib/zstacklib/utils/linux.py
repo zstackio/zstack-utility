@@ -2601,13 +2601,13 @@ def read_nic_carrier(path):
 
 def read_file_lines(path):
     if not os.path.exists(path):
-        return None
+        return []
     try:
         with open(path, 'r') as fd:
             return fd.readlines()
     except IOError as e:
         logger.error(e)
-        return None
+        return []
 
 
 def filter_file_lines_by_regex(path, regex):
