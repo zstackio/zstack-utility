@@ -2300,12 +2300,13 @@ done
         pci_device_mapper = {}
         pci_config_path = '/etc/pci_config'
 
-        for line in linux.read_file_lines(pci_config_path):
-            parts = line.strip().split(':')
-            if len(parts) == 2:
-                key = parts[0].strip()
-                value = parts[1].strip()
-                pci_device_mapper[key] = value
+        with open(pci_config_path, 'r') as file:
+            for line in file.readlines():
+                parts = line.strip().split(':')
+                if len(parts) == 2:
+                    key = parts[0].strip()
+                    value = parts[1].strip()
+                    pci_device_mapper[key] = value
 
         # parse lspci output
         for part in o.split('\n\n'):
