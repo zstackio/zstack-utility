@@ -2201,7 +2201,14 @@ def release_mysql_lock(lock_name, mn_ip):
     if connection_id == 'NULL' or connection_id == '-1' or connection_id == '0':
         return
 
-    result = mysql("SELECT count(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE ID = %s and HOST like '%s%%'" % (connection_id, mn_ip), db_hostname=access_db_hostname)
+    default_ip = get_default_ip()
+    if default_ip and default_ip != mn_ip:
+        result = mysql("SELECT count(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE ID = %s and (HOST like '%s%%' or HOST like '%s%%')" % (
+                connection_id, mn_ip, default_ip), db_hostname=access_db_hostname)
+    else:
+        result = mysql("SELECT count(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE ID = %s and HOST like '%s%%'" % (
+            connection_id, mn_ip), db_hostname=access_db_hostname)
+    
     result = result.strip().splitlines()[1]
     if result == '0':
         return
