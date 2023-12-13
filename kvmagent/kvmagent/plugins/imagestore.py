@@ -75,14 +75,14 @@ class ImageStoreClient(object):
             cmdstr = '%s stopbak -domain %s' % (self.ZSTORE_CLI_PATH, vm)
             return shell.call(cmdstr).strip()
 
-    def stop_vm_backup_jobs(self, vm):
+    def stop_vm_backup_jobs(self, vm, force=False):
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s stopbak -domain %s -batbak' % (self.ZSTORE_CLI_PATH, vm)
+            cmdstr = '%s stopbak -force=%s -domain %s -batbak' % (self.ZSTORE_CLI_PATH, force, vm)
             return shell.call(cmdstr).strip()
 
-    def stop_volume_backup_job(self, vm, drive):
+    def stop_volume_backup_job(self, vm, drive, force=False):
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s stopbak -domain %s -drive %s' % (self.ZSTORE_CLI_PATH, vm, drive)
+            cmdstr = '%s stopbak -force=%s -domain %s -drive %s' % (self.ZSTORE_CLI_PATH, force, vm, drive)
             return shell.call(cmdstr).strip()
 
     @staticmethod
@@ -96,10 +96,10 @@ class ImageStoreClient(object):
                 'storage free size is less than reserved capacity: %d' % ImageStoreClient.RESERVE_CAPACITY)
 
 
-    def stop_mirror(self, vm, complete, node):
+    def stop_mirror(self, vm, complete, node, force=False):
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s stopmirr -domain %s -delbitmap=%s -drive "%s"' % \
-                     (self.ZSTORE_CLI_PATH, vm, complete, node)
+            cmdstr = '%s stopmirr -force=%s -domain %s -delbitmap=%s -drive "%s"' % \
+                     (self.ZSTORE_CLI_PATH, force, vm, complete, node)
             shell.run(cmdstr)
 
     def query_mirror_volumes(self, vm):
