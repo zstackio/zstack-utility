@@ -1851,9 +1851,9 @@ done
             to.name = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
 
             def _set_pci_to_type():
-                gpu_vendors = ["NVIDIA", "AMD"]
+                gpu_vendors = ["NVIDIA", "AMD", "Intel"]
                 if any(vendor in to.description for vendor in gpu_vendors) \
-                        and 'VGA compatible controller' in to.type:
+                        and ('VGA compatible controller' in to.type or 'Display controller' in to.type):
                     to.type = "GPU_Video_Controller"
                 elif any(vendor in to.description for vendor in gpu_vendors) \
                         and 'Audio device' in to.type:
@@ -2612,3 +2612,4 @@ done
 
     def configure(self, config):
         self.config = config
+
