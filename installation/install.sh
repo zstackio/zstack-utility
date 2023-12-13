@@ -1476,8 +1476,10 @@ upgrade_zstack(){
     do_config_deploy_mode
 
     # configure deploy_mode if it is zsv
-    zstack-ctl show_configuration | grep 'deploy_mode' | grep zsv >/dev/null 2>&1
-    [ $? -eq 0 ] && show_spinner iz_upgrade_zsphere_tools
+    if [ x"$ZSV_INSTALL" = x"y" ];then
+        zstack-ctl configure deploy_mode="zsv"
+        [ $? -eq 0 ] && show_spinner iz_upgrade_zsphere_tools
+    fi
 
     # update consoleProxyCertFile if necessary
     certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
