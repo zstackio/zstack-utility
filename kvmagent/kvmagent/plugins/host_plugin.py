@@ -34,6 +34,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
 from zstacklib.utils import shell
+from zstacklib.utils import misc
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
@@ -94,6 +95,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.eptFlag = None
         self.libvirtCapabilities = []
         self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
+        self.deployMode = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -1176,6 +1178,8 @@ class HostPlugin(kvmagent.KvmAgent):
             else:
                 rsp.ipmiAddress = 'None'
                 logger.debug("failed to get ipmi address from BMC lan channel [%s], because %s" % (channel, err))
+
+        rsp.deployMode = 'cube' if misc.isHyperConvergedHost() else 'cloud'
 
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
