@@ -250,6 +250,52 @@ class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
         self.physicalMemoryFacts = []
 
 
+class SetHostKernelInterfaceCmd(kvmagent.AgentCommand):
+    interfaces = None   # type: list[HostKernelInterfaceTO]
+    actionCode = None
+
+    def __init__(self):
+        super(SetHostKernelInterfaceCmd, self).__init__()
+        self.interfaces = None
+        self.actionCode = None
+
+
+class SetHostKernelInterfaceResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetHostKernelInterfaceResponse, self).__init__()
+
+
+class GetHostKernelInterfaceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetHostKernelInterfaceCmd, self).__init__()
+        self.hostUuid = None
+        self.targetIp = None
+
+
+class GetHostKernelInterfaceResponse(kvmagent.AgentResponse):
+    interfaces = None  # type: list[HostKernelInterfaceTO]
+
+    def __init__(self):
+        super(GetHostKernelInterfaceResponse, self).__init__()
+        self.interfaces = None
+
+
+class UsedIpTO(object):
+    def __init__(self, ipVersion=None, ip=None, netmask=None, gateway=None):
+        super(UsedIpTO, self).__init__()
+        self.ipVersion = ipVersion
+        self.ip = ip
+        self.netmask = netmask
+        self.gateway = gateway
+
+
+class HostKernelInterfaceTO(object):
+    def __init__(self, interfaceName=None, vlanId=None):
+        super(HostKernelInterfaceTO, self).__init__()
+        self.interfaceName = interfaceName
+        self.vlanId = vlanId
+        self.ips = []   # type: list[UsedIpTO]
+
 class GetHostNetworkBongdingCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetHostNetworkBongdingCmd, self).__init__()
@@ -930,6 +976,8 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
     ATTACH_VOLUME_PATH = "/host/volume/attach"
     DETACH_VOLUME_PATH = "/host/volume/detach"
+    GET_KERNEL_INTERFACE_PATH = "/host/kernelinterface/get"
+    SET_KERNEL_INTERFACE_PATH = "/host/kernelinterface/set"
 
     def __init__(self):
         self.IS_YUM = False
@@ -1959,6 +2007,112 @@ done
 
         rsp.bondings = self.get_host_networking_bonds(cmd.managementServerIp)
         rsp.nics = self.get_host_networking_interfaces(cmd.managementServerIp)
+
+        return jsonobject.dumps(rsp)
+
+    def _make_host_kernel_interface(self, interfaceName=None, vlanId=None):
+        if not interfaceName or vlanId is None:
+            logger.debug("interface name or vlan id is None")
+            return None
+        to = HostKernelInterfaceTO()
+        to.interfaceName = interfaceName
+        to.vlanId = vlanId
+        return to
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_kernel_interface(self, req):
+        # cmd format: {"hostUuid":"edfea52447f14b54b2f3f04eb3aee0f5","targetIp":"172.25.228.27"}
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetHostKernelInterfaceResponse()
+        rsp.interfaces = []
+
+        link_name = linux.get_nic_name_by_ip(cmd.targetIp)
+        if not link_name:
+            rsp.error = "cannot find interface by ip[%s]" % cmd.targetIp
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        logger.debug('find management ip[%s] on interface: %s' % (cmd.targetIp, link_name))
+        ip_list = linux.get_ip_list_by_nic_name(link_name)
+
+        interface = None
+        if linux.is_bridge(link_name):  # ip on bridge
+            all_slaves = linux.get_all_bridge_interface(link_name)
+            for slave in all_slaves:
+                if linux.is_bond(slave):
+                    interface = self._make_host_kernel_interface(slave, 0)
+                    break
+                if linux.is_physical_nic(slave):
+                    interface = self._make_host_kernel_interface(slave, 0)
+                    break
+                if linux.is_vlan(slave):
+                    vlan_parent = linux.get_vlan_parent(slave)
+                    if linux.is_bond(vlan_parent):
+                        interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(slave))
+                        break
+                    if linux.is_physical_nic(vlan_parent):
+                        interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(slave))
+                        break
+        elif linux.is_bond(link_name):   # ip on bond
+            interface = self._make_host_kernel_interface(link_name, 0)
+        elif linux.is_vlan(link_name):   # ip on vlan
+            vlan_parent = linux.get_vlan_parent(link_name)
+            if linux.is_bond(vlan_parent):
+                interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(link_name))
+        elif linux.is_physical_nic(link_name):  # ip on physical nic
+            interface = self._make_host_kernel_interface(link_name, 0)
+        else:
+            rsp.error = "cannot parse interface[%s] by ip[%s]" % (link_name, cmd.targetIp)
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        if not interface:
+            rsp.error = "cannot find interface by ip[%s]" % cmd.targetIp
+            rsp.success = False
+        else:
+            logger.debug('host kernel interface is: %s, vlan id is: %s' % (interface.interfaceName, interface.vlanId))
+            interface.ips = [UsedIpTO(ip=item.ip, netmask=item.netmask, ipVersion=4) for item in ip_list]
+            rsp.interfaces.append(interface)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def set_kernel_interface(self, req):
+        # cmd format: "{\"interfaces\":[{\"interfaceName\":\"bond2\",
+        #                                \"vlanId\":222,
+        #                                \"ips\":[{\"ipVersion\":4,\"ip\":\"1.1.1.1\",\"netmask\":\"255.255.255.0\"}]
+        #                               }],
+        #               \"actionCode\":\"updateAction\"}"
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetHostKernelInterfaceResponse()
+
+        for iface in cmd.interfaces:
+            if not iface.interfaceName or not linux.is_bond(iface.interfaceName):
+                raise Exception('cannot find bond[%s]' % iface.interfaceName)
+
+            pyhsical_dev = iface.interfaceName if iface.vlanId == 0 else '%s.%s' % (iface.interfaceName, iface.vlanId)
+            if not linux.is_device_exists(pyhsical_dev):
+                raise Exception('cannot find device[%s]' % pyhsical_dev)
+
+            bridge_dev = linux.get_master_device(pyhsical_dev)
+            target_dev = bridge_dev if bridge_dev else pyhsical_dev
+
+            if cmd.actionCode == 'deleteAction':
+                for item in iface.ips:
+                    shell.call('ip addr del %s/%s dev %s' % (item.ip, item.netmask, target_dev))
+            else:
+                ip_list = linux.get_ip_list_by_nic_name(target_dev)
+                to_create_ips = [item for item in iface.ips if item.ip not in [obj.ip for obj in ip_list]]
+                to_delete_ips = [item for item in ip_list if item.ip not in [obj.ip for obj in iface.ips]]
+
+                if to_create_ips:
+                    for item in to_create_ips:
+                        shell.call('ip addr add %s/%s dev %s' % (item.ip, item.netmask, target_dev))
+                if to_delete_ips:
+                    for item in to_delete_ips:
+                        shell.call('ip addr del %s/%s dev %s' % (item.ip, item.netmask, target_dev))
 
         return jsonobject.dumps(rsp)
 
@@ -3247,6 +3401,8 @@ done
         http_server.register_async_uri(self.GET_NUMA_TOPOLOGY_PATH, self.get_numa_topology)
         http_server.register_async_uri(self.ATTACH_VOLUME_PATH, self.attach_volume_path)
         http_server.register_async_uri(self.DETACH_VOLUME_PATH, self.detach_volume__path)
+        http_server.register_async_uri(self.GET_KERNEL_INTERFACE_PATH, self.get_kernel_interface)
+        http_server.register_async_uri(self.SET_KERNEL_INTERFACE_PATH, self.set_kernel_interface)
 
         self.heartbeat_timer = {}
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'

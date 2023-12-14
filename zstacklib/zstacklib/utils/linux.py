@@ -91,6 +91,13 @@ class MountError(Exception):
         err = 'Failed to mount NFS URL[%s], %s' % (url, msg)
         super(MountError, self).__init__(msg)
 
+
+class IpInfo(object):
+    def __init__(self):
+        self.version = 4
+        self.ip = None
+        self.netmask = None
+
 class EthernetInfo(object):
     def __init__(self):
         self.mac = None
@@ -99,6 +106,7 @@ class EthernetInfo(object):
         self.netmask = None
         self.interface = None
         self.ip = None
+        self.ip_list = []   # type: IpInfo
 
     def __str__(self):
         return 'interface:%s, mac:%s, ip:%s, netmask:%s' % (self.interface, self.mac, self.ip, self.netmask)
@@ -371,6 +379,7 @@ def get_ethernet_info():
         brd = None
         alias = None
         netmask = None
+        ip_info = IpInfo()
         for i in range(0, len(tokens)):
             if tokens[i] == 'brd':
                 brd = tokens[i+1]
@@ -383,6 +392,8 @@ def get_ethernet_info():
 
         assert ip, 'cannot find ip for ethernet device[%s]' % ethname
         assert netmask, 'cannot find netmask for ethernet device[%s]' % ethname
+        ip_info.ip = ip
+        ip_info.netmask = netmask
         if alias:
             alias_eth = EthernetInfo()
             alias_eth.mac = eth.mac
@@ -390,11 +401,13 @@ def get_ethernet_info():
             alias_eth.broadcast_address = brd
             alias_eth.netmask = netmask
             alias_eth.ip = ip
+            alias_eth.ip_list.append(ip_info)
             devices[alias_eth.interface] = alias_eth
         else:
             eth.ip = ip
             eth.broadcast_address = brd
             eth.netmask = netmask
+            eth.ip_list.append(ip_info)
 
     return devices.values()
 
@@ -1399,6 +1412,53 @@ def is_bridge_slave(dev):
     path = "/sys/class/net/%s/brport" % dev
     return os.path.exists(path)
 
+def is_device_exists(dev):
+    path = "/sys/class/net/%s" % dev
+    return os.path.exists(path)
+
+def is_bond(dev):
+    path = "/sys/class/net/%s/bonding" % dev
+    return os.path.exists(path)
+
+def is_vlan(dev):
+    path = "/proc/net/vlan/%s" % dev
+    return os.path.exists(path)
+
+def is_physical_nic(dev):
+    path = "/sys/class/net/%s/device" % dev
+    if os.path.exists(path):
+        real_path = os.path.realpath(path)
+        pattern = re.compile(r'^/sys/devices/pci[0-9a-fA-F]+/')
+        if pattern.match(real_path):
+            return True
+    return False
+
+def get_vlan_id(dev):
+    if not is_vlan(dev):
+        return None
+
+    with open('/proc/net/vlan/%s' % dev, 'r') as fd:
+        for line in fd.readlines():
+            if 'VID:' in line:
+                return line.split()[2]
+    return None
+
+def get_vlan_parent(dev):
+    if not is_vlan(dev):
+        return None
+
+    with open("/proc/net/vlan/%s" % dev, 'r') as fd:
+        for line in fd.readlines():
+            if line.startswith("Device:"):
+                return line.split()[1]
+    return None
+
+def get_master_device(dev):
+    path = "/sys/class/net/%s/master" % dev
+    if not os.path.exists(path):
+        return None
+
+    return os.path.basename(os.readlink(path))
 
 def is_vif_on_bridge(bridge_name, interface):
     vifs = get_all_bridge_interface(bridge_name)
@@ -1776,8 +1836,12 @@ def get_nic_names_by_mac(mac):
 def get_nic_name_by_ip(ip):
     eths = get_ethernet_info()
     for e in eths:
-        if e.ip and e.ip == ip:
-            return e.interface
+        if not e.ip_list:
+            continue
+        for ip_info in e.ip_list:
+            if ip_info.ip == ip:
+                return e.interface
+
     return None
 
 def get_ip_by_nic_name(nicname):
@@ -1785,6 +1849,13 @@ def get_ip_by_nic_name(nicname):
     for e in eths:
         if e.interface == nicname:
             return e.ip
+    return None
+
+def get_ip_list_by_nic_name(nicname):
+    eths = get_ethernet_info()
+    for e in eths:
+        if e.interface == nicname:
+            return e.ip_list
     return None
 
 def get_nic_name_from_alias(nicnames):
