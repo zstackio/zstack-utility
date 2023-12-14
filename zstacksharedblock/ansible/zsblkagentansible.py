@@ -75,11 +75,10 @@ host_info = upgrade_to_helix(host_info, host_post_info)
 releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
-IS_AARCH64 = host_info.host_arch == 'aarch64'
-if IS_AARCH64:
-    src_pkg_zsblk = "zsblk-agent.aarch64.bin"
-else:
+if host_info.host_arch == 'x86_64':
     src_pkg_zsblk = "zsblk-agent.bin"
+else:
+    src_pkg_zsblk = "zsblk-agent.{}.bin".format(host_info.host_arch)
 pkg_zsblk = "zsblk-agent.bin"
 
 zstacklib_args = ZstackLibArgs()
