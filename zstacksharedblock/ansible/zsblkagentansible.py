@@ -40,6 +40,7 @@ qmp_socket_dir = "/var/lib/libvirt/qemu/zstack/"
 utilization_percent = 85
 
 maxLockButNotUsedTimes = 12
+lvLkProtectionPeriodInSec = 1800
 scanInterval = 300
 verboseLog = "false"
 
@@ -119,8 +120,8 @@ run_remote_command(add_true_in_command(command), host_post_info)
 run_remote_command(add_true_in_command("/bin/cp -f /usr/local/zstack/zsblk-agent/bin/zstack-sharedblock-agent.service /usr/lib/systemd/system/"), host_post_info)
 
 service_env = "ZSBLKARGS=-free-space %s -increment %s -log-file %s -qmp-socket-dir %s -utilization-percent %s " \
-              "-lk-helper-max-times %s -lk-helper-scan-interval %s -verbose %s" \
-              % (int(free_spcae), int(increment), log_file, qmp_socket_dir, utilization_percent, maxLockButNotUsedTimes, scanInterval, verboseLog)
+              "-lk-helper-max-times %s -lk-helper-scan-interval %s -lk-helper-protection-period %s -verbose %s" \
+              % (int(free_spcae), int(increment), log_file, qmp_socket_dir, utilization_percent, maxLockButNotUsedTimes, scanInterval, lvLkProtectionPeriodInSec, verboseLog)
 
 replace_content("/usr/lib/systemd/system/zstack-sharedblock-agent.service", '''regexp='.*Environment=.*' replace="Environment='%s'"''' % service_env, host_post_info)
 command = "systemctl daemon-reload && systemctl enable zstack-sharedblock-agent.service && systemctl restart zstack-sharedblock-agent.service"
