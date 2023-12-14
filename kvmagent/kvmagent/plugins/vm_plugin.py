@@ -1019,6 +1019,11 @@ class TakeVmConsoleScreenshotRsp(kvmagent.AgentResponse):
         super(TakeVmConsoleScreenshotRsp, self).__init__()
         self.imageData = None
 
+class GetVmProcessIdentifierCreateTimeRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmProcessIdentifierCreateTimeRsp, self).__init__()
+        self.createTime = None
+
 
 class VncPortIptableRule(object):
     def __init__(self):
@@ -6302,6 +6307,7 @@ class VmPlugin(kvmagent.KvmAgent):
     APPLY_MEMORY_BALLOON_PATH = "/vm/apply/memory/balloon"
     KVM_NOTIFY_TF_NIC_PATH = "/vm/nodifytfnic"
     TAKE_VM_CONSOLE_SCREENSHOT_PATH = "/vm/console/screenshot"
+    GET_VM_PROCESS_IDENTIFIER_CREATE_TIME_PATH = "/vm/getpidcreatetime"
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
     SET_VM_IOTHREADPIN_PATH = "/vm/setiothreadpin"
@@ -7086,6 +7092,26 @@ class VmPlugin(kvmagent.KvmAgent):
             stream.finish()
             linux.rm_file_force(tmp_ppm)
             linux.rm_file_force(tmp_img)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_vm_process_identifier_create_time(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVmProcessIdentifierCreateTimeRsp()
+
+        try:
+            command = ("ps -o lstart --no-headers -p $(pgrep -f guest=%s)" % cmd.vmUuid)
+            r_amd, o_amd, e_amd = bash.bash_roe(command)
+            if r_amd != 0:
+                rsp.error = e_amd
+                rsp.success = False
+            else:
+                if o_amd.strip():
+                    rsp.createTime = o_amd.strip()
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.error = str(e)
+            rsp.success = False
         return jsonobject.dumps(rsp)
 
     def _stop_vm(self, cmd):
@@ -10171,6 +10197,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.APPLY_MEMORY_BALLOON_PATH, self.apply_memory_balloon)
         http_server.register_async_uri(self.KVM_NOTIFY_TF_NIC_PATH, self.notify_tf_nic)
         http_server.register_async_uri(self.TAKE_VM_CONSOLE_SCREENSHOT_PATH, self.take_console_screenshot)
+        http_server.register_async_uri(self.GET_VM_PROCESS_IDENTIFIER_CREATE_TIME_PATH, self.get_vm_process_identifier_create_time)
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
         self.register_qemu_log_cleaner()
