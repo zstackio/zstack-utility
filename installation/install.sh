@@ -3525,7 +3525,7 @@ check_sync_local_repos() {
 
 
 prepare_zops_user_and_db() {
-    echo_subtitle "prepare zops db and user"
+    echo_subtitle "Prepare zops db and user"
     #perpare zops user and database if needed
     get_mysql_conf_file
     db='zops'
