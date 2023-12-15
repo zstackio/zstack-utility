@@ -2673,3 +2673,6 @@ def compare_segmented_xxhash(src_path, dst_path, total_size, raise_exception=Fal
                     else:
                         return False
     return True
+
+def check_unixsock_connection(socket_path, timeout=10):
+    return shell.run("nc -z -U %s -w %s" % (socket_path, timeout))
