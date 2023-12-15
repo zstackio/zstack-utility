@@ -178,7 +178,7 @@ class GetMultipathTopologyRsp(AgentRsp):
 class Device(object):
     def __init__(self, disk, status):
         self.disk = disk
-        self.state = status
+        self.status = status
 
 class NvmeSanScanRsp(AgentRsp):
     def __init__(self):
