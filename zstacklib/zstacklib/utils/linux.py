@@ -1405,26 +1405,38 @@ def is_network_ip_using(interface):
     return len(get_interface_ip_addresses(interface)) != 0
 
 def is_bridge(dev):
+    if not dev:
+        return False
     path = "/sys/class/net/%s/bridge" % dev
     return os.path.exists(path)
 
 def is_bridge_slave(dev):
+    if not dev:
+        return False
     path = "/sys/class/net/%s/brport" % dev
     return os.path.exists(path)
 
 def is_device_exists(dev):
+    if not dev:
+        return False
     path = "/sys/class/net/%s" % dev
     return os.path.exists(path)
 
 def is_bond(dev):
+    if not dev:
+        return False
     path = "/sys/class/net/%s/bonding" % dev
     return os.path.exists(path)
 
 def is_vlan(dev):
+    if not dev:
+        return False
     path = "/proc/net/vlan/%s" % dev
     return os.path.exists(path)
 
 def is_physical_nic(dev):
+    if not dev:
+        return False
     path = "/sys/class/net/%s/device" % dev
     if os.path.exists(path):
         real_path = os.path.realpath(path)
@@ -1454,6 +1466,8 @@ def get_vlan_parent(dev):
     return None
 
 def get_master_device(dev):
+    if not dev:
+        return None
     path = "/sys/class/net/%s/master" % dev
     if not os.path.exists(path):
         return None

@@ -2040,6 +2040,8 @@ done
         if linux.is_bridge(link_name):  # ip on bridge
             all_slaves = linux.get_all_bridge_interface(link_name)
             for slave in all_slaves:
+                if not slave:
+                    continue
                 if linux.is_bond(slave):
                     interface = self._make_host_kernel_interface(slave, 0)
                     break
