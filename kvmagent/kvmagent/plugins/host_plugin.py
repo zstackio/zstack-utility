@@ -56,6 +56,7 @@ COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
 HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
 NODE_INFO_PATH = '/sys/devices/system/node/'
+ISCSI_INITIATOR_NAME_PATH = '/etc/iscsi/initiatorname.iscsi'
 
 BOND_MODE_ACTIVE_0 = "balance-rr"
 BOND_MODE_ACTIVE_1 = "active-backup"
@@ -93,6 +94,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.eptFlag = None
         self.libvirtCapabilities = []
         self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
+        self.iscsiInitiatorName = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -1140,6 +1142,14 @@ class HostPlugin(kvmagent.KvmAgent):
             return 0
         return float(sizeunit.get_size(str) / 1024)
 
+    def _get_iscsi_initiator_name(self):
+        initiator_name = linux.read_file(ISCSI_INITIATOR_NAME_PATH)
+        if not initiator_name:
+            return None
+        # The config file content format like below:
+        # InitiatorName=iqn.1994-05.com.redhat:aa9bf5ec494c
+        return initiator_name.strip().split('=')[-1]
+
     @kvmagent.replyerror
     def fact(self, req):
         rsp = HostFactResponse()
@@ -1196,6 +1206,8 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
         rsp.uptime = shell.call('uptime -s').strip()
+
+        rsp.iscsiInitiatorName = self._get_iscsi_initiator_name()
 
         if not IS_LOONGARCH64:
             libvirtCapabilitiesList = []
