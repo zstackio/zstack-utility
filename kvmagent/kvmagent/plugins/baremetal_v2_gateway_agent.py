@@ -759,7 +759,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         logger.info("open bm instance console result: %s" % ret)
         # {"success": False, "error": "Failed to launch shellinaboxd"}
-        if ret.get('success') is False:
+        if ret.get('error'):
             raise exception.OpenBaremetalInstanceConsolePortFailed(error_msg=ret.get("error"))
 
         scheme = ret.get('scheme')
