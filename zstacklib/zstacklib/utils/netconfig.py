@@ -282,7 +282,7 @@ class NetConfig(object):
 
                     self.add_ip_config(value, netmask, gateway, is_default)
                     continue
-            elif 'NETMASK' in key or 'GATEWAY' in key or 'DEFROUTE' in key:
+            elif 'NETMASK' in key or 'GATEWAY' in key or 'DEFROUTE' in key or 'PREFIX' in key:
                 continue
             else:
                 self.add_config(key, value)
@@ -302,7 +302,13 @@ class NetConfig(object):
                     continue
                 key, value = line.split('=', 1)
                 if key.strip() and value.strip():
-                    config_dict[key.strip()] = value.strip()
+                    key1 = key.strip()
+                    value1 = value.strip()
+                    if key1.startswith('PREFIX'):
+                        index = key1[len('PREFIX'):]
+                        config_dict['NETMASK' + index] = prefix_to_netmask(value1)
+                    else:
+                        config_dict[key1] = value1
         return config_dict
 
 
@@ -512,6 +518,16 @@ def is_ipv4(ip_address):
         return True
     else:
         return False
+
+
+def prefix_to_netmask(prefix):
+    '''prefix to netmask'''
+    prefix = int(prefix)
+    netmask = (0xffffffff >> (32 - prefix)) << (32 - prefix)
+    return (str((0xff000000 & netmask) >> 24) + '.' +
+            str((0x00ff0000 & netmask) >> 16) + '.' +
+            str((0x0000ff00 & netmask) >> 8) + '.' +
+            str((0x000000ff & netmask)))
 
 if __name__ == '__main__':
     logger.debug('start test netconfig')
