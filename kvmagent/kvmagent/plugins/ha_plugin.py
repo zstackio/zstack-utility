@@ -809,21 +809,22 @@ class CephHeartbeatController(AbstractStorageFencer):
     def read_fencer_hearbeat(self, host_uuid, ps_uuid):
         current_heartbeat_count = [None]
         current_vm_uuids = [None]
+        read_complete = threading.Event()
 
         def get_current_completion(_, content):
-            ceph_data = eval(content)
-            current_heartbeat_count[0] = int(ceph_data.get('heartbeat_count').strip())
-            current_vm_uuids[0] = ceph_data.get('vm_uuids').split(',')
+            try:
+                ceph_data = eval(content)
+                current_heartbeat_count[0] = int(ceph_data.get('heartbeat_count').strip())
+                current_vm_uuids[0] = ceph_data.get('vm_uuids').split(',')
+            finally:
+                read_complete.set()
 
         length = self.ioctx.stat(self.heartbeat_object_name)[0]
         completion = self.ioctx.aio_read(self.heartbeat_object_name, int(length), 0, get_current_completion)
 
-        failure_count = 0
-        while not completion.is_complete():
-            if failure_count == self.storage_check_timeout:
-                break
-            time.sleep(1)
-            failure_count = failure_count + 1
+        # Wait for the completion to be done
+        read_complete.wait(self.storage_check_timeout)
+
         logger.debug("read ceph current_heartbeat_count: %s, current_vm_uuids: %s" %
                      (current_heartbeat_count[0], current_vm_uuids[0]))
         return current_heartbeat_count[0], current_vm_uuids[0]
