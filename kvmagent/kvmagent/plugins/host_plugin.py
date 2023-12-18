@@ -56,6 +56,7 @@ COLO_QEMU_KVM_VERSION = '/var/lib/zstack/colo/qemu_kvm_version'
 COLO_LIB_PATH = '/var/lib/zstack/colo/'
 HOST_TAKEOVER_FLAG_PATH = 'var/run/zstack/takeOver'
 NODE_INFO_PATH = '/sys/devices/system/node/'
+PCI_CONFIG_PATH = '/etc/pci_config'
 
 BOND_MODE_ACTIVE_0 = "balance-rr"
 BOND_MODE_ACTIVE_1 = "active-backup"
@@ -2298,9 +2299,8 @@ done
             rsp.error = "%s, %s" % (e, o)
             return
         pci_device_mapper = {}
-        pci_config_path = '/etc/pci_config'
 
-        for line in linux.read_file_lines(pci_config_path):
+        for line in linux.read_file_lines(PCI_CONFIG_PATH):
             parts = line.strip().split(':')
             if len(parts) == 2:
                 key = parts[0].strip()
@@ -2461,54 +2461,50 @@ done
     def _generate_sriov_gpu_devices(self, cmd, rsp):
         # make install mxgpu driver if need to
         pci_device_mapper = {}
-        pci_config_path = '/etc/pci_config'
-        if not os.path.exists(pci_config_path):
-            mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
-            if os.path.exists(mxgpu_driver_tar):
-                r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make; make install" % mxgpu_driver_tar)
-                if r != 0:
-                    rsp.success = False
-                    rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
-                    return
-                # rm mxgpu driver tar
-                os.remove(mxgpu_driver_tar)
-
-            # check installed ko and its usage
-            _, used, _ = bash_roe("lsmod | grep gim | awk '{ print $3 }'")
-            used = used.strip()
-
-            if used and int(used) > 0:
+        mxgpu_driver_tar = "/var/lib/zstack/mxgpu_driver.tar.gz"
+        if os.path.exists(mxgpu_driver_tar) and not os.path.exists(PCI_CONFIG_PATH):
+            r, o, e = bash_roe("tar xvf %s -C /tmp; cd /tmp/mxgpu_driver; make; make install" % mxgpu_driver_tar)
+            if r != 0:
                 rsp.success = False
-                rsp.error = "gim.ko already installed and being used, need to run `modprobe -r gim` first"
+                rsp.error = "failed to install mxgpu driver, %s, %s" % (o, e)
                 return
+            # rm mxgpu driver tar
+            os.remove(mxgpu_driver_tar)
 
-            if used and int(used) == 0:
-                _, used, _ = bash_roe("modprobe -r gim; lsmod | grep gim | awk '{ print $3 }'")
-                if used:
-                    rsp.success = False
-                    rsp.error = "failed to uninstall gim.ko, need to run `modprobe -r gim` manually"
-                    return
+        # check installed ko and its usage
+        _, used, _ = bash_roe("lsmod | grep gim | awk '{ print $3 }'")
+        used = used.strip()
+
+        if used and int(used) > 0:
+            rsp.success = False
+            rsp.error = "gim.ko already installed and being used, need to run `modprobe -r gim` first"
+            return
+
+        if used and int(used) == 0:
+            _, used, _ = bash_roe("modprobe -r gim; lsmod | grep gim | awk '{ print $3 }'")
+            if used:
+                rsp.success = False
+                rsp.error = "failed to uninstall gim.ko, need to run `modprobe -r gim` manually"
+                return
 
         # prepare gim_config
         gim_config = "/etc/gim_config"
         with open(gim_config, 'w') as f:
             f.write("vf_num=%s" % cmd.virtPartNum)
 
-        commond = 'modprobe gim'
+        command = 'modprobe gim'
+        for line in linux.read_file_lines(PCI_CONFIG_PATH):
+            parts = line.strip().split(':')
+            if len(parts) == 2:
+                key = parts[0].strip()
+                value = parts[1].strip()
+                pci_device_mapper[key] = value
 
-        with open(pci_config_path, 'r') as file:
-            for line in file.readlines():
-                parts = line.strip().split(':')
-                if len(parts) == 2:
-                    key = parts[0].strip()
-                    value = parts[1].strip()
-                    pci_device_mapper[key] = value
-
-        if 'commond' in pci_device_mapper:
-            commond = pci_device_mapper['commond'] % cmd.virtPartNum
+        if 'command' in pci_device_mapper:
+            command = pci_device_mapper['command'] % cmd.virtPartNum
 
         # install gim.ko
-        r, o, e = bash_roe(commond)
+        r, o, e = bash_roe(command)
         if r != 0:
             rsp.success = False
             rsp.error = "failed to install gim.ko, %s, %s" % (o, e)
