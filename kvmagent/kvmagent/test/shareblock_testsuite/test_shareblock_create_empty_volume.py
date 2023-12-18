@@ -89,7 +89,6 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         r, o = bash.bash_ro("lvs --nolocking -t |grep %s" % volumeUuid)
         self.assertEqual(0, r, "create empty volume fail in host")
 
-        '''
         # size=10M
         volumeUuid = misc.uuid()
         rsp = sharedblock_utils.shareblock_create_empty_volume(
@@ -146,7 +145,6 @@ class TestShareBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(2, len(o))
         self.assertEqual(3326083072-2097152, o[1].get("length"))
         self.assertEqual(False, o[1].get("data"))
-        '''
 
         # test create lv task timeout
         create_time = 61
