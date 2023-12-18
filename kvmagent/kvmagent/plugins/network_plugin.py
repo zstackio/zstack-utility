@@ -13,7 +13,9 @@ from zstacklib.utils import linux
 from zstacklib.utils import iproute
 from zstacklib.utils.bash import *
 from zstacklib.utils import ovs
+from zstacklib.utils import netconfig
 from jinja2 import Template
+
 import os
 import traceback
 import netaddr
@@ -850,12 +852,19 @@ configure lldp status rx-only \n
             mtu = oldMtu
 
         try:
-            linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
+            ifcfgs = linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
             self._configure_bridge(cmd.disableIptables)
             self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, mtu)
             self._configure_bridge_learning(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
+
+            # restore ifcfg file
+            if ifcfgs:
+                for ifcfg in ifcfgs:
+                    ifcfg.mtu = mtu
+                    ifcfg.restore_config()
+
             logger.debug('successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
@@ -886,12 +895,19 @@ configure lldp status rx-only \n
         if oldMtu > cmd.mtu:
             mtu = oldMtu
         try:
-            linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
+            ifcfgs = linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
             self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, mtu)
             self._configure_bridge_learning(cmd.bridgeName, vlanInterfName)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
+
+            # restore ifcfg config
+            if ifcfgs:
+                for ifcfg in ifcfgs:
+                    ifcfg.mtu = mtu
+                    ifcfg.restore_config()
+
             logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (
             cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:

@@ -39,6 +39,7 @@ from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.report import Report
 import zstacklib.utils.ip as ip
+from zstacklib.utils import netconfig
 import zstacklib.utils.plugin as plugin
 from kvmagent.plugins.prometheus import get_service_type_map, register_service_type
 
@@ -2112,21 +2113,33 @@ done
 
             bridge_dev = linux.get_master_device(pyhsical_dev)
             target_dev = bridge_dev if bridge_dev else pyhsical_dev
+            logger.debug('host kernel interface is %s' % target_dev)
 
+            ifcfg = None
+            if bridge_dev:
+                ifcfg = netconfig.NetBridgeConfig(bridge_dev)
+            else:
+                ifcfg = netconfig.NetVlanConfig(pyhsical_dev) if iface.vlanId != 0 else netconfig.NetBondConfig(pyhsical_dev)
+
+            ip_list = linux.get_ip_list_by_nic_name(target_dev)
             if cmd.actionCode == 'deleteAction':
                 for item in iface.ips:
-                    shell.call('ip addr del %s/%s dev %s' % (item.ip, item.netmask, target_dev))
+                    shell.call('ip addr del %s/%s dev %s || true' % (item.ip, item.netmask, target_dev))
+                    ifcfg.delete_ip_config(item.ip)
             else:
-                ip_list = linux.get_ip_list_by_nic_name(target_dev)
                 to_create_ips = [item for item in iface.ips if item.ip not in [obj.ip for obj in ip_list]]
                 to_delete_ips = [item for item in ip_list if item.ip not in [obj.ip for obj in iface.ips]]
 
                 if to_create_ips:
                     for item in to_create_ips:
                         shell.call('ip addr add %s/%s dev %s' % (item.ip, item.netmask, target_dev))
+                        ifcfg.add_ip_config(item.ip, item.netmask)
                 if to_delete_ips:
                     for item in to_delete_ips:
-                        shell.call('ip addr del %s/%s dev %s' % (item.ip, item.netmask, target_dev))
+                        shell.call('ip addr del %s/%s dev %s || true' % (item.ip, item.netmask, target_dev))
+                        ifcfg.delete_ip_config(item.ip)
+
+            ifcfg.restore_config()
 
         return jsonobject.dumps(rsp)
 

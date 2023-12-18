@@ -35,6 +35,7 @@ from zstacklib.utils import xmlobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
 from zstacklib.utils import iproute
+from zstacklib.utils import netconfig
 
 
 logger = log.get_logger(__name__)
@@ -362,6 +363,8 @@ def get_ethernet_info():
         assert mac, 'cannot find mac for ethernet device[%s], %s' % (ethname, link)
         eth.mac = mac
 
+    ip_dict = {}
+
     for addr in inet_info.split('\n'):
         addr = addr.strip('\t\n\r ')
         if not addr:
@@ -379,7 +382,6 @@ def get_ethernet_info():
         brd = None
         alias = None
         netmask = None
-        ip_info = IpInfo()
         for i in range(0, len(tokens)):
             if tokens[i] == 'brd':
                 brd = tokens[i+1]
@@ -392,8 +394,13 @@ def get_ethernet_info():
 
         assert ip, 'cannot find ip for ethernet device[%s]' % ethname
         assert netmask, 'cannot find netmask for ethernet device[%s]' % ethname
+        ip_info = IpInfo()
         ip_info.ip = ip
         ip_info.netmask = netmask
+        if ethname in ip_dict:
+            ip_dict[ethname].append(ip_info)
+        else:
+            ip_dict[ethname] = [ip_info]
         if alias:
             alias_eth = EthernetInfo()
             alias_eth.mac = eth.mac
@@ -401,13 +408,15 @@ def get_ethernet_info():
             alias_eth.broadcast_address = brd
             alias_eth.netmask = netmask
             alias_eth.ip = ip
-            alias_eth.ip_list.append(ip_info)
             devices[alias_eth.interface] = alias_eth
         else:
             eth.ip = ip
             eth.broadcast_address = brd
             eth.netmask = netmask
-            eth.ip_list.append(ip_info)
+
+    for ethname, eth in devices.items():
+        if ethname in ip_dict:
+            eth.ip_list = ip_dict[ethname]
 
     return devices.values()
 
@@ -1437,10 +1446,10 @@ def is_vlan(dev):
 def is_physical_nic(dev):
     if not dev:
         return False
-    path = "/sys/class/net/%s/device" % dev
+    path = "/sys/class/net/%s" % dev
     if os.path.exists(path):
         real_path = os.path.realpath(path)
-        pattern = re.compile(r'^/sys/devices/pci[0-9a-fA-F]+/')
+        pattern = re.compile(r'^/sys/devices/pci[0-9a-fA-F]')
         if pattern.match(real_path):
             return True
     return False
@@ -1575,7 +1584,11 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
     else:
         logger.debug("bridge %s do not have interface %s. only delete bridge. " % (bridge_name,interface))
         delete_bridge(bridge_name)
-        
+
+    ifcfg_bridge = netconfig.NetConfig(bridge_name)
+    ifcfg_bridge.delete_config()
+    ifcfg_nic = netconfig.NetConfig(interface)
+    ifcfg_nic.flush_config()    # do not delete ifcfg file for interface or bond
 
 def create_bridge(bridge_name, interface, move_route=True):
     if not is_network_device_existing(interface):
@@ -1609,32 +1622,58 @@ def create_bridge(bridge_name, interface, move_route=True):
     # MAC address.
     shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
 
-    if not move_route:
-        return
-
     out = shell.call('ip addr show dev %s | grep "inet "' % interface, exception=False)
-    if not out:
-        logger.debug("Interface %s doesn't set ip address yet. No need to move route. " % interface)
-        return
 
-    #record old routes
-    routes = []
-    r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % interface)
-    for line in r_out.split('\n'):
-        if line != "":
-            routes.append(line)
-            shell.call('ip route del %s' % line)
+    if move_route and out:
+        #record old routes
+        routes = []
+        r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % interface)
+        for line in r_out.split('\n'):
+            if line != "":
+                routes.append(line)
+                shell.call('ip route del %s' % line)
 
-    #mv ip on interface to bridge
-    ip = out.strip().split()[1]
-    shell.call('ip addr del %s dev %s' % (ip, interface))
-    r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (bridge_name, ip), exception=False)
-    if not r_out:
-        shell.call('ip addr add %s dev %s' % (ip, bridge_name))
+        #mv ip on interface to bridge
+        ip = out.strip().split()[1]
+        shell.call('ip addr del %s dev %s' % (ip, interface))
+        r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (bridge_name, ip), exception=False)
+        if not r_out:
+            shell.call('ip addr add %s dev %s' % (ip, bridge_name))
 
-    #restore routes on bridge
-    for r in routes:
-        shell.call('ip route add %s' % r)
+        #restore routes on bridge
+        for r in routes:
+            shell.call('ip route add %s' % r)
+    else:
+        logger.debug("Interface %s doesn't set ip address yet or move route flag is False. No need to move route. " % interface)
+    
+    # restore bridge and interface ifcfg file
+    ifcfg_slave = None
+    if is_vlan(interface):
+        ifcfg_slave = netconfig.NetVlanConfig(interface)
+        ifcfg_slave.bridge = bridge_name
+    elif is_bond(interface):
+        ifcfg_slave = netconfig.NetBondConfig(interface)
+        ifcfg_slave.bridge = bridge_name
+    elif is_physical_nic(interface):
+        ifcfg_slave = netconfig.NetEtherConfig(interface)
+        ifcfg_slave.bridge = bridge_name
+    else:
+        raise Exception('interface %s type not in ethernet, bond or vlan' % interface)
+
+    ifcfgs = []
+    ifcfg_bridge = netconfig.NetBridgeConfig(bridge_name)
+    ifcfg_bridge.stp = netconfig.NET_CONFIG_STP_NO
+    ips = get_ip_list_by_nic_name(bridge_name)
+    for ip in ips:
+        ifcfg_bridge.add_ip_config(ip.ip, ip.netmask)
+
+    slave_ips = ifcfg_slave.get_ip_configs()
+    for slave_ip in slave_ips:
+        ifcfg_bridge.add_ip_config(slave_ip.ip, slave_ip.netmask, slave_ip.gateway, slave_ip.is_default)
+
+    ifcfgs.extend([ifcfg_bridge, ifcfg_slave]) 
+
+    return ifcfgs
 
 def pretty_xml(xmlstr):
     # dom cannot handle namespace tag like <qemu:commandline>
@@ -1870,7 +1909,7 @@ def get_ip_list_by_nic_name(nicname):
     for e in eths:
         if e.interface == nicname:
             return e.ip_list
-    return None
+    return []
 
 def get_nic_name_from_alias(nicnames):
     for name in nicnames:
@@ -1969,13 +2008,19 @@ def delete_vlan_bridge(bridge_name, vlan_interface):
         logger.debug("bridge %s do not have interface %s. only delete bridge. " % (bridge_name, vlan_interface))
         delete_bridge(bridge_name)
 
+    ifcfg_bridge = netconfig.NetConfig(bridge_name)
+    ifcfg_bridge.delete_config()
+    ifcfg_vlan = netconfig.NetConfig(vlan_interface)
+    ifcfg_vlan.delete_config()
 
 
 def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
     vlan_dev_name = create_vlan_eth(ethname, vlan, ip, netmask)
     move_route = True
-    create_bridge(bridgename, vlan_dev_name, move_route)
+    ifcfgs = create_bridge(bridgename, vlan_dev_name, move_route)
+
+    return ifcfgs
 
 def enable_process_coredump(pid):
     memsize = 4 * 1024 * 1024
