@@ -2048,7 +2048,7 @@ done
 
         vlan_ids = []
         for interface_name in cmd.interfaceNames:
-            output = shell.call("ip link show type vlan | grep %s | awk -F'[.@]' '{print $2}'" % interface_name)
+            output = shell.call("ip link show type vlan | grep '%s\.' | awk -F'[.@]' '{print $2}'" % interface_name)
             interface_vlan_ids = output.strip().split('\n')
 
             if not interface_vlan_ids:
