@@ -7,7 +7,7 @@ set -ex
 # Param version : like 4.6.31
 
 
-YUM_BASED_OS="c76 ky10sp2"
+YUM_BASED_OS="c76 ky10sp2 ky10sp3"
 APT_BASED_OS=""
 
 # /root/.zguest/zstack-utility is zstack-utility home of ztest.
@@ -31,8 +31,9 @@ prepare_external_repo() {
         if [ "$arch_os" == "x86_64:c76" ]; then
             wget -O /etc/yum.repos.d/epel.repo http://192.168.200.114:9001/download/prsystem/UtilityUT/epel-7.repo
             wget -O /etc/yum.repos.d/CentOS-Base.repo http://192.168.200.114:9001/download/prsystem/UtilityUT/Centos-7.repo
-        fi
-        if [ "$arch_os" == "aarch64:ky10sp2" ]; then
+        elif [ "$arch_os" == "aarch64:ky10sp2" ]; then
+            echo later to add
+        elif [ "$arch_os" == "aarch64:ky10sp3" ]; then
             echo later to add
         fi
         if [ -f "/etc/yum.repos.d/CentOS-Base.repo" ]; then
@@ -54,7 +55,7 @@ prepare_internal_repo() {
         rm -f /etc/yum.repos.d/qemu-kvm-ev.repo || true
         cp ${SCRIPTS_HOME}/qemu-kvm-ev.repo /etc/yum.repos.d/
         # 172.20.197.206 mirrors.rpms.zstack.io
-        if [ "$(curl -I -m 10 -o /dev/null -s -w \%{http_code} 172.20.197.206/${arch}/${os}/${version})" == "404" ]; then
+        if [ "$(curl -I -m 10 -o /dev/null -s -w \%{http_code} mirrors.rpms.zstack.io/${arch}/${os}/${version})" == "404" ]; then
             echo "======================WARNING======================"
             echo "Mirror of ZStack Version: ${version} does not exist. Use Version: 4.6.21 as YUM2"
             version="4.6.21"
@@ -74,8 +75,13 @@ prepare_internal_repo
 prepare_mn_mock() {
     cd /root/
     mkdir -p ~/.pip/
-    wget -c http://minio.zstack.io:9001/download/prsystem/UtilityUT/pip.conf -O pip.conf || true
-    mv pip.conf ~/.pip/ || true
+    mkdir -p ~/.config/pip/
+    rm -rf ~/.config/pip/pip.conf
+    rm -rf ~/.pip/pip.conf
+    wget -c http://minio.zstack.io:9001/download/devops_dependencies/utility_ut/pip.conf -O pip.conf || true
+    cp pip.conf ~/.config/pip/ || true
+    cp pip.conf ~/.pip/ || true
+
 
     # wget -c http://minio.zstack.io:9001/download/prsystem/UtilityUT/get-pip.py -O get-pip.py
     cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
@@ -84,16 +90,21 @@ prepare_mn_mock() {
     virtualenv --version || pip install virtualenv==12.1.1
     cd /root
     python2_path=$(which python)
-    rm -rf venv
-    virtualenv -p "$python2_path" venv
-    # in virtualenv
-    source /root/venv/bin/activate
+    rm -rf venv1
+    virtualenv -p "$python2_path" venv1
+    # in venv1
+    source /root/venv1/bin/activate
     cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
     pip install pip==20.3.4 -i file://`pwd`/pypi/simple
     pip install setuptools==44.1.1 -i file://`pwd`/pypi/simple
     # prepare_zstacklib 
     cd /root/.zguest/zstack-utility/zstacklib/
-    bash install.sh -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple
+    if [ "${os}" == "ky10sp3" ]; then
+        echo "cython<3" > /tmp/constraint.txt
+        PIP_CONSTRAINT=/tmp/constraint.txt bash install.sh -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple
+    else
+        bash install.sh -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple
+    fi
     ZSTACKLIB_TAR=$(basename dist/zstacklib-?*.tar.gz)
     \cp dist/zstacklib-?*.tar.gz ansible/
     mkdir -p /usr/local/zstack/ansible/files/zstacklib/
@@ -107,15 +118,23 @@ prepare_mn_mock() {
     mkdir -p /usr/local/zstack/ansible/files/kvm/
     \cp -rL ansible/* /usr/local/zstack/ansible/files/kvm/
     deactivate
-    # in system env
-    cd /root
-    # python get-pip.py
-    yum --disablerepo=* --enablerepo=zstack-local,qemu-kvm-ev install -y openssl-devel openssl libffi libffi-devel
+    if [ "$(yum repolist --enablerepo=* | grep zstack-local)" != "" ];then
+        yum --disablerepo=* --enablerepo=zstack-local,qemu-kvm-ev install -y openssl-devel openssl libffi libffi-devel
+    else
+        yum --disablerepo=* --enablerepo=qemu-kvm-ev install -y openssl-devel openssl libffi libffi-devel
+    fi
     umount /tmp
     mkdir -p /tmp
+
+    cd /root
+    rm -rf venv2
+    virtualenv -p "$python2_path" venv2
+    source /root/venv2/bin/activate
+    # in venv2
     cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
-    pip install -r requirements/requirements3.txt -i file://`pwd`/pypi/simple
-    pip2 install ansible==4.10.0 -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple
+    pip install -r requirements/requirements1.txt -i file://`pwd`/pypi/simple
+    pip2 install ansible==4.10.0 -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple --extra-index-url http://mirrors.aliyun.com/pypi/simple/
+    deactivate
     echo "==>> pass prepare_mn_mock"
 }
 prepare_mn_mock
@@ -150,3 +169,13 @@ install_kvm() {
     # "pkg_kvmagent":"kvmagent-4.6.0.tar.gz"
 }
 install_kvm
+
+copy_kvm_virtualenv_to_venv3() {
+    pip install virtualenv-clone==0.5.7
+    virtualenv-clone /var/lib/zstack/virtualenv/kvm/ /root/venv3/
+    source /root/venv3/bin/activate
+    cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
+    pip install -r requirements/requirements1.txt -i file://`pwd`/pypi/simple
+    pip install -r requirements/requirements3.txt -i file://`pwd`/pypi/simple --extra-index-url http://mirrors.aliyun.com/pypi/simple 
+}
+copy_kvm_virtualenv_to_venv3
