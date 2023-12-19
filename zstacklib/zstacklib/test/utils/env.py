@@ -10,7 +10,10 @@ envFile = "/root/.zguest/envconfig.yaml"
 
 def init_env():
     with open(envFile, "r") as f:
-        env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        try:
+            env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        except:
+            env = yaml.load(f.read())
     return env
 
 
@@ -69,18 +72,27 @@ log_env_variables()
 
 def get_test_environment_metadata():
     with open(envFile, "r") as f:
-        env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        try:
+            env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        except:
+            env = yaml.load(f.read())
         return dict2obj(env["self"])
 
 def get_private_key():
     with open(envFile, "r") as f:
-        env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        try:
+            env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        except:
+            env = yaml.load(f.read())
         return env["privateKey"]
 
 
 def get_vm_metadata(vm_name):
     with open(envFile, "r") as f:
-        env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        try:
+            env = yaml.load(f.read(), Loader=yaml.FullLoader)
+        except:
+            env = yaml.load(f.read())
         return dict2obj(env[vm_name])
 
 
