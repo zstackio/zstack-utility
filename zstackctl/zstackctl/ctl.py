@@ -10037,14 +10037,26 @@ class ConfigUiCmd(Command):
         if args.ui_address and not validate_ip(args.ui_address):
             raise CtlError('%s is invalid ui address' % args.ui_address)
 
+        def get_default_webhook_and_db_ips():
+            """
+            Get default database IP and webhook IP based on high availability.
+            Returns:
+                Tuple[str, str]: Database IP and Webhook IP.
+            """
+            if check_ha():
+                zsha2_utils = Zsha2Utils()
+                return zsha2_utils.config['dbvip'], zsha2_utils.config['nodeip']
+            return get_default_ip(), '127.0.0.1'
+
         # init zstack.ui.properties
         if args.init:
+            default_db_ip, default_webhook_host = get_default_webhook_and_db_ips()
             if not ctl.read_ui_property("mn_host"):
                 ctl.write_ui_property("mn_host", '127.0.0.1')
             if not ctl.read_ui_property("mn_port"):
                 ctl.write_ui_property("mn_port", '8080')
             if not ctl.read_ui_property("webhook_host"):
-                ctl.write_ui_property("webhook_host", '127.0.0.1')
+                ctl.write_ui_property("webhook_host", default_webhook_host)
             if not ctl.read_ui_property("webhook_port"):
                 # from 4.0 set webhook_port to 5001,since the 5000 is for nginx
                 ctl.write_ui_property("webhook_port", '5001')
@@ -10073,7 +10085,7 @@ class ConfigUiCmd(Command):
             if not ctl.read_ui_property("server.ssl.enabled-protocols"):
                 ctl.write_ui_property("server.ssl.enabled-protocols", 'TLSv1.2')
             if not ctl.read_ui_property("db_url"):
-                ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+                ctl.write_ui_property("db_url", 'jdbc:mysql://%s:3306' % default_db_ip)
             if not ctl.read_ui_property("db_username"):
                 ctl.write_ui_property("db_username", 'zstack_ui')
             if not ctl.read_ui_property("db_password"):
@@ -10086,10 +10098,11 @@ class ConfigUiCmd(Command):
 
         # restore to default values
         if args.restore:
+            default_db_ip, default_webhook_host = get_default_webhook_and_db_ips()
             ctl.clear_ui_properties()
             ctl.write_ui_property("mn_host", '127.0.0.1')
             ctl.write_ui_property("mn_port", '8080')
-            ctl.write_ui_property("webhook_host", '127.0.0.1')
+            ctl.write_ui_property("webhook_host", default_webhook_host)
             ctl.write_ui_property("webhook_port", '5001')
             ctl.write_ui_property("server_port", '5000')
             ctl.write_ui_property("log", ui_logging_path)
@@ -10100,7 +10113,7 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("ssl_keystore_type", 'PKCS12')
             ctl.write_ui_property("ssl_keystore_password", 'password')
             ctl.write_ui_property("server.ssl.enabled-protocols", 'TLSv1.2')
-            ctl.write_ui_property("db_url", 'jdbc:mysql://127.0.0.1:3306')
+            ctl.write_ui_property("db_url", 'jdbc:mysql://%s:3306' % default_db_ip)
             ctl.write_ui_property("db_username", 'zstack_ui')
             ctl.write_ui_property("db_password", 'zstack.ui.password')
             ctl.write_ui_property("redis_password", 'zstack.redis.password')
