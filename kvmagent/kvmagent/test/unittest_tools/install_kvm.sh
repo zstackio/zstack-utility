@@ -15,4 +15,6 @@ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
 cd /usr/local/zstack/ansible || true
 echo ${host_ip} > /usr/local/zstack/ansible/hosts
-PYTHONPATH=/root/.zguest/zstack-utility/zstacklib/ansible python2 /root/.zguest/zstack-utility/kvmagent/ansible/kvm.py -i /usr/local/zstack/ansible/hosts -e "{\"host\":\"${host_ip}\",\"pip_url\":\"${pip_url}\",\"trusted_host\":\"${trusted_host}\",\"zstack_repo\":\"${zstack_repo}\",\"zstack_root\":\"${zstack_root}\",\"pkg_zstacklib\":\"${pkg_zstacklib}\",\"pkg_kvmagent\":\"${pkg_kvmagent}\",\"unittest_flag\":\"${unittest_flag}\"}"
+source /root/venv2/bin/activate
+PYTHONPATH=/root/.zguest/zstack-utility/zstacklib/ansible python /root/.zguest/zstack-utility/kvmagent/ansible/kvm.py -i /usr/local/zstack/ansible/hosts -e "{\"host\":\"${host_ip}\",\"pip_url\":\"${pip_url}\",\"trusted_host\":\"${trusted_host}\",\"zstack_repo\":\"${zstack_repo}\",\"zstack_root\":\"${zstack_root}\",\"pkg_zstacklib\":\"${pkg_zstacklib}\",\"pkg_kvmagent\":\"${pkg_kvmagent}\",\"unittest_flag\":\"${unittest_flag}\"}"
+deactivate
