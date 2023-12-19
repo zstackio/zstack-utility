@@ -35,6 +35,7 @@ DEB_SANLOCK_CONFIG_FILE_PATH = "/etc/default/sanlock"
 LIVE_LIBVIRT_XML_DIR = "/var/run/libvirt/qemu"
 SANLOCK_IO_TIMEOUT = 40
 LVMLOCKD_LOG_FILE_PATH = "/var/log/lvmlockd/lvmlockd.log"
+LVMLOCKD_SOCKET = "/run/lvm/lvmlockd.socket"
 LVMLOCKD_LOG_RSYSLOG_PATH = "/etc/rsyslog.d/lvmlockd.conf"
 LVMLOCKD_SERVICE_PATH = "/lib/systemd/system/lvm2-lvmlockd.service"
 LVMLOCKD_LOG_LOGROTATE_PATH = "/etc/logrotate.d/lvmlockd"
@@ -727,16 +728,43 @@ def get_lvm_version():
     return cmd.stdout
 
 @bash.in_bash
+def is_lvmlockd_socket_abnormal():
+    if linux.check_unixsock_connection(LVMLOCKD_SOCKET) == 0:
+        return False
+
+    @linux.retry(3, 1)
+    def check_lvmlockd_log():
+        # check if lvmlockd can receive the lvm command
+        fake_vg = 'fake_vg_%s' % linux.get_current_timestamp()
+        start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        vgck(fake_vg, 10)
+        end_time = (datetime.datetime.now() + datetime.timedelta(seconds=2)).strftime("%Y-%m-%d %H:%M:%S")
+        if not lvmlockd_log_search('vgck', start_time, end_time):
+            raise RetryException("lvmlockd socket exceptions!")
+    try:
+        check_lvmlockd_log()
+        return False
+    except Exception as e:
+        logger.warn(str(e))
+        return True
+
+@bash.in_bash
 def start_lvmlockd(io_timeout=40):
     if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
     logger.info("get lvm version info:\n %s" % get_lvm_version())
     config_lvmlockd(io_timeout)
-    running_lockd_version = get_running_lvmlockd_version()
-    if running_lockd_version and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version()):
+
+    def is_lvmlockd_upgraded():
+        running_lockd_version = get_running_lvmlockd_version()
+        return running_lockd_version is not None and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version())
+
+    restart_lvmlockd = is_lvmlockd_upgraded() or (LooseVersion(get_lvmlockd_version()) >= LooseVersion("2.03") and is_lvmlockd_socket_abnormal())
+    if restart_lvmlockd:
         write_lvmlockd_adopt_file()
         stop_lvmlockd()
+        linux.rm_file_force(LVMLOCKD_SOCKET)
     for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
