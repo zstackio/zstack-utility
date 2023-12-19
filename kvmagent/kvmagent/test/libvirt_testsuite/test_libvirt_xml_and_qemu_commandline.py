@@ -19,10 +19,6 @@ class TestLibvirtXml(TestCase, vm_utils.VmPluginTestStub):
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
-        vm_plugin.VmPlugin.KVM_START_VM_PATH
-    ])
-
     @pytest_utils.ztest_decorater
     def test(self):
         self.libvirt_xml_and_qemu_commandline_check("4.9.0", "4.2.0")
@@ -32,14 +28,18 @@ class TestLibvirtXml(TestCase, vm_utils.VmPluginTestStub):
         self.assertIsNotNone(libvirt_version, "missing libvirt version")
         self.assertIsNotNone(qemu_version, "missing qemu version")
 
-        r, _ = bash.bash_ro("yum install libvirt-%s* qemu-kvm-%s -y" % (libvirt_version, qemu_version))
-        r, _ = bash.bash_ro("rpm -qa | grep libvirt-%s" % libvirt_version)
-        self.assertEqual(r, 0, "failed to find rpm starts with libvirt-%s" % libvirt_version)
-        r, _ = bash.bash_ro("rpm -qa | grep qemu-kvm-%s" % qemu_version)
-        self.assertEqual(r, 0, "failed to find rpm starts with qemu-kvm-%s" % qemu_version)
+        r1, _ = bash.bash_ro("rpm -qa | grep libvirt-%s" % libvirt_version)
+        r2, _ = bash.bash_ro("rpm -qa | grep qemu-kvm-%s" % qemu_version)
 
-        vm = vm_utils.create_startvm_body_jsonobject()
-        vm_utils.create_vm(vm)
+        if r1 != 0 or r2 != 0:
+            bash.bash_ro("yum install libvirt-%s* qemu-kvm-%s -y" % (libvirt_version, qemu_version))
+
+        r1, _ = bash.bash_ro("rpm -qa | grep libvirt-%s" % libvirt_version)
+        r2, _ = bash.bash_ro("rpm -qa | grep qemu-kvm-%s" % qemu_version)
+        self.assertEqual(r1, 0, "failed to find rpm starts with libvirt-%s" % libvirt_version)
+        self.assertEqual(r2, 0, "failed to find rpm starts with qemu-kvm-%s" % qemu_version)
+
+        vm_uuid, vm = self._create_vm()
 
         r, output = bash.bash_ro("virsh dumpxml %s" % vm.vmInstanceUuid)
 

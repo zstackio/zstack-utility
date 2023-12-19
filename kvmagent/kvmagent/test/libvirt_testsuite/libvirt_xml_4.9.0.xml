@@ -1,4 +1,4 @@
-<domain type='kvm' id='1' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
+<domain type='kvm' id='4' xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0'>
   <name>0b42630f37d8417480eced62ad89719f</name>
   <uuid>0b42630f-37d8-4174-80ec-ed62ad89719f</uuid>
   <description>vm-for-ut</description>
@@ -9,8 +9,8 @@
     </zs:zstack>
   </metadata>
   <maxMemory slots='16' unit='KiB'>34359738368</maxMemory>
-  <memory unit='KiB'>65536</memory>
-  <currentMemory unit='KiB'>65536</currentMemory>
+  <memory unit='KiB'>2097152</memory>
+  <currentMemory unit='KiB'>2097152</currentMemory>
   <vcpu placement='static' current='1'>128</vcpu>
   <cputune>
     <shares>512</shares>
@@ -40,7 +40,7 @@
   <cpu>
     <topology sockets='32' cores='4' threads='1'/>
     <numa>
-      <cell id='0' cpus='0-127' memory='65536' unit='KiB'/>
+      <cell id='0' cpus='0-127' memory='2097152' unit='KiB'/>
     </numa>
   </cpu>
   <clock offset='utc'/>
@@ -61,11 +61,17 @@
       <serial>d387b4534faf4553a50a8a632cf12e35</serial>
       <boot order='1'/>
       <alias name='virtio-disk0'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x0a' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0b' function='0x0'/>
     </disk>
     <controller type='scsi' index='0' model='virtio-scsi'>
       <alias name='scsi0'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0'/>
+    </controller>
+    <controller type='pci' index='1' model='pci-bridge'>
+      <model name='pci-bridge'/>
+      <target chassisNr='1'/>
+      <alias name='pci.1'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
     </controller>
     <controller type='usb' index='0' model='piix3-uhci'>
       <alias name='usb'/>
@@ -73,26 +79,26 @@
     </controller>
     <controller type='usb' index='1' model='ehci'>
       <alias name='usb1'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
     </controller>
     <controller type='usb' index='2' model='nec-xhci'>
       <alias name='usb2'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>
     </controller>
     <controller type='usb' index='3' model='ehci'>
       <alias name='usb3'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x08' function='0x0'/>
     </controller>
     <controller type='usb' index='4' model='nec-xhci'>
       <alias name='usb4'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x08' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x09' function='0x0'/>
     </controller>
     <controller type='pci' index='0' model='pci-root'>
       <alias name='pci.0'/>
     </controller>
     <controller type='virtio-serial' index='0'>
       <alias name='virtio-serial0'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x09' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0a' function='0x0'/>
     </controller>
     <interface type='bridge'>
       <mac address='fa:62:4a:61:6c:00'/>
@@ -101,17 +107,17 @@
       <model type='virtio'/>
       <mtu size='1500'/>
       <alias name='net0'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
     </interface>
     <serial type='pty'>
-      <source path='/dev/pts/0'/>
+      <source path='/dev/pts/2'/>
       <target type='isa-serial' port='0'>
         <model name='isa-serial'/>
       </target>
       <alias name='serial0'/>
     </serial>
-    <console type='pty' tty='/dev/pts/0'>
-      <source path='/dev/pts/0'/>
+    <console type='pty' tty='/dev/pts/2'>
+      <source path='/dev/pts/2'/>
       <target type='serial' port='0'/>
       <alias name='serial0'/>
     </console>
@@ -141,7 +147,7 @@
     </video>
     <memballoon model='virtio'>
       <alias name='balloon0'/>
-      <address type='pci' domain='0x0000' bus='0x00' slot='0x0b' function='0x0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0c' function='0x0'/>
     </memballoon>
   </devices>
   <seclabel type='none' model='none'/>
