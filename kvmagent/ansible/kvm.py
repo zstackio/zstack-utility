@@ -840,12 +840,11 @@ def modprobe_mpci_module():
         return
         
     """copy mpci.ko"""
-    kvers_list = ['4.19.90-23.34.', '4.19.90-23.37.', '4.19.90-52.14.', '4.19.90-52.19.']
-    if not host_info.kernel_version.startswith(tuple(kvers_list)):
+    _src = "{}/mpci_{}".format(file_root, host_info.kernel_version)
+    if not os.path.exists(_src):
         handle_ansible_info("There are no suitable SE drivers for this kernel", host_post_info, "WARNING")
         return
         
-    _src = "{}/mpci_{}loongarch64".format(file_root, "".join(filter(host_info.kernel_version.startswith, kvers_list)))
     _dst = "/lib/modules/{}/mpci.ko".format(host_info.kernel_version)
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
