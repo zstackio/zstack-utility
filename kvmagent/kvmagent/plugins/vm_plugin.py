@@ -1210,6 +1210,9 @@ def is_qemu_support_migrate_with_bitmap(version):
 def is_libvirt_support_migrate_with_bitmap(version):
     return LooseVersion(version) < LooseVersion('6.0.0')
 
+def is_libvirt_support_blockdev(version):
+    return LooseVersion(version) > LooseVersion('6.0.0')
+
 def block_device_use_block_type():
     return user_specify_driver() or not file_type_support_block_device()
 
@@ -3073,6 +3076,29 @@ class Vm(object):
                 if not volume.useVirtio:
                     logout_iscsi()
 
+            def clean_block_node():
+                if volume.deviceType == 'ceph':
+                    orphan_block_nodes = []
+                    try :
+                        node_name_and_file = get_block_node_name_and_file(self.uuid)
+                    except Exception as exception:
+                        logger.debug(str(exception))
+                        return
+                    installPath = volume.installPath.replace('ceph://', '').split('/')
+                    # ceph file example: "json:{"driver": "raw", "file": {"pool": "pool", "image": "ca46af50ab8742b68e464e9b23b05598"}"
+                    for node_name, file in node_name_and_file.items():
+                        if installPath[0] in file and '"' + installPath[1] + '"' in file:
+                            orphan_block_nodes.append(node_name)
+
+                    for node in orphan_block_nodes:
+                        r, o, err = execute_qmp_command(self.uuid, '{ "execute": "blockdev-del", "arguments": { "node-name": "%s" } }' % node)
+                        if r == 0:
+                            logger.debug("delete vm[%s] orphan block node[%s] success" % (self.uuid, node))
+                        else:
+                            logger.debug("failed to delete vm[%s] orphan block node[%s], because %s" % (self.uuid, node, str(err)))
+
+            if not is_libvirt_support_blockdev(linux.get_libvirt_version()):
+                clean_block_node()
 
         except libvirt.libvirtError as ex:
             vm = get_vm_by_uuid(self.uuid)
@@ -6144,6 +6170,25 @@ def get_block_node_name_by_disk_name(domain_id, disk_name):
     if LooseVersion(LIBVIRT_VERSION) < LooseVersion("6.0.0"):
         return block['device']
     return block["inserted"]['node-name']
+
+def get_vm_block_nodes(domain_uuid):
+    r, o, err = execute_qmp_command(domain_uuid, '{ "execute": "query-named-block-nodes" }')
+    if r != 0:
+        raise kvmagent.KvmError("failed to query block nodes on vm[uuid:{}], libvirt error:{}".format(domain_uuid, err))
+
+    block_nodes = json.loads(o)["return"]
+    if not block_nodes:
+        raise kvmagent.KvmError("no block nodes found on vm[uuid:{}]".format(domain_uuid))
+
+    return block_nodes
+
+def get_block_node_name_and_file(domain_id):
+    block_nodes = get_vm_block_nodes(domain_id)
+    node_name_and_files = {}
+    for block_node in block_nodes:
+        node_name_and_files[block_node['node-name']] = block_node["file"]
+    return node_name_and_files
+
 
 def get_vm_migration_caps(domain_id, cap_key):
     r, o, e = execute_qmp_command(domain_id, '{"execute": "query-migrate-capabilities"}')
