@@ -2459,8 +2459,7 @@ install_sds(){
 }
 
 install_zops(){
-    [[ x"$BASEARCH" != x"x86_64" ]] && return
-    [[ x"$OS" != x"CENTOS7" && x"$OS" != x"HELIX7" ]] && return
+    [[ x"$ZSTACK_RELEASE" = x"c74" ]] && return
     mkdir -p /usr/local/zops
     chmod o+r /usr/local/zops
     echo "true" > /usr/local/zops/cloud_integration
