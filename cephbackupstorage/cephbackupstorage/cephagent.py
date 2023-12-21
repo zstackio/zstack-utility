@@ -913,6 +913,7 @@ class CephAgent(object):
         rsp.actualSize = task.expectedSize
         rsp.downloadSize = task.checked_download_size()
         rsp.lastOpTime = long(task.lastOpTime) * 1000
+        rsp.format = task.image_format
         if task.expectedSize == 0:
             rsp.progress = 0
         elif task.completed and not task.lastError:
