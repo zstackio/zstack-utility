@@ -288,6 +288,9 @@ class HttpServer(object):
         site_config['server.socket_port'] = self.port
         site_config['server.thread_pool'] = int(os.getenv('POOLSIZE', '10'))
 
+        # Set the socket connect timeout to 15 seconds, keeping it consistent with the default value of the control plane.
+        site_config['server.socket_timeout'] = 15
+
         # remove limitation of request body size, default is 100MB.
         site_config['server.max_request_body_size'] = 0
 
