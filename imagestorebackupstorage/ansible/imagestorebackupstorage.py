@@ -235,8 +235,9 @@ def load_nbd():
 load_nbd()
 
 if client == "false" and new_add == "false":
-    dst_dir = os.path.join(fs_rootpath, "registry")
-    if not file_dir_exist("path=" + dst_dir, host_post_info):
+    exp_dir = os.path.join(fs_rootpath, "export")
+    reg_dir = os.path.join(fs_rootpath, "registry")
+    if not file_dir_exist("path=" + exp_dir, host_post_info) and not file_dir_exist("path=" + reg_dir, host_post_info):
         error("ERROR: registry directory is missing, imagestore metadata may have been lost. Check it immediately!")
 
 # name: install zstack-store
