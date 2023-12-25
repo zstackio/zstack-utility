@@ -48,8 +48,11 @@ class IscsiLogin(object):
                 'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
                     self.target, self.server_hostname, self.server_port, self.chap_password))
 
-        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
+        s = shell.ShellCmd('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
             self.target, self.server_hostname, self.server_port))
+        s(False)
+        if s.return_code != 0 and 'already present' not in s.stderr:
+            s.raise_error()
 
         def wait_device_to_show(_):
             return bool(glob.glob(device_path))

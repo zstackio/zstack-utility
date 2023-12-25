@@ -8730,13 +8730,19 @@ host side snapshot files chian:
     def login_iscsi_target(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        login = iscsi.IscsiLogin()
-        login.server_hostname = cmd.hostname
-        login.server_port = cmd.port
-        login.chap_password = cmd.chapPassword
-        login.chap_username = cmd.chapUsername
-        login.target = cmd.target
+        if cmd.url:
+            login = iscsi.IscsiLogin(cmd.url)
+        else:
+            login = iscsi.IscsiLogin()
+            login.server_hostname = cmd.hostname
+            login.server_port = cmd.port
+            login.chap_password = cmd.chapPassword
+            login.chap_username = cmd.chapUsername
+            login.target = cmd.target
         login.login()
+        login.rescan()
+        if login.disk_id:
+            login.retry_get_device_path()
 
         return jsonobject.dumps(LoginIscsiTargetRsp())
 
