@@ -3090,7 +3090,7 @@ class Vm(object):
                         if installPath[0] in file and '"' + installPath[1] + '"' in file:
                             orphan_block_nodes.append(node_name)
 
-                    @linux.retry(times=3, sleep_time=5)
+                    @linux.retry(times=10, sleep_time=30)
                     def do_clean_orphan_block_nodes(node):
                         r, o, err = execute_qmp_command(self.uuid, '{ "execute": "blockdev-del", "arguments": { "node-name": "%s" } }' % node)
                         if r == 0:
