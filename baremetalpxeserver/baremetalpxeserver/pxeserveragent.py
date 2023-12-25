@@ -104,7 +104,7 @@ class PxeServerAgent(object):
     PXELINUX_CFG_PATH = TFTPBOOT_PATH + "pxelinux.cfg/"
     PXELINUX_DEFAULT_CFG = PXELINUX_CFG_PATH + "default"
     UEFI_GRUB_CFG_PATH = TFTPBOOT_PATH + "EFI/BOOT/"
-    UEFI_DEFAULT_GRUB_CFG = UEFI_GRUB_CFG_PATH + "grub.cfg"
+    UEFI_DEFAULT_GRUB_CFG = TFTPBOOT_PATH + "grub.cfg"
     # we use `KS_CFG_PATH` to hold kickstart/preseed/autoyast preconfiguration files
     KS_CFG_PATH = VSFTPD_ROOT_PATH + "ks/"
     INSPECTOR_KS_CFG = KS_CFG_PATH + "inspector_ks_ARCH.cfg"
