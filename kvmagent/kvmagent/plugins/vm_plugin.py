@@ -44,6 +44,7 @@ from zstacklib.utils import bash, plugin
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lvm
+from zstacklib.utils import linux
 from zstacklib.utils import ft
 from zstacklib.utils import shell
 from zstacklib.utils import uuidhelper
@@ -57,6 +58,7 @@ from zstacklib.utils import pci
 from zstacklib.utils import iproute
 from zstacklib.utils import ovs
 from zstacklib.utils import drbd
+from zstacklib.utils import secret
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
@@ -2382,10 +2384,10 @@ class Vm(object):
 
         raise kvmagent.KvmError('no vnc console defined for vm[uuid:%s]' % self.uuid)
 
-    def attach_data_volume(self, volume, addons):
+    def attach_data_volume(self, volume, addons, encrypt_key=None):
         self._wait_vm_run_until_seconds(10)
         self.timeout_object.wait_until_object_timeout('detach-volume-%s' % self.uuid)
-        self._attach_data_volume(volume, addons)
+        self._attach_data_volume(volume, addons, encrypt_key=encrypt_key)
         self.timeout_object.put('attach-volume-%s' % self.uuid, timeout=10)
 
     @staticmethod
@@ -2424,7 +2426,7 @@ class Vm(object):
         if volume_xml_obj.get('type') != 'block' or volume_xml_obj.get('device') != 'lun':
             e(volume_xml_obj, 'serial', vol_uuid)
 
-    def _attach_data_volume(self, volume, addons):
+    def _attach_data_volume(self, volume, addons, encrypt_key=None):
         Vm.check_device_exceed_limit(volume.deviceId)
 
         def volume_native_aio(volume_xml_obj):
@@ -2441,10 +2443,41 @@ class Vm(object):
 
             drivers[0].set("io", "native")
 
+        def get_backfile_chain(current):
+            back_files = []
+
+            def get_back_files(volume):
+                back_file = linux.qcow2_get_backing_file(volume)
+                if not back_file:
+                    return
+
+                back_files.append(back_file)
+                get_back_files(back_file)
+
+            get_back_files(current)
+            return back_files
+
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode})
-            e(disk, 'source', None, {'file': volume.installPath})
+            source = e(disk, 'source', None, {'file': volume.installPath})
+            if encrypt_key:
+                try:
+                    linux.check_and_create_qcow2_secret_key(volume.volumeUuid, encrypt_key)
+                except Exception:
+                    raise kvmagent.KvmError("error happend when create secret, volumeUuid:%s", volume.volumeUuid)
+                encryption = e(source, 'encryption', None, {'format': 'luks'})
+                e(encryption, 'secret', None,{'type': 'passphrase', 'uuid': volume.volumeUuid})
+                back_files = get_backfile_chain(volume.installPath)
+                first_back = True
+                for back_file in back_files:
+                    backfile = e(disk, 'backingStore', None, {'type': 'file'}) if first_back else e(backfile, 'backingStore', None, {'type': 'file'})
+                    encryption = e(backfile, 'format', None, {'type': linux.get_img_fmt(back_file)})
+                    source = e(backfile, 'source', None, {'file': back_file})
+                    if secret.is_img_encrypted(back_file):
+                        encryption = e(source, 'encryption', None,{'format': 'luks'})
+                        e(encryption, 'secret', None, {'type': 'passphrase', 'uuid': volume.volumeUuid})
+                    first_back = False
 
             if volume.shareable:
                 e(disk, 'shareable')
@@ -2532,7 +2565,24 @@ class Vm(object):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
                   {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'})
-                e(disk, 'source', None, {'dev': volume.installPath})
+                source = e(disk, 'source', None, {'dev': volume.installPath})
+                if encrypt_key:
+                    try:
+                        linux.check_and_create_qcow2_secret_key(volume.volumeUuid, encrypt_key)
+                    except Exception:
+                        raise kvmagent.KvmError("error happend when create secret,volumeUuid:%s", volume.volumeUuid)
+                    encryption = e(source, 'encryption', None, {'format': 'luks'})
+                    e(encryption, 'secret', None, {'type': 'passphrase', 'uuid': volume.volumeUuid})
+                    back_files = get_backfile_chain(volume.installPath)
+                    first_back = True
+                    for back_file in back_files:
+                        backfile = e(disk, 'backingStore', None, {'type': 'block'}) if first_back else e(backfile, 'backingStore', None, {'type': 'block'})
+                        encryption = e(backfile, 'format', None, {'type': linux.get_img_fmt(back_file)})
+                        source = e(backfile, 'source', None, {'dev': back_file})
+                        if secret.is_img_encrypted(back_file):
+                            encryption = e(source, 'encryption', None, {'format': 'luks'})
+                            e(encryption, 'secret', None, {'type': 'passphrase', 'uuid': volume.volumeUuid})
+                        first_back = False
 
                 if volume.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
@@ -4660,13 +4710,52 @@ class Vm(object):
 
                 return disk
 
+            def get_backfile_chain(current):
+                back_files = []
+
+                def get_back_files(volume):
+                    back_file = linux.qcow2_get_backing_file(volume)
+                    if not back_file:
+                        return
+
+                    back_files.append(back_file)
+                    get_back_files(back_file)
+
+                get_back_files(current)
+                return back_files
+
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
                 if cmd.addons and cmd.addons['useDataPlane'] is True:
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'queues':'1', 'dataplane': 'on'})
                 else:
                     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
-                e(disk, 'source', None, {'file': _v.installPath})
+                source = e(disk, 'source', None, {'file': _v.installPath})
+                if secret.is_img_encrypted(_v.installPath):
+                    if cmd.kvmHostAddons.encryptVolumes != None and cmd.kvmHostAddons.encryptVolumes.hasattr(_v.volumeUuid):
+                        data = cmd.kvmHostAddons.encryptVolumes
+                        try:
+                            linux.check_and_create_qcow2_secret_key(_v.volumeUuid, data[_v.volumeUuid])
+                        except Exception as err:
+                            raise err
+
+                        encryption = e(source, 'encryption', None, {'format': 'luks'})
+                        e(encryption, 'secret', None, {'type': 'passphrase', 'uuid': _v.volumeUuid})
+                        back_files = get_backfile_chain(_v.installPath)
+                        first_back = True
+                        for back_file in back_files:
+                            backfile = e(disk, 'backingStore', None, {'type': 'file'}) if first_back else e(backfile, 'backingStore',None, {'type': 'file'})
+                            encryption = e(backfile, 'format', None, {'type': linux.get_img_fmt(back_file)})
+                            source = e(backfile, 'source', None,{'file': back_file})
+                            if secret.is_img_encrypted(back_file):
+                                encryption = e(source, 'encryption', None,{'format': 'luks'})
+                                e(encryption, 'secret', None,{'type': 'passphrase','uuid': _v.volumeUuid})
+                            first_back = False
+                    else:
+                        err_info = "volume uuid:%s need to encrypt but not found in cmd.kvmHostAddons" % _v.volumeUuid
+                        raise Exception(err_info)
+                else:
+                    logger.warn("volume uuid:%s not need for encryption ", _v.volumeUuid)
 
                 if _v.shareable:
                     e(disk, 'shareable')
@@ -4799,7 +4888,32 @@ class Vm(object):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 e(disk, 'driver', None,
                   {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'})
-                e(disk, 'source', None, {'dev': _v.installPath})
+                source = e(disk, 'source', None, {'dev': _v.installPath})
+                if secret.is_img_encrypted(_v.installPath):
+                    if cmd.kvmHostAddons.encryptVolumes != None and cmd.kvmHostAddons.encryptVolumes.hasattr(_v.volumeUuid):
+                        data = cmd.kvmHostAddons.encryptVolumes
+                        try:
+                            linux.check_and_create_qcow2_secret_key(_v.volumeUuid, data[_v.volumeUuid])
+                        except Exception as err:
+                            raise err
+
+                        encryption = e(source, 'encryption', None, {'format': 'luks'})
+                        e(encryption, 'secret', None, {'type': 'passphrase', 'uuid': _v.volumeUuid})
+                        back_files = get_backfile_chain(_v.installPath)
+                        first_back = True
+                        for back_file in back_files:
+                            backfile = e(disk, 'backingStore', None, {'type': 'block'}) if first_back else e(backfile,'backingStore', None, {'type': 'block'})
+                            encryption = e(backfile, 'format', None, {'type': linux.get_img_fmt(back_file)})
+                            source = e(backfile, 'source', None,{'dev': back_file})
+                            if secret.is_img_encrypted(back_file):
+                                encryption = e(source, 'encryption', None,{'format': 'luks'})
+                                e(encryption, 'secret', None,{'type': 'passphrase','uuid': _v.volumeUuid})
+                            first_back = False
+                    else:
+                        err_info = "volume uuid:%s need to encrypt but not found in cmd.kvmHostAddons." % _v.volumeUuid
+                        raise Exception(err_info)
+                else:
+                    logger.warn("volume uuid:%s not need for encryption ", _v.volumeUuid)
 
                 if _v.useVirtioSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
@@ -5834,8 +5948,10 @@ class VmPlugin(kvmagent.KvmAgent):
             except kvmagent.KvmError:
                 raise kvmagent.KvmError(
                     'unable to start vm[uuid:%s, name:%s], libvirt error: %s' % (cmd.vmInstanceUuid, cmd.vmName, str(e)))
-
-
+        except Exception as ex:
+            if "error happend when create secret" in str(ex.__str__()):
+                raise kvmagent.KvmError(
+                    'error happend when create secret, vm[uuid:%s, name:%s]' % (cmd.vmInstanceUuid, cmd.vmName))
 
     def _cleanup_iptable_chains(self, chain, data):
         if 'vnic' not in chain.name:
@@ -6495,7 +6611,12 @@ class VmPlugin(kvmagent.KvmAgent):
             if vm.state != Vm.VM_STATE_RUNNING and vm.state != Vm.VM_STATE_PAUSED:
                 raise kvmagent.KvmError(
                     'unable to attach volume[%s] to vm[uuid:%s], vm must be running or paused' % (volume.installPath, vm.uuid))
-            vm.attach_data_volume(cmd.volume, cmd.addons)
+            encrypt_key = None
+            if cmd.kvmHostAddons and cmd.kvmHostAddons.encryptKey:
+                encrypt_key = cmd.kvmHostAddons.encryptKey
+            else:
+                logger.warn("attach volume uuid:%s not need for encryption")
+            vm.attach_data_volume(cmd.volume, cmd.addons, encrypt_key=encrypt_key)
 
             vm.refresh()
 
@@ -7042,6 +7163,12 @@ host side snapshot files chian:
         """
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeSnapshotResponse()
+        encrypt_key = None
+        if cmd.kvmHostAddons and cmd.kvmHostAddons.encryptKey:
+            encrypt_key = cmd.kvmHostAddons.encryptKey
+            cmd.size = VmPlugin._get_snapshot_size(cmd.volumeInstallPath)
+        else:
+            logger.warn("attach volume uuid:%s not need for encryption")
 
         def makedir_if_need(new_path):
             dirname = os.path.dirname(new_path)
