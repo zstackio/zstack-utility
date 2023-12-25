@@ -3090,12 +3090,23 @@ class Vm(object):
                         if installPath[0] in file and '"' + installPath[1] + '"' in file:
                             orphan_block_nodes.append(node_name)
 
-                    for node in orphan_block_nodes:
+                    @linux.retry(times=3, sleep_time=5)
+                    def do_clean_orphan_block_nodes(node):
                         r, o, err = execute_qmp_command(self.uuid, '{ "execute": "blockdev-del", "arguments": { "node-name": "%s" } }' % node)
                         if r == 0:
+                            libvirtError = LibvirtError(jsonobject.loads(o.strip()))
+                            if libvirtError.error is not None:
+                                logger.debug("failed to execute blockdev-del, because %s", libvirtError.error_desc)
+                                raise Exception("failed to execute blockdev-del, because %s", libvirtError.error_desc)
                             logger.debug("delete vm[%s] orphan block node[%s] success" % (self.uuid, node))
                         else:
                             logger.debug("failed to delete vm[%s] orphan block node[%s], because %s" % (self.uuid, node, str(err)))
+
+                    for block_node in orphan_block_nodes:
+                        try:
+                            do_clean_orphan_block_nodes(block_node)
+                        except Exception as exc:
+                            logger.debug(str(exc))
 
             if not is_libvirt_support_blockdev(linux.get_libvirt_version()):
                 clean_block_node()
@@ -6246,6 +6257,16 @@ def check_install_path_by_qmp(domain_id, disk_name, path):
 
     return False
 
+
+class LibvirtError(object):
+    def __init__(self, err):
+        self.id = err["id"]
+        self.error = err["error"]
+        self.error_class = None
+        self.error_desc = None
+        if self.error is not None:
+            self.error_class = self.error["class"]
+            self.error_desc = self.error["desc"]
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
