@@ -27,8 +27,6 @@
     </target>
 
     <target name="assemble-zstack-sharedblock">
-        <makeDir dir="${imagestorebackupstorage.ansible.dir}" />
-
         <copy todir="${zsblk.ansible.dir}">
             <fileset dir="${zsblk.bdir}">
                 <include name="**/*" />
