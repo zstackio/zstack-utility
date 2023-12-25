@@ -245,16 +245,6 @@ def unlink_file_checked(fpath):
     exception_on_opened_file(fpath)
     os.unlink(fpath)
 
-def zero_dd(path, bs, count=None, iflag=None, oflag=None, exception=True):
-    bs = "bs={}".format(bs) if bs else ""
-    count = "count={}".format(count) if count else ""
-    iflag = "iflag={}".format(iflag) if iflag else ""
-    oflag = "oflag={}".format(oflag) if oflag else ""
-    ddcmd = "dd if=/dev/zero of={} {} {} {} {}".format(path, bs, count, iflag, oflag)
-    shell.run("sync")
-    shell.call(ddcmd, exception=exception)
-    shell.run("sync")
-
 def zeroed_file_dev(fpath):
     # size -> unit:bytes
     if not os.path.exists(fpath):
@@ -263,11 +253,11 @@ def zeroed_file_dev(fpath):
 
     exception_on_opened_file(fpath)
     if os.path.isfile(fpath):
-        size = os.path.getsize(fpath)
-        count = int(math.ceil(float(size)/1024/1024))
-        zero_dd(fpath, bs="1M", count=count, oflag="direct")
+        shred_cmd = "shred -zu {}".format(fpath)
+        shell.run(shred_cmd)
     else:
-        zero_dd(fpath, bs="1M", oflag="direct", exception=False)
+        shred_cmd = "shred -z {}".format(fpath)
+        shell.run(shred_cmd)
     logger.debug("successfully zeroed the file/dev[{}]".format(fpath))
 
 def process_exists(pid):
