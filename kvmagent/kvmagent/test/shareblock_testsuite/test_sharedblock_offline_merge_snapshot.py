@@ -70,6 +70,11 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         )
         self.assertEqual(True, rsp.success, rsp.error)
 
+        bash.bash_r("lvchange -aey %s" % "/dev/{}/{}".format(vgUuid,volumeUuid2))
+        vsize = int(linux.qcow2_get_virtual_size("/dev/{}/{}".format(vgUuid,volumeUuid2)))
+        rsp = sharedblock_utils.sharedblock_resize_volume("sharedblock://{}/{}".format(vgUuid,volumeUuid2), vsize+1*1024**3)
+        self.assertEqual(True, rsp.success, rsp.error)
+
         rsp = sharedblock_utils.sharedblock_offline_merge_snapshots(
             fullRebase=False,
             srcPath="sharedblock://{}/{}".format(vgUuid,imageUuid),

@@ -172,14 +172,13 @@ def _dump_list(lst):
     return nlst
 
 
-def _dump(obj):
+def _dump(obj, include_protected_attr=False):
     if _is_primitive_types(obj): return simplejson.dumps(obj, ensure_ascii=True)
 
     ret = {}
     items = obj.iteritems() if isinstance(obj, types.DictionaryType) else obj.__dict__.iteritems()
     for key, val in items:
-        if key.startswith('_'): continue
-
+        if key.startswith('_') and not include_protected_attr: continue
         if _is_unsupported_type(obj):
             raise NoneSupportedTypeError('cannot dump %s, type:%s, object dict: %s' % (val, type(val), obj.__dict__))
 
@@ -190,7 +189,7 @@ def _dump(obj):
                 ret[key] = val
                 continue
 
-            nmap = _dump(val)
+            nmap = _dump(val, include_protected_attr=include_protected_attr)
             ret[key] = nmap
         elif isinstance(val, types.ListType):
             nlst = _dump_list(val)
@@ -198,13 +197,13 @@ def _dump(obj):
         elif isinstance(val, types.NoneType):
             pass
         else:
-            nmap = _dump(val)
+            nmap = _dump(val, include_protected_attr=include_protected_attr)
             ret[key] = nmap
     return ret
 
 
-def dumps(obj, pretty=False):
-    jsonmap = _dump(obj)
+def dumps(obj, pretty=False, include_protected_attr=False):
+    jsonmap = _dump(obj, include_protected_attr)
     if pretty:
         return simplejson.dumps(jsonmap, ensure_ascii=True, sort_keys=True, indent=4)
     else:
