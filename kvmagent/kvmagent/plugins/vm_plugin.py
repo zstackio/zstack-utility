@@ -3086,9 +3086,19 @@ class Vm(object):
                         return
                     installPath = volume.installPath.replace('ceph://', '').split('/')
                     # ceph file example: "json:{"driver": "raw", "file": {"pool": "pool", "image": "ca46af50ab8742b68e464e9b23b05598"}"
+                    format_nodes = []
+                    storage_nodes = []
+                    other_nodes = []
                     for node_name, file in node_name_and_file.items():
                         if installPath[0] in file and '"' + installPath[1] + '"' in file:
-                            orphan_block_nodes.append(node_name)
+                            if 'format' in node_name:
+                                format_nodes.append(node_name)
+                            elif 'storage' in node_name:
+                                storage_nodes.append(node_name)
+                            else:
+                                other_nodes.append(node_name)
+
+                    orphan_block_nodes = format_nodes + storage_nodes + other_nodes
 
                     @linux.retry(times=10, sleep_time=30)
                     def do_clean_orphan_block_nodes(node):
