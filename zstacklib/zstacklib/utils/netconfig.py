@@ -99,8 +99,9 @@ class NetConfig(object):
         if ip_config is None:
             ip_config = IpConfig(ip=ip, netmask=netmask)
 
-        ip_config.gateway = gateway
-        ip_config.is_default = is_default
+        if gateway:
+            ip_config.gateway = gateway
+            ip_config.is_default = is_default
         ip_config.version = version
         self.ip_configs.append(ip_config)
 
@@ -171,7 +172,6 @@ class NetConfig(object):
             ip_list.append('NETMASK%s=%s' % (ip_index, ip_config.netmask))
             if ip_config.gateway:
                 ip_list.append('GATEWAY%s=%s' % (ip_index, ip_config.gateway))
-                ip_list.append('DEFROUTE%s=no' % ip_index)
 
         return ip_list
 
