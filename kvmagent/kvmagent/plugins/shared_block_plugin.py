@@ -1179,7 +1179,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 pe_ranges = lvm.get_lv_affinity_sorted_pvs(snapshot_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(workspace_abs_path, lv_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
-                                                 pe_ranges=pe_ranges)
+                                                 pe_ranges=pe_ranges,
+                                                 exact_size=True)
             with lvm.OperateLv(workspace_abs_path, shared=False, delete_when_exception=True):
                 t_shell = traceable_shell.get_shell(cmd)
                 linux.create_template(snapshot_abs_path, workspace_abs_path, shell=t_shell)
@@ -1245,7 +1246,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 pe_ranges = lvm.get_lv_affinity_sorted_pvs(dst_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(tmp_abs_path, lv_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
-                                                 pe_ranges=pe_ranges)
+                                                 pe_ranges=pe_ranges,
+                                                 exact_size=True)
                 with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
                     qcow2.create_template_with_task_daemon(dst_abs_path, tmp_abs_path, task_spec=cmd)
                     lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
@@ -1333,7 +1335,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     lvm.delete_lv(temp_path)
 
                 lvm.update_pv_allocate_strategy(cmd)
-                lvm.create_lv_from_absolute_path(temp_path, lv_size)
+                lvm.create_lv_from_absolute_path(temp_path, lv_size, exact_size=True)
                 with lvm.OperateLv(temp_path, shared=False, delete_when_exception=True):
                     shell.call('%s -f %s -O %s %s %s' % (qemu_img.subcmd('convert'),
                                                          src_format, cmd.dstFormat,
