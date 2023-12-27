@@ -795,6 +795,9 @@ def del_fdb_entry(ifname, lladdr):
         except Exception as e:
             logger.debug("del fdb mac: %s interface: %s, failed: %s" % (lladdr, ifname, e))
 
+def config_link_isolated(nic):
+    shell.call('echo 1 > /sys/class/net/%s/brport/isolated' % nic, False)
+
 
 class VnicInfo:
     def __init__(self):
