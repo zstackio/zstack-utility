@@ -199,7 +199,7 @@ def install_kvm_pkg():
 
         distro_mapping = {
             'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel libicu edac-utils',
-            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu ',
+            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu edac-utils',
             'uniontech': 'vconfig iscsi-initiator-utils OpenIPMI nettle qemu-kvm python-pyudev collectd-disk',
             'rocky': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel collectd-disk edac-utils',
         }
@@ -220,8 +220,8 @@ def install_kvm_pkg():
                      'seabios-bin elfutils-libelf-devel collectd-disk') % helix_rhel_rpms,
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel',
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
-            'oe2203sp1': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
-            'h2203sp1o': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
+            'oe2203sp1': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk edac-utils',
+            'h2203sp1o': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk edac-utils',
             'nfs4': 'vconfig iscsi-initiator-utils OpenIPMI nettle libselinux-devel iptables iptables-services qemu-kvm python2-pyudev collectd-disk'
         }
 
