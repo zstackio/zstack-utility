@@ -801,6 +801,11 @@ def script(file, host_post_info, script_arg=None):
                 handle_ansible_failed(description, result, host_post_info)
 
 
+def batch_yum_install_package(pkgs, host_post_info):
+    for pkg in pkgs:
+        yum_install_package(pkg, host_post_info)
+
+
 @retry(times=3, sleep_time=3)
 def yum_install_package(name, host_post_info, ignore_error=False,
                         force_install=False):
@@ -810,9 +815,8 @@ def yum_install_package(name, host_post_info, ignore_error=False,
     post_url = host_post_info.post_url
     host_post_info.post_label = "ansible.yum.start.install.package"
     host_post_info.post_label_param = name
-    msg = "INFO: Starting yum install package %s ... " % (name,
-                                                          host_post_info)
-    handle_ansible_info(msg, "INFO")
+    msg = "INFO: Starting yum install package %s ... " % name
+    handle_ansible_info(msg, host_post_info, "INFO")
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
@@ -2377,19 +2381,25 @@ class ZstackLib(object):
         # install libselinux-python and other command system libs from user
         # defined repos
         selinux_pkgs = [p for p in required_rpm_set if "selinux" in p]
-        command = "yum --disablerepo=* --enablerepo={0} install -y {1} || true" \
-                  .format(zstack_repo, " ".join(selinux_pkgs))
-        run_remote_command(command, self.host_post_info)
+        if zstack_repo == "false":
+            batch_yum_install_package(selinux_pkgs, self.host_post_info)
+        else:
+            command = "yum --disablerepo=* --enablerepo={0} install -y {1} || true" \
+                      .format(zstack_repo, " ".join(selinux_pkgs))
+            run_remote_command(command, self.host_post_info)
 
-        command = ("%s pkg_list=`rpm -q %s | grep \"not installed\" | awk"
-                   " '{ print $2 }'` && for pkg in $pkg_list; do yum"
-                   " --disablerepo=* --enablerepo=%s install -y $pkg;"
-                   " done;") % (before_install_command,
-                                " ".join(required_rpm_set),
-                                zstack_repo)
-        self.host_post_info.post_label = "ansible.shell.install.pkg"
-        self.host_post_info.post_label_param = ",".join(required_rpm_set)
-        run_remote_command(command, self.host_post_info, stderr_match_regexp=r'.*pre-existing rpmdb problem.*(?:lvm2|librados).*')
+        if zstack_repo == "false":
+            batch_yum_install_package(required_rpm_set, self.host_post_info)
+        else:
+            command = ("%s pkg_list=`rpm -q %s | grep \"not installed\" | awk"
+                       " '{ print $2 }'` && for pkg in $pkg_list; do yum"
+                       " --disablerepo=* --enablerepo=%s install -y $pkg;"
+                       " done;") % (before_install_command,
+                                    " ".join(required_rpm_set),
+                                    zstack_repo)
+            self.host_post_info.post_label = "ansible.shell.install.pkg"
+            self.host_post_info.post_label_param = ",".join(required_rpm_set)
+            run_remote_command(command, self.host_post_info, stderr_match_regexp=r'.*pre-existing rpmdb problem.*(?:lvm2|librados).*')
         if "chrony" in required_rpm_set:
             # enable chrony service for RedHat
             enable_chrony(trusted_host, self.host_post_info, self.distro)
@@ -2525,7 +2535,7 @@ EOF
             return
 
         # read eple release source from local
-        repo_epel = "files/zstacklib/epel-release-source.repo"
+        repo_epel = "epel-release-source.repo"
         self.generate_yum_repo_config_from_zstack_lib(repo_epel)
         # install epel-release
         yum_enable_repo("epel-release", "epel-release-source",
