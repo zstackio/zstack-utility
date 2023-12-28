@@ -553,7 +553,7 @@ pass(){
 echo_title(){
     echo "\n================">> $ZSTACK_INSTALL_LOG
     echo ""|tee -a $ZSTACK_INSTALL_LOG
-    echo -n " ${STEP}. $*:" |tee -a $ZSTACK_INSTALL_LOG
+    printf "%2d. $*:" ${STEP} |tee -a $ZSTACK_INSTALL_LOG
     STEP=`expr $STEP + 1`
 }
 
