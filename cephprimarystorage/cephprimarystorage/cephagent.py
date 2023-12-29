@@ -857,6 +857,7 @@ class CephAgent(plugin.TaskManager):
         if do_create:
             driver = self.get_driver(cmd)
             rsp = driver.create_snapshot(cmd, rsp)
+            rsp.actualSize = self._get_file_actual_size(spath)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
