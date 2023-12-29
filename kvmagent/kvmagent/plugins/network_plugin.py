@@ -695,7 +695,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 if self._has_vlan_or_bridge(interface.interfaceName):
                     raise Exception(interface.interfaceName + ' has a sub-interface or a bridge port')
             for interface in cmd.slaves:
-                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface))
+                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface.interfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to attach nic to bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -710,7 +710,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for interface in cmd.slaves:
-                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
+                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface.interfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to detach nic from bonding[%s], because %s' % (cmd.bondName, str(e))
