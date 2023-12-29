@@ -831,6 +831,7 @@ def do_systemd_config():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+@skip_on_zyj(isZYJ)
 def modprobe_modules():
     # command = "modprobe nbd;modprobe multipath;modprobe dm_multipath;"
     # host_post_info.post_label = "ansible.shell.modprobe.nbd"
