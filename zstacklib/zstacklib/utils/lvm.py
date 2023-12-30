@@ -1926,28 +1926,39 @@ def examine_lockspace(lockspace):
     return r
 
 
+@bash.in_bash
 def check_stuck_vglk_and_gllk():
-    @linux.retry(3, 1)
-    def is_stuck_vglk_or_gllk():
-        r, o, e = bash.bash_roe("sanlock client status | grep -E ':VGLK:|:GLLK:'")
-        if r != 0:
-            return
-        else:
-            raise RetryException("found sanlock vglk/gllk stuck")
+    stucked_vglks = {}
+    def vglk_in_use(vglk):
+        return bash.bash_r("lvmlockctl -i | grep %s -A 5 | grep -E 'LK VG (ex|sh)'" % vglk) == 0
+
+    @linux.retry(6, sleep_time=random.uniform(2, 3))
+    def check_stuck_vglk():
+        if not stucked_vglks:
+            # init stucked vglk
+            r, o = bash.bash_ro("sanlock client status | grep ':VGLK:'")
+            if r != 0:
+                return
+            for line in o.strip().splitlines():
+                vglk = line.split()[1].split(":")[0]
+                stucked_vglks.update({vglk: line})
+            logger.debug("found sanlock vglk stuck: %s" % simplejson.dumps(stucked_vglks))
+            raise RetryException()
+        for vglk in stucked_vglks.keys():
+            if bash.bash_r("sanlock client status | grep '%s'" % stucked_vglks.get(vglk)) != 0 or vglk_in_use(vglk):
+                stucked_vglks.pop(vglk)
+        if len(stucked_vglks) != 0:
+            logger.debug("found sanlock vglk stuck: %s" % simplejson.dumps(stucked_vglks))
+            raise RetryException()
     try:
-        is_stuck_vglk_or_gllk()
+        check_stuck_vglk()
     except Exception as e:
-        r, o, e = bash.bash_roe("sanlock client status | grep -E ':VGLK:|:GLLK:'")
-        if r != 0:
-            return
-        if len(o.strip().splitlines()) == 0:
-            return
-        for stucked in o.strip().splitlines():  # type: str
+        for stucked in stucked_vglks.values():  # type: str
             if "ADD" in stucked or "REM" in stucked:
                 continue
             cmd = "sanlock client release -%s" % stucked.replace(" p ", " -p ")
             r, o, e = bash.bash_roe(cmd)
-            logger.warn("find stuck vglk/gllk and already released, detail: [return_code: %s, stdout: %s, stderr: %s]" %
+            logger.warn("find stuck vglk and already released, detail: [return_code: %s, stdout: %s, stderr: %s]" %
                         (r, o, e))
 
     check_lock = lock._get_lock("check-vglk-and-gllk")
