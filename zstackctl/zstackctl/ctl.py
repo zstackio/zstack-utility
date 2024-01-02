@@ -5538,6 +5538,7 @@ class DumpMysqlCmd(Command):
     remote_backup_dir = "/var/lib/zstack/from-zstack-remote-backup/"
     ui_backup_dir = "/var/lib/zstack/ui/"
     zstone_backup_dir = "/var/lib/zstack/zstone/"
+    zstone_file_name = "zstone-backup-db"
 
     def __init__(self):
         super(DumpMysqlCmd, self).__init__()
@@ -5575,6 +5576,17 @@ class DumpMysqlCmd(Command):
                             required=False)
 
     def sync_local_backup_db_to_remote_host(self, args, user, private_key, remote_host_ip, remote_host_port):
+        def check_and_delete_remote_host_backup_files(all_files):
+            keep_amount = args.remote_keep_amount if args.remote_keep_amount else args.keep_amount
+            db_list = [args.file_name, self.zstone_file_name]
+            for db_name in db_list:
+                file_list = [file_path for file_path in all_files if db_name in file_path]
+                if len(file_list) > keep_amount:
+                    new_file_list = [os.path.join(self.remote_backup_dir, x) for x in file_list[:len(file_list)-keep_amount]]
+                    need_delete_file_path = " ".join(new_file_list)
+                    shell_return_stdout_stderr('ssh -p %s -i %s %s@%s "rm -f %s"' % (remote_host_port, private_key, user,
+                                                                                     remote_host_ip, need_delete_file_path))
+
         (status, output, stderr) = shell_return_stdout_stderr("mkdir -p %s" % self.ui_backup_dir)
         if status != 0:
             error(stderr)
@@ -5591,17 +5603,12 @@ class DumpMysqlCmd(Command):
         if status != 0:
             error(stderr)
         if args.delete_expired_file is True:
-            amount = args.remote_keep_amount if args.remote_keep_amount else args.keep_amount
             (status, output, stderr) = shell_return_stdout_stderr('ssh -p %s -i %s %s@%s "ls -rt %s"' % (
                 remote_host_port, private_key, user, remote_host_ip, self.remote_backup_dir))
             if status != 0:
                 error(stderr)
             file_list = output.split("\n")[:-1]
-            if len(file_list) > amount:
-                new_file_list = [os.path.join(self.remote_backup_dir, x) for x in file_list[:len(file_list)-amount]]
-                need_delete_file_path = " ".join(new_file_list)
-                shell_return_stdout_stderr('ssh -p %s -i %s %s@%s "rm -f %s"' % (remote_host_port, private_key, user,
-                                                                                 remote_host_ip, need_delete_file_path))
+            check_and_delete_remote_host_backup_files(file_list)
 
     def get_db_local_hostname_from_zsha2(self):
         if not os.path.exists("/usr/local/bin/zsha2"):
@@ -5652,7 +5659,7 @@ class DumpMysqlCmd(Command):
         else:
             db_backupf_file_path = self.mysql_backup_dir + db_local_hostname + "-" + file_name + "-" + backup_timestamp + ".gz"
 
-        zstone_backup_file_path = self.zstone_backup_dir + db_local_hostname + "-" + "zstone-backup-db" + "-" + backup_timestamp + ".gz"
+        zstone_backup_file_path = self.zstone_backup_dir + db_local_hostname + "-" + self.zstone_file_name + "-" + backup_timestamp + ".gz"
 
         if args.delete_expired_file is not False and args.host_info is None:
             error("Please specify remote host info with '--host' before you want to delete remote host expired files")
