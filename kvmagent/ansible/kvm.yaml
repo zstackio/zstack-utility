@@ -7,6 +7,8 @@
     - file_root: "files/kvm"
     - iproute_pkg: "{{file_root}}/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm"
     - iproute_local_pkg: "{{kvm_root}}/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm"
+    - iproute_el7_pkg: "{{file_root}}/iproute-4.20.0-1.x86_64.rpm"
+    - iproute_el7_local_pkg: "{{kvm_root}}/iproute-4.20.0-1.x86_64.rpm"
     - dnsmasq_pkg: "{{file_root}}/dnsmasq-2.68-1.x86_64.rpm"
     - dnsmasq_local_pkg: "{{kvm_root}}/dnsmasq-2.68-1.x86_64.rpm"
     - pip_url: "{{pypi_url|default('https://pypi.python.org/simple/')}}"
@@ -40,6 +42,14 @@
     - name: Update iproute for RHEL6
       when: ansible_os_family == 'RedHat' and ansible_distribution_version < '7'
       shell: "rpm -q iproute-2.6.32-130.el6ost.netns.2 || yum install -y {{iproute_local_pkg}}"
+
+    - name: copy name space supported iproute for RHEL7
+      copy: src="{{iproute_el7_pkg}}" dest={{iproute_el7_local_pkg}}
+      when: ansible_os_family == "RedHat" and ansible_distribution_version == '7'
+
+    - name: Update iproute for RHEL7
+      when: ansible_os_family == 'RedHat' and ansible_distribution_version == '7'
+      shell: "rpm -q iproute-4.20.0-1.x86_64 || yum install -y {{iproute_el7_local_pkg}}"
 
     - name: copy updated dnsmasq for RHEL6 and RHEL7
       copy: src="{{dnsmasq_pkg}}" dest={{dnsmasq_local_pkg}}

@@ -68,6 +68,8 @@ workplace = "%s/kvm" % zstack_root
 kvm_root = "%s/package" % workplace
 iproute_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % file_root
 iproute_local_pkg = "%s/iproute-2.6.32-130.el6ost.netns.2.x86_64.rpm" % kvm_root
+iproute_el7_pkg = "%s/iproute-4.20.0-1.x86_64.rpm" % file_root
+iproute_el7_local_pkg = "%s/iproute-4.20.0-1.x86_64.rpm" % kvm_root
 
 host_post_info = HostPostInfo()
 host_post_info.host_inventory = args.i
@@ -329,6 +331,17 @@ def install_kvm_pkg():
             if network_manager_installed is True:
                 service_status("NetworkManager", "state=stopped enabled=no", host_post_info)
         else:
+            if releasever not in unsupported_iproute_list and host_info.major_version == 7:
+                # name: copy name space supported iproute for RHEL7
+                copy_arg = CopyArg()
+                copy_arg.src = iproute_el7_pkg
+                copy_arg.dest = iproute_el7_local_pkg
+                copy(copy_arg, host_post_info)
+                # name: Update iproute for RHEL7
+                command = "rpm -q iproute-4.20.0-1.x86_64 || yum install --nogpgcheck -y %s" % iproute_el7_local_pkg
+                host_post_info.post_label = "ansible.shell.install.pkg"
+                host_post_info.post_label_param = "iproute-4.20.0-1.x86_64"
+                run_remote_command(command, host_post_info)
             # name: disable firewalld in RHEL7 and Centos7
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             host_post_info.post_label = "ansible.shell.disable.service"
