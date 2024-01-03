@@ -59,6 +59,7 @@ from zstacklib.utils import ovs
 from zstacklib.utils import drbd
 from zstacklib.utils.qga import *
 from zstacklib.utils import jsonobject
+from zstacklib.utils.qmp import get_block_node_name_and_file, QmpResult
 from zstacklib.utils.report import *
 from zstacklib.utils.vm_plugin_queue_singleton import VmPluginQueueSingleton
 from zstacklib.utils.libvirt_singleton import LibvirtEventManager
@@ -1613,7 +1614,7 @@ class BlkCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -1636,7 +1637,7 @@ class VirtioCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none'}
+        driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
         if self.volume.hasattr("multiQueues") and self.volume.multiQueues:
             driver_elements["queues"] = self.volume.multiQueues
         if self.volume.hasattr("ioThreadId") and self.volume.ioThreadId:
@@ -1663,7 +1664,7 @@ class VirtioSCSICeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -2776,7 +2777,7 @@ class Vm(object):
 
         def filebased_volume():
             disk = etree.Element('disk', attrib={'type': 'file', 'device': 'disk'})
-            driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode}
+            driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode, 'discard': 'unmap'}
             if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
                 driver_elements["queues"] = volume.multiQueues
             if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
@@ -3050,7 +3051,9 @@ class Vm(object):
                     return not bool(disk)
 
                 try:
-                    self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                    disk_is_unplugging = "is already in the process of unplug"
+                    with misc.ignore_exception(libvirt.libvirtError, disk_is_unplugging):
+                        self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_LIVE)
 
                     if not linux.wait_callback_success(wait_for_detach, None, 5, 1):
                         raise Exception("unable to detach the volume[uuid:%s] from the vm[uuid:%s];"
@@ -3078,12 +3081,12 @@ class Vm(object):
 
             def clean_block_node():
                 if volume.deviceType == 'ceph':
-                    orphan_block_nodes = []
-                    try :
+                    node_name_and_file = None
+                    with misc.ignore_exception(Exception):
                         node_name_and_file = get_block_node_name_and_file(self.uuid)
-                    except Exception as exception:
-                        logger.debug(str(exception))
+                    if node_name_and_file is None:
                         return
+
                     installPath = volume.installPath.replace('ceph://', '').split('/')
                     # ceph file example: "json:{"driver": "raw", "file": {"pool": "pool", "image": "ca46af50ab8742b68e464e9b23b05598"}"
                     format_nodes = []
@@ -3104,10 +3107,10 @@ class Vm(object):
                     def do_clean_orphan_block_nodes(node):
                         r, o, err = execute_qmp_command(self.uuid, '{ "execute": "blockdev-del", "arguments": { "node-name": "%s" } }' % node)
                         if r == 0:
-                            libvirtError = LibvirtError(jsonobject.loads(o.strip()))
-                            if libvirtError.error is not None:
-                                logger.debug("failed to execute blockdev-del, because %s", libvirtError.error_desc)
-                                raise Exception("failed to execute blockdev-del, because %s", libvirtError.error_desc)
+                            qmpResult = QmpResult(jsonobject.loads(o.strip()))
+                            if qmpResult.error is not None:
+                                logger.debug("failed to execute blockdev-del, because %s", qmpResult.error_desc)
+                                raise Exception("failed to execute blockdev-del, because %s", qmpResult.error_desc)
                             logger.debug("delete vm[%s] orphan block node[%s] success" % (self.uuid, node))
                         else:
                             logger.debug("failed to delete vm[%s] orphan block node[%s], because %s" % (self.uuid, node, str(err)))
@@ -5226,7 +5229,7 @@ class Vm(object):
 
             def filebased_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode}
+                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'discard': 'unmap'}
                 if cmd.addons and cmd.addons['useDataPlane'] is True:
                     driver_elements['dataplane'] = 'on'
                     driver_elements['queues'] = 1
@@ -5299,7 +5302,7 @@ class Vm(object):
                     raise Exception('unexpected recover path: %s' % _v.installPath)
 
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-                driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none'}
+                driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
                 e(disk, 'driver', None, driver_elements)
@@ -6200,25 +6203,6 @@ def get_block_node_name_by_disk_name(domain_id, disk_name):
         return block['device']
     return block["inserted"]['node-name']
 
-def get_vm_block_nodes(domain_uuid):
-    r, o, err = execute_qmp_command(domain_uuid, '{ "execute": "query-named-block-nodes" }')
-    if r != 0:
-        raise kvmagent.KvmError("failed to query block nodes on vm[uuid:{}], libvirt error:{}".format(domain_uuid, err))
-
-    block_nodes = json.loads(o)["return"]
-    if not block_nodes:
-        raise kvmagent.KvmError("no block nodes found on vm[uuid:{}]".format(domain_uuid))
-
-    return block_nodes
-
-def get_block_node_name_and_file(domain_id):
-    block_nodes = get_vm_block_nodes(domain_id)
-    node_name_and_files = {}
-    for block_node in block_nodes:
-        node_name_and_files[block_node['node-name']] = block_node["file"]
-    return node_name_and_files
-
-
 def get_vm_migration_caps(domain_id, cap_key):
     r, o, e = execute_qmp_command(domain_id, '{"execute": "query-migrate-capabilities"}')
     if r != 0:
@@ -6275,16 +6259,6 @@ def check_install_path_by_qmp(domain_id, disk_name, path):
 
     return False
 
-
-class LibvirtError(object):
-    def __init__(self, err):
-        self.id = err["id"]
-        self.error = err["error"]
-        self.error_class = None
-        self.error_desc = None
-        if self.error is not None:
-            self.error_class = self.error["class"]
-            self.error_desc = self.error["desc"]
 
 class VmPlugin(kvmagent.KvmAgent):
     KVM_START_VM_PATH = "/vm/start"
@@ -6375,6 +6349,7 @@ class VmPlugin(kvmagent.KvmAgent):
     APPLY_MEMORY_BALLOON_PATH = "/vm/apply/memory/balloon"
     KVM_NOTIFY_TF_NIC_PATH = "/vm/nodifytfnic"
     TAKE_VM_CONSOLE_SCREENSHOT_PATH = "/vm/console/screenshot"
+    FSTRIM_VM_PATH = "/vm/fstrim"
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
     SET_VM_IOTHREADPIN_PATH = "/vm/setiothreadpin"
@@ -7570,7 +7545,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def _get_new_disk(old_disk, volume=None):
         def filebased_volume(_v):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode, 'discard': 'unmap'})
             e(disk, 'source', None, {'file': _v.installPath})
             return disk
 
@@ -9525,6 +9500,19 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def fstrim_vm(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        r, o, err = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-fstrim\"}'" % cmd.vmUuid)
+        if r != 0:
+            logger.warn("vm[uuid:%s] failed to fstrim : %s, %s" % (self.uuid, o, err))
+            rsp.success = False
+            rsp.error = err
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     @in_bash
     def wait_secondary_vm_ready(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -10241,6 +10229,8 @@ host side snapshot files chian:
         http_server.register_async_uri(self.APPLY_MEMORY_BALLOON_PATH, self.apply_memory_balloon)
         http_server.register_async_uri(self.KVM_NOTIFY_TF_NIC_PATH, self.notify_tf_nic)
         http_server.register_async_uri(self.TAKE_VM_CONSOLE_SCREENSHOT_PATH, self.take_console_screenshot)
+        http_server.register_async_uri(self.FSTRIM_VM_PATH, self.fstrim_vm)
+
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
         self.register_qemu_log_cleaner()
