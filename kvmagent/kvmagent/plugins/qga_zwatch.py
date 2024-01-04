@@ -78,7 +78,6 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                     try:
                         if not self.state or http.AsyncUirHandler.STOP_WORLD:
                             break
-                        logger.debug('update vm list')
                         domains = get_domains()
                         vm_states, vm_dict = get_guest_tools_states(domains)
                         self.report_vm_qga_state({
@@ -87,14 +86,16 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                             vmUuid: qgaStatus.zsToolsFound for vmUuid, qgaStatus in vm_states.items()
                         })
                         # remove stopped vm which in running_vm_list
-                        logger.debug('debug: vm list: %s' % self.running_vm_list)
+                        logger.debug('current QGA running vm list (count: %d): %s' %
+                                     (len(self.running_vm_list), self.running_vm_list))
                         last_monitor_vm_list = self.running_vm_list[:]
                         with self.running_vm_lock:
                             self.running_vm_list = [
                                 vmUuid for vmUuid, qgaStatus in vm_states.items() if qgaStatus.qgaRunning
                             ]
                         new_vm_list = set(self.running_vm_list) - set(last_monitor_vm_list)
-                        logger.debug('debug: new vm list: %s' % new_vm_list)
+                        logger.debug('recently detected vm list without QGA (count: %d): %s' %
+                                     (len(new_vm_list), new_vm_list))
                         for vmUuid in new_vm_list:
                             # new vm found
                             qga = vm_dict.get(vmUuid)
