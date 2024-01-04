@@ -293,10 +293,6 @@ append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{P
         with open(self.PXELINUX_DEFAULT_CFG, 'w') as f:
             f.write(pxelinux_cfg)
 
-        # create link for grub.cfg
-        link = os.path.relpath(self.UEFI_BOOT_GRUB_CFG, self.UEFI_DEFAULT_GRUB_CFG)
-        os.symlink(self.UEFI_BOOT_GRUB_CFG, link)
-
         # init default uefi grub.cfg for x86_64 and aarch64
         grub_cfg = """set timeout=1
 set arch='x86_64'
@@ -317,6 +313,10 @@ menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class g
 """ % (pxeserver_dhcp_nic_ip, pxeserver_dhcp_nic_ip)
         with open(self.UEFI_DEFAULT_GRUB_CFG, 'w') as f:
             f.write(grub_cfg)
+
+        # create link for grub.cfg (for get baremetal hardinfo)
+        rel_path = os.path.relpath(self.UEFI_DEFAULT_GRUB_CFG, os.path.dirname(self.UEFI_BOOT_GRUB_CFG))
+        os.symlink(rel_path, self.UEFI_BOOT_GRUB_CFG)
 
         # init inspector_ks.cfg
         ks_tmpl_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'ks_tmpl')
@@ -524,6 +524,10 @@ menuentry 'Install OS on Bare Metal Instance' --class fedora --class gnu-linux -
                    KS_CFG_NAME=ks_cfg_name)
         with open(grub_cfg_file, 'w') as f:
             f.write(grub_cfg)
+        # create link for grub.cfg-01-MAC (for baremetal instance deploy)
+        grub_link_cfg_file = os.path.join(self.TFTPBOOT_PATH, "grub.cfg-01-" + ks_cfg_name)
+        rel_path = os.path.relpath(grub_cfg_file, os.path.dirname(grub_link_cfg_file))
+        os.symlink(rel_path, grub_link_cfg_file)
 
     def _create_preconfiguration_file(self, cmd):
         # in case user didn't seleted a preconfiguration template etc.
