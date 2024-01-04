@@ -1303,9 +1303,9 @@ LoadPlugin virt
 </Plugin>
 
 <Plugin disk>
-  Disk "/^sd[a-z]$/"
-  Disk "/^hd[a-z]$/"
-  Disk "/^vd[a-z]$/"
+  Disk "/^sd[a-z]{1,2}$/"
+  Disk "/^hd[a-z]{1,2}$/"
+  Disk "/^vd[a-z]{1,2}$/"
   Disk "/^nvme[0-9][a-z][0-9]$/"
   IgnoreSelected false
 </Plugin>
