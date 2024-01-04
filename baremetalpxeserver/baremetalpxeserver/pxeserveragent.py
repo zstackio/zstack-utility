@@ -104,7 +104,8 @@ class PxeServerAgent(object):
     PXELINUX_CFG_PATH = TFTPBOOT_PATH + "pxelinux.cfg/"
     PXELINUX_DEFAULT_CFG = PXELINUX_CFG_PATH + "default"
     UEFI_GRUB_CFG_PATH = TFTPBOOT_PATH + "EFI/BOOT/"
-    UEFI_DEFAULT_GRUB_CFG = TFTPBOOT_PATH + "grub.cfg"
+    UEFI_DEFAULT_GRUB_CFG = UEFI_GRUB_CFG_PATH + "grub.cfg"
+    UEFI_BOOT_GRUB_CFG = TFTPBOOT_PATH + "grub.cfg"
     # we use `KS_CFG_PATH` to hold kickstart/preseed/autoyast preconfiguration files
     KS_CFG_PATH = VSFTPD_ROOT_PATH + "ks/"
     INSPECTOR_KS_CFG = KS_CFG_PATH + "inspector_ks_ARCH.cfg"
@@ -291,6 +292,10 @@ append initrd=zstack/x86_64/initrd.img devfs=nomount ksdevice=bootif ks=ftp://{P
 """.format(PXESERVER_DHCP_NIC_IP=pxeserver_dhcp_nic_ip)
         with open(self.PXELINUX_DEFAULT_CFG, 'w') as f:
             f.write(pxelinux_cfg)
+
+        # create link for grub.cfg
+        link = os.path.relpath(self.UEFI_BOOT_GRUB_CFG, self.UEFI_DEFAULT_GRUB_CFG)
+        os.symlink(self.UEFI_BOOT_GRUB_CFG, link)
 
         # init default uefi grub.cfg for x86_64 and aarch64
         grub_cfg = """set timeout=1
