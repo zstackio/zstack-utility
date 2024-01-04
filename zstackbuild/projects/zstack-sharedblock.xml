@@ -11,10 +11,13 @@
         <checkFile file="${zstacksharedblock.source}" />
 
         <exec executable="make" dir="${zstacksharedblock.source}" failonerror="true">
+            <env key="GOROOT" value="${build.go_root}" />
             <arg value="clean" />
         </exec>
 
         <exec executable="make" dir="${zstacksharedblock.source}" failonerror="true">
+            <env key="GOROOT" value="${build.go_root}" />
+            <env key="GOROOT_LA" value="${build.go_root_la}" />
             <arg value="package" />
             <arg value="ARCH= amd64 arm64 mips64le loong64" />
         </exec>
