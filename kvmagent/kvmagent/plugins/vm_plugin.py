@@ -2517,6 +2517,14 @@ class Vm(object):
         else:
             self._wait_for_vm_running(timeout, wait_console)
 
+    # Used to determine if the VM has an operating system.
+    # If memory of VM has not changed, we speculate that there is no OS present in the VM.
+    def check_if_vm_has_operating_system_by_memory_state(self):
+        memory_state = self.domain.memoryStats()
+        if memory_state is None or 'last_update' not in memory_state:
+            return False
+        return memory_state['last_update'] > 0
+
     def stop(self, strategy='grace', timeout=5, undefine=True):
         def cleanup_addons():
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
@@ -7086,6 +7094,12 @@ class VmPlugin(kvmagent.KvmAgent):
             strategy = str(cmd.type)
             vm = get_vm_by_uuid(vmUuid)
             vmUseOpenvSwitch = ovs.isVmUseOpenvSwitch(vmUuid)
+
+            if bool(cmd.forceStopIfNoOperatingSystemDetected) and strategy == "grace":
+                has_os = vm.check_if_vm_has_operating_system_by_memory_state()
+                if not has_os:
+                    logger.info('vm has no operating system. stop it use \'force\' mode')
+                    strategy = "force"
 
             if strategy == "cold" or strategy == "force":
                 vm.stop(strategy=strategy)
