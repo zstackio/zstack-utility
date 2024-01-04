@@ -40,12 +40,12 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 uos = ['uos20', 'uos1021a']
-kylin = ["ky10sp1", "ky10sp2", "ky10sp3"]
+kylin = ["ky10sp1", "ky10sp2", "ky10sp3", "ky10gfb"]
 centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84', 'h84r']
 enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "oe2203sp1", "h2203sp1o"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance",
+RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance", "kylin_gfb",
                 "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs",
                 "redhat", "rocky", "helix"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
@@ -55,6 +55,7 @@ qemu_alias = {
     "ky10sp1": "qemu-kvm qemu-img",
     "ky10sp2": "qemu-kvm qemu-img",
     "ky10sp3": "qemu-kvm qemu-img",
+    "ky10gfb": "qemu-kvm qemu-img",
     "uos20": "qemu-system",
     "c74": "qemu-kvm",
     "c76": "qemu-kvm",
@@ -524,6 +525,7 @@ def get_host_releasever(host_info):
         "kylin_sword sword 10": "ky10sp2",
         "kylin_zstack zstack 10": "ky10sp2",
         "kylin_lance lance 10": "ky10sp3",
+        "kylin_gfb gfb 10.0.0": "ky10gfb",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ky10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.9.2009": "c79",

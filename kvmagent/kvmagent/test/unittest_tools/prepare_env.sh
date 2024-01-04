@@ -7,7 +7,7 @@ set -ex
 # Param version : like 4.6.31
 
 
-YUM_BASED_OS="c76 ky10sp2 ky10sp3"
+YUM_BASED_OS="c76 ky10sp2 ky10sp3 ky10gfb"
 APT_BASED_OS=""
 
 # /root/.zguest/zstack-utility is zstack-utility home of ztest.
