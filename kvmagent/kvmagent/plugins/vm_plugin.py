@@ -1450,8 +1450,11 @@ class IscsiLogin(object):
                 'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
                     self.target, self.server_hostname, self.server_port, self.chap_password))
 
-        shell.call('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
+        s = shell.ShellCmd('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
             self.target, self.server_hostname, self.server_port))
+        s(False)
+        if s.return_code != 0 and 'already present' not in s.stderr:
+            s.raise_error()
 
         def wait_device_to_show(_):
             return bool(glob.glob(device_path))
@@ -8190,13 +8193,19 @@ host side snapshot files chian:
     def login_iscsi_target(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        login = IscsiLogin()
-        login.server_hostname = cmd.hostname
-        login.server_port = cmd.port
-        login.chap_password = cmd.chapPassword
-        login.chap_username = cmd.chapUsername
-        login.target = cmd.target
+        if cmd.url:
+            login = IscsiLogin(cmd.url)
+        else:
+            login = IscsiLogin()
+            login.server_hostname = cmd.hostname
+            login.server_port = cmd.port
+            login.chap_password = cmd.chapPassword
+            login.chap_username = cmd.chapUsername
+            login.target = cmd.target
         login.login()
+        login.rescan()
+        if login.disk_id:
+            login.retry_get_device_path()
 
         return jsonobject.dumps(LoginIscsiTargetRsp())
 
