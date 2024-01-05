@@ -537,7 +537,7 @@ class HostNetworkInterfaceInventory(object):
                     self.subvendorId = content.split('[')[-1].strip(']')
                 elif title == "SDevice":
                     self.subdeviceId = content.split('[')[-1].strip(']')
-            self.interfaceModel = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
+            self.interfaceModel = "%s_%s" % (subvendor_name if subvendor_name and "Unknown" not in subvendor_name else vendor_name, device_name)
 
     def _simplify_device_name(self, name):
         if 'Intel Corporation' in name:
