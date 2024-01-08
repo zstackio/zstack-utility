@@ -750,8 +750,14 @@ configure lldp status rx-only \n
         chassis_data = interface_data.get("chassis", {})
         for chassis_key, chassis_value in chassis_data.items():
             interface_lldp_info.chassisId = chassis_value.get("id", {}).get("value")
-            # no mgmt-ip field for Huawei and H3C
-            interface_lldp_info.managementAddress = chassis_value.get('mgmt-ip').split(',')[0] if chassis_value.get('mgmt-ip') else None
+            # no mgmt-ip field for H3C
+            mgmt_ip = chassis_value.get('mgmt-ip')
+            if not mgmt_ip:
+                interface_lldp_info.managementAddress = None
+            elif isinstance(mgmt_ip, list):
+                interface_lldp_info.managementAddress = mgmt_ip[0]
+            else:
+                interface_lldp_info.managementAddress = mgmt_ip.split(',')[0]
             interface_lldp_info.systemName = chassis_key
             interface_lldp_info.systemDescription = chassis_value.get("descr").replace("\r\n", ";").replace("\n", ";")
             capabilities_enabled_list = [capability.get("type") for capability in
@@ -777,7 +783,10 @@ configure lldp status rx-only \n
         if r != 0:
             return lldpinfo
 
-        lldpinfo = self._parse_lldp_json(info, interface_name)
+        try:
+            lldpinfo = self._parse_lldp_json(info, interface_name)
+        except Exception as e:
+            raise Exception('parse lldpctl info error: %s' % info)
 
         return lldpinfo
 
