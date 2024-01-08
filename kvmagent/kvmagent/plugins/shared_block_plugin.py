@@ -1491,15 +1491,19 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 end = get_exact_percent(float(struct.lv_size + migrated_size) / total_size * 100, parent_stage)
 
                 with lvm.RecursiveOperateLv(current_abs_path, shared=True):
-                    backing_file = None if struct.independent else linux.qcow2_get_backing_file(current_abs_path)
-                    opts = "" if not backing_file else " -B %s " % backing_file
-                    if backing_file and not qemu_img.take_default_backing_fmt_for_convert():
-                        opts += " -F %s " % linux.get_img_fmt(backing_file)
-
                     if struct.compressed_qcow2 or linux.get_img_fmt(current_abs_path) == 'raw':
                         t_bash = traceable_shell.get_shell(cmd)
                         t_bash.bash_errorout("pv -n %s > %s" % (current_abs_path, target_abs_path))
                     else:
+                        backing_file = None if struct.independent else linux.qcow2_get_backing_file(current_abs_path)
+                        opts = "" if not backing_file else " -B %s " % backing_file
+                        if backing_file and not qemu_img.take_default_backing_fmt_for_convert():
+                            opts += " -F %s " % linux.get_img_fmt(backing_file)
+
+                        opts += re.sub("-o preallocation=\w*", "", cmd.kvmHostAddons.qcow2Options)
+                        if current_abs_path != top:
+                            # keep origin cluster_size
+                            opts = re.sub(r"(cluster_size=)\w+", r"\g<1>"+str(linux.qcow2_get_cluster_size(current_abs_path)), opts)
                         qcow2.create_template_with_task_daemon(current_abs_path, target_abs_path, cmd,
                                                            opts=opts,
                                                            dst_format=linux.get_img_fmt(current_abs_path),
