@@ -11,17 +11,19 @@
         <checkFile file="${zstacknetwork.source}" />
 
         <exec executable="make" dir="${zstacknetwork.source}" failonerror="true">
+            <env key="GOROOT" value="${build.go_root}" />
             <arg value="clean" />
         </exec>
 
         <exec executable="make" dir="${zstacknetwork.source}" failonerror="true">
+            <env key="GOROOT" value="${build.go_root}" />
             <arg value="package" />
+            <arg value="ARCH= amd64" />
         </exec>
 
         <copy todir="${zsn.bdir}/">
             <fileset dir="${zstacknetwork.source}/target/package/zsn-agent">
-                <include name="zsn-agent.bin" />
-                <include name="zsn-agent.aarch64.bin" />
+                <include name="**" />
             </fileset>
         </copy>
     </target>
