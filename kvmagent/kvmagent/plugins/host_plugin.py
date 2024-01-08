@@ -1249,7 +1249,7 @@ if __name__ == "__main__":
         yum_cmd = yum_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
         #support update qemu-kvm and update OS
         if releasever in ['c74', 'c76'] and ("qemu-kvm" in updates or cmd.releaseVersion is not None):
-            update_qemu_cmd = "export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn  swap -y -- remove qemu-img-ev -- install qemu-img " \
+            update_qemu_cmd = "export YUM0={}; yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn  swap -y -- remove qemu-img-ev -- install qemu-img " \
                               "&& yum remove qemu-kvm-ev qemu-kvm-common-ev -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn install qemu-kvm qemu-kvm-common -y && "
             yum_cmd = update_qemu_cmd.format(releasever) + yum_cmd
 
