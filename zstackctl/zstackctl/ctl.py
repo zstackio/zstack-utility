@@ -364,6 +364,16 @@ EOF
 fi
 '''
 
+script_text = '''/bin/bash << EOF
+cat << EOF1 > %s
+%s
+EOF1
+/bin/bash %s %s
+ret=\$?
+rm -f %s
+exit \$ret
+EOF'''
+
 def signal_handler(signal, frame):
     sys.exit(0)
 
@@ -408,16 +418,7 @@ def find_process_by_cmdline(cmdlines):
 
 def ssh_run_full(ip, cmd, params=[], pipe=True):
     remote_path = '/tmp/%s.sh' % uuid.uuid4()
-    script = '''/bin/bash << EOF
-cat << EOF1 > %s
-%s
-EOF1
-/bin/bash %s %s
-ret=\$?
-rm -f %s
-exit \$ret
-EOF''' % (remote_path, cmd, remote_path, ' '.join(params), remote_path)
-
+    script = script_text % (remote_path, cmd, remote_path, ' '.join(params), remote_path)
     scmd = ShellCmd("ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s \"%s\"" % (ip, script), pipe=pipe)
     scmd(False)
     return scmd
@@ -1623,20 +1624,30 @@ class Zsha2Utils(object):
             error('cannot get zsha2 config, maybe need upgrade zsha2 first: %s' % e)
 
         self.config = simplejson.loads(o)
+        self.ssh_exec_user = self.config['execUser'] if self.config['execUser'] else getpass.getuser()
         self.master = shell_return("ip addr show %s | grep -q '[^0-9]%s[^0-9]'"
                                    % (self.config['nic'], self.config['dbvip'])) == 0
         try:
-            ssh_run(self.config['peerip'], "echo 1 > /dev/null")
+            self.excute_on_peer("echo 1 > /dev/null")
         except:
             error('cannot ssh peer node with sshkey')
 
-    def excute_on_peer(self, cmd):
-        ssh_run_no_pipe(self.config['peerip'], cmd)
+    def excute_on_peer(self, cmd, useSudo=False):
+        remote_path = '/tmp/%s.sh' % uuid.uuid4()
+        script = script_text % (remote_path, cmd, remote_path, ' '.join([]), remote_path)
+        scmd = ShellCmd(
+            "sudo -u %s ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s %s \"%s\"" % (
+                self.ssh_exec_user, self.config['peerip'], "sudo" if useSudo else "", script))
+        scmd(False)
+        if scmd.return_code != 0:
+            scmd.raise_error()
+        return scmd.stdout
 
 
     def scp_to_peer(self, src_path, dst_path):
-        shell("scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s %s:%s" % (
-            src_path, self.config['peerip'], dst_path))
+        shell("sudo -u %s scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s %s:%s" % (
+            self.ssh_exec_user, src_path, self.config['peerip'], "/tmp/dst_path"))
+        self.excute_on_peer("mv %s %s" % ("/tmp/dst_path", dst_path), True)
 
 
 
