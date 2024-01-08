@@ -829,7 +829,10 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             dirname = os.path.dirname(cmd.installUrl)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
-            linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+            if cmd.backingFile:
+                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
+            else:
+                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
         try:
             _create_dir_and_file()
         except Exception as e:
