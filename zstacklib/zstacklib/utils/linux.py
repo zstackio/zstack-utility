@@ -1451,7 +1451,7 @@ def is_physical_nic(dev):
     path = "/sys/class/net/%s" % dev
     if os.path.exists(path):
         real_path = os.path.realpath(path)
-        pattern = re.compile(r'^/sys/devices/pci[0-9a-fA-F]')
+        pattern = re.compile(r'^/sys/devices/(.*/)?pci[0-9a-fA-F]')
         if pattern.match(real_path):
             return True
     return False
