@@ -305,13 +305,14 @@ def create_vm(startvm_body):
     return VM_PLUGIN.start_vm(misc.make_a_request(startvm_body))
 
 
-def stop_vm(vm_uuid, type='cold', timeout=5):
-    # type: (str, str, int) -> None
+def stop_vm(vm_uuid, type='cold', timeout=5, debug=False):
+    # type: (str, str, int, bool) -> None
 
     return VM_PLUGIN.stop_vm(misc.make_a_request({
         'uuid': vm_uuid,
         'type': type,
-        'timeout': timeout
+        'timeout': timeout,
+        'debug': debug
     }))
 
 

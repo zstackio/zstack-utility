@@ -80,6 +80,8 @@ etree.register_namespace('zs', ZS_XML_NAMESPACE)
 GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
 GUEST_TOOLS_ISO_LINUX_PATH = "/var/lib/zstack/guesttools/GuestTools_linux.iso"
 
+VM_CORE_DUMP_DIR = "/var/lib/zstack/kvmcoredump"
+
 SYSTEM_VIRTIO_DRIVER_PATHS = {
     'VFD_X86' : '/var/lib/zstack/virtio-drivers/virtio-win_x86.vfd',
     'VFD_AMD64' : '/var/lib/zstack/virtio-drivers/virtio-win_amd64.vfd'
@@ -2520,6 +2522,9 @@ class Vm(object):
             self._wait_for_vm_paused(timeout)
         else:
             self._wait_for_vm_running(timeout, wait_console)
+
+    def dump_guest_memory(self, path):
+        self.domain.coreDumpWithFormat(path, 0)
 
     def stop(self, strategy='grace', timeout=5, undefine=True):
         def cleanup_addons():
@@ -7139,6 +7144,15 @@ class VmPlugin(kvmagent.KvmAgent):
             linux.rm_file_force(tmp_img)
         return jsonobject.dumps(rsp)
 
+
+    def _dump(self, vm_instance_uuid):
+        try:
+            vm = get_vm_by_uuid(vm_instance_uuid)
+            vm.dump_guest_memory("%s/%s" % (VM_CORE_DUMP_DIR, vm_instance_uuid))
+        except Exception as e:
+            logger.warn("failed to dump vm[uuid:%s] guest memory, %s" % (vm_instance_uuid, str(e)))
+
+
     def _stop_vm(self, cmd):
         try:
             vmUuid = cmd.uuid
@@ -7175,6 +7189,8 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = StopVmResponse()
         try:
+            if cmd.debug:
+                self._dump(cmd.uuid)
             self._record_operation(cmd.uuid, self.VM_OP_STOP)
             self._stop_vm(cmd)
             # notify vrouter agent nic removed from source host
@@ -10302,6 +10318,25 @@ host side snapshot files chian:
                 time.sleep(600)
 
         clean_stale_vm_vnc_port_chain()
+
+        def monitor_vmcore_dump_path():
+            while True:
+                try:
+                    vmcore_dump_path = VM_CORE_DUMP_DIR
+                    if not os.path.exists(vmcore_dump_path):
+                        os.makedirs(vmcore_dump_path)
+
+                    dir_size = linux.get_filesystem_folder_size(vmcore_dump_path)
+                    if dir_size > 2 * 4 * 1024 * 1024 * 1024:
+                        logger.debug("vmcore dump path size is %s, clean up it" % dir_size)
+                        linux.rm_dir_force(vmcore_dump_path)
+                except:
+                    content = traceback.format_exc()
+                    logger.warn(content)
+                finally:
+                    time.sleep(600)
+
+
 
     def start_vm_heart_beat(self, cmd):
         def send_failover(vm_instance_uuid, host_uuid, primary_failure):
