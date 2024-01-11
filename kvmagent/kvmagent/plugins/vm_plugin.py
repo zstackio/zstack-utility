@@ -2524,7 +2524,11 @@ class Vm(object):
             self._wait_for_vm_running(timeout, wait_console)
 
     def dump_guest_memory(self, path):
-        self.domain.coreDumpWithFormat(path, 0)
+        # flags
+        # memory_only which could be load by gdb or crash
+        flags = libvirt.VIR_DUMP_MEMORY_ONLY
+        dumpformat = libvirt.VIR_DOMAIN_CORE_DUMP_FORMAT_KDUMP_ZLIB
+        self.domain.coreDumpWithFormat(path, dumpformat, flags)
 
     def stop(self, strategy='grace', timeout=5, undefine=True):
         def cleanup_addons():
@@ -7149,6 +7153,7 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             vm = get_vm_by_uuid(vm_instance_uuid)
             vm.dump_guest_memory("%s/%s" % (VM_CORE_DUMP_DIR, vm_instance_uuid))
+            logger.debug("successfully dump vm[uuid:%s] guest memory" % vm_instance_uuid)
         except Exception as e:
             logger.warn("failed to dump vm[uuid:%s] guest memory, %s" % (vm_instance_uuid, str(e)))
 
