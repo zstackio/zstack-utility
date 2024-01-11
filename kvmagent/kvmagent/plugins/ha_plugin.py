@@ -305,7 +305,7 @@ class AbstractStorageFencer(AbstractHaFencer):
         current_vm_uuids = [None]
         vm_uuids = []
 
-        logger.debug("check if %s is still alive" % host_uuid)
+        logger.debug("check if host %s is still alive" % host_uuid)
         wait_heartbeat_count_failure = 0
         remain_timeout = storage_check_timeout
         while wait_heartbeat_count_failure < int(max_attempts) + 1:
@@ -313,7 +313,6 @@ class AbstractStorageFencer(AbstractHaFencer):
                 time.sleep(interval + remain_timeout)
             remain_timeout = storage_check_timeout
 
-            failure_count = 0
             current_heartbeat_count[0], current_vm_uuids[0] = self.read_fencer_heartbeat(host_uuid, ps_uuid)
             logger.debug("host last heartbeat is %s, host current heartbeat count is %s, vm running : %s" %
                          (lastest_heartbeat_count[0], current_heartbeat_count[0], current_vm_uuids[0]))
@@ -342,6 +341,9 @@ class AbstractStorageFencer(AbstractHaFencer):
 
     def update_ha_fencer(self, cmd, ha_fencer):
         pass
+
+    def reset_failure_count(self):
+        self.failure = 0
 
 
 class SanlockHealthChecker(AbstractStorageFencer):
@@ -580,7 +582,6 @@ class SanlockHealthChecker(AbstractStorageFencer):
 class FileSystemHeartbeatController(AbstractStorageFencer):
     def __init__(self, interval, max_attempts, ps_uuid, run_fencer_list):
         super(FileSystemHeartbeatController, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
-        self.failure = 0
         self.storage_failure = False
         self.report_storage_status = False
         self.max_attempts = 0
@@ -726,7 +727,6 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
 class CephHeartbeatController(AbstractStorageFencer):
     def __init__(self, interval, max_attempts, ps_uuid, run_fencer_list):
         super(CephHeartbeatController, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
-        self.failure = 0
         self.storage_failure = False
         self.report_storage_status = False
         self.max_attempts = None
@@ -792,9 +792,6 @@ class CephHeartbeatController(AbstractStorageFencer):
 
             # reset the failure count
             self.reset_failure_count()
-
-    def reset_failure_count(self):
-        self.failure = 0
 
     def update_heartbeat_timestamp(self, ioctx, heartbeat_object_name, heartbeat_count, write_timeout=5):
         vm_in_ps_uuid_list = find_ps_running_vm(self.pool_name)
@@ -970,6 +967,7 @@ class IscsiHeartbeatController(AbstractStorageFencer):
         heartbeat_check = shell.ShellCmd('sg_inq %s' % self.heartbeat_path)
         heartbeat_check(False)
         if heartbeat_check.return_code != 0:
+            logger.warn('failed to check heartbeat[%s], %s' % (self.heartbeat_path, heartbeat_check.stderr))
             return False
 
         return True
@@ -1725,7 +1723,6 @@ class HaPlugin(kvmagent.KvmAgent):
             ceph_controller.max_attempts = cmd.maxAttempts
             ceph_controller.report_storage_status = False
             ceph_controller.storage_failure = False
-            ceph_controller.failure = 0
             ceph_controller.strategy = cmd.strategy
             ceph_controller.storage_check_timeout = cmd.storageCheckerTimeout
             ceph_controller.host_uuid = cmd.hostUuid
@@ -2046,7 +2043,7 @@ class HaPlugin(kvmagent.KvmAgent):
         rsp = CheckIscsiVmStateRsp()
 
         iscsi_controller = IscsiHeartbeatController(cmd.interval, cmd.times, cmd.primaryStorageUuid, None)
-        iscsi_controller.heartbeat_path = external_ha_plugin.login_heartbeat_path(cmd.heartbeatUrl)
+        iscsi_controller.heartbeat_path = login_heartbeat_path(cmd.heartbeatUrl)
         iscsi_controller.host_uuid = cmd.hostUuid
         iscsi_controller.host_id = cmd.hostId
         iscsi_controller.storage_check_timeout = cmd.storageCheckerTimeout
