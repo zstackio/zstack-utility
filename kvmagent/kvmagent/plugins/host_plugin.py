@@ -1594,6 +1594,9 @@ if __name__ == "__main__":
                               "qemu-storage-daemon -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} install qemu-kvm qemu-kvm-common -y && "
             else:
                 update_qemu_cmd += " yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update qemu-storage-daemon -y;"
+            # centos, helix, rocky, kylin using edk2-ovmf, ipxe-roms-qemu seabios-bin seavgabios-bin, but h2203sp1o was not using them.
+            if releasever not in ['h2203sp1o']:
+                update_qemu_cmd += " yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update edk2-ovmf ipxe-roms-qemu seabios-bin seavgabios-bin -y;"
             yum_cmd = yum_cmd + update_qemu_cmd.format(releasever,
                                                        ',zstack-experimental-mn' if cmd.enableExpRepo else '')
         if "libvirt" in updates or (cmd.releaseVersion is not None and "libvirt" not in exclude):

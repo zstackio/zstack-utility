@@ -57,6 +57,7 @@ from zstacklib.utils import image
 from zstacklib.utils import iproute
 from zstacklib.utils import ovs
 from zstacklib.utils import drbd
+from zstacklib.utils import linux
 from zstacklib.utils.qga import *
 from zstacklib.utils import jsonobject
 from zstacklib.utils.report import *
@@ -1188,11 +1189,24 @@ QEMU_VERSION = qemu.get_version()
 def is_namespace_used():
     return compare_version(LIBVIRT_VERSION, '1.3.3') >= 0
 
+
 def is_hv_freq_supported():
-    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) >= LooseVersion('3.10.0-957')
+    return (compare_version(qemu.get_version(), '2.12.0') >= 0 and
+            LooseVersion(KERNEL_VERSION) >= LooseVersion('3.10.0-957'))
+
 
 def is_hv_synic_supported():
-    return compare_version(QEMU_VERSION, '2.12.0') >= 0 and LooseVersion(KERNEL_VERSION) > LooseVersion('3.10.0-1160')
+    return (LooseVersion(qemu.get_version()) >= LooseVersion("4.2.0") and
+            LooseVersion(KERNEL_VERSION) >= LooseVersion("4.18.0"))
+
+
+def is_new_ovmf_supported():
+    if not linux.is_rpm_installed('edk2-ovmf'):
+        return False
+    edk2_version = linux.get_rpm_version('edk2-ovmf')
+    return(LooseVersion(qemu.get_version()) >= LooseVersion("4.2.0") and
+           LooseVersion(edk2_version) >= LooseVersion('20220126gitbb1bba3d77-4'))
+
 
 @linux.with_arch(todo_list=['x86_64'])
 def is_ioapic_supported():
@@ -4803,14 +4817,20 @@ class Vm(object):
             host_arch = kvmagent.host_arch
 
             def on_x86_64():
+                loader_path = '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd'
+                nvram_path = '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'
+                if cmd.bootMode == 'UEFI_WITH_CSM':
+                    loader_path = '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-with-csm.fd'
+                    nvram_path = '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-with-csm.fd'
+                if is_new_ovmf_supported():
+                    loader_path = '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd'
+                    nvram_path = '/usr/share/edk2/ovmf/OVMF_VARS.fd'
+
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 # if boot mode is UEFI
-                if cmd.bootMode == "UEFI":
-                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
-                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
-                elif cmd.bootMode == "UEFI_WITH_CSM":
-                    e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-with-csm.fd', attrib={'readonly': 'yes', 'type': 'pflash'})
-                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-with-csm.fd'})
+                if cmd.bootMode in ["UEFI", "UEFI_WITH_CSM"]:
+                    e(os, 'loader', loader_path, attrib={'readonly': 'yes', 'type': 'pflash'})
+                    e(os, 'nvram', '/var/lib/libvirt/qemu/nvram/%s.fd' % cmd.vmInstanceUuid, attrib={'template': nvram_path})
                 elif cmd.addons['loaderRom'] is not None:
                     e(os, 'loader', cmd.addons['loaderRom'], {'type': 'rom'})
 
@@ -4893,8 +4913,14 @@ class Vm(object):
                     e(hyperv, 'vpindex', attrib={'state': 'on'})
                     # Requires: hv-vpindex
                     e(hyperv, 'synic', attrib={'state': 'on'})
+                    e(hyperv, 'runtime', attrib={'state': 'on'})
                     # Requires: hv-vpindex, hv-synic, hv-time
-                    e(hyperv, 'stimer', attrib={'state': 'on'})
+                    if cmd.clock == 'localtime':
+                        stimer = e(hyperv, 'stimer', attrib={'state': 'on'})
+                        # The configuration item 'direct' can only on when
+                        # libvirt version >= 6.0.0
+                        if LooseVersion(linux.get_libvirt_version()) >= LooseVersion('6.0.0'):
+                            e(stimer, 'direct', attrib={'state': 'on'})
                 # refer to: https://access.redhat.com/articles/2470791
                 # increase spinlocks retries
                 e(hyperv, 'spinlocks', attrib={'state': 'on', 'retries': '8191'})
