@@ -6402,6 +6402,8 @@ class VmPlugin(kvmagent.KvmAgent):
     SSH_KEY_PAIR_ATTACH_TO_VM = "/sshkeypair/attach"
     SSH_KEY_PAIR_DETACH_FROM_VM = "/sshkeypair/detach"
 
+    DETACH_VIRTIO_DRIVER_PATH = "/vm/virtio/detach"
+
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
     VM_OP_REBOOT = "reboot"
@@ -10184,6 +10186,53 @@ host side snapshot files chian:
 
         return None
 
+    @kvmagent.replyerror
+    def detach_virtio_driver(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        vm_uuid = cmd.vmInstanceUuid
+        driver_format = cmd.driverFormat
+
+        if driver_format == 'VFD':
+            self.eject_floppy(vm_uuid, [SYSTEM_VIRTIO_DRIVER_PATHS['VFD_X86'], SYSTEM_VIRTIO_DRIVER_PATHS['VFD_AMD64']])
+        else:
+            rsp.error = "invalid virtio driver format: %s" % driver_format
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    def eject_floppy(self, vm_uuid, file_path_list):
+        """ Eject the floppy media and leave an empty floppy disk slot.
+        :param file_path_list: list[str], exmaple of file_path_list::
+            ['/var/lib/zstack/virtio-drivers/virtio-win_x86.vfd', '/var/lib/zstack/virtio-drivers/virtio-win_amd64.vfd']
+        """
+        @linux.retry(times=3, sleep_time=1)
+        def eject_floppy_with_file_path(vm, file_path):
+            (_, device_id) = vm._get_target_disk_by_path(file_path, False)
+            if device_id is None:
+                return
+
+            floppy_without_source_xml = """
+            <disk type='file' device='floppy'>
+                <driver name='qemu' type='raw'/>
+                <source/>
+                <target dev='%s' bus='fdc'/>
+                <readonly/>
+            </disk>
+            """ % (device_id)
+
+            try:
+                vm.domain.updateDeviceFlags(floppy_without_source_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+            except Exception as e:
+                logger.info("failed to eject floppy device: %s" % str(e))
+            if vm._check_target_disk_existing_by_path(file_path):
+                raise RetryException("current vm %s can not detach virtio floppy disk %s" % (vm.uuid, file_path))
+
+        vm = get_vm_by_uuid_no_retry(vm_uuid)
+        for file_path in file_path_list:
+            eject_floppy_with_file_path(vm, file_path)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -10283,6 +10332,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_NOTIFY_TF_NIC_PATH, self.notify_tf_nic)
         http_server.register_async_uri(self.TAKE_VM_CONSOLE_SCREENSHOT_PATH, self.take_console_screenshot)
         http_server.register_async_uri(self.FSTRIM_VM_PATH, self.fstrim_vm)
+        http_server.register_async_uri(self.DETACH_VIRTIO_DRIVER_PATH, self.detach_virtio_driver)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
