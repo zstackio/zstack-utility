@@ -39,6 +39,7 @@ startVmCmdBody = {
     "maxVcpuNum": 128,
     "cpuNum": 1,
     "cpuSpeed": 0,
+    "vmCpuVendorId": None,
     "socketNum": None,
     "cpuOnSocket": None,
     "threadsPerCore": None,
