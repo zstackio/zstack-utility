@@ -2049,12 +2049,13 @@ class HaPlugin(kvmagent.KvmAgent):
         iscsi_controller.storage_check_timeout = cmd.storageCheckerTimeout
         iscsi_controller.max_attempts = cmd.times
         iscsi_controller.interval = cmd.interval
+        iscsi_controller.ps_uuid = cmd.primaryStorageUuid
 
         heartbeat_success, vm_uuids = iscsi_controller.check_fencer_heartbeat(
             iscsi_controller.host_id, iscsi_controller.storage_check_timeout, iscsi_controller.interval,
             iscsi_controller.max_attempts, cmd.primaryStorageUuid)
 
-        rsp.result = heartbeat_success
+        rsp.result = {cmd.primaryStorageUuid: heartbeat_success}
         rsp.vmUuids = list(set(vm_uuids))
         return jsonobject.dumps(rsp)
 
