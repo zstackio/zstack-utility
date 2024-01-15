@@ -161,8 +161,8 @@ class ImageStoreClient(object):
                             maxInfoMap = infoMap
                             break
                     for infoMap in infosMaps:
-                        k = [k for k, v in infoMap.items() if v == minLatency]
-                        if k:
+                        values = infoMap.values()
+                        if values and all(i <= minLatency for i in values):
                             minInfoMap = infoMap
                             break
             return vm, maxInfoMap, minInfoMap
