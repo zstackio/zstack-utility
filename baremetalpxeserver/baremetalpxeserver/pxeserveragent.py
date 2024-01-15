@@ -787,7 +787,7 @@ echo "ONBOOT=yes" >> $IFCFGFILE
 
         if os.path.exists(os.path.join(self.VSFTPD_ROOT_PATH, cmd.imageUuid, "Extra", "qemu-kvm-ev")):
             context['extra_repo'] = "repo --name=qemu-kvm-ev --baseurl=ftp://%s/%s/Extra/qemu-kvm-ev" % (pxeserver_dhcp_nic_ip, cmd.imageUuid)
-            context['pxeserver_dhcp_nic_ip'] = pxeserver_dhcp_nic_ip
+        context['pxeserver_dhcp_nic_ip'] = pxeserver_dhcp_nic_ip
 
         custom = simplejson.loads(cmd.customPreconfigurations) if cmd.customPreconfigurations is not None else {}
         context.update(custom)
