@@ -3648,7 +3648,7 @@ class Vm(object):
             return True
 
         libvirt_version = linux.get_libvirt_version()
-        if LooseVersion(libvirt_version) < LooseVersion('6.0.0'):
+        if LooseVersion(libvirt_version) < LooseVersion('6.0.0') or LooseVersion(libvirt_version) >= LooseVersion('8.0.0'):
             return False
 
         disks_index = []
