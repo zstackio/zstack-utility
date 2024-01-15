@@ -2933,3 +2933,17 @@ def compare_segmented_xxhash(src_path, dst_path, total_size, raise_exception=Fal
 
 def check_unixsock_connection(socket_path, timeout=10):
     return shell.run("nc -z -U %s -w %s" % (socket_path, timeout))
+
+
+def is_rpm_installed(rpm_name):
+    cmd = shell.ShellCmd('rpm -q %s' % rpm_name)
+    cmd(False)
+    if ('not installed' in cmd.stdout or 'command not found' in cmd.stdout or
+        cmd.return_code != 0):
+        return False
+    return True
+
+
+def get_rpm_version(rpm_name):
+    return shell.call(
+        'rpm -q --queryformat "%%{VERSION}-%%{RELEASE}" %s' % rpm_name)

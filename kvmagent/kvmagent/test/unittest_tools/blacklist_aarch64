@@ -54,3 +54,5 @@ kvmagent/test/localstorage_testsuite/test_create_empty_volume
 kvmagent/test/localstorage_testsuite/test_create_folder
 kvmagent/test/localstorage_testsuite/test_get_physical_capacity
 kvmagent/test/localstorage_testsuite/test_localstorage_init
+kvmagent/test/libvirt_testsuite/test_hyperv_params.py
+kvmagent/test/libvirt_testsuite/test_edk2_ovmf.py

@@ -1587,9 +1587,16 @@ if __name__ == "__main__":
         # you need to upgrade qemu-kvm and then upgrade libvirt
         # to ensure that libvirtd is rebooted after upgrading qemu-kvm
         if "qemu-kvm" in updates or (cmd.releaseVersion is not None and "qemu-kvm" not in exclude):
-            update_qemu_cmd = "export YUM0={0};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} swap -y -- remove qemu-img-ev -- install qemu-img " \
+            update_qemu_cmd = "export YUM0={0};"
+            if releasever in ['c74', 'c76', 'c79', 'h76c', 'h79c']:
+                update_qemu_cmd += "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} swap -y -- remove qemu-img-ev -- install qemu-img " \
                               "&& yum remove qemu-kvm-ev qemu-kvm-common-ev -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update " \
                               "qemu-storage-daemon -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} install qemu-kvm qemu-kvm-common -y && "
+            else:
+                update_qemu_cmd += " yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update qemu-storage-daemon -y;"
+            # centos, helix, rocky, kylin using edk2-ovmf, ipxe-roms-qemu seabios-bin seavgabios-bin, but h2203sp1o was not using them.
+            if releasever not in ['h2203sp1o']:
+                update_qemu_cmd += " yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update edk2-ovmf ipxe-roms-qemu seabios-bin seavgabios-bin -y;"
             yum_cmd = yum_cmd + update_qemu_cmd.format(releasever,
                                                        ',zstack-experimental-mn' if cmd.enableExpRepo else '')
         if "libvirt" in updates or (cmd.releaseVersion is not None and "libvirt" not in exclude):
