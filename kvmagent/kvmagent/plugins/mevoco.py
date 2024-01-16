@@ -1875,7 +1875,7 @@ sed -i '/^$/d' {{DNS}}
 
             if dhcp_ip:
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
-                VF_NIC_MAC = dhcpInfo.mac
+                VF_NIC_MAC = ip.removeZeroFromMacAddress(dhcpInfo.mac)
 
                 if dhcpInfo.ipVersion == 4:
                     bash_r(EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -s {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
