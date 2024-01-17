@@ -1584,6 +1584,7 @@ is_install_general_libs_rh(){
             avahi-tools \
             audit \
             redis \
+            libftauthng \
             nodejs"
     if [ "$BASEARCH" == "x86_64" ]; then
       deps_list="${deps_list} mcelog"
