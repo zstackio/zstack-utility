@@ -6021,7 +6021,7 @@ class Vm(object):
             interface = etree.Element('interface', attrib=device_attr)
 
         e(interface, 'mac', None, attrib={'address': nic.mac})
-        if action != 'Update':
+        if action != 'Update' and action != 'Detach':
             e(interface, 'alias', None, {'name': 'net%s' % nic.nicInternalName.split('.')[1]})
 
         if iftype != 'hostdev' and iftype != "direct" and nic.type not in ovs.OvsDpdkSupportVnic:
