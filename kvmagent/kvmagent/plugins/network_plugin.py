@@ -54,6 +54,9 @@ KVM_IPSET_SYNC_PATH = "/network/ipset/sync"
 VXLAN_DEFAULT_PORT = 8472
 
 PVLAN_ISOLATED_CHAIN = "pvlan-isolated"
+PVLAN_ISOLATED_CHAIN_V6 = "pvlan-isolated-v6"
+IPV4 = 4
+IPV6 = 6
 
 logger = log.get_logger(__name__)
 
@@ -463,6 +466,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
         pvlan_isolated_chain.add_rule('-I %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
             PVLAN_ISOLATED_CHAIN, vlan_interface, isolated_br))
         filter_table.iptables_restore()
+        filter_table_v6 = iptables_v2.from_iptables_save(version=IPV6)
+        forward_chain_v6 = filter_table_v6.get_chain_by_name(iptables_v2.FORWARD_CHAIN_NAME)
+        pvlan_isolated_chain_v6 = filter_table_v6.get_chain_by_name(PVLAN_ISOLATED_CHAIN_V6)
+        if not pvlan_isolated_chain_v6:
+            pvlan_isolated_chain_v6 = filter_table_v6.add_chain_if_not_exist(PVLAN_ISOLATED_CHAIN_V6)
+            forward_chain_v6.add_rule('-I FORWARD -j %s' % PVLAN_ISOLATED_CHAIN_V6)
+        pvlan_isolated_chain_v6.add_rule('-I %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+            PVLAN_ISOLATED_CHAIN_V6, vlan_interface, isolated_br))
+        filter_table_v6.iptables_restore()
 
     def _delete_isolated(self, vlan_interface):
         isolated_br = "isolated_%s" % vlan_interface
@@ -475,6 +487,12 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 pvlan_isolated_chain.add_rule('-D %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
                     PVLAN_ISOLATED_CHAIN, vlan_interface, isolated_br))
                 filter_table.iptables_restore()
+            filter_table_v6 = iptables_v2.from_iptables_save(version=IPV6)
+            pvlan_isolated_chain_6 = filter_table_v6.get_chain_by_name(PVLAN_ISOLATED_CHAIN_V6)
+            if pvlan_isolated_chain_6:
+                pvlan_isolated_chain_6.add_rule('-D %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                    PVLAN_ISOLATED_CHAIN_V6, vlan_interface, isolated_br))
+                filter_table_v6.iptables_restore()
             shell.call("ipset destroy %s" % isolated_br)
 
     def _configure_pvlan_veth(self, pvlan, bridge):
@@ -1430,10 +1448,14 @@ configure lldp status rx-only \n
                 if ipset_list.return_code == 0:
                     shell.call('iptables -w -D %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
                         PVLAN_ISOLATED_CHAIN, physdev_in, isolated_br), exception=False)
+                    shell.call('ip6tables -w -D %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                        PVLAN_ISOLATED_CHAIN_V6, physdev_in, isolated_br), exception=False)
                     shell.call('ipset destroy %s' % isolated_br, exception=False)
                 shell.call('ipset create %s hash:mac' % isolated_br)
                 shell.call('iptables -w -I %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
                     PVLAN_ISOLATED_CHAIN, physdev_in, isolated_br))
+                shell.call('ip6tables -w -I %s -m physdev --physdev-in %s -m set --match-set %s src -j DROP' % (
+                    PVLAN_ISOLATED_CHAIN_V6, physdev_in, isolated_br))
                 for mac in mac_list:
                     shell.call('ipset add isolated_%s.%s %s'
                                % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)
