@@ -473,8 +473,11 @@ class HostNetworkInterfaceInventory(object):
         self.interfaceModel = None
         self.vendorId = None
         self.deviceId = None
+        self.deviceName = None
+        self.vendorName = None
         self.subvendorId = None
         self.subdeviceId = None
+        self.subvendorName = None
 
         bonds = ovs.getAllBondFromFile()
 
@@ -567,25 +570,22 @@ class HostNetworkInterfaceInventory(object):
         # todo: read file
         r, o, e = bash_roe("lspci -Dmmnnv -s %s" % self.pciDeviceAddress)
         if r == 0:
-            vendor_name = ""
-            device_name = ""
-            subvendor_name = ""
             for line in o.split('\n'):
                 if len(line.split(':')) < 2: continue
                 title = line.split(':')[0].strip()
                 content = line.split(':')[1].strip()
                 if title == 'Vendor':
-                    vendor_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.vendorName = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
                     self.vendorId = content.split('[')[-1].strip(']')
                 elif title == "Device":
-                    device_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.deviceName = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
                     self.deviceId = content.split('[')[-1].strip(']')
                 elif title == "SVendor":
-                    subvendor_name = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
+                    self.subvendorName = self._simplify_device_name('['.join(content.split('[')[:-1]).strip())
                     self.subvendorId = content.split('[')[-1].strip(']')
                 elif title == "SDevice":
                     self.subdeviceId = content.split('[')[-1].strip(']')
-            self.interfaceModel = "%s_%s" % (subvendor_name if subvendor_name and "Unknown" not in subvendor_name else vendor_name, device_name)
+            self.interfaceModel = "%s_%s" % (self.subvendorName if self.subvendorName and "Unknown" not in self.subvendorName else self.vendorName, self.deviceName)
 
     def _simplify_device_name(self, name):
         if 'Intel Corporation' in name:
