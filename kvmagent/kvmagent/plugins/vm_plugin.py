@@ -3327,8 +3327,7 @@ class Vm(object):
                 continue
 
             snapshot_dir = os.path.dirname(vs_struct.installPath)
-            if not os.path.exists(snapshot_dir):
-                os.makedirs(snapshot_dir)
+            os.makedirs(snapshot_dir)
 
             disk_names.append(disk_name)
             source_file = VmPlugin.get_source_file_by_disk(target_disk)
