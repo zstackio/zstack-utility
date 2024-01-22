@@ -188,6 +188,7 @@ else:
     host_post_info.post_label_param = "%s, %s" % (kvm_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
+
 run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm_root), host_post_info)
 
 
@@ -268,14 +269,13 @@ def install_kvm_pkg():
             	host_post_info.post_label_param = "libvirt-python"
             	(status, output) = run_remote_command(command, host_post_info, True, True)
             	if status is True:
-                    dep_list =' '.join([pkg for pkg in dep_list.split() if not pkg.startswith("libvirt")])
+                    dep_list = ' '.join([pkg for pkg in dep_list.split() if not pkg.startswith("libvirt")])
                 else:
-                    dep_list =' '.join([pkg for pkg in dep_list.split() if pkg == 'libvirt-python' or not pkg.startswith("libvirt")])                    
+                    dep_list = ' '.join([pkg for pkg in dep_list.split() if pkg == 'libvirt-python' or not pkg.startswith("libvirt")])
 
             # add extra package
             if extra_packages != '':
                 dep_list = dep_list + " " + extra_packages
-
 
             # skip these packages when connect host
             _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
