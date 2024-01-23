@@ -3299,8 +3299,7 @@ class Vm(object):
             if vs_struct.memory:
                 memory_snapshot_required = True
                 snapshot_dir = os.path.dirname(vs_struct.installPath)
-                if not os.path.exists(snapshot_dir):
-                    os.makedirs(snapshot_dir)
+                linux.mkdir(snapshot_dir)
 
                 memory_snapshot_path = None
                 if vs_struct.installPath.startswith("/dev/"):
@@ -3327,7 +3326,7 @@ class Vm(object):
                 continue
 
             snapshot_dir = os.path.dirname(vs_struct.installPath)
-            os.makedirs(snapshot_dir)
+            linux.mkdir(snapshot_dir)
 
             disk_names.append(disk_name)
             source_file = VmPlugin.get_source_file_by_disk(target_disk)
