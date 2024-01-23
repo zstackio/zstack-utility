@@ -34,6 +34,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
 from zstacklib.utils import shell
+from zstacklib.utils import misc
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
@@ -94,6 +95,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.eptFlag = None
         self.libvirtCapabilities = []
         self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
+        self.deployMode = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -1176,6 +1178,8 @@ class HostPlugin(kvmagent.KvmAgent):
             else:
                 rsp.ipmiAddress = 'None'
                 logger.debug("failed to get ipmi address from BMC lan channel [%s], because %s" % (channel, err))
+
+        rsp.deployMode = 'cube' if misc.isHyperConvergedHost() else 'cloud'
 
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
@@ -2342,7 +2346,7 @@ done
             to.name = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
 
             def _set_pci_to_type():
-                gpu_vendors = ["NVIDIA", "AMD"]
+                gpu_vendors = ["NVIDIA", "AMD", "Intel"]
                 custom_gpu_vendors = "Display controller"
                 if any(vendor in to.description for vendor in gpu_vendors) \
                         and ('VGA compatible controller' in to.type or
@@ -2362,8 +2366,8 @@ done
                                                                     and pci_device_mapper.get('Serial bus controller') in to.type)):
                     to.type = "GPU_Serial_Controller"
                 elif any(vendor in to.description for vendor in gpu_vendors) \
-                        and ('3D controller' in to.type or (pci_device_mapper.get('3D controller') is not None
-                                                            and pci_device_mapper.get('3D controller') in to.type)):
+                        and ('3D controller' in to.type or custom_gpu_vendors in to.type
+                             or (pci_device_mapper.get('3D controller') is not None and pci_device_mapper.get('3D controller') in to.type)):
                     to.type = "GPU_3D_Controller"
                 elif 'Ethernet controller' in to.type or (pci_device_mapper.get('Ethernet controller') is not None
                                                           and pci_device_mapper.get('Ethernet controller') in to.type):
@@ -3296,3 +3300,4 @@ done
 
     def configure(self, config={}):
         self.config = config
+
