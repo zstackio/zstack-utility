@@ -9,6 +9,7 @@ import traceback
 import hashlib
 import os
 
+from contextlib import contextmanager
 from zstacklib.utils import bash
 from zstacklib.utils import log
 from zstacklib.utils import linux
@@ -69,3 +70,13 @@ def isHyperConvergedHost():
     if r != 0 or o.strip() != "true":
         return False
     return True
+
+
+@contextmanager
+def ignore_exception(exception_type, message=None):
+    try:
+        yield
+    except exception_type as ex:
+        if message is not None and message not in str(ex.message):
+            raise ex
+        logger.debug("exception caught by the ignore_exception func : %s" % ex.message)
