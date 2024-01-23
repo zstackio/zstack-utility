@@ -1715,19 +1715,14 @@ def get_lv_locking_type(path):
         return LvmlockdLockType.from_abbr(output.strip(), raise_exception=True)
 
     locking_type = LvmlockdLockType.NULL
-    active = None
     with lock.NamedLock(path.split("/")[-1]):
         try:
-            active = lv_is_active(path)
-            if not active:
+            if not lv_is_active(path):
                 return locking_type
             locking_type = _get_lv_locking_type(path)
         except Exception as e:
             output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
             locking_type = LvmlockdLockType.from_abbr(output.strip(), raise_exception=False)
-            if active is True and locking_type == LvmlockdLockType.NULL:
-                # NOTE(weiw): this usually because of manipulation of locking by hand
-                locking_type = LvmlockdLockType.SHARE
 
     return locking_type
 
