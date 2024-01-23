@@ -536,6 +536,15 @@ def check_volume(vm_uuid, volumes):
 
 
 @misc.return_jsonobject()
+def take_volumes_snapshots(vm_uuid, volumes):
+    # type: (str, list[jsonobject.JsonObject]) -> jsonobject
+
+    return VM_PLUGIN.take_volumes_snapshots(misc.make_a_request({
+        'uuid': vm_uuid,
+        'snapshotJobs': volumes
+    }))
+
+@misc.return_jsonobject()
 def take_snapshot(vm_uuid, vol_uuid, vol_path, snapshot_path):
     # type: (str, str, str, str) -> jsonobject.JsonObject
 

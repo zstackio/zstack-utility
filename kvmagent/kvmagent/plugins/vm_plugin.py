@@ -3435,14 +3435,28 @@ class Vm(object):
                 logger.debug("after create snapshot by libvirt, expected volume[install path: %s] does%s exist."
                              % (struct.installPath, "" if existing else " not"))
 
-                if struct.memory and struct.installPath.startswith("/dev/"):
-                    mount_path = struct.installPath.replace("/dev/", "/tmp/")
-                    linux.umount(mount_path)
-                    linux.rmdir_if_empty(mount_path)
-                    lvm.deactive_lv(struct.installPath)
-
             if memory_snapshot_required:
                 self.dump_vm_xml_to_log()
+                self.rollback_memory_snapshot(memory_snapshot_struct.installPath)
+
+
+    def rollback_memory_snapshot(self, install_path):
+        if not install_path.startswith("/dev/"):
+            logger.debug("skip rollback memory snapshot %s, because install path is not a block device" % install_path)
+            return
+
+        mount_path = install_path.replace("/dev/", "/tmp/")
+        ret = linux.umount(mount_path)
+        if ret != 0:
+            logger.debug("umount %s failed, %s" % (mount_path, ret))
+
+        try:
+            lvm.deactive_lv(install_path)
+        except Exception as e:
+            logger.debug("deactivate volume %s for memory snapshot failed on vm %s failed, %s" % (
+                install_path, self.uuid, str(e)))
+        
+
 
     def do_block_commit(self, task_spec, volume):
         def do_block_commit_disk(task_spec, disk_name, top, base, active_commit):
