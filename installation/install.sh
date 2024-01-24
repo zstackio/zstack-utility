@@ -3984,6 +3984,21 @@ else
     fi
 fi
 
+if [ x"$UPGRADE" = x'y' ]; then
+    # Make sure that the MANAGEMENT_IP is the same as the management.server.ip when upgrading,
+    # otherwise chrony.serverIp and consoleProxyOverriddenIp may be set to the wrong value.
+    management_server_ip=$(zstack-ctl get_configuration management.server.ip)
+    if [[ -n "$management_server_ip" && "$management_server_ip" != "$MANAGEMENT_IP" ]]; then
+        if [[ "$NEED_SET_MN_IP" == "y" ]]; then
+            # set -I MANAGEMENT_NODE_IP_ADDRESS
+            fail2 "IP address for interface $MANAGEMENT_INTERFACE is different from management.server.ip $management_server_ip. Please make sure that the IP address for interface is the same as the management.server.ip when upgrading. Use 'ip addr' to show all interface and IP address."
+        else
+            # not set -I MANAGEMENT_NODE_IP_ADDRESS
+            fail2 "IP address for default network interface is different from management.server.ip $management_server_ip. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'. Use 'ip addr' to show all interface and IP address."
+        fi
+    fi
+fi
+
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
 # Copy zstack trial license into /var/lib/zstack/license
