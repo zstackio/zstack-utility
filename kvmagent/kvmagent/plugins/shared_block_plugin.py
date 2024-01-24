@@ -1746,4 +1746,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         for t in threads:
             t.join()
 
+        if lvm.is_lvmlockd_socket_abnormal():
+            for vgUuid in cmd.vgUuids:
+                rsp.failedVgs.update({vgUuid: "lvmlockd socket is abnormal."})
+
         return jsonobject.dumps(rsp)
