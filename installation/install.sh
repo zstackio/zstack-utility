@@ -4004,7 +4004,7 @@ fi
 echo "Management ip address: $MANAGEMENT_IP" >> $ZSTACK_INSTALL_LOG
 
 # Copy zstack trial license into /var/lib/zstack/license
-ZSTACK_TRIAL_LICENSE="/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/license/zstack_trial_license"
+ZSTACK_TRIAL_LICENSE="/opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zs_license/zstack_trial_license"
 if [ -f $ZSTACK_TRIAL_LICENSE ]; then
   mkdir -p $LICENSE_FOLDER && /bin/cp -f $ZSTACK_TRIAL_LICENSE $LICENSE_FOLDER || fail "Failed to copy ZStack trial license to $LICENSE_FOLDER"
 fi
