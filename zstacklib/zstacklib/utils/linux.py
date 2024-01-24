@@ -768,7 +768,7 @@ def mkdir(path, mode=0o755):
     # NOTE(ywang): try to access the path to refresh fs cache,
     # therefore the exception is no need to handle
     try:
-        os.access(path, os.R_OK)
+        os.listdir(path)
     except Exception:
         pass
 
