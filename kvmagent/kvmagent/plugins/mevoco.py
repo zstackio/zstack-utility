@@ -1621,9 +1621,13 @@ tag:{{o.tag}},option:router,{{o.gateway}}
 {% endif -%}
 {% if o.dns -%}
 tag:{{o.tag}},option:dns-server,{{o.dns}}
+{% else -%}
+tag:{{o.tag}},option:dns-server
 {% endif -%}
 {% if o.dns6 -%}
 tag:{{o.tag}},option6:dns-server,{{o.dns6}}
+{% else -%}
+tag:{{o.tag}},option6:dns-server
 {% endif -%}
 {% if o.dnsDomain -%}
 tag:{{o.tag}},option:domain-name,{{o.dnsDomain}}
