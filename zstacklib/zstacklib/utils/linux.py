@@ -765,6 +765,13 @@ def md5sum(file_path):
     #return sum5.strip()
 
 def mkdir(path, mode=0o755):
+    # NOTE(ywang): try to access the path to refresh fs cache,
+    # therefore the exception is no need to handle
+    try:
+        os.access(path, os.R_OK)
+    except Exception:
+        pass
+
     if os.path.isdir(path):
         return True
 
