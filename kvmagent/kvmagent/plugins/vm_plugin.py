@@ -6230,12 +6230,10 @@ def get_vm_migration_caps(domain_id, cap_key):
 
 
 def check_mirror_jobs(domain_id, migrate_without_bitmaps):
-    isc = ImageStoreClient()
-    volumes = isc.query_mirror_volumes(domain_id)
-    if volumes:
-        for v in volumes.keys():
-            logger.info("stop mirror for %s:%s" % (domain_id, v))
-            isc.stop_mirror(domain_id, False, v)
+    try:
+        ImageStoreClient().stop_backup_jobs(domain_id)
+    except Exception as e:
+        raise kvmagent.KvmError('clear backup jobs error %s' % str(e))
 
     if not get_vm_migration_caps(domain_id, "dirty-bitmaps"):
         return
