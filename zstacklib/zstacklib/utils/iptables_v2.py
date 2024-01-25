@@ -126,9 +126,15 @@ class IPTabelsRule(IPTablesParser):
         return self.name
 
     def get_target(self):
-        if '-j' in self.name:
-            rule_to_list = self.name.split()
-            index = rule_to_list.index('-j')
+        rule_to_list = self.name.split()
+        index = None
+        keywords = ['-j', '--jump', '-g', '--goto']
+        for r in rule_to_list:
+            if r in keywords:
+                index = rule_to_list.index(r)
+                break
+
+        if index:
             self.target = rule_to_list[index + 1]
 
         return self.target
@@ -249,8 +255,6 @@ class IPTablesChain(IPTablesParser):
         chain_name = rule.split()[1]
         if chain_name != self.name:
             raise IPTablesError("rule:[{}] must be in chain[{}]".format(rule, self.name))
-        if '-j' not in rule:
-            raise IPTablesError("rule:[{}] must have target".format(rule))
 
         _rule = ' '.join(rule.split())
         for r in self.user_defined_rules:
@@ -276,8 +280,10 @@ class IPTablesChain(IPTablesParser):
     def delete_rule_by_target(self, target):
         new_rules = []
         for r in self.user_defined_rules:
-            if r.get_target() != target:
+            r_target = r.get_target()
+            if not r_target or r_target != target:
                 new_rules.append(r)
+
         self.user_defined_rules = new_rules
 
         if self.default_rule and self.default_rule.get_target() == target:
