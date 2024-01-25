@@ -3956,12 +3956,10 @@ pypi_source_easy_install="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zs
 pypi_source_pip="file://${ZSTACK_INSTALL_ROOT}/apache-tomcat/webapps/zstack/static/pypi/simple"
 unzip_el6_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el6*.rpm"
 
-if [ `uname -m` == "aarch64" ]; then
-    zstore_bin="${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/imagestorebackupstorage/zstack-store.aarch64.bin"
-    unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*aarch64*.rpm"
-else
+if [ `uname -m` == "x86_64" ]; then
     zstore_bin="${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/imagestorebackupstorage/zstack-store.bin"
-    unzip_el7_rpm="${ZSTACK_INSTALL_ROOT}/libs/unzip*el7*x86_64*.rpm"
+else
+    zstore_bin="${ZSTACK_INSTALL_ROOT}/${CATALINA_ZSTACK_CLASSES}/ansible/imagestorebackupstorage/zstack-store.$(uname -m).bin"
 fi
 
 if [ -z $MANAGEMENT_INTERFACE ]; then
