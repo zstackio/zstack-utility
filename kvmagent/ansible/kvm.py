@@ -772,9 +772,6 @@ def start_kvmagent():
     if chroot_env != 'false':
         return
 
-    if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status, copy_smart_nics_status]):
-        # name: restart libvirtd if status is stop or cfg changed
-        service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
     if host_info.distro in RPM_BASED_OS and host_info.major_version >= 7:
