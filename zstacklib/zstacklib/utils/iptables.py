@@ -360,8 +360,9 @@ class IPTables(Node):
             rs = rule.split()
 
         target = None
+        keywords = ['-j', '--jump', '-g', '--goto']
         for r in rs:
-            if r == '-j':
+            if r in keywords:
                 target = rs[rs.index(r) + 1]
                 
         return target
@@ -761,8 +762,9 @@ class IP6Tables(Node):
             rs = rule.split()
 
         target = None
+        keywords = ['-j', '--jump', '-g', '--goto']
         for r in rs:
-            if r == '-j':
+            if r in keywords:
                 target = rs[rs.index(r) + 1]
 
         return target
