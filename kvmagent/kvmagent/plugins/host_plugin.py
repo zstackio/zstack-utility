@@ -2242,8 +2242,7 @@ done
                 rsp.error = "update /etc/libvirt/qemu.conf failed, please check qemu.conf"
                 return jsonobject.dumps(rsp)
 
-        shell.call('systemctl restart libvirtd')
-        rsp.restartLibvirt = True
+        rsp.restartLibvirt = False
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
