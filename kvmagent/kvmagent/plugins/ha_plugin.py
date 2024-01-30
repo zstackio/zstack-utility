@@ -651,7 +651,7 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
         success_heartbeat = True
 
         if self.update_heartbeat_file():
-            self.failure = 0
+            self.reset_failure_count()
             return success_heartbeat
 
         self.failure += 1
@@ -905,7 +905,7 @@ class IscsiHeartbeatController(AbstractStorageFencer):
             running_vm_uuids.update(find_ps_running_vm(covering_path))
 
         if self._heartbeat_io_check() and self._fill_heartbeat_file(list(running_vm_uuids)):
-            self.failure = 0
+            self.reset_failure_count()
             return True
 
         self.failure += 1

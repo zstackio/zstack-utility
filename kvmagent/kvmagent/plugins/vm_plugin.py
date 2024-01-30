@@ -41,7 +41,7 @@ from kvmagent.plugins.baremetal_v2_gateway_agent import \
     BaremetalV2GatewayAgentPlugin as BmV2GwAgent
 from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import bash, plugin
+from zstacklib.utils import bash, plugin, iscsi
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import lvm
 from zstacklib.utils import ft
@@ -1437,6 +1437,7 @@ class IscsiLogin(object):
         device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (
             self.server_hostname, self.server_port, self.target, self.lun))
 
+        iscsi.config_iscsi_startup_if_needed()
         shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
 
         if self.chap_username and self.chap_password:
@@ -1455,6 +1456,8 @@ class IscsiLogin(object):
         s(False)
         if s.return_code != 0 and 'already present' not in s.stderr:
             s.raise_error()
+
+        shell.run("timeout 30 iscsiadm -m session -R")
 
         def wait_device_to_show(_):
             return bool(glob.glob(device_path))
