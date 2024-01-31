@@ -69,8 +69,8 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(True, rsp.success, rsp.error)
 
         # If there is no lv, restarting lvmlockd may not restore vg lock（lvm 2.03.11）
-        bash.bash_errorout("lvcreate --size 10M %s" % vgUuid)
-        bash.bash_errorout("lvcreate --size 10M %s" % vg2Uuid)
+        bash.bash_errorout("lvcreate --size 10M --name test-1 %s" % vgUuid)
+        bash.bash_errorout("lvcreate --size 10M --name test-1 %s" % vg2Uuid)
 
         # kill lvmlockd
         lvm.stop_lvmlockd()
@@ -80,6 +80,10 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         self.assertEqual(True, rsp.success, rsp.error)
         self.assertEqual(rsp.failedVgs.hasattr(vgUuid), True, str(rsp.failedVgs))
         self.assertEqual(rsp.failedVgs.hasattr(vg2Uuid), True, str(rsp.failedVgs))
+
+        self.assertEqual(True, lvm.lv_is_active("/dev/%s/test-1" % vgUuid))
+        type = lvm.get_lv_locking_type("/dev/%s/test-1" % vgUuid)
+        self.assertEqual(True, type == lvm.LvmlockdLockType.NULL)
 
         rsp = self.connect(blockUuids[0 : 1], blockUuids, vgUuid, hostUuid, hostId, forceWipe=False)
         self.assertEqual(True, rsp.success, rsp.error)

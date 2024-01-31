@@ -99,7 +99,8 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                 }
             ],
             provisioning=lvm.VolumeProvisioningStrategy.ThickProvisioning,
-            volumePath="sharedblock://{}/{}".format(vgUuid,snaphostUuid)
+            volumePath="sharedblock://{}/{}".format(vgUuid,snaphostUuid),
+            kvmHostAddons={"qcow2Options":" -o cluster_size=2097152 "}
         )
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vg2Uuid, volumeUuid)))
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vg2Uuid, snaphostUuid)))
@@ -133,7 +134,8 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
             ],
             provisioning=lvm.VolumeProvisioningStrategy.ThinProvisioning,
             volumePath="sharedblock://{}/{}".format(vg2Uuid,snaphostUuid),
-            addons={"thinProvisioningInitializeSize":5368709120}
+            addons={"thinProvisioningInitializeSize":5368709120},
+            kvmHostAddons={"qcow2Options":" -o cluster_size=2097152 "}
         )
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vgUuid, volumeUuid)))
         self.assertEqual(True, lvm.lv_exists("/dev/%s/%s" % (vgUuid, snaphostUuid)))
@@ -169,7 +171,8 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
             ],
             provisioning=lvm.VolumeProvisioningStrategy.ThinProvisioning,
             volumePath="sharedblock://{}/{}".format(vg2Uuid,snaphostUuid),
-            addons={"thinProvisioningInitializeSize":5368709120}
+            addons={"thinProvisioningInitializeSize":5368709120},
+            kvmHostAddons={"qcow2Options":" -o cluster_size=2097152 "}
         )
 
 
@@ -201,7 +204,8 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                     "skipIfExisting" : True
                 }
             ],
-            volumePath="sharedblock://{}/{}".format(vgUuid,snaphostUuid)
+            volumePath="sharedblock://{}/{}".format(vgUuid,snaphostUuid),
+            kvmHostAddons={"qcow2Options":" -o cluster_size=2097152 "}
         )
 
         self.assertEqual(True, rsp.success, rsp.error)
