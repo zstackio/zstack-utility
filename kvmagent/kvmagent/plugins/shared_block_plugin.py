@@ -1452,12 +1452,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     lv_size = int(linux.qcow2_virtualsize(current_abs_path))
                     lv_size = lvm.calcLvReservedSize(lv_size)
                 elif struct.independent:
-                    lv_size = int(linux.qcow2_measure_required_size(current_abs_path))
+                    cluster_size = linux.qcow2_get_cluster_size(current_abs_path)
+                    lv_size = linux.qcow2_measure_required_size(current_abs_path, cluster_size=cluster_size)
                     lv_size = lvm.calcLvReservedSize(lv_size)
                 else:
                     lv_size = int(lvm.get_lv_size(current_abs_path))
                     if linux.qcow2_get_backing_file(current_abs_path) == '':
-                        measure_size = int(linux.qcow2_measure_required_size(current_abs_path))
+                        cluster_size = linux.qcow2_get_cluster_size(current_abs_path)
+                        measure_size = linux.qcow2_measure_required_size(current_abs_path, cluster_size=cluster_size)
                         if lvm.calcLvReservedSize(measure_size) > lv_size:
                             struct.put('compressed_qcow2', True)
                 struct.put('lv_size', lv_size)

@@ -4440,9 +4440,9 @@ class Vm(object):
                 linux.hdev_get_max_transfer_via_ioctl(checking_file),
                 linux.hdev_get_max_transfer_via_segments(checking_file))
             cluster_size = linux.qcow2_get_cluster_size(checking_file)
-            if max_transfer < cluster_size:
+            if cluster_size > 0 and max_transfer < cluster_size:
                 msg = ('Live merge snapshot precheck failed, the qcow2 image '
-                       'cluster size %s large that the block device max '
+                       'cluster size %s larger than the block device max '
                        'transfer  %s.') % (cluster_size, max_transfer)
                 raise kvmagent.KvmError(msg)
             if checking_file == base and not fullrebase:

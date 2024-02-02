@@ -1251,15 +1251,19 @@ def qcow2_fill(seek, length, path, raise_excpetion=False):
     cmd(raise_excpetion)
     logger.debug("qcow2_fill return code: %s, stdout: %s, stderr: %s" % (cmd.return_code, cmd.stdout, cmd.stderr))
 
-def qcow2_measure_required_size(path):
-    out = shell.call("%s --output=json -f qcow2 -O qcow2 %s" % (qemu_img.subcmd('measure'), path))
+
+def qcow2_measure_required_size(path, cluster_size=0):
+    opts = "" if cluster_size == 0 else "-o cluster_size=%s" % cluster_size
+
+    out = shell.call("%s --output=json -f qcow2 -O qcow2 %s %s" % (qemu_img.subcmd('measure'), opts, path))
     return long(simplejson.loads(out)["required"])
 
 
 def qcow2_get_cluster_size(path):
-    out = shell.call("%s %s | grep 'cluster_size:' | cut -d ':' -f 2" %
-                     (qemu_img.subcmd('info'), path))
-    return int(out.strip())
+    out = shell.call("%s --output=json %s" % (qemu_img.subcmd('info'), path))
+    ret = simplejson.loads(out)
+    return 0 if 'cluster-size' not in ret else ret['cluster-size']
+
 
 def qcow2_discard(path):
     virtual_size = int(qcow2_get_virtual_size(path))
