@@ -3967,18 +3967,27 @@ if [ -z $MANAGEMENT_INTERFACE ]; then
    node IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'."
 fi
 
-ip addr show $MANAGEMENT_INTERFACE >/dev/null 2>&1
-if [ $? -ne 0 ];then
-    ip addr show |grep $MANAGEMENT_INTERFACE |grep inet >/dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        fail2 "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'. Use 'ip addr' to show all interface and IP address." 
-    fi
-    MANAGEMENT_IP=$MANAGEMENT_INTERFACE
-else
-    MANAGEMENT_IP=`ip -4 addr show ${MANAGEMENT_INTERFACE} | grep inet | head -1 | awk '{print $2}' | cut -f1  -d'/'`
-    echo "Management node network interface: $MANAGEMENT_INTERFACE" >> $ZSTACK_INSTALL_LOG
-    if [ -z $MANAGEMENT_IP ]; then
-        fail2 "Can not identify IP address for interface: $MANAGEMENT_INTERFACE . Please assign correct interface by '-I MANAGEMENT_NODE_IP_ADDRESS', which has IP address. Use 'ip addr' to show all interface and IP address."
+if [ x"$UPGRADE" = x"y" ] && [ x"$NEED_SET_MN_IP" != x"y" ]; then
+    # If -I is not set during the upgrade, ensure that MANAGEMENT_IP is the same as the current management.server.ip
+    zstack-ctl show_configuration | grep 'management.server.ip' >/dev/null 2>&1
+    [ $? -eq 0 ] && MANAGEMENT_IP=$(zstack-ctl get_configuration management.server.ip)
+fi
+
+if [ -z $MANAGEMENT_IP ]; then
+    ip addr show $MANAGEMENT_INTERFACE >/dev/null 2>&1
+
+    if [ $? -ne 0 ];then
+        ip addr show | grep $MANAGEMENT_INTERFACE | grep inet >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            fail2 "$MANAGEMENT_INTERFACE is not a recognized IP address or network interface name. Please assign correct IP address by '-I MANAGEMENT_NODE_IP_ADDRESS'. Use 'ip addr' to show all interface and IP address." 
+        fi
+        MANAGEMENT_IP=$MANAGEMENT_INTERFACE
+    else
+        MANAGEMENT_IP=`ip -4 addr show ${MANAGEMENT_INTERFACE} | grep inet | head -1 | awk '{print $2}' | cut -f1  -d'/'`
+        echo "Management node network interface: $MANAGEMENT_INTERFACE" >> $ZSTACK_INSTALL_LOG
+        if [ -z $MANAGEMENT_IP ]; then
+            fail2 "Can not identify IP address for interface: $MANAGEMENT_INTERFACE. Please assign correct interface by '-I MANAGEMENT_NODE_IP_ADDRESS', which has IP address. Use 'ip addr' to show all interface and IP address."
+        fi
     fi
 fi
 
