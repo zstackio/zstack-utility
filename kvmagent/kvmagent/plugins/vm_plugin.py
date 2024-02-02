@@ -3813,7 +3813,7 @@ class Vm(object):
         checking_file = top
         while checking_file:
             if linux.get_volume_format(checking_file) == 'raw':
-                continue
+                break
             max_transfer = min(
                 linux.hdev_get_max_transfer_via_ioctl(checking_file),
                 linux.hdev_get_max_transfer_via_segments(checking_file))
