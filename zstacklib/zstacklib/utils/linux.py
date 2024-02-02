@@ -1150,6 +1150,15 @@ def qcow2_get_cluster_size(path):
     return int(out.strip())
 
 
+def get_volume_format(path):
+    try:
+        info = json.loads(shell.call(
+            "%s %s --output json" % (qemu_img.subcmd('info'), path)))
+        return info["format"]
+    except Exception as e:
+        logger.error('failed to get %s format, error: %s' % (path, e))
+
+
 class AbstractFileConverter(object):
     __metaclass__ = abc.ABCMeta
 
