@@ -908,6 +908,11 @@ def do_kvm_host_config():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info, False, False, isZYJ)
 
+    command = "systemctl is-active iptables | grep -q inactive && systemctl restart iptables"
+    host_post_info.post_label = "ansible.shell.do.zyj.host.config"
+    host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info, False, False, isZYJ)
+
 
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
