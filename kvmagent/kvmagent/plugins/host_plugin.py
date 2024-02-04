@@ -662,6 +662,8 @@ class HostPlugin(kvmagent.KvmAgent):
     DEL_BRIDGE_FDB_ENTRY_PATH = "/bridgefdb/delete"
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
+    CREATE_QCOW2_SECRET_PATH = "/host/createqcow2secret"
+    DELETE_QCOW2_SECRET_PATH = "/host/deleteqcow2secret"
     GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
     DEPLOY_QEMU_TLS_PATH = "/host/deployqemutls"
     CANCEL_JOB = "/job/cancel"
@@ -2636,6 +2638,27 @@ done
 
         return jsonobject.dumps(rsp)
 
+    def create_qcow2_secret(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        secret_uuid = cmd.volumeUuid
+        secret_key = cmd.volumeEncrypt
+        try:
+            linux.check_and_create_qcow2_secret_key(secret_uuid, secret_key)
+        except Exception:
+            return jsonobject.dumps(kvmagent.AgentResponse(success=False))
+
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    def delete_qcow2_secret(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        secret_uuid = cmd.volumeUuid
+        try:
+            linux.check_and_delete_qcow2_secret_key(secret_uuid)
+        except Exception:
+            return jsonobject.dumps(kvmagent.AgentResponse(success=False))
+
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
     def start(self):
         self.host_uuid = None
         self.host_socket = None
@@ -2676,6 +2699,8 @@ done
         http_server.register_async_uri(self.HOST_FILEVERIFICATION, self.check_and_restore_file)
         http_server.register_async_uri(self.HOST_ADD_VERIFICATION_FILE, self.add_verification_file)
         http_server.register_async_uri(self.HOST_CONFIRM_INIT_VERIFICATION_FILE, self.confirm_init_verification_file)
+        http_server.register_async_uri(self.CREATE_QCOW2_SECRET_PATH, self.create_qcow2_secret)
+        http_server.register_async_uri(self.DELETE_QCOW2_SECRET_PATH, self.delete_qcow2_secret)
         http_server.register_async_uri(self.DEPLOY_QEMU_TLS_PATH, self.deploy_qemu_tls)
         http_server.register_sync_uri(self.TRANSMIT_VM_OPERATION_TO_MN_PATH, self.transmit_vm_operation_to_vm)
         http_server.register_sync_uri(self.TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH, self.transmit_zwatch_install_result_to_mn)

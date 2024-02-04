@@ -2,7 +2,6 @@ import os
 import os.path
 import re
 import random
-import tempfile
 import time
 import traceback
 
@@ -832,7 +831,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd)
             fmt = linux.get_img_fmt(install_abs_path)
             if not cmd.live and fmt == 'qcow2':
-                linux.qemu_img_resize(install_abs_path, cmd.size, 'qcow2', cmd.force)
+                linux.qemu_img_resize(install_abs_path, cmd.size, 'qcow2', cmd.force, cmd=cmd)
             ret = linux.qcow2_virtualsize(install_abs_path)
 
         rsp = ResizeVolumeRsp()
@@ -869,7 +868,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
                                    "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), lvmlock=False)
             size = cmd.virtualSize if cmd.virtualSize else ""
-            linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options, size)
+            linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options, size, cmd)
 
         lvm.deactive_lv(install_abs_path)
         return virtual_size, lvm.get_lv_size(install_abs_path)
@@ -936,7 +935,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 t_shell = traceable_shell.get_shell(cmd)
-                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
+                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell, cmd=cmd)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
                 if cmd.compareQcow2:
@@ -961,7 +960,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 lvm.create_lv_from_absolute_path(install_abs_path, total_size, IMAGE_TAG)
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 t_shell = traceable_shell.get_shell(cmd)
-                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
+                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell, cmd=cmd)
                 logger.debug('successfully created template cache [%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
                 if cmd.compareQcow2:
@@ -1094,7 +1093,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.create_lv_from_cmd(new_volume_path, size, cmd,
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), pe_ranges=pe_ranges)
             with lvm.OperateLv(new_volume_path, shared=False, delete_when_exception=True):
-                linux.qcow2_clone_with_option(snapshot_abs_path, new_volume_path, qcow2_options)
+                linux.qcow2_clone_with_option(snapshot_abs_path, new_volume_path, qcow2_options, cmd=cmd)
                 size = linux.qcow2_virtualsize(new_volume_path)
 
         rsp.newVolumeInstallPath = new_volume_path
@@ -1119,7 +1118,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                  pe_ranges=pe_ranges)
             with lvm.OperateLv(workspace_abs_path, shared=False, delete_when_exception=True):
                 t_shell = traceable_shell.get_shell(cmd)
-                linux.create_template(snapshot_abs_path, workspace_abs_path, shell=t_shell)
+                linux.create_template(snapshot_abs_path, workspace_abs_path, shell=t_shell, cmd=cmd)
                 rsp.size = virtual_size
                 rsp.actualSize = int(lvm.get_lv_size(workspace_abs_path))
 
@@ -1151,6 +1150,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
             total_required_size = self.get_total_required_size(dst_abs_path)
             current_size = int(lvm.get_lv_size(dst_abs_path))
+            if cmd and cmd.kvmHostAddons and cmd.kvmHostAddons.encryptKey:
+                cmd.fullRebase = True
             if not cmd.fullRebase:
                 if current_size < total_required_size:
                     lvm.extend_lv_from_cmd(dst_abs_path, total_required_size, cmd, extend_thin_by_specified_size=True)
@@ -1166,7 +1167,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
                                                  pe_ranges=pe_ranges)
                 with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
-                    linux.create_template(dst_abs_path, tmp_abs_path)
+                    linux.create_template(dst_abs_path, tmp_abs_path, cmd=cmd)
                     lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
@@ -1190,14 +1191,14 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                    linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options)
+                    linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options, cmd=cmd)
         elif not lvm.lv_exists(install_abs_path):
             lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             if cmd.volumeFormat != 'raw':
                 qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, False, cmd.provisioning)
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                    linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options)
+                    linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options, cmd)
                     linux.qcow2_fill(0, 1048576, install_abs_path)
                     if 'preallocation=metadata' in qcow2_options:
                         linux.qcow2_discard(install_abs_path)
@@ -1547,7 +1548,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         with lvm.RecursiveOperateLv(abs_path, shared=False):
             old_size = long(lvm.get_lv_size(abs_path))
-            check_result = qemu_img.get_check_result(abs_path)  # type: qemu_img.CheckResult
+            check_result = qemu_img.get_check_result(abs_path, cmd=cmd)  # type: qemu_img.CheckResult
             if check_result.allocated_clusters is None:
                 size = check_result.image_end_offset
                 lvm.resize_lv(abs_path, size, True)

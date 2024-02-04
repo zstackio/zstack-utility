@@ -1,5 +1,6 @@
 from zstacklib.utils import shell
 from distutils.version import LooseVersion
+import base64
 import json
 
 __QEMU_IMG_VERSION = None
@@ -26,7 +27,16 @@ def subcmd(subcmd):
             options += ' --force-share '
     return 'qemu-img %s %s ' % (subcmd, options)
 
-def get_check_result(path):
+def get_check_result(path, cmd=None):
+    b64_key = None
+    if cmd and cmd.kvmHostAddons and cmd.kvmHostAddons.encryptKey:
+        b64_key = base64.b64encode(cmd.kvmHostAddons.encryptKey)
+
+    if b64_key:
+        path = ' --object secret,id={0},data={1},format=base64 --image-opts ' \
+               'encrypt.format=luks,encrypt.key-secret={0},file.filename={2}'.\
+            format('sec_' + cmd.kvmHostAddons.volumeUuid, b64_key, path)
+
     check_cmd = "%s --out json %s" % (subcmd('check'), path)
     result = json.loads(shell.call(check_cmd))
     return CheckResult(result.get("image-end-offset"), result.get("total-clusters"),

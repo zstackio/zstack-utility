@@ -28,10 +28,12 @@ import xxhash
 from inspect import stack
 import hashlib
 import math
+import base64
 
 from zstacklib.utils import thread
 from zstacklib.utils import qemu_img
 from zstacklib.utils import lock
+from zstacklib.utils import secret
 from zstacklib.utils import xmlobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -979,14 +981,19 @@ def qcow2_clone_with_cmd(src, dst, cmd=None):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
         qcow2_clone(src, dst, size)
     else:
-        qcow2_clone_with_option(src, dst, cmd.kvmHostAddons.qcow2Options, size)
+        qcow2_clone_with_option(src, dst, cmd.kvmHostAddons.qcow2Options, size, cmd)
 
-def qcow2_clone_with_option(src, dst, opt="", size=""):
+def qcow2_clone_with_option(src, dst, opt="", size="", cmd=None):
     # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
     pattern = re.compile("\-o\ preallocation\=\w+ ")
     opt = re.sub(pattern, " ", opt)
 
     fmt = get_img_fmt(src)
+
+    if secret.is_encrypted_by_cmd(cmd):
+        opt += secret.get_qemu_encrypt_options(cmd)
+        src = secret.get_img_path_with_secret_objects(src, cmd)
+
     shell.check_run('/usr/bin/qemu-img create -F %s %s -b %s -f qcow2 %s %s' % (fmt, opt, src, dst, size))
     os.chmod(dst, 0o660)
 
@@ -998,10 +1005,14 @@ def qcow2_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s' % (dst, size))
     os.chmod(dst, 0o660)
 
-def qemu_img_resize(target, size, fmt='qcow2', force=False):
+def qemu_img_resize(target, size, fmt='qcow2', force=False, cmd=None):
     fmt_option = '-f %s' % fmt
     force_option = '--shrink' if force else ''
-    shell.check_run('/usr/bin/qemu-img resize %s %s %s %s' % (fmt_option, force_option, target, size))
+    if cmd.kvmHostAddons.encryptKey:
+        encrypt_opt = secret.get_qemu_resize_encrypt_options(cmd, target)
+        shell.check_run('/usr/bin/qemu-img resize %s %s' % (encrypt_opt, size))
+    else:
+        shell.check_run('/usr/bin/qemu-img resize %s %s %s %s' % (fmt_option, force_option, target, size))
 
 def qcow2_create_with_cmd(dst, size, cmd=None):
     if cmd is None or cmd.kvmHostAddons is None or cmd.kvmHostAddons.qcow2Options is None:
@@ -1009,7 +1020,9 @@ def qcow2_create_with_cmd(dst, size, cmd=None):
     else:
         qcow2_create_with_option(dst, size, cmd.kvmHostAddons.qcow2Options)
 
-def qcow2_create_with_option(dst, size, opt=""):
+def qcow2_create_with_option(dst, size, opt="", cmd=None):
+    if secret.is_encrypted_by_cmd(cmd):
+        opt += secret.get_qemu_encrypt_options(cmd)
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
     os.chmod(dst, 0o660)
 
@@ -1024,9 +1037,12 @@ def qcow2_create_with_backing_file_and_cmd(backing_file, dst, cmd=None, size="")
     else:
         qcow2_create_with_backing_file_and_option(backing_file, dst, cmd.kvmHostAddons.qcow2Options, size)
 
-def qcow2_create_with_backing_file_and_option(backing_file, dst, opt="", size=""):
+def qcow2_create_with_backing_file_and_option(backing_file, dst, opt="", size="", cmd=None):
     fmt = get_img_fmt(backing_file)
 
+    if secret.is_encrypted_by_cmd(cmd):
+        opt += secret.get_qemu_encrypt_options(cmd)
+        backing_file = secret.get_img_path_with_secret_objects(backing_file, cmd)
     # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
     pattern = re.compile("\-o\ preallocation\=\w+ ")
     opt = re.sub(pattern, " ", opt)
@@ -1038,19 +1054,56 @@ def raw_create(dst, size):
     shell.check_run('/usr/bin/qemu-img create -f raw %s %s' % (dst, size))
     os.chmod(dst, 0o660)
 
-def create_template(src, dst, compress=False, shell=shell):
+def create_template(src, dst, compress=False, shell=shell, cmd=None):
     fmt = get_img_fmt(src)
     if fmt == 'raw':
         return raw_create_template(src, dst, shell=shell)
     if fmt == 'qcow2':
-        return qcow2_create_template(src, dst, compress, shell=shell)
+        return qcow2_create_template(src, dst, compress, shell=shell, cmd=cmd)
     raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
 
-def qcow2_create_template(src, dst, compress, shell=shell):
-    if compress:
-        shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+def _generate_qcow2_src_with_secrets(src, cmd=None):
+    encrypt_key = None
+    if cmd and cmd.kvmHostAddons and cmd.kvmHostAddons.encryptKey:
+        b64_key = base64.b64encode(cmd.kvmHostAddons.encryptKey)
     else:
-        shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+        logger.warn("volume uuid not need for encryption")
+        return src
+
+    src_with_secret = ' --object secret,id={0},data={1},format=base64 ' \
+                      ' --image-opts driver=qcow2,encrypt.key-secret={0},file.filename={2} ' \
+                      ' -o encrypt.format=luks,encrypt.key-secret={0},encrypt.cipher-alg=sm4 ' \
+        .format('sec_' + cmd.kvmHostAddons.volumeUuid, b64_key, src)
+
+    # FIXME: hardcode disk secret name from virtio-disk0-luks-secret0 to virtio-disk9-luks-secret9
+    for i in range(10):
+        for j in range(10):
+            src_with_secret += ' --object secret,id=virtio-disk{0}-luks-secret{1},data={2},format=base64 ' \
+                               ' -o encrypt.format=luks,encrypt.key-secret=virtio-disk{0}-luks-secret{1} ' \
+                .format(i, j, b64_key)
+    return src_with_secret
+
+def qcow2_create_template(src, dst, compress, shell=shell, cmd=None):
+    is_encrypt = False
+    if cmd and cmd.kvmHostAddons and cmd.kvmHostAddons.encryptKey:
+        is_encrypt = True
+    else:
+        logger.warn("volume uuid not need for encryption")
+
+    src = _generate_qcow2_src_with_secrets(src, cmd=cmd)
+    if not is_encrypt:
+        if compress:
+            shell.call('%s -c -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+        else:
+            logger.debug('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+            shell.call('%s -f qcow2 -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+    else:
+        if compress:
+            shell.call('%s -c -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+        else:
+            logger.debug('%s -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+            shell.call('%s -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
+
 
 def raw_create_template(src, dst, shell=shell):
     shell.call('%s -f raw -O qcow2 %s %s' % (qemu_img.subcmd('convert'), src, dst))
@@ -1099,7 +1152,15 @@ def qcow2_get_backing_file(path):
 
         backing_file_size = struct.unpack('>L', backing_file_info[8:])[0]
         resp.seek(backing_file_offset)
-        return resp.read(backing_file_size)
+        backing_file = resp.read(backing_file_size).strip()
+
+        # if the backing file is encrypted, the output of `qemu-img info` will be like:
+        # backing file: json:{"encrypt.key-secret": "sec_0", "driver": "qcow2", "file": {"driver": "file", "filename":"PATH_TO_BACKING_FILE"}}
+        if 'encrypt.key-secret' in backing_file:
+            return json.loads(backing_file.split(':', 1)[-1])['file'][
+                'filename'].strip()
+
+        return backing_file
 
 def qcow2_get_virtual_size(path):
     # type: (str) -> int
@@ -2681,6 +2742,40 @@ def get_max_vm_ipa_size():
         logger.warn("failed to get max vm ipa size, because %s", str(e))
         return pow(2, DEFAULT_VM_IPA_SIZE)
 
+def check_and_create_qcow2_secret_key(secret_uuid,secret_key):
+    sh_cmd = shell.ShellCmd('virsh secret-dumpxml %s' % secret_uuid)
+    b64_key = base64.b64encode(secret_key)
+    sh_cmd(False)
+    if sh_cmd.return_code == 0:
+        logger.warn("secret [uuid:%s] already exists and does not need to be created" %(secret_uuid))
+        return
+
+    xml_cont = "<secret ephemeral='no' private='yes'><uuid>%s</uuid></secret>" % secret_uuid
+    spath = write_to_temp_file(xml_cont)
+    try:
+        shell.call("virsh secret-define %s" % spath)
+        shell.call('virsh secret-set-value %s %s' % (secret_uuid, b64_key))
+        logger.warn("create secret [uuid:%s] successfully" % (secret_uuid))
+    except Exception as e:
+        logger.warn("failed to create secret [uuid:%s],reason: %s" % (secret_uuid,str(e)))
+        err = 'error happend when create secret %s' % secret_uuid
+        raise Exception(err)
+    finally:
+        os.remove(spath)
+
+def check_and_delete_qcow2_secret_key(secret_uuid):
+    sh_cmd = shell.ShellCmd('virsh secret-dumpxml %s' % secret_uuid)
+    sh_cmd(False)
+    if sh_cmd.return_code == 0:
+        try:
+            shell.call("virsh secret-undefine %s" % secret_uuid)
+            logger.warn("delete secret [uuid:%s] successfully" % (secret_uuid))
+        except Exception as e:
+            logger.warn("delete secret [uuid:%s] failed, reason: %s" % (secret_uuid,str(e)))
+            err = 'error happend when undefine secret %s' % secret_uuid
+            raise Exception(err)
+    else:
+        logger.warn("secret [uuid:%s] does not exist and does not need to be deleted" % (secret_uuid))
 
 def hdev_get_max_transfer_via_ioctl(blk_path):
     cmd = shell.ShellCmd('blockdev --getmaxsect %s' % blk_path)
