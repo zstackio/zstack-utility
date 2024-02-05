@@ -147,8 +147,9 @@ def get_link_local_address(mac):
     part3 = "fe" + macs[3] + ":"
     part4 = macs[4] + macs[5]
 
-    #step 3
+    # step 3
     return "fe80::" + part1.lstrip("0") + part2.lstrip("0") + part3.lstrip("0") + part4.lstrip("0")
+
 
 def removeZeroFromMacAddress(mac):
     '''
@@ -162,8 +163,10 @@ def removeZeroFromMacAddress(mac):
         newMac = newMac[1:]
     return newMac
 
+
 def is_sriovVf_nic(nic):
     return os.path.exists("/sys/class/net/%s/device/physfn/" % nic)
+
 
 def get_nic_supported_max_speed(nic):
     if get_nic_driver_type(nic) == "virtio_net":
@@ -235,6 +238,7 @@ def get_namespace_id(namespace_name):
         return int(out) + 1
     return int(out)
 
+
 def get_smart_nic_pcis():
     nic_pcis = []
     pci_devices = bash.bash_o("lspci -D -m | grep Mellanox | grep -v Virtual").splitlines()
@@ -243,7 +247,8 @@ def get_smart_nic_pcis():
         nic_pcis.append(pci_info[0])
     return nic_pcis
 
-def get_smart_nics_interfaces(nic_pcis = None):
+
+def get_smart_nics_interfaces(nic_pcis=None):
     nics_interfaces = []
     if nic_pcis is None:
         nic_pcis = get_smart_nic_pcis()
@@ -254,6 +259,7 @@ def get_smart_nics_interfaces(nic_pcis = None):
         interface_list = os.listdir(interface_path)
         nics_interfaces.append(interface_list)
     return nics_interfaces
+
 
 def get_smart_nic_representors():
     def is_representor(interface_name, interfaces_number):
@@ -288,40 +294,40 @@ def get_smart_nic_representors():
                 if is_representor(nic_interface, nic_interfaces_number):
                     nic_representors.append(nic_interface)
     except Exception:
-            return []
+        return []
     return nic_representors
 
+
 def get_host_physicl_nics():
-    nic_all_physical = bash.bash_o("find /sys/class/net -type l -not \( -lname '*virtual*' -or -lname '*usb*' \) -printf '%f\\n'").splitlines()
-    if nic_all_physical is None or len(nic_all_physical) == 0:
+    """"
+    # lspci -D | grep 'Ethernet controller' | grep -v Virtual
+0000:04:00.0 Ethernet controller: Intel Corporation I210 Gigabit Network Connection (rev 03)
+0000:05:00.0 Ethernet controller: Intel Corporation I210 Gigabit Network Connection (rev 03)
+0000:17:00.0 Ethernet controller: Mellanox Technologies MT27800 Family [ConnectX-5]
+0000:17:00.1 Ethernet controller: Mellanox Technologies MT27800 Family [ConnectX-5]
+0000:b3:00.0 Ethernet controller: Intel Corporation Ethernet Controller X710 for 10GbE SFP+ (rev 02)
+0000:b3:00.1 Ethernet controller: Intel Corporation Ethernet Controller X710 for 10GbE SFP+ (rev 02)
+    """
+    physical_pcis = bash.bash_o(
+        " lspci -D | grep 'Ethernet controller' | grep -v Virtual | awk '{print $1}'").splitlines()
+    if physical_pcis is None or len(physical_pcis) == 0:
         return []
 
-    nic_without_sriov = []
-    for nic in nic_all_physical:
-        # exclude sriov vf nics
-        if not is_sriovVf_nic(nic):
-            nic_without_sriov.append(nic)
+    nic_all_physical = []
+    for pci in physical_pcis:
+        """
+# ls /sys/bus/pci/devices/0000\:17\:00.1/net/  4 vfs
+ens5f1np1  eth0  eth1  eth2  eth3
+# ls /sys/bus/pci/devices/0000\:17\:00.0/net/  no vf
+ens5f0np0
+        """
+        interface_path = os.path.join("/sys/bus/pci/devices/%s/net" % (pci))
+        if not os.path.exists(interface_path):
+            continue
+        interface_list = os.listdir(interface_path)
+        nic_all_physical.append(interface_list[0])
 
-    nic_without_virtual = []
-    for nic in nic_without_sriov:
-        flag = True
-        # exclude virtual nic
-        if 'vnic' in nic:
-            flag = False
-        if 'outer' in nic:
-            flag = False
-        if 'br_' in nic:
-            flag = False
-        if flag:
-            nic_without_virtual.append(nic)
-
-    nic_without_smart_nic_representors = []
-    smart_nic_representors = get_smart_nic_representors()
-    for nic in nic_without_virtual:
-        if nic not in smart_nic_representors:
-            nic_without_smart_nic_representors.append(nic)
-
-    return nic_without_smart_nic_representors
+    return nic_all_physical
 
 def get_prefix_len_by_netmask(netmask):
     ip_int = int(socket.inet_aton(netmask).encode('hex'), 16)
