@@ -50,6 +50,7 @@ unittest_flag = 'false'
 mn_ip = None
 isInstallHostShutdownHook = 'false'
 isEnableKsm = 'none'
+isRemoteCube = False
 
 
 # get parameter from shell
@@ -96,8 +97,6 @@ repo_dir = "/opt/zstack-dvd/{}".format(host_info.host_arch)
 if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_info.host_arch))
 
-# check is cube env
-isCube = True if os.path.exists("/usr/local/hyperconverged") else False
 
 
 def update_libvirtd_config(host_post_info):
@@ -231,6 +230,12 @@ def install_kvm_pkg():
             'aarch64': 'edk2-aarch64'
         }
 
+        cube_rpm_mapping = {
+            'x86_64_centos': "lm_sensors",
+            'aarch64_kylin': "lm_sensors edac-utils",
+            'x86_64_kylin': "lm_sensors edac-utils Arcconf"
+        }
+
         # handle zstack_repo
         if zstack_repo != 'false':
             distro_head = host_info.distro.split("_")[0] if releasever in kylin or releasever in uos else host_info.distro
@@ -247,11 +252,9 @@ def install_kvm_pkg():
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
-            if isCube:
-                cube_dep_list = " lm_sensors"
-                if releasever not in kylin:
-                    cube_dep_list += " lm_sensors-libs"
-                common_dep_list += cube_dep_list
+            if isRemoteCube:
+                cube_distro_info = host_info.host_arch + "_" + distro_head
+                common_dep_list += cube_rpm_mapping.get(cube_distro_info, '')
 
             dep_list = common_dep_list
             update_list = common_update_list
@@ -592,11 +595,9 @@ def copy_bond_conf():
 
 def copy_cube_tools():
     """copy cube required tools from mn_node to host_node"""
-    if not isCube:
-        return
     cube_root_dst = "/usr/local/hyperconverged/"
     _src = os.path.join(cube_root_dst, "tools/hd_ctl")
-    if os.path.exists(_src):
+    if isRemoteCube and os.path.exists(_src):
         _dst = os.path.join(cube_root_dst, "tools")
         copy_to_remote(_src, _dst, "mode=755", host_post_info)
         command = "ln -sf /usr/local/hyperconverged/tools/hd_ctl/hd_ctl /bin/"
@@ -838,13 +839,13 @@ def modprobe_mpci_module():
     (status, stdout) = run_remote_command("lsmod | grep mpci", host_post_info, return_status=True, return_output=True)
     if "mpci" in stdout:
         return
-        
+
     """copy mpci.ko"""
     _src = "{}/mpci_{}".format(file_root, host_info.kernel_version)
     if not os.path.exists(_src):
         handle_ansible_info("There are no suitable SE drivers for this kernel", host_post_info, "WARNING")
         return
-        
+
     _dst = "/lib/modules/{}/mpci.ko".format(host_info.kernel_version)
     copy_to_remote(_src, _dst, "mode=644", host_post_info)
 
@@ -867,6 +868,14 @@ def set_gpu_blacklist():
     run_remote_command(command, host_post_info)
 
 
+def check_is_remote_cube():
+    command = "ls /usr/local/hyperconverged"
+    status = run_remote_command(command, host_post_info, return_status=True)
+    global isRemoteCube
+    isRemoteCube = status
+
+
+check_is_remote_cube()
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
