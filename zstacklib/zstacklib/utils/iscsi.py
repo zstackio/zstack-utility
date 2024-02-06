@@ -5,6 +5,7 @@ import urlparse
 import linux
 import lock
 import shell
+import device
 
 
 class IscsiLogin(object):
@@ -78,8 +79,7 @@ class IscsiLogin(object):
             if not fname.startswith('wwn-') or not fname.endswith(self.disk_id):
                 continue
             link_path = os.path.join('/dev/disk/by-id/', fname)
-            dev = os.readlink(link_path)
-            wwid = linux.read_file(os.path.join('/sys/block/', os.path.basename(dev),  'device/wwid'))
+            wwid = device.get_device_wwid(os.path.basename(os.readlink(link_path)))
             if self.disk_id in wwid:
                 return link_path
 
