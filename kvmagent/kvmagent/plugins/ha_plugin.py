@@ -12,7 +12,7 @@ from zstacklib.utils import qemu_img
 from zstacklib.utils import ceph
 from zstacklib.utils import sanlock
 from zstacklib.utils import jsonobject
-from kvmagent.plugins.vm_plugin import IscsiLogin
+from zstacklib.utils.iscsi import IscsiLogin
 import os.path
 import time
 import traceback
@@ -914,6 +914,7 @@ class IscsiHeartbeatController(AbstractStorageFencer):
                         'shutdown ourselves' % (self.heartbeat_path, self.max_attempts))
 
             return False
+
         return True
 
     def read_fencer_heartbeat(self, host_uuid, ps_uuid):
@@ -1502,6 +1503,7 @@ class HaPlugin(kvmagent.KvmAgent):
             iscsi_controller.host_id = cmd.hostId
             iscsi_controller.heartbeat_required_space = cmd.heartbeatRequiredSpace
             iscsi_controller.heartbeat_path = heartbeat_path
+            iscsi_controller.heartbeat_url = cmd.heartbeatUrl
             iscsi_controller.fencer_triggered_callback = self.report_self_fencer_triggered
             iscsi_controller.report_storage_status_callback = self.report_storage_status
 
