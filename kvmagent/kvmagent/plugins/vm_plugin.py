@@ -845,6 +845,7 @@ class IsoTo(object):
         self.imageUuid = None
         self.deviceId = None
         self.isEmpty = False
+        self.protocol = None
 
 class AttachIsoCmd(object):
     def __init__(self):
@@ -1409,92 +1410,6 @@ class LibvirtAutoReconnect(object):
             else:
                 raise
 
-class IscsiLogin(object):
-    def __init__(self, url=None):
-        if url:
-            u = urlparse.urlparse(url)
-            self.server_hostname = u.hostname
-            self.server_port = u.port
-            self.target = u.path.split('/')[1]
-            self.chap_username = u.username
-            self.chap_password = u.password
-            self.disk_id = u.path.split('/')[2]
-            self.lun = "*"
-        else:
-            self.server_hostname = None
-            self.server_port = None
-            self.target = None
-            self.chap_username = None
-            self.chap_password = None
-            self.lun = 0
-
-    @lock.lock('iscsiadm')
-    def login(self):
-        assert self.server_hostname, "hostname cannot be None"
-        assert self.server_port, "port cannot be None"
-        assert self.target, "target cannot be None"
-
-        device_path = os.path.join('/dev/disk/by-path/', 'ip-%s:%s-iscsi-%s-lun-%s' % (
-            self.server_hostname, self.server_port, self.target, self.lun))
-
-        iscsi.config_iscsi_startup_if_needed()
-        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
-
-        if self.chap_username and self.chap_password:
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (
-                    self.target, self.server_hostname, self.server_port))
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (
-                    self.target, self.server_hostname, self.server_port, self.chap_username))
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
-                    self.target, self.server_hostname, self.server_port, self.chap_password))
-
-        s = shell.ShellCmd('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
-            self.target, self.server_hostname, self.server_port))
-        s(False)
-        if s.return_code != 0 and 'already present' not in s.stderr:
-            s.raise_error()
-
-        shell.run("timeout 30 iscsiadm -m session -R")
-
-        def wait_device_to_show(_):
-            return bool(glob.glob(device_path))
-
-        if not linux.wait_callback_success(wait_device_to_show, timeout=30, interval=0.5):
-            raise Exception('ISCSI device[%s] is not shown up after 30s' % device_path)
-
-        return device_path
-
-    @staticmethod
-    def rescan():
-        shell.run("timeout 30 iscsiadm -m session -R")
-        shell.run("timeout 120 /usr/bin/rescan-scsi-bus.sh -r")
-        # only affect wwn devices
-        shell.run("udevadm trigger --subsystem-match=block")
-
-    def get_device_path(self):
-        fnames = os.listdir('/dev/disk/by-id/')
-        for fname in fnames:
-            if not fname.startswith('wwn-') or not fname.endswith(self.disk_id):
-                continue
-            link_path = os.path.join('/dev/disk/by-id/', fname)
-            dev = os.readlink(link_path)
-            wwid = linux.read_file(os.path.join('/sys/block/', os.path.basename(dev),  'device/wwid'))
-            if self.disk_id in wwid:
-                return link_path
-
-    def retry_get_device_path(self):
-        def _get_device_path(_):
-            return self.get_device_path()
-
-        path = linux.wait_callback_success(_get_device_path, timeout=30, interval=0.5)
-        if not path:
-            raise Exception('unable to find device path for disk id[%s]' % self.disk_id)
-        return path
-
-
 class BlkIscsi(object):
     def __init__(self):
         self.is_cdrom = None
@@ -1510,7 +1425,7 @@ class BlkIscsi(object):
         self.lun = None
 
     def _login_portal(self):
-        login = IscsiLogin()
+        login = iscsi.IscsiLogin()
         login.server_hostname = self.server_hostname
         login.server_port = self.server_port
         login.target = self.target
@@ -3777,7 +3692,7 @@ class Vm(object):
         else:
             iso.path = VolumeTO.get_volume_actual_installpath(iso.path)
             if iso.path.startswith('iscsi://'):
-                login = IscsiLogin(iso.path)
+                login = iscsi.IscsiLogin(iso.path)
                 login.login()
                 login.rescan()
                 iso.path = login.retry_get_device_path()
@@ -4966,7 +4881,7 @@ class Vm(object):
                     e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
                 else:
                     if iso.path.startswith('iscsi://'):
-                        login = IscsiLogin(iso.path)
+                        login = iscsi.IscsiLogin(iso.path)
                         login.login()
                         login.rescan()
                         iso.path = login.retry_get_device_path()
@@ -5978,7 +5893,7 @@ def iso_check(iso):
     if iso.path.startswith("/dev/") and block_device_use_block_type():
         iso.type = "block"
 
-    if iso.protocol.lower() == "vhost":
+    if iso.protocol and iso.protocol.lower() == "vhost":
         iso.type = "vhostuser"
 
     return iso
@@ -8197,9 +8112,9 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         if cmd.url:
-            login = IscsiLogin(cmd.url)
+            login = iscsi.IscsiLogin(cmd.url)
         else:
-            login = IscsiLogin()
+            login = iscsi.IscsiLogin()
             login.server_hostname = cmd.hostname
             login.server_port = cmd.port
             login.chap_password = cmd.chapPassword
