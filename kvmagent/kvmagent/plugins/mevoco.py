@@ -1536,7 +1536,9 @@ dhcp-range={{g}}
             if dinfo4 is not None:
                 ranges.append("%s,static" % dinfo4.gateway)
             if dinfo6 is not None:
-                ranges.append(dinfo6.firstIp + "," + dinfo6.endIp + ",static," + str(dinfo6.prefixLength) + ",24h",)
+                ranges.append('%s,%s,static,%s,24h' % (dinfo6.firstIp, dinfo6.endIp, dinfo6.prefixLength) +
+                              '\nenable-ra' +
+                              '\nra-param=inner%s,0,0' % br_num)
 
             tmpt = Template(conf_file)
             conf_file = tmpt.render({
@@ -1710,7 +1712,9 @@ dhcp-range={{range}}
                 'option': option_path,
                 'log': log_path,
                 'iface_name': 'inner%s' % br_num,
-                'range': dhcp[0].firstIp + "," + dhcp[0].endIp + ",static," + str(dhcp[0].prefixLength) + ",24h",
+                'range': '%s,%s,static,%s,24h' % (dhcp[0].firstIp, dhcp[0].endIp, dhcp[0].prefixLength) +
+                         '\nenable-ra' +
+                         '\nra-param=inner%s,0,0' % br_num,
             })
 
             restart_dnsmasq = rebuild
