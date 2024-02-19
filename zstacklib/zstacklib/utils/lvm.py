@@ -767,8 +767,8 @@ def start_lvmlockd(io_timeout=40):
 
     restart_lvmlockd = is_lvmlockd_upgraded() or (LooseVersion(get_lvmlockd_version()) >= LooseVersion("2.03") and is_lvmlockd_socket_abnormal())
     if restart_lvmlockd:
-        write_lvmlockd_adopt_file()
         stop_lvmlockd()
+        write_lvmlockd_adopt_file()
         linux.rm_file_force(LVMLOCKD_SOCKET)
     for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
