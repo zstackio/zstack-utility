@@ -254,7 +254,7 @@ def install_kvm_pkg():
 
             if isRemoteCube:
                 cube_distro_info = host_info.host_arch + "_" + distro_head
-                common_dep_list += cube_rpm_mapping.get(cube_distro_info, '')
+                common_dep_list = "%s %s" % (common_dep_list, cube_rpm_mapping.get(cube_distro_info, ''))
 
             dep_list = common_dep_list
             update_list = common_update_list
