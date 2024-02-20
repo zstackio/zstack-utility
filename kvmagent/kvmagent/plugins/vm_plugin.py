@@ -3991,10 +3991,7 @@ class Vm(object):
         else:
             iso.path = VolumeTO.get_volume_actual_installpath(iso.path)
             if iso.path.startswith('iscsi://'):
-                login = iscsi.IscsiLogin(iso.path)
-                login.login()
-                login.rescan()
-                iso.path = login.retry_get_device_path()
+                iso.path = iscsi.connect_iscsi_target(iso.path)
                 iso.type = 'block'
 
             iso = iso_check(iso)
@@ -5199,10 +5196,7 @@ class Vm(object):
                     e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
                 else:
                     if iso.path.startswith('iscsi://'):
-                        login = iscsi.IscsiLogin(iso.path)
-                        login.login()
-                        login.rescan()
-                        iso.path = login.retry_get_device_path()
+                        iso.path = iscsi.connect_iscsi_target(iso.path)
                         iso.type = 'block'
 
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
@@ -8731,7 +8725,7 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         if cmd.url:
-            login = iscsi.IscsiLogin(cmd.url)
+            iscsi.connect_iscsi_target(cmd.url)
         else:
             login = iscsi.IscsiLogin()
             login.server_hostname = cmd.hostname
@@ -8739,10 +8733,8 @@ host side snapshot files chian:
             login.chap_password = cmd.chapPassword
             login.chap_username = cmd.chapUsername
             login.target = cmd.target
-        login.login()
-        login.rescan()
-        if login.disk_id:
-            login.retry_get_device_path()
+            login.login()
+            login.rescan()
 
         return jsonobject.dumps(LoginIscsiTargetRsp())
 
