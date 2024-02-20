@@ -12,7 +12,7 @@ from zstacklib.utils import qemu_img
 from zstacklib.utils import ceph
 from zstacklib.utils import sanlock
 from zstacklib.utils import jsonobject
-from zstacklib.utils.iscsi import IscsiLogin
+from zstacklib.utils import iscsi
 import os.path
 import time
 import traceback
@@ -1248,11 +1248,7 @@ def need_kill(vm_uuid, storage_paths, is_file_system):
 def login_heartbeat_path(url):
     if not url.startswith("iscsi://"):
         raise Exception("unsupported install path[%s]" % url)
-    login = IscsiLogin(url)
-    login.login()
-    login.rescan()
-
-    heartbeat_path = login.retry_get_device_path()
+    heartbeat_path = iscsi.connect_iscsi_target(url, connect_all=True)
 
     def wait_device_to_show(_):
         return os.path.exists(heartbeat_path)

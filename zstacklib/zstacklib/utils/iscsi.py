@@ -8,6 +8,7 @@ import shell
 import device
 
 
+# only support single ip
 class IscsiLogin(object):
     def __init__(self, url=None):
         if url:
@@ -69,7 +70,7 @@ class IscsiLogin(object):
     @staticmethod
     def rescan():
         shell.run("timeout 30 iscsiadm -m session -R")
-        shell.run("timeout 120 /usr/bin/rescan-scsi-bus.sh -r")
+        shell.run("timeout 360 /usr/bin/rescan-scsi-bus.sh -r")
         # only affect wwn devices
         shell.run("udevadm trigger --subsystem-match=block")
 
@@ -116,3 +117,27 @@ def config_iscsi_startup_if_needed():
     if config_iscsi_startup_needed:
         do_config_iscsi_startup()
         config_iscsi_startup_needed = False
+
+
+# support multiple ip
+# e.g. iscsi://172.27.15.189,172.27.12.27:3260/iqn.2024-01.com.sds.wds:662ba14b7316/6001405042040000b7f0d8a20da2a2c9
+def connect_iscsi_target(url, connect_all=False):
+    login = None
+    u = urlparse.urlparse(url)
+    server_hostnames = sorted(u.hostname.split(','))
+    errs = []
+    for server_hostname in server_hostnames:
+        new_url = url.replace(u.hostname, server_hostname)
+        try:
+            login = IscsiLogin(new_url)
+            login.login()
+            if not connect_all:
+                break
+        except Exception as e:
+            errs.append(str(e))
+
+    if len(errs) == len(server_hostnames):
+        raise Exception('failed to login iscsi target[%s], errors: %s' % (url, ' '.join(errs)))
+
+    login.rescan()
+    return login.retry_get_device_path()
