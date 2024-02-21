@@ -1208,7 +1208,7 @@ def is_qemu_support_migrate_with_bitmap(version):
     return LooseVersion(version) >= LooseVersion("4.2.0-640")
 
 def is_libvirt_support_migrate_with_bitmap(version):
-    return LooseVersion(version) < LooseVersion('6.0.0')
+    return LooseVersion(version) < LooseVersion('6.0.0') or LooseVersion(version) >= LooseVersion('8.0.0')
 
 def is_libvirt_support_blockdev(version):
     return LooseVersion(version) > LooseVersion('6.0.0')
