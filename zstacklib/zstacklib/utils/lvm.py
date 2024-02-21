@@ -1057,6 +1057,30 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
                 pass
 
 
+@bash.in_bash
+def check_pv_multipath(vg_uuid, pv_list):
+    def calculate_md5sum(path):
+        r, o = bash.bash_ro("set -o pipefail;dd if=%s bs=4k count=1024 iflag=direct 2> /dev/null | md5sum" % path)
+        if r == 0:
+            return o.strip().split()[0]
+
+    for disk in pv_list:
+        dev = os.path.basename(disk)
+        if not dev.startswith("dm-"):
+            continue
+        slaves = os.listdir("/sys/class/block/%s/slaves/" % dev)
+        if len(slaves) < 2:
+            continue
+
+        first_md5 = None
+        for s in slaves:
+            cur_md5 = calculate_md5sum(os.path.join("/dev", s))
+            if first_md5 is None:
+                first_md5 = cur_md5
+            elif cur_md5 and cur_md5 != first_md5:
+                raise Exception("the md5sum mismatch of different multipath reads in disk %s at offset 0 and length 4M" % disk)
+
+
 def get_disk_holders(disk_names):
     holders = []
     for disk_name in disk_names:

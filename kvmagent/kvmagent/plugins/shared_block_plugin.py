@@ -494,6 +494,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             try:
                 create_vg(hostUuid, vgUuid, self.get_disk_paths(disks))
                 find_vg(vgUuid)
+                lvm.check_pv_multipath(vgUuid, diskPaths)
             except RetryException as ee:
                 raise Exception("can not find vg %s with disks: %s and create vg with forceWipw=%s, %s" %
                                 (vgUuid, diskPaths, forceWipe, str(ee)))
