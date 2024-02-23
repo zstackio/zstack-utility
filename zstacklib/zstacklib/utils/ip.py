@@ -9,11 +9,6 @@ import socket
 import linux
 import bash
 
-from zstacklib.utils import log
-
-
-logger = log.get_logger(__name__)
-
 
 class IpAddress(object):
     '''
@@ -302,19 +297,6 @@ def get_smart_nic_representors():
         return []
     return nic_representors
 
-def get_physical_nic(pci, interface_list):
-    for name in interface_list:
-        name_path = os.path.join("/sys/bus/pci/devices/%s/net/%s/phys_port_name"
-                                 % (pci, name))
-        if not os.path.exists(name_path):
-            continue
-
-        lines = linux.read_file_lines(name_path)
-        if "vf" not in lines[0]:
-            return name
-
-    return interface_list[0]
-
 
 def get_host_physicl_nics():
     """"
@@ -327,7 +309,7 @@ def get_host_physicl_nics():
 0000:b3:00.1 Ethernet controller: Intel Corporation Ethernet Controller X710 for 10GbE SFP+ (rev 02)
     """
     physical_pcis = bash.bash_o(
-        "lspci -D | grep 'Ethernet controller' | grep -v Virtual | awk '{print $1}'").splitlines()
+        " lspci -D | grep 'Ethernet controller' | grep -v Virtual | awk '{print $1}'").splitlines()
     if physical_pcis is None or len(physical_pcis) == 0:
         return []
 
@@ -339,14 +321,11 @@ ens5f1np1  eth0  eth1  eth2  eth3
 # ls /sys/bus/pci/devices/0000\:17\:00.0/net/  no vf
 ens5f0np0
         """
-        interface_path = os.path.join("/sys/bus/pci/devices/%s/net" % pci)
+        interface_path = os.path.join("/sys/bus/pci/devices/%s/net" % (pci))
         if not os.path.exists(interface_path):
             continue
         interface_list = os.listdir(interface_path)
-        if len(interface_list) > 1:
-            nic_all_physical.append(get_physical_nic(pci, interface_list))
-        else:
-            nic_all_physical.append(interface_list[0])
+        nic_all_physical.append(interface_list[0])
 
     return nic_all_physical
 
