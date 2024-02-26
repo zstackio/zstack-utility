@@ -53,5 +53,8 @@ def take_default_backing_fmt_for_convert():
 def resize_backing_before_rebase():
     return LooseVersion(get_release_version()) < LooseVersion("6.2.0-227")
 
+def support_extended_l2():
+    return LooseVersion(get_version()) >= LooseVersion("6.0.0")
+
 
 
