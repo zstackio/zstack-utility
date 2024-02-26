@@ -767,6 +767,27 @@ def copy_i40e_driver():
         _dst = "/var/lib/zstack/i40e_driver.tar.gz"
         copy_to_remote(_src, _dst, None, host_post_info)
 
+
+def copy_ovs_tools():
+    """copy ovs tools"""
+
+    if host_info.host_arch != 'x86_64':
+        return
+
+    zs_network_path = os.path.join(zstack_lib_dir, "network")
+    ovs_path = os.path.join(zs_network_path, "ovs-tools")
+
+    command = "rm -rf %s; mkdir -p %s" % (ovs_path, zs_network_path)
+    run_remote_command(command, host_post_info)
+
+    _src = os.path.join(file_root, "ovs-tools.tar.gz")
+    _dst = os.path.join(zs_network_path, "ovs-tools.tar.gz")
+    copy_to_remote(_src, _dst, None, host_post_info)
+
+    command = "tar -xzf %s -C %s/" % (_dst, zs_network_path)
+    run_remote_command(command, host_post_info)
+
+
 @on_debian_based(host_info.distro, exclude=['Kylin'])
 def set_legacy_iptables_ebtables():
     """set legacy mode if needed"""
@@ -893,6 +914,7 @@ copy_bond_conf()
 copy_i40e_driver()
 copy_cube_tools()
 copy_kvmagshutdown()
+copy_ovs_tools()
 create_virtio_driver_directory()
 set_max_performance()
 do_libvirt_qemu_config()

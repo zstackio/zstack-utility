@@ -34,6 +34,7 @@ SwitchLogPath = "/var/log/zstack/openvswitch/ovs-vswitchd.log"
 DBCtlFilePath = "/var/run/openvswitch/ovsdb-server.zs.ctl"
 SwitchCtlFilePath = "/var/run/openvswitch/ovs-vswitchd.zs.ctl"
 CtlBin = "ovs-vsctl --db=unix:{} ".format(DB_SOCK)
+OvsPackagesPath = "/var/lib/zstack/network/ovs-tools"
 
 OvsDpdkSupportVnic = ['vDPA', 'dpdkvhostuserclient']
 OvsDpdkSupportBondType = ['dpdkBond', 'ovsBond']
@@ -251,6 +252,8 @@ class OvsVenv(object):
         self.hugepage_size = hugepage_size
         self.nr_hugepages = nr_hugepages
 
+        self._install_ovs_packages()
+
         if self._hasOpenvSwitch():
             probeModules("bonding")
             self._getOpenvSwitchVersion()
@@ -263,6 +266,18 @@ class OvsVenv(object):
            and os.path.exists("/usr/sbin/ovsdb-server"):
             return True
         return False
+
+    def _install_ovs_packages(self):
+        if self._hasOpenvSwitch():
+            return
+        if not os.path.exists(OvsPackagesPath):
+            raise OvsError("ovs package file:{} not exists".format(OvsPackagesPath))
+
+        try:
+            shell.call("rpm -Uvh {}/*.rpm --force".format(OvsPackagesPath))
+        except Exception as err:
+            logger.error("install ovs packages failed. {}".format(err))
+            raise OvsError(str(err))
 
     def _getOpenvSwitchVersion(self):
         verList = shell.call(
@@ -573,7 +588,7 @@ class Ovs(object):
         self.upgradeDB()
 
         cmd = "ovsdb-server {}".format(CONF_DB) \
-            + " -vconsole:emer -vsyslog:err -vfile:err" \
+            + " -vconsole:emer -vsyslog:info -vfile:info" \
             + " --remote=punix:{}".format(DB_SOCK) \
             + " --private-key=db:Open_vSwitch,SSL,private_key" \
             + " --certificate=db:Open_vSwitch,SSL,certificate" \
@@ -627,7 +642,7 @@ class Ovs(object):
         #    self.venv.allocateHugepageMem()
 
         cmd = "ulimit -n 1000000 && ovs-vswitchd unix:{}".format(DB_SOCK) \
-            + " -vconsole:emer -vsyslog:err -vfile:err" \
+            + " -vconsole:emer -vsyslog:info -vfile:info" \
             + " --mlockall --no-chdir" \
             + " --log-file={} --pidfile={} --unixctl={}".format(
                 SwitchLogPath, SwitchPidPath, SwitchCtlFilePath) \
