@@ -9736,6 +9736,9 @@ class StartUiCmd(Command):
         # arguments for ui_redis
         parser.add_argument('--redis-password', help="zstack_ui redis password")
 
+        # arguments for api_inspector
+        parser.add_argument('--api-inspector', help="Enable API Inspector for ZStack UI. DO NOT ENABLE IT IN PRODUCTION ENVIRONMENT. [DEFAULT] False")
+
         # arguments for mini judgment
         parser.add_argument('--force', help="Force start_ui on mini", action='store_true', default=False)
 
@@ -10092,6 +10095,11 @@ class ConfigUiCmd(Command):
 
         # arguments for ui_redis
         parser.add_argument('--redis-password', help="password of zstack_ui redis")
+
+        # arguments for api_inspector
+        parser.add_argument('--api-inspector', choices=['True', 'False'], type=str.title, help="Enable API Inspector for ZStack UI. DO NOT ENABLE IT IN PRODUCTION ENVIRONMENT. [DEFAULT] False")
+
+
 
     def _configure_remote_node(self, args):
         shell_no_pipe('ssh %s "/usr/bin/zstack-ctl config_ui %s"' % (args.host, ' '.join(ctl.extra_arguments)))
