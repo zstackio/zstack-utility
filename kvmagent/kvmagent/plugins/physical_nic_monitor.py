@@ -193,7 +193,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
             if not nic or not status:
                 return
             # update nic record
-            for new_nic in ip_utils.get_host_physicl_nics():
+            for new_nic in ip_utils.find_host_physicl_nics():
                 if new_nic not in self.history_nics:
                     self.history_nics.append(new_nic)
             # old nic alarm
