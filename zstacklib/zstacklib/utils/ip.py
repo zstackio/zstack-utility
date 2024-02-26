@@ -8,6 +8,8 @@ import socket
 
 import linux
 import bash
+import lock
+import threading
 
 
 class IpAddress(object):
@@ -291,36 +293,28 @@ def get_smart_nic_representors():
             return []
     return nic_representors
 
+
+CURRENT_HOST_PHYSICAL_NICS = []
+
+@lock.lock('get_host_physicl_nics')
 def get_host_physicl_nics():
+    global CURRENT_HOST_PHYSICAL_NICS
+    if len(CURRENT_HOST_PHYSICAL_NICS) == 0:
+        return find_host_physicl_nics()
+    return CURRENT_HOST_PHYSICAL_NICS
+
+def find_host_physicl_nics():
+    global CURRENT_HOST_PHYSICAL_NICS
     nic_all_physical = bash.bash_o("find /sys/class/net -type l -not \( -lname '*virtual*' -or -lname '*usb*' \) -printf '%f\\n'").splitlines()
-    if nic_all_physical is None or len(nic_all_physical) == 0:
+    if not nic_all_physical:
         return []
 
-    nic_without_sriov = []
-    for nic in nic_all_physical:
-        # exclude sriov vf nics
-        if not is_sriovVf_nic(nic):
-            nic_without_sriov.append(nic)
+    nic_without_sriov = [nic for nic in nic_all_physical if not is_sriovVf_nic(nic)]
+    nic_without_virtual = [nic for nic in nic_without_sriov if not any(keyword in nic for keyword in ['vnic', 'outer', 'br_'])]
 
-    nic_without_virtual = []
-    for nic in nic_without_sriov:
-        flag = True
-        # exclude virtual nic
-        if 'vnic' in nic:
-            flag = False
-        if 'outer' in nic:
-            flag = False
-        if 'br_' in nic:
-            flag = False
-        if flag:
-            nic_without_virtual.append(nic)
-
-    nic_without_smart_nic_representors = []
     smart_nic_representors = get_smart_nic_representors()
-    for nic in nic_without_virtual:
-        if nic not in smart_nic_representors:
-            nic_without_smart_nic_representors.append(nic)
-
+    nic_without_smart_nic_representors = [nic for nic in nic_without_virtual if nic not in smart_nic_representors]
+    CURRENT_HOST_PHYSICAL_NICS = nic_without_smart_nic_representors
     return nic_without_smart_nic_representors
 
 def get_prefix_len_by_netmask(netmask):
