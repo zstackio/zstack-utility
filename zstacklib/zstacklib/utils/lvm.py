@@ -8,6 +8,7 @@ import time
 import traceback
 import weakref
 import re
+import datetime
 import xml.etree.ElementTree as etree
 
 import simplejson
@@ -626,6 +627,11 @@ def config_lvm_conf(node, value):
 def config_lvmlocal_conf(node, value):
     cmd = shell.ShellCmd("lvmconfig --mergedconfig --config %s=%s -f /etc/lvm/lvmlocal.conf" % (node, value))
     cmd(is_exception=True)
+
+
+@bash.in_bash
+def lvmlockd_log_search(lvmlockd_match_regexp, since, until):
+    return bash.bash_r('''journalctl --since '%s' --until '%s' --unit %s | grep -E '%s' ''' % (since, until, get_lvmlockd_service_name(), lvmlockd_match_regexp)) == 0
 
 
 @bash.in_bash
