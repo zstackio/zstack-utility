@@ -288,7 +288,9 @@ class OvsVenv(object):
             if zstack_release in release_list:
                 shell.call("yum --disablerepo=* --enablerepo=zstack-local localinstall -y {}/*.rpm".format(OvsPackagesPath))
             else:
-                shell.call("yum --disablerepo=* --enablerepo=zstack-local install -y python3 openvswitch")
+                pkg_list = ["python3", "openvswitch"]
+                for pkg in pkg_list:
+                    shell.call("yum --disablerepo=* --enablerepo=zstack-local install -y {}".format(pkg))
         except Exception as err:
             logger.error("install ovs packages failed. {}".format(err))
             raise OvsError(str(err))
