@@ -3341,6 +3341,7 @@ class Vm(object):
                 raise kvmagent.KvmError("volume %s is not live or full snapshot specified, "
                                         "can not proceed")
 
+            VmPlugin.active_volume_if_need(vs_struct.installPath)
             if vs_struct.memory:
                 memory_snapshot_required = True
                 snapshot_dir = os.path.dirname(vs_struct.installPath)
@@ -3349,7 +3350,6 @@ class Vm(object):
 
                 memory_snapshot_path = None
                 if vs_struct.installPath.startswith("/dev/"):
-                    lvm.active_lv(vs_struct.installPath)
                     shell.call("mkfs.xfs -f %s" % vs_struct.installPath)
                     mount_path = vs_struct.installPath.replace("/dev/", "/tmp/")
                     if not os.path.exists(mount_path):
@@ -3577,6 +3577,7 @@ class Vm(object):
 
         def take_full_snapshot():
             self.block_stream_disk(task_spec, volume)
+            VmPlugin.active_volume_if_need(install_path)
             return take_delta_snapshot()
 
         if first_snapshot:
@@ -8057,6 +8058,11 @@ host side snapshot files chian:
 
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def active_volume_if_need(volume_path):
+        if volume_path.startswith("/dev/") and not os.path.exists(volume_path):
+            lvm.active_lv(volume_path)
+
     @kvmagent.replyerror
     def take_volume_snapshot(self, req):
         """ Take snapshot for a volume
@@ -8089,6 +8095,7 @@ host side snapshot files chian:
             linux.create_template(previous_install_path, install_path)
             new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
+            self.active_volume_if_need(new_volume_path)
             linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
             return install_path, new_volume_path
 
