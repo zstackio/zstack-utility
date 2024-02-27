@@ -13,7 +13,7 @@ import xml.etree.ElementTree as etree
 
 import simplejson
 
-from zstacklib.utils import form
+from zstacklib.utils import form, report
 from zstacklib.utils import shell
 from zstacklib.utils import bash
 from zstacklib.utils import lock
@@ -1110,14 +1110,23 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
 
 def create_lv_from_cmd(path, size, cmd, tag="zs::sharedblock::volume", lvmlock=True, pe_ranges=None):
     update_pv_allocate_strategy(cmd)
+    start_time = linux.get_current_timestamp()
+    timeout = report.get_timeout(cmd)
+    def _delete_lv(args):
+        delete_lv(path)
+        raise Exception("create lv timeout, timeout is %d s, execution time is %d s" % (timeout, linux.get_current_timestamp()-start_time))
 
-    # TODO(weiw): fix it
-    if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
-        create_thin_lv_from_absolute_path(path, size, tag, lvmlock)
-    elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
-        create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lvmlock, pe_ranges=pe_ranges)
-    else:
-        create_lv_from_absolute_path(path, size, tag, lvmlock, cmd.volumeFormat == 'raw', pe_ranges=pe_ranges)
+    @linux.timeout_defer(timeout_in_seconds=timeout, handler=_delete_lv)
+    def create_lv(path):
+        # TODO(weiw): fix it
+        if "ministorage" in tag and cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning:
+            create_thin_lv_from_absolute_path(path, size, tag, lvmlock)
+        elif cmd.provisioning == VolumeProvisioningStrategy.ThinProvisioning and size > cmd.addons[thinProvisioningInitializeSize]:
+            create_lv_from_absolute_path(path, cmd.addons[thinProvisioningInitializeSize], tag, lvmlock, pe_ranges=pe_ranges)
+        else:
+            create_lv_from_absolute_path(path, size, tag, lvmlock, cmd.volumeFormat == 'raw', pe_ranges=pe_ranges)
+
+    create_lv(path)
 
 
 @bash.in_bash

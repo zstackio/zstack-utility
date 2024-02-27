@@ -136,6 +136,26 @@ def retry_with_check(handler=None):
         return inner
     return wrap
 
+
+def timeout_defer(timeout_in_seconds=0, handler=None):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            deanline = get_current_timestamp() + timeout_in_seconds - 10
+            try:
+                return f(*args, **kwargs)
+            finally:
+                # timeout=0 means there will be no timeout
+                end_time = get_current_timestamp()
+                if handler is not None and timeout_in_seconds > 0 and end_time > deanline:
+                    logger.debug("method %s.%s execution timeout, deadline is %d, now is %d, start to execute defer func"
+                                 % (__file__, f.__name__, deanline, end_time))
+                    handler(args)
+
+        return inner
+    return wrap
+
+
 def with_arch(todo_list=SUPPORTED_ARCH, host_arch=HOST_ARCH):
     def wrap(f):
         @functools.wraps(f)
