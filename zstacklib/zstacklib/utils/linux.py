@@ -1036,7 +1036,7 @@ def qcow2_create_with_cmd(dst, size, cmd=None, discard_on_metadata=True):
 
 def qcow2_create_with_option(dst, size, opt="", discard_on_metadata=True):
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
-    if 'preallocation=metadata' in opt and discard_on_metadata:
+    if discard_on_metadata and 'preallocation=metadata' in opt and 'extended_l2=on' not in opt:
         qcow2_discard(dst)
     os.chmod(dst, 0o660)
 
