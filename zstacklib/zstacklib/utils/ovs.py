@@ -192,6 +192,15 @@ def probeModules(moduleName):
         raise OvsError("Can not find module:{}.".format(moduleName))
 
 
+def get_zstack_release():
+    file_path = "/etc/zstack-release"
+    if not os.path.exists(file_path):
+        return None
+    with open(file_path, 'r') as f:
+        content = f.read().strip()
+        return content.split()[2]
+
+
 @unique
 class BondType(Enum):
     NormalIface = 0
@@ -274,7 +283,12 @@ class OvsVenv(object):
             raise OvsError("ovs package file:{} not exists".format(OvsPackagesPath))
 
         try:
-            shell.call("rpm -Uvh {}/*.rpm --force".format(OvsPackagesPath))
+            release_list = ["h84r", "rl84"]
+            zstack_release = get_zstack_release()
+            if zstack_release in release_list:
+                shell.call("yum --disablerepo=* --enablerepo=zstack-local localinstall -y {}/*.rpm".format(OvsPackagesPath))
+            else:
+                shell.call("yum --disablerepo=* --enablerepo=zstack-local install -y python3 openvswitch")
         except Exception as err:
             logger.error("install ovs packages failed. {}".format(err))
             raise OvsError(str(err))
