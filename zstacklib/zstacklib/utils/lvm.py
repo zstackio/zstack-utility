@@ -47,6 +47,7 @@ VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
+PV_DISCARD_MIN_SIZE_IN_BYTES = 1*1024**3
 ONE_HOUR_IN_SEC = 60 * 60
 
 lv_offset = TTLCache(maxsize=100, ttl=ONE_HOUR_IN_SEC)
@@ -1080,6 +1081,13 @@ def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
 
 def round_to(n, r):
     return (n + r - 1) / r * r
+
+def is_slow_discard_lv(path):
+    pvs = [os.path.realpath(pv) for pv in get_lv_location(path) if os.path.exists(pv)]
+    pv_discard_max_bytes = sorted([linux.get_block_discard_max_bytes(pv) for pv in pvs if linux.support_blkdiscard(pv)])
+    support_discard = len(pv_discard_max_bytes) != 0
+    disc_bytes_too_small = support_discard and pv_discard_max_bytes[0] < PV_DISCARD_MIN_SIZE_IN_BYTES
+    return support_discard and disc_bytes_too_small
 
 @bash.in_bash
 @linux.retry(times=15, sleep_time=random.uniform(0.1, 3))
