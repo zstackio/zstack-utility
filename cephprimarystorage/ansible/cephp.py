@@ -27,8 +27,7 @@ remote_port = None
 host_uuid = None
 ceph_file_path = "/bin/ceph"
 # common cephprimarystorage deps of ky10 that need to update
-ky10_update_list = "nettle"
-ky10sp3_update_list = "qemu-block-rbd"
+ky10_update_list = "nettle qemu-block-rbd"
 qemu_installed = False
 
 # get parameter from shell
@@ -124,14 +123,9 @@ if host_info.distro in RPM_BASED_OS:
         run_remote_command(command, host_post_info)
 
         if releasever in kylin:
-            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
-            ky10_update_list, zstack_repo)
+            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
+                ky10_update_list, zstack_repo)
             run_remote_command(command, host_post_info)
-
-            if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
-                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (
-                    ky10sp3_update_list, zstack_repo)
-                run_remote_command(command, host_post_info)
 
         if host_info.major_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"

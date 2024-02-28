@@ -125,9 +125,9 @@ if host_info.distro in RPM_BASED_OS:
     qemu_pkg = ' '.join(_qemu_pkg)
     svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs nmap-ncat lvm2 lvm2-libs'
     # common imagestorebackupstorage deps of ky10 that need to update
-    ky10_update_list = "nettle collectd collectd-disk collectd-virt exfat-utils fuse-exfat"
-    ky10sp3_update_list = "qemu-block-rbd"
+    ky10_update_list = " nettle collectd collectd-disk collectd-virt qemu-block-rbd"
     common_update_list = 'qemu-storage-daemon'
+    common_update_list += ky10_update_list if releasever in kylin else ''
 
     if client == "true" :
         if host_info.major_version < 7:
@@ -140,8 +140,6 @@ if host_info.distro in RPM_BASED_OS:
                        "--disablerepo=* --enablerepo=%s install -y $pkg; done;") % (qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
 
-            if releasever in kylin:
-                common_update_list = common_update_list + ' ' + ky10_update_list
             command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
                 common_update_list, zstack_repo)
             run_remote_command(command, host_post_info)
@@ -152,13 +150,6 @@ if host_info.distro in RPM_BASED_OS:
             command = ("pkg_list=`rpm -q {0} | grep \"not installed\" | awk '{{ print $2 }}'` && for pkg in $pkg_list; do yum "
                        "--disablerepo=* --enablerepo={1} install -y $pkg; done;").format(qemu_pkg, zstack_repo)
             run_remote_command(command, host_post_info)
-
-            if releasever in kylin:
-                common_update_list = common_update_list + ' ' + ky10_update_list
-                if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
-                    command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
-                        ky10sp3_update_list, zstack_repo)
-                    run_remote_command(command, host_post_info)
 
             command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
                 common_update_list, zstack_repo)
