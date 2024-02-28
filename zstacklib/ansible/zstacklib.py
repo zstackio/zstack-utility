@@ -45,6 +45,7 @@ centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84', 'h84r']
 enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "oe2203sp1", "h2203sp1o"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
+KYLIN_DISTRO = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance"]
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance",
                 "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs",
                 "redhat", "rocky", "helix"]
@@ -2286,9 +2287,10 @@ class ZstackLib(object):
                 if self.distro_version >= 7:
                     self.copy_redhat_yum_repo()
                 # install epel-release
-                self.enable_epel_yum_repo()
-                set_ini_file("/etc/yum.repos.d/epel.repo", 'epel',
-                             "enabled", "1", self.host_post_info)
+                if self.distro in RPM_BASED_OS and self.distro not in KYLIN_DISTRO:
+                    self.enable_epel_yum_repo()
+                    set_ini_file("/etc/yum.repos.d/epel.repo", 'epel',
+                                 "enabled", "1", self.host_post_info)
             else:
                 # user defined zstack_repo, will generate repo defined in
                 # zstack_repo
@@ -2348,7 +2350,7 @@ class ZstackLib(object):
             "vim-minimal",
         }
 
-        if self.distro in ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance"]:
+        if self.distro in KYLIN_DISTRO:
             basic.add("chrony")
             basic.add("iptables")
             basic.add("python2-libselinux")
