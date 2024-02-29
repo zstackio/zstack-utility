@@ -263,11 +263,16 @@ class PhysicalNicFencer(AbstractHaFencer):
         for new_nic in nics:
             if new_nic not in self.falut_nic_count:
                 self.falut_nic_count[new_nic] = 0
-            ip = iproute.query_links(new_nic)
-            if ip[0].state == 'DOWN':
-                self.falut_nic_count[new_nic] += 1
-            else:
-                self.falut_nic_count[new_nic] = 0
+            try:
+                ip = iproute.query_links(new_nic)
+                if ip[0].state == 'DOWN':
+                    self.falut_nic_count[new_nic] += 1
+                else:
+                    self.falut_nic_count[new_nic] = 0
+            except Exception as e:
+                logger.warn('iproute query_links is except, %s' % e)
+                continue
+
         return [nic for nic, count in self.falut_nic_count.items() if count > self.max_attempts]
 
     def get_nomal_bond_nic(self):
