@@ -297,6 +297,7 @@ class RbdImageWriter(object):
 
 class CephAgent(plugin.TaskManager):
     INIT_PATH = "/ceph/primarystorage/init"
+    CONNECT_PATH = "/ceph/primarystorage/connect"
     CREATE_VOLUME_PATH = "/ceph/primarystorage/volume/createempty"
     DELETE_PATH = "/ceph/primarystorage/delete"
     CLONE_PATH = "/ceph/primarystorage/volume/clone"
@@ -373,6 +374,7 @@ class CephAgent(plugin.TaskManager):
         super(CephAgent, self).__init__()
         self._init_third_party_ceph()
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
+        self.http_server.register_async_uri(self.CONNECT_PATH, self.connect)
         self.http_server.register_async_uri(self.ADD_POOL_PATH, self.add_pool)
         self.http_server.register_async_uri(self.CHECK_POOL_PATH, self.check_pool)
         self.http_server.register_async_uri(self.DELETE_PATH, self.delete)
@@ -441,6 +443,19 @@ class CephAgent(plugin.TaskManager):
             self.ioctx[pool_name] = self.cluster.open_ioctx(pool_name)
 
         return self.ioctx[pool_name]
+
+    def reconnect_cluster(self):
+        with self.op_lock:
+            origin_cluster = self.cluster
+            cluster = rados.Rados(conffile=self.CEPH_CONF_PATH)
+            cluster.connect()
+            self.cluster = cluster
+
+            if origin_cluster:
+                origin_cluster.shutdown()
+                logger.debug("reconnect rados cluster. shutdown before cluster.")
+            else:
+                logger.debug("connected to rados cluster.")
 
     def _init_third_party_ceph(self):
         if not ceph.is_xsky():
@@ -1062,6 +1077,12 @@ class CephAgent(plugin.TaskManager):
 
         rsp.manufacturer = ceph.get_ceph_manufacturer()
 
+        return jsonobject.dumps(rsp)
+
+    def connect(self, req):
+        rsp = AgentResponse()
+        self.reconnect_cluster()
+        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     def _normalize_install_path(self, path):
