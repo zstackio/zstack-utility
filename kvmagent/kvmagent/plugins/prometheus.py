@@ -951,30 +951,47 @@ def collect_physical_cpu_state():
         "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
 
-    r, cpu_info = bash_ro(
-        "ipmitool sdr elist | grep -E -i '^CPU[0-9]*(\ |_)Temp|CPU[0-9]*(\ |_)Status'")  # type: (int, str)
-    if r == 0:
-        count = 0
-        for info in cpu_info.splitlines():
-            info = info.strip().lower()
-            cpu_id = "CPU" + str(count)
-            if "temp" in info:
-                cpu_temp = info.split("|")[4].strip()
-                metrics['cpu_temperature'].add_metric([cpu_id], float(filter(str.isdigit, cpu_temp)) if bool(re.search(r'\d', cpu_temp)) else float(0))
-                count = count + 1
+    r, cpu_info = bash_ro("ipmitool sdr elist | grep -i cpu")  # type: (int, str)
+    if r != 0:
+        return metrics.values()
 
-        count = 0
-        for info in cpu_info.splitlines():
-            info = info.strip().lower()
-            cpu_id = "CPU" + str(count)
-            if "status" in info:
-                cpu_status = info.split("|")[4].strip()
-                cpu_status = 0 if "presence detected" == cpu_status else 10
-                metrics['cpu_status'].add_metric([cpu_id], float(cpu_status))
-                count = count + 1
-    
-    collect_equipment_state_last_result = metrics.values()
-    return collect_equipment_state_last_result
+    '''
+        ================
+        CPU TEMPERATURE
+        ================
+        CPU1_Temp        | 39h | ok  |  7.18 | 34 degrees C
+        CPU1_Core_Temp   | 39h | ok  |  7.18 | 34 degrees C
+        CPU_Temp_01      | 39h | ok  |  7.18 | 34 degrees C
+        CPU1 Temp        | 39h | ok  |  7.18 | 34 degrees C
+        CPU1 Core Rem    | 04h | ok  |  3.96 | 41 degrees C
+        
+        ================
+        CPU STATUS
+        ================
+        CPU_STATUS_01    | 52h | ok  |  3.0 | Presence detected
+        CPU1 Status      | 3Ch | ok  |  3.96 | Presence detected
+        CPU1_Status      | 7Eh | ok  |  3.0 | Presence detected
+    '''
+
+    cpu_temperature_pattern = r'^(cpu\d+_temp|cpu\d+_core_temp|cpu_temp_\d+|cpu\d+ temp|cpu\d+ core rem)$'
+    cpu_status_pattern = r'^(cpu_status_\d+|cpu\d+ status|cpu\d+_status)$'
+
+    for line in cpu_info.lower().splitlines():
+        sensor = line.split("|")
+        if len(sensor) != 5:
+            continue
+        sensor_id = sensor[0].strip()
+        sensor_value = sensor[4].strip()
+        if re.match(cpu_temperature_pattern, sensor_id):
+            cpu_id = int(re.sub(r'\D', '', sensor_id))
+            cpu_temperature = filter(str.isdigit, sensor_value) if bool(re.search(r'\d', sensor_value)) else 0
+            metrics['cpu_temperature'].add_metric(["CPU%d" % cpu_id], float(cpu_temperature))
+        if re.match(cpu_status_pattern, sensor_id):
+            cpu_id = int(re.sub(r'\D', '', sensor_id))
+            cpu_status = 0 if "presence detected" == sensor_value else 10
+            metrics['cpu_status'].add_metric(["CPU%d" % cpu_id], float(cpu_status))
+
+    return metrics.values()
 
 
 def collect_equipment_state():
