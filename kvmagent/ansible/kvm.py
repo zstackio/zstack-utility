@@ -51,6 +51,7 @@ mn_ip = None
 isInstallHostShutdownHook = 'false'
 isEnableKsm = 'none'
 restartLibvirtd = 'false'
+enableSpiceTls = None
 
 
 # get parameter from shell
@@ -504,6 +505,17 @@ def copy_kvm_files():
     qemu_conf_src = os.path.join(file_root, "qemu.conf")
     qemu_conf_dst = "/etc/libvirt/qemu.conf"
     qemu_conf_status = copy_to_remote(qemu_conf_src, qemu_conf_dst, None, host_post_info)
+
+    if enableSpiceTls == 'true':
+        # unnote following lines in qemu.conf
+        #spice_tls_x509_cert_dir = "/var/lib/zstack/kvm/package/spice-certs/"
+        #spice_tls = 1
+        replace_content(qemu_conf_dst, "regexp='#spice_tls_x509_cert_dir.*' replace='spice_tls_x509_cert_dir = \"/var/lib/zstack/kvm/package/spice-certs/\"'", host_post_info)
+        replace_content(qemu_conf_dst, "regexp='#spice_tls.*' replace='spice_tls = 1'", host_post_info)
+    elif enableSpiceTls == 'false':
+        # disable spice_tls
+        replace_content(qemu_conf_dst, "regexp='spice_tls_x509_cert_dir = \"/var/lib/zstack/kvm/package/spice-certs/\"' replace='#spice_tls_x509_cert_dir ='", host_post_info)
+        replace_content(qemu_conf_dst, "regexp='spice_tls = 1' replace='#spice_tls = 1'", host_post_info)
 
     # copy zstacklib pkg
     zslib_src = os.path.join("files/zstacklib", pkg_zstacklib)
