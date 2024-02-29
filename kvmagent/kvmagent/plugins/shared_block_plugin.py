@@ -1377,12 +1377,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 return synced
 
             for struct in cmd.migrateVolumeStructs:
-                target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
-                current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
-
                 if struct.skip_copy:
                     migrated_size += struct.lv_size
                     continue
+
+                target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
+                current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
 
                 start = get_exact_percent(float(migrated_size) / total_size * 100, parent_stage)
                 end = get_exact_percent(float(struct.lv_size + migrated_size) / total_size * 100, parent_stage)
@@ -1394,6 +1394,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 migrated_size += struct.lv_size
 
             for struct in cmd.migrateVolumeStructs:
+                if struct.skip_copy:
+                    continue
+
                 target_abs_path = translate_absolute_path_from_install_path(struct.targetInstallPath)
                 current_abs_path = translate_absolute_path_from_install_path(struct.currentInstallPath)
                 with lvm.RecursiveOperateLv(current_abs_path, shared=True):
