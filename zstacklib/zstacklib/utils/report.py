@@ -1,5 +1,5 @@
 import time
-from zstacklib.utils import http
+from zstacklib.utils import http, jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import thread
 from zstacklib.utils import linux
@@ -107,7 +107,7 @@ class Report(object):
         cmd.threadContextMap = self.ctxMap
         cmd.threadContextStack = self.ctxStack
         cmd.detail = self.detail
-        logger.debug("{api: %s} url: %s, progress: %s, header: %s, detail: %s", cmd.threadContextMap["api"], Report.url, cmd.progress, self.header, None if cmd.detail is None else cmd.detail.dump())
+        logger.debug("{api: %s} url: %s, progress: %s, header: %s, detail: %s", cmd.threadContextMap["api"], Report.url, cmd.progress, self.header, None if not cmd.detail else jsonobject.dumps(cmd.detail))
         http.json_dump_post(Report.url, cmd, self.header)
 
 

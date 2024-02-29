@@ -1225,7 +1225,7 @@ def is_qemu_support_migrate_with_bitmap(version):
     return LooseVersion(version) >= LooseVersion("4.2.0-640")
 
 def is_libvirt_support_migrate_with_bitmap(version):
-    return LooseVersion(version) < LooseVersion('6.0.0')
+    return LooseVersion(version) < LooseVersion('6.0.0') or LooseVersion(version) >= LooseVersion('8.0.0')
 
 def is_libvirt_support_blockdev(version):
     return LooseVersion(version) > LooseVersion('6.0.0')
@@ -6329,12 +6329,10 @@ def get_vm_migration_caps(domain_id, cap_key):
 
 
 def check_mirror_jobs(domain_id, migrate_without_bitmaps):
-    isc = ImageStoreClient()
-    volumes = isc.query_mirror_volumes(domain_id)
-    if volumes:
-        for v in volumes.keys():
-            logger.info("stop mirror for %s:%s" % (domain_id, v))
-            isc.stop_mirror(domain_id, False, v)
+    try:
+        ImageStoreClient().stop_backup_jobs(domain_id)
+    except Exception as e:
+        raise kvmagent.KvmError('clear backup jobs error %s' % str(e))
 
     if not get_vm_migration_caps(domain_id, "dirty-bitmaps"):
         return
@@ -8274,11 +8272,11 @@ host side snapshot files chian:
 
     def do_cancel_vm_backup_jobs(self, cmd):
         isc = ImageStoreClient()
-        isc.stop_vm_backup_jobs(cmd.vmUuid)
+        isc.stop_vm_backup_jobs(cmd.vmUuid, cmd.force)
 
     def do_cancel_volume_backup_job(self, cmd, drive):
         isc = ImageStoreClient()
-        isc.stop_volume_backup_job(cmd.vmUuid, drive)
+        isc.stop_volume_backup_job(cmd.vmUuid, drive, cmd.force)
 
     # returns list[VolumeBackupInfo]
     def do_take_volumes_backup(self, cmd, target_disks, bitmaps, dstdir):
@@ -8495,7 +8493,7 @@ host side snapshot files chian:
             target_disk, _ = vm._get_target_disk(cmd.volume)
             node_name = self.get_disk_device_name(target_disk)
             isc = ImageStoreClient()
-            isc.stop_mirror(cmd.vmUuid, cmd.complete, node_name)
+            isc.stop_mirror(cmd.vmUuid, cmd.complete, node_name, cmd.force)
         except Exception as e:
             content = traceback.format_exc()
             logger.warn("stop volume mirror failed: " + str(e) + '\n' + content)
