@@ -8495,15 +8495,19 @@ class UpgradeDbCmd(Command):
                             (db_user, db_hostname, db_port, sql))
 
         def migrate():
+            # set wait_timeout to 28800s(8 hours) to avoid 'MySQL has gone away' error
+            # because the database upgrading process may cost a long time
+            init_sql = "set wait_timeout=28800;"
+
             try:
                 schema_path = 'filesystem:%s' % upgrading_schema_dir
 
                 if db_password:
-                    shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (
-                    flyway_path, db_user, db_password, db_url, schema_path))
+                    shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s -initSql="%s"' % (
+                    flyway_path, db_user, db_password, db_url, schema_path, init_sql))
                 else:
-                    shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s' % (
-                    flyway_path, db_user, db_url, schema_path))
+                    shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s -initSql=%s' % (
+                    flyway_path, db_user, db_url, schema_path, init_sql))
             except Exception as e:
                 sql = "update schema_version set checksum = 249136114 where script = 'V3.5.0.1__schema.sql' and checksum = -1670610242"
                 execute_sql(sql)
