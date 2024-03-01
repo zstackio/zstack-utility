@@ -1205,7 +1205,7 @@ def get_qcow2_base_backing_file_recusively(path):
     chain = qcow2_get_file_chain(path)
     return chain[-1]
 
-def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
+def get_qcow2_base_images_recusively(vol_install_dir, image_cache_dir):
     real_vol_dir = os.path.realpath(vol_install_dir)
     real_cache_dir = os.path.realpath(image_cache_dir)
     backing_files = shell.call(
@@ -1218,14 +1218,7 @@ def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
         if real_image_path.startswith(real_cache_dir):
             base_image.add(real_image_path)
 
-    if len(base_image) == 1:
-        return base_image.pop()
-
-    if len(base_image) == 0:
-        return None
-
-    if len(base_image) > 1:
-        raise Exception('more than one image file found in cache dir')
+    return base_image
 
 def qcow2_fill(seek, length, path, raise_excpetion=False):
     cmd = shell.ShellCmd("qemu-io -c 'write %s %s' %s -n" % (seek, length, path))

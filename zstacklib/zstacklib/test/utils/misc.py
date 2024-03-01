@@ -17,8 +17,11 @@ def uuid():
 
 def make_a_request(body):
     # type: (dict) -> dict
+
+    bodyStr = jsonobject.dumps(body, include_protected_attr=True)
+    logger.debug("make request" + bodyStr)
     return {
-        REQUEST_BODY: jsonobject.dumps(body, include_protected_attr=True)
+        REQUEST_BODY: bodyStr
     }
 
 
