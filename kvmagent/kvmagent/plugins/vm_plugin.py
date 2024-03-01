@@ -9229,7 +9229,7 @@ host side snapshot files chian:
     # WARNING: it contains quite a few hacks to avoid xmlobject#loads()
     def _vm_reboot_event(self, conn, dom, opaque):
         try:
-            domain_xml = dom.XMLDesc(libvirt.VIR_DOMAIN_XML_SECURE)
+            domain_xml = dom.XMLDesc(libvirt.VIR_DOMAIN_XML_MIGRATABLE)
             vm_uuid = dom.name()
 
             @thread.AsyncThread
