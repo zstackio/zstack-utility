@@ -2546,6 +2546,8 @@ config_system(){
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
     show_spinner cs_enable_usb_storage
+    show_spinner cs_enable_console_proxy_cert
+    show_spinner cs_enable_ui_ssl_cert
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
     fi
@@ -2994,6 +2996,18 @@ cs_enable_usb_storage(){
     fi
 
     [ -f /etc/modules-load.d/usb-storage.conf ] || echo 'usb_storage' > /etc/modules-load.d/usb-storage.conf || true
+}
+
+cs_enable_console_proxy_cert(){
+    echo_subtitle "Configure console proxy certificate"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zstack-ctl configure consoleProxyCertFile=$ZSTACK_INSTALL_ROOT/zstack-ui/ui.keystore.pem
+}
+
+cs_enable_ui_ssl_cert(){
+    echo_subtitle "Configure UI server SSL certificate"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zstack-ctl config_ui --enable-ssl=true --server_port=5443 > /dev/null
 }
 
 check_zstack_server(){
