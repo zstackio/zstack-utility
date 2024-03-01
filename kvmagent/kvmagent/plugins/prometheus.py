@@ -803,7 +803,7 @@ LoadPlugin virt
 	RefreshInterval {{INTERVAL}}
 	HostnameFormat name
     PluginInstanceFormat name
-    BlockDevice "/:hd[a-z]/"
+    BlockDevice "/:hd[c-e]/"
     BlockDevice "{{IGNORE}}"
     IgnoreSelected true
     ExtraStats "vcpu memory"
