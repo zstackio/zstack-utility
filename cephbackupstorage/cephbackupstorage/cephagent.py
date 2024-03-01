@@ -464,6 +464,7 @@ class ImageFileObject(object):
 
 class CephAgent(object):
     INIT_PATH = "/ceph/backupstorage/init"
+    CONNECT_PATH = "/ceph/backupstorage/connect"
     DOWNLOAD_IMAGE_PATH = "/ceph/backupstorage/image/download"
     JOB_CANCEL = "/job/cancel"
     UPLOAD_IMAGE_PATH = "/ceph/backupstorage/image/upload"
@@ -495,6 +496,7 @@ class CephAgent(object):
 
     def __init__(self):
         self.http_server.register_async_uri(self.INIT_PATH, self.init)
+        self.http_server.register_async_uri(self.CONNECT_PATH, self.connect)
         self.http_server.register_async_uri(self.DOWNLOAD_IMAGE_PATH, self.download)
         self.http_server.register_raw_uri(self.UPLOAD_IMAGE_PATH, self.upload)
         self.http_server.register_raw_stream_uri(self.EXPORT_IMAGE_PATH, self.export)
@@ -534,6 +536,18 @@ class CephAgent(object):
 
         return self.ioctx[pool_name]
 
+    def reconnect_cluster(self):
+        with self.op_lock:
+            origin_cluster = self.cluster
+            cluster = rados.Rados(conffile=self.CEPH_CONF_PATH)
+            cluster.connect()
+            self.cluster = cluster
+
+            if origin_cluster:
+                origin_cluster.shutdown()
+                logger.debug("reconnect rados cluster. shutdown before cluster.")
+            else:
+                logger.debug("connected to rados cluster.")
 
     def _get_capacity(self):
         o = shell.call('ceph df -f json')
@@ -761,6 +775,12 @@ class CephAgent(object):
         rsp.fsid = ceph.get_fsid()
         self._set_capacity_to_response(rsp)
 
+        return jsonobject.dumps(rsp)
+
+    def connect(self, req):
+        rsp = AgentResponse()
+        self.reconnect_cluster()
+        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
 
     def _parse_install_path(self, path):
