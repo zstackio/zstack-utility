@@ -1181,7 +1181,14 @@ def collect_memory_overcommit_statistics():
     # read metric from /sys/kernel/mm/ksm
     value = linux.read_file("/sys/kernel/mm/ksm/pages_shared")
     if value:
-        metrics['host_ksm_pages_shared_in_bytes'].add_metric([], float(value.strip()) * PAGE_SIZE)
+        shared_pages = value
+        sharing_pages = linux.read_file("/sys/kernel/mm/ksm/pages_sharing")
+        pages_num = float(sharing_pages.strip() - shared_pages.strip())
+
+        if (pages_num < 0):
+            pages_num = 0
+
+        metrics['host_ksm_pages_shared_in_bytes'].add_metric([], pages_num * PAGE_SIZE)
 
     value = linux.read_file("/sys/kernel/mm/ksm/pages_sharing")
     if value:
