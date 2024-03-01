@@ -1624,7 +1624,7 @@ class Zsha2Utils(object):
             error('cannot get zsha2 config, maybe need upgrade zsha2 first: %s' % e)
 
         self.config = simplejson.loads(o)
-        self.ssh_exec_user = self.config['execUser'] if self.config['execUser'] else getpass.getuser()
+        self.ssh_exec_user = self.config.get('execUser', getpass.getuser())
         self.master = shell_return("ip addr show %s | grep -q '[^0-9]%s[^0-9]'"
                                    % (self.config['nic'], self.config['dbvip'])) == 0
         try:
