@@ -2621,6 +2621,12 @@ def check_nping_result(port, result):
     return port_state
 
 
+def get_fs_type(path):
+    if os.path.isabs(path) is False:
+        raise Exception("Make sure you path name with absolute path")
+    return shell.call("""stat -f -c '%T' {}""".format(path)).strip()
+
+
 def write_uuids(type, str):
     if str is None or len(str) == 0:
         return
