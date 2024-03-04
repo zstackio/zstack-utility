@@ -108,8 +108,8 @@ if host_info.distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace sg3_utils nvme-cli"
 
     releasever_mapping = {
-        'h84r': ' collectd-disk pyparted',
-        'h2203sp1o': ' collectd-disk',
+        'h84r': ' collectd-disk pyparted iscsi-initiator-utils',
+        'h2203sp1o': ' collectd-disk iscsi-initiator-utils',
     }
 
     for k in kylin:
