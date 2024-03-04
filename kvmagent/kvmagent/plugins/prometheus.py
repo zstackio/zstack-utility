@@ -1183,7 +1183,7 @@ def collect_memory_overcommit_statistics():
     if value:
         shared_pages = value
         sharing_pages = linux.read_file("/sys/kernel/mm/ksm/pages_sharing")
-        pages_num = float(sharing_pages.strip() - shared_pages.strip())
+        pages_num = float(sharing_pages.strip()) - float(shared_pages.strip())
 
         if (pages_num < 0):
             pages_num = 0
