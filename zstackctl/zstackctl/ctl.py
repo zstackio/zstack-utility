@@ -10167,11 +10167,15 @@ class ConfigUiCmd(Command):
                 ctl.write_ui_property(k.lstrip('--'), v)
 
         # use 5443 instead if enable_ssl
-        if args.enable_ssl and args.enable_ssl.lower() == 'true':
-            # if args.webhook_port == '5000':
-            #     args.webhook_port = '5443'
-            if args.server_port == '5000':
+        # This is a HACK: modify enable_ssl config will update server_port (webhook_port will not change)
+        if args.enable_ssl is not None:
+            current_server_port = ctl.read_ui_property("server_port")
+            if args.enable_ssl.lower() == 'true' and current_server_port == '5000':
+                print('Enable SSL: The server port is updated to 5443. Restart UI server to make the configuration take effect.')
                 args.server_port = '5443'
+            elif args.enable_ssl.lower() == 'false' and current_server_port == '5443':
+                print('Disable SSL: The server port is updated to 5000. Restart UI server to make the configuration take effect.')
+                args.server_port = '5000'
 
         # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
         if args.ssl_keystore and args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:
