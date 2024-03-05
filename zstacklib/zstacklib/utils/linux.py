@@ -2603,6 +2603,26 @@ def linux_lsof(abs_path, process="qemu-kvm", find_rpath=True):
 
     return r.strip()
 
+def lsof(abs_path):
+    o = shell.call("lsof -nP %s" % abs_path, exception=False)
+    return o.strip()
+
+
+class QemuStruct(object):
+    def __init__(self, pid):
+        self.pid = pid
+        args = shell.call("ps -o args --width 99999 --pid %s" % pid, exception=False)
+        self.name = args.split(' -uuid ')[-1].split(' ')[0].replace("-", "")
+        self.state = shell.call("virsh domstate %s" % self.name, exception=False).strip()
+
+
+def find_qemu_for_volume_in_use(volume_path):
+    # type: (str) -> list[QemuStruct]
+    real_path = os.path.realpath(volume_path)
+    pids = [x.strip() for x in shell.call("lsof -b -c qemu-kvm -c qemu-system| grep -w %s | awk '{print $2}'" % real_path, exception=False).splitlines()]
+    return [QemuStruct(pid) for pid in pids]
+
+
 def touch_file(fpath):
     with open(fpath, 'a'):
         os.utime(fpath, None)
