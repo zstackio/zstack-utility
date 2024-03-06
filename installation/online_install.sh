@@ -1441,7 +1441,7 @@ echo_star_line
 echo "${PRODUCT_NAME} All In One ${VERSION}Installation Completed:"
 echo " - Installation path: $ZSTACK_INSTALL_ROOT"
 echo ""
-echo -e " - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:5000$(tput sgr0) in Chrome or Firefox"
+echo -e " - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:80$(tput sgr0) in Chrome or Firefox"
 echo "      Use $(tput setaf 3)zstack-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service"
 echo ""
 echo -e " - Management node is running"
