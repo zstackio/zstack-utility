@@ -2284,10 +2284,10 @@ class ZstackLib(object):
                 yum_install_package("libselinux-python", self.host_post_info)
                 # Enable extra repo for install centos-release-qemu-ev in
                 # kvm.py
-                if self.distro_version >= 7:
+                if self.distro_version >= 7 and self.zstack_releasever in centos:
                     self.copy_redhat_yum_repo()
                 # install epel-release
-                if self.distro in RPM_BASED_OS and self.distro not in KYLIN_DISTRO:
+                if self.distro in RPM_BASED_OS and self.zstack_releasever in centos:
                     self.enable_epel_yum_repo()
                     set_ini_file("/etc/yum.repos.d/epel.repo", 'epel',
                                  "enabled", "1", self.host_post_info)
