@@ -1114,7 +1114,10 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.osDistribution = platform.linux_distribution()[0].lower()
         rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
         # compatible with Kylin SP2 HostOS ISO and standardized ISO
-        rsp.osRelease = rsp.osRelease.replace('ZStack', 'Sword') if rsp.osDistribution == "kylin" else rsp.osRelease
+        if rsp.osDistribution == "kylin":
+            rsp.osRelease = rsp.osRelease.replace('ZStack', 'Sword')
+        elif rsp.osDistribution == "helix":
+            rsp.osRelease = "release"
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
