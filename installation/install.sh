@@ -220,6 +220,7 @@ declare -a upgrade_params_array=(
     '4.7.21,-DupgradeSecurityGroup=true'
     '4.7.21,-DupgradeSshKeyPairFromSystemTag=true'
     '4.8.0,-DupgradeL2VirtualSwitchUplinkBonding=true'
+    '4.8.0,-DupgradePortGroup=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
