@@ -1627,7 +1627,7 @@ if __name__ == "__main__":
             update_libvirt_cmd = "export YUM0={};yum remove libvirt libvirt-libs libvirt-client libvirt-python libvirt-admin libvirt-bash-completion libvirt-daemon-driver-lxc -y {} && " \
                                  "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} install libvirt libvirt-client libvirt-python -y && "
             yum_cmd = yum_cmd + update_libvirt_cmd.format(releasever,
-                                                          '--noautoremove' if releasever in ['rl84', 'h84r'] else '',
+                                                          '--noautoremove' if releasever in ['rl84', 'h84r', 'ky10sp1', 'ky10sp2', 'ky10sp3'] else '',
                                                           ',zstack-experimental-mn' if cmd.enableExpRepo else '')
         upgrade_os_cmd = "export YUM0={};echo {}>/etc/yum/vars/YUM0;yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
         yum_cmd = yum_cmd + upgrade_os_cmd.format(releasever, releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
