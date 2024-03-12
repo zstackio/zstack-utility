@@ -405,6 +405,15 @@ def set_bridge_alias_using_phy_nic_name(bridge_name, nic_name):
 def get_bridge_phy_nic_name_from_alias(bridge_name):
     return shell.call("ip link show %s | awk '/alias/{ print $NF; exit }'" % bridge_name).strip()
 
+def get_bridge_alias_related_slave(bridge_name):
+    phy_nic_alias = get_bridge_phy_nic_name_from_alias(bridge_name)
+    slaves = shell.call("bridge link show | grep 'master %s'"
+                        " | awk '{print $2}' | sed 's/://' | sed 's/@.*$//'" % bridge_name).strip().split('\n')
+    for slave in slaves:
+        if slave.startswith(phy_nic_alias):
+            return slave
+    return None
+
 def get_total_disk_size(dir_path):
     stat = os.statvfs(dir_path)
     return stat.f_blocks * stat.f_frsize
@@ -1432,6 +1441,12 @@ def delete_bridge(bridge_name):
     shell.run("ip link set %s down" % bridge_name)
     shell.run("brctl delbr %s" % bridge_name)
 
+def check_bridge_with_interface(vlan_interface, expected_bridge_name):
+    bridge_name = find_bridge_having_physical_interface(vlan_interface)
+    if bridge_name and bridge_name != expected_bridge_name:
+        raise Exception('failed to check vlan interface[%s], it has been occupied by bridge[%s]'
+                        % (vlan_interface, bridge_name))
+
 def find_bridge_having_physical_interface(ifname):
     if is_bridge_slave(ifname):
         br_name = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % ifname)
@@ -1475,6 +1490,14 @@ def ip_link_set_net_device_master(net_device, master):
     actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % net_device).strip('\n')
     if not actual_result or actual_result != master:
         raise Exception("set net device[%s] master to [%s] failed, try again now" % (net_device, master))
+
+@retry(times=2, sleep_time=1)
+def ip_link_set_net_device_nomaster(net_device):
+    shell.call("ip link set %s nomaster" % net_device)
+    # Double check, because sometimes the master might not be removed successfully
+    actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE'" % net_device).strip('\n')
+    if actual_result:
+        raise Exception("set net device[%s] nomaster failed, try again now" % net_device)
 
 def delete_novlan_bridge(bridge_name, interface, move_route=True):
     if not is_network_device_existing(bridge_name):

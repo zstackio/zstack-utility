@@ -31,6 +31,7 @@ DETACH_NIC_FROM_BONDING_PATH = '/network/bonding/detachnic'
 KVM_CHANGE_LLDP_MODE_PATH = '/network/lldp/changemode'
 KVM_GET_LLDP_INFO_PATH = '/network/lldp/get'
 KVM_APPLY_LLDP_CONFIG_PATH = '/network/lldp/apply'
+KVM_UPDATE_L2_NETWORK_PATH = "/network/l2/updatebridge"
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
@@ -945,6 +946,42 @@ configure lldp status rx-only \n
 
     @lock.lock('bridge')
     @kvmagent.replyerror
+    def update_bridge(self, req):
+        rsp = CreateBridgeResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        try:
+            self.update_bridge_vlan(cmd, rsp)
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to update bridge[%s], because %s' % (
+                cmd.bridgeName, str(e))
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    def update_bridge_vlan(self, cmd, rsp):
+        self._ifup_device_if_down(cmd.physicalInterfaceName)
+        try:
+            new_vlan_interface = '%s.%s' % (cmd.physicalInterfaceName, cmd.newVlan)
+            old_vlan_interface = '%s.%s' % (cmd.physicalInterfaceName, cmd.oldVlan)
+
+            linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.newVlan)
+            linux.check_bridge_with_interface(old_vlan_interface, cmd.bridgeName)
+            linux.ip_link_set_net_device_nomaster(old_vlan_interface)
+            linux.ip_link_set_net_device_master(new_vlan_interface, cmd.bridgeName)
+            linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, new_vlan_interface)
+            linux.set_device_uuid_alias(new_vlan_interface, cmd.l2NetworkUuid)
+            logger.debug(
+                'successfully update bridge[%s] vlan interface from device[%s] to device[%s]'
+                % (cmd.bridgeName, cmd.oldVlanInterface, cmd.newVlanInterface))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = ('unable to update bridge[%s] vlan interface from device[%s] to device[%s], because %s'
+                         % (cmd.bridgeName, cmd.oldVlanInterface, cmd.newVlanInterface, str(e)))
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
     def create_bridge(self, req):
         rsp = CreateBridgeResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1475,6 +1512,7 @@ configure lldp status rx-only \n
         http_server.register_async_uri(KVM_CHANGE_LLDP_MODE_PATH, self.change_lldp_mode)
         http_server.register_async_uri(KVM_GET_LLDP_INFO_PATH, self.get_lldp_info)
         http_server.register_async_uri(KVM_APPLY_LLDP_CONFIG_PATH, self.apply_lldp_config)
+        http_server.register_async_uri(KVM_UPDATE_L2_NETWORK_PATH, self.update_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
         http_server.register_async_uri(KVM_REALIZE_MACVLAN_L2VLAN_NETWORK_PATH, self.create_mac_vlan_eth)
