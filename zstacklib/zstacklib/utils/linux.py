@@ -2064,6 +2064,11 @@ def delete_vlan_eth_and_ifcfg(vlan_dev_name):
 def make_vlan_eth_name(ethname, vlan):
     return '%s.%s' % (ethname, vlan)
 
+
+def make_vxlan_eth_name(vni):
+    return 'vxlan%s' % (vni)
+
+
 def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
     if not is_network_device_existing(ethname):
@@ -2630,20 +2635,52 @@ def get_nics_by_cidr(cidr):
 
     return nics
 
-def create_vxlan_interface(vni, vtepIp,dstport):
-    vni = str(vni)
-    cmd = shell.ShellCmd("ip -d -o link show dev {name} | grep -w {ip} ".format(**{"name": "vxlan" + vni, "ip": vtepIp}))
+def get_vxlan_details(vxlan_interface):
+    cmd = shell.ShellCmd("ip -d link show dev {name}".format(name=vxlan_interface))
+    cmd(is_exception=False)
+    if cmd.return_code == 0:
+        for line in cmd.stdout.split("\n"):
+            if "vxlan id" in line:
+                vtep_ip = line.split("local ")[1].split(" ")[0]
+                dst_port = line.split("dstport ")[1].split(" ")[0]
+                return vtep_ip, dst_port
+    return None, None
+
+
+def change_vxlan_interface(old_vni, new_vni):
+    old_vxlan = make_vxlan_eth_name(old_vni)
+    vtep_ip, dst_port = get_vxlan_details(old_vxlan)
+    if not vtep_ip or not dst_port:
+        raise Exception("Failed to get details for VXLAN interface: {}".format(old_vxlan))
+    new_vxlan = make_vxlan_eth_name(new_vni)
+    create_vxlan_interface(new_vni, vtep_ip, dst_port)
+    cmd = shell.ShellCmd("ip link set %s address `cat /sys/class/net/%s/address`" % (new_vxlan, old_vxlan))
+    cmd(is_exception=False)
+    cmd = shell.ShellCmd("ip link set {name} down".format(name=old_vxlan))
+    cmd(is_exception=False)
+    cmd = shell.ShellCmd("ip link set {name} up".format(name=new_vxlan))
     cmd(is_exception=False)
     if cmd.return_code != 0:
-        cmd = shell.ShellCmd("ip link del {name}".format(**{"name": "vxlan" + vni}))
+        raise Exception("Failed to set new VXLAN interface up: {}".format(new_vxlan))
+
+    logger.debug("Successfully changed VXLAN interface from {old} to {new}.".format(old=old_vxlan, new=new_vxlan))
+
+
+def create_vxlan_interface(vni, vtepIp,dstport):
+    vni = str(vni)
+    vxlan_eth_name = make_vxlan_eth_name(vni)
+    cmd = shell.ShellCmd("ip -d -o link show dev {name} | grep -w {ip} ".format(**{"name": vxlan_eth_name, "ip": vtepIp}))
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        cmd = shell.ShellCmd("ip link del {name}".format(**{"name": vxlan_eth_name}))
         cmd(is_exception=False)
 
         cmd = shell.ShellCmd("ip link add {name} type vxlan id {id} dstport {dstport} local {ip} learning noproxy nol2miss nol3miss".format(
-            **{"name": "vxlan" + vni, "id": vni, "dstport":dstport,"ip": vtepIp}))
+            **{"name": vxlan_eth_name, "id": vni, "dstport":dstport,"ip": vtepIp}))
 
         cmd(is_exception=False)
 
-    cmd = shell.ShellCmd("ip link set %s up" % ("vxlan" + vni))
+    cmd = shell.ShellCmd("ip link set %s up" % vxlan_eth_name)
     cmd(is_exception=False)
     return cmd.return_code == 0
 

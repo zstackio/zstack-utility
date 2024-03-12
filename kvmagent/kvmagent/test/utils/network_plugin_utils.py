@@ -98,6 +98,21 @@ def batch_update_bridge(old_physical_interface=None, old_bonding_name=None,
 
 
 @checkParamNotNone
+def update_vlan_bridge(physical_interface_name=None, bridge_name=None,
+                       old_virtual_network_id=None, new_virtual_network_id=None,
+                       l2_network_uuid=None):
+    return NETWORK_PLUGIN.update_vlan_bridge(
+        misc.make_a_request({
+            "physicalInterfaceName": physical_interface_name,
+            "bridgeName": bridge_name,
+            "oldVirtualNetworkId": old_virtual_network_id,
+            "newVirtualNetworkId": new_virtual_network_id,
+            "l2NetworkUuid": l2_network_uuid
+        })
+    )
+
+
+@checkParamNotNone
 def check_vxlan_cidr(physicalInterfaceName=None, cidr=None, vtepip=None):
     return NETWORK_PLUGIN.check_vxlan_cidr(
         misc.make_a_request({
