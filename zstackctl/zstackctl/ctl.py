@@ -1527,7 +1527,7 @@ class Command(object):
     def run(self, args):
         raise CtlError('the command is not implemented')
 
-def create_check_ui_status_command(timeout=10, ui_ip='127.0.0.1', ui_port='5000', if_https=False):
+def create_check_ui_status_command(timeout=10, ui_ip='127.0.0.1', ui_port='80', if_https=False):
     protocol = 'https' if if_https else 'http'
     if shell_return('which wget') == 0:
         return ShellCmd(
@@ -4640,8 +4640,8 @@ listen  proxy-ui 0.0.0.0:8888
     mode http
     option  http-server-close
     balance source
-    server zstack-1 {{ host1 }}:5000 weight 10 check inter 3s rise 2 fall 2
-    server zstack-2 {{ host2 }}:5000 weight 10 check inter 3s rise 2 fall 2
+    server zstack-1 {{ host1 }}:80 weight 10 check inter 3s rise 2 fall 2
+    server zstack-2 {{ host2 }}:80 weight 10 check inter 3s rise 2 fall 2
     option  tcpka
         '''
         if len(self.host_post_info_list) == 3:
@@ -4705,9 +4705,9 @@ listen  proxy-ui 0.0.0.0:8888
     mode http
     option  http-server-close
     balance source
-    server zstack-1 {{ host1 }}:5000 weight 10 check inter 3s rise 2 fall 2
-    server zstack-2 {{ host2 }}:5000 weight 10 check inter 3s rise 2 fall 2
-    server zstack-3 {{ host3 }}:5000 weight 10 check inter 3s rise 2 fall 2
+    server zstack-1 {{ host1 }}:80 weight 10 check inter 3s rise 2 fall 2
+    server zstack-2 {{ host2 }}:80 weight 10 check inter 3s rise 2 fall 2
+    server zstack-3 {{ host3 }}:80 weight 10 check inter 3s rise 2 fall 2
     option  tcpka
         '''
 
@@ -8952,7 +8952,7 @@ class StopUiCmd(Command):
                 port = fd2.readline()
                 port = port.strip(' \t\n\r')
         else:
-            port = '5000'
+            port = '80'
         (_, pids) = commands.getstatusoutput("netstat -lnp | grep ':%s' |  awk '{sub(/\/.*/,""); print $NF}'" % port)
         if _ == 0 and pids.strip() != '':
             info("find pids %s at ui port: %s, kill it" % (pids,port))
@@ -9070,7 +9070,7 @@ class DashboardStatusCmd(Command):
                                 port = fd2.readline()
                                 port = port.strip(' \t\n\r')
                         else:
-                            port = 5000
+                            port = 80
                         info('UI status: %s [PID:%s] http://%s:%s' % (colored('Running', 'green'), pid, default_ip, port))
                     return
 
@@ -9121,7 +9121,7 @@ class UiStatusCmd(Command):
         # no need to consider ha because it's not supported any more
         #ha_info_file = '/var/lib/zstack/ha/ha.yaml'
         portfile = '/var/run/zstack/zstack-ui.port'
-        ui_port = 5000
+        ui_port = 80
         if ui_mode == "mini":
             portfile = '/var/run/zstack/zstack-mini-ui.port'
             ui_port = 8200
@@ -9566,7 +9566,7 @@ class StartDashboardCmd(Command):
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help="UI server IP. [DEFAULT] localhost", default='localhost')
-        parser.add_argument('--port', help="UI server port. [DEFAULT] 5000", default='5000')
+        parser.add_argument('--port', help="UI server port. [DEFAULT] 80", default='80')
 
     def _remote_start(self, host, params):
         cmd = '/etc/init.d/zstack-dashboard start --rabbitmq %s' % params
@@ -9633,11 +9633,11 @@ class StartDashboardCmd(Command):
 
         distro = platform.dist()[0]
         if distro in RPM_BASED_OS:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT && service iptables save)' % args.port)
         elif distro in DEB_BASED_OS:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.port)
         else:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT ' % args.port)
 
         scmd = '. %s/bin/activate\nZSTACK_DASHBOARD_PORT=%s nohup python -c "from zstack_dashboard import web; web.main()" --rabbitmq %s >/var/log/zstack/zstack-dashboard.log 2>&1 </dev/null &' % (virtualenv, args.port, param)
         script(scmd, no_pipe=True)
@@ -9732,7 +9732,7 @@ class StartUiCmd(Command):
                 info('UI status: %s ' % (colored('Running', 'green')))
             else:
                 info('UI status: %s  //%s:%s' % (
-                    colored('Running', 'green'), default_ip, "5000"))
+                    colored('Running', 'green'), default_ip, "80"))
 
                 return False
         return True
@@ -9855,12 +9855,6 @@ class StartUiCmd(Command):
         if not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
             self._gen_default_ssl_keystore()
 
-        # server_port default value is 5443 if enable_ssl is True
-        # if args.enable_ssl and args.webhook_port == '5000':
-        #     args.webhook_port = '5443'
-        if args.enable_ssl and args.server_port == '5000':
-            args.server_port = '5443'
-
         # set http to https is enable ssl set
         webhook_ip = ctl.read_property('management.server.vip')
         if not webhook_ip:
@@ -9925,15 +9919,15 @@ class StartUiCmd(Command):
 
         distro = platform.dist()[0]
         if distro in RPM_BASED_OS:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.server_port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT && service iptables save)' % args.server_port)
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.webhook_port, args.webhook_port))
         elif distro in DEB_BASED_OS:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.server_port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.server_port)
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.webhook_port, args.webhook_port))
         else:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.server_port)
+            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 80 -j ACCEPT ' % args.server_port)
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
             shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
         enableSSL = 'false'
@@ -10047,7 +10041,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--mn-port', help="ZStack Management Host port. [DEFAULT] 8080")
         parser.add_argument('--webhook-host', help="Webhook Host IP. [DEFAULT] 127.0.0.1")
         parser.add_argument('--webhook-port', help="Webhook Host port. [DEFAULT] 5001")
-        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 5000")
+        parser.add_argument('--server-port', help="UI server port. [DEFAULT] 80")
         parser.add_argument('--ui-address', help="ZStack UI Address.")
         parser.add_argument('--log', help="UI log folder. [DEFAULT] %s" % ui_logging_path)
         parser.add_argument('--catalina-opts', help="UI catalina options, seperated by `,`")
@@ -10097,15 +10091,15 @@ class ConfigUiCmd(Command):
             if not ctl.read_ui_property("webhook_host"):
                 ctl.write_ui_property("webhook_host", '127.0.0.1')
             if not ctl.read_ui_property("webhook_port"):
-                # from 4.0 set webhook_port to 5001,since the 5000 is for nginx
+                # from 4.2.0 set webhook_port to 5001,since the 80 is for nginx
                 ctl.write_ui_property("webhook_port", '5001')
             if not ctl.read_ui_property("server_port"):
-                ctl.write_ui_property("server_port", '5000')
-            # from 4.0 set webhook_port to 5001,since the 5000 is for nginx
+                ctl.write_ui_property("server_port", '80')
+            # from 4.0 set webhook_port to 5001,since the 80 is for nginx
             if ctl.read_ui_property("webhook_port") == ctl.read_ui_property("server_port"):
-            #'webhook port same with server port in zstack.ui.properties, auto set webhook port to server port +1'
+            #'webhook port same with server port in zstack.ui.properties, auto set webhook port to server port +5001'
                 port = ctl.read_ui_property("server_port")
-                port = str(int(port)+1)
+                port = str(int(port)+5001)
                 ctl.write_ui_property("webhook_port", port)
             if not ctl.read_ui_property("log"):
                 ctl.write_ui_property("log", ui_logging_path)
@@ -10142,7 +10136,7 @@ class ConfigUiCmd(Command):
             ctl.write_ui_property("mn_port", '8080')
             ctl.write_ui_property("webhook_host", '127.0.0.1')
             ctl.write_ui_property("webhook_port", '5001')
-            ctl.write_ui_property("server_port", '5000')
+            ctl.write_ui_property("server_port", '80')
             ctl.write_ui_property("log", ui_logging_path)
             ctl.write_ui_property("enable_ssl", 'false')
             ctl.write_ui_property("enable_http2", 'false')
@@ -10166,12 +10160,16 @@ class ConfigUiCmd(Command):
                     raise CtlError('custom param %s is invalid, must begin with --' % k)
                 ctl.write_ui_property(k.lstrip('--'), v)
 
-        # use 5443 instead if enable_ssl
-        if args.enable_ssl and args.enable_ssl.lower() == 'true':
-            # if args.webhook_port == '5000':
-            #     args.webhook_port = '5443'
-            if args.server_port == '5000':
-                args.server_port = '5443'
+        # use 443 instead if enable_ssl
+        # This is a HACK: modify enable_ssl config will update server_port (webhook_port will not change)
+        if args.enable_ssl is not None:
+            current_server_port = ctl.read_ui_property("server_port")
+            if args.enable_ssl.lower() == 'true' and current_server_port == '80':
+                print('Enable SSL: The server port is updated to 443. Restart UI server to make the configuration take effect.')
+                args.server_port = '443'
+            elif args.enable_ssl.lower() == 'false' and current_server_port == '443':
+                print('Disable SSL: The server port is updated to 80. Restart UI server to make the configuration take effect.')
+                args.server_port = '80'
 
         # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
         if args.ssl_keystore and args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE:

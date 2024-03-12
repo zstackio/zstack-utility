@@ -146,7 +146,10 @@ ZSTACK_OLD_LICENSE_FOLDER=$ZSTACK_INSTALL_ROOT/license
 DEFAULT_MN_PORT='8080'
 MN_PORT="$DEFAULT_MN_PORT"
 
-DEFAULT_UI_PORT='5000'
+UI_SERVER_PORT='443'
+UI_SERVER_SCHEMA='https'
+SNS_PORT='443'
+SNS_SCHEMA='https'
 RESOLV_CONF='/etc/resolv.conf'
 
 BASEARCH=`uname -m`
@@ -1463,11 +1466,11 @@ upgrade_zstack(){
 
     # set ticket.sns.topic.http.url if not exists
     zstack-ctl show_configuration | grep 'ticket.sns.topic.http.url' >/dev/null 2>&1
-    [ $? -ne 0 ] && zstack-ctl configure ticket.sns.topic.http.url=http://localhost:5000/zwatch/webhook
+    [ $? -ne 0 ] && zstack-ctl configure ticket.sns.topic.http.url=$SNS_SCHEMA://localhost:$SNS_PORT/zwatch/webhook
 
     # set sns.systemTopic.endpoints.http.url if not exists
     zstack-ctl show_configuration | grep 'sns.systemTopic.endpoints.http.url' >/dev/null 2>&1
-    [ $? -ne 0 ] && zstack-ctl configure sns.systemTopic.endpoints.http.url=http://localhost:5000/zwatch/webhook
+    [ $? -ne 0 ] && zstack-ctl configure sns.systemTopic.endpoints.http.url=$SNS_SCHEMA://localhost:$SNS_PORT/zwatch/webhook
 
     # upgrade legacy mini zwatch webhook
     upgrade_mini_zwatch_webhook
@@ -2483,7 +2486,7 @@ sp_setup_install_param(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ x"$MINI_INSTALL" = x"y" ];then
         show_spinner sd_install_zstack_mini_ui
-        DEFAULT_UI_PORT=8200
+        UI_SERVER_PORT=8200
         zstack-ctl configure ui_mode=mini
         zstack-ctl configure AppCenter.server.mode=on
         zstack-ctl configure log.management.server.retentionSizeGB=200
@@ -2546,6 +2549,8 @@ config_system(){
     show_spinner cs_append_iptables
     show_spinner cs_setup_nginx
     show_spinner cs_enable_usb_storage
+    show_spinner cs_enable_console_proxy_cert
+    show_spinner cs_enable_ui_ssl_cert
     if [ ! -z $NEED_NFS ];then
         show_spinner cs_setup_nfs
     fi
@@ -2621,6 +2626,17 @@ cs_config_zstack_properties(){
         zstack-ctl configure Ansible.executable=${ZSTACK_ANSIBLE_EXECUTABLE}
         if [ $? -ne 0 ];then
             fail "failed to configure ansible executable to $ZSTACK_ANSIBLE_EXECUTABLE"
+        fi
+    fi
+
+    # update UI server port for upgrading system
+    if [ x"$UPGRADE" = x'y' ];then
+        old_server_port=`zstack-ctl show_ui_config | grep server_port | awk -F'=' '{ print $2 }' | sed -e 's/^[[:space:]]*//'`
+        old_enable_ssl=`zstack-ctl show_ui_config | grep enable_ssl | awk -F'=' '{ print $2 }' | sed -e 's/^[[:space:]]*//'`
+        if [ x"$old_enable_ssl" = x"true" ] && [ x"$old_server_port" = x"5000" ];then
+            zstack-ctl config_ui --enable-ssl=true --server_port=5443 > /dev/null
+        elif [ x"$old_enable_ssl" = x"false" ] && [ x"$old_server_port" = x"5443" ];then
+            zstack-ctl config_ui --enable-ssl=false --server_port=5000 > /dev/null
         fi
     fi
 
@@ -2994,6 +3010,18 @@ cs_enable_usb_storage(){
     fi
 
     [ -f /etc/modules-load.d/usb-storage.conf ] || echo 'usb_storage' > /etc/modules-load.d/usb-storage.conf || true
+}
+
+cs_enable_console_proxy_cert(){
+    echo_subtitle "Configure console proxy certificate"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zstack-ctl configure consoleProxyCertFile=$ZSTACK_INSTALL_ROOT/zstack-ui/ui.keystore.pem
+}
+
+cs_enable_ui_ssl_cert(){
+    echo_subtitle "Configure UI server SSL certificate"
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    zstack-ctl config_ui --enable-ssl=true --server_port=443 > /dev/null
 }
 
 check_zstack_server(){
@@ -4543,7 +4571,7 @@ echo_star_line
 touch $README
 
 echo -e "${PRODUCT_NAME} All In One ${VERSION} Installation Completed:
- - UI is running, visit $(tput setaf 4)http://$MANAGEMENT_IP:$DEFAULT_UI_PORT$(tput sgr0) in Chrome
+ - UI is running, visit $(tput setaf 4)$UI_SERVER_SCHEMA://$MANAGEMENT_IP:$UI_SERVER_PORT$(tput sgr0) in Chrome
       Use $(tput setaf 3)${PRODUCT_NAME,,}-ctl [stop_ui|start_ui]$(tput sgr0) to stop/start the UI service
 
  - Management node is running

@@ -40,7 +40,7 @@ PID file: /usr/local/zstack/management-server.pid
 log file: /usr/local/zstack/apache-tomcat/logs/management-server.log
 version: 4.3.12 (ZStack-Cloud 4.3.12.4663)
 MN status: Running [PID:24108] <3>
-UI status: Running [PID:35833] http://10.0.57.94:5000 <4>
+UI status: Running [PID:35833] http://10.0.57.94:80 <4>
 ----
 <1> ZSTACK_HOME 目录位置
 <2> 管理节点配置文件位置
