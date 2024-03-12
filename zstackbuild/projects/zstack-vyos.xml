@@ -13,13 +13,10 @@
         <delete dir="${vyos.source}/target" />
 
         <exec executable="make" dir="${vyos.source}" failonerror="true">
-            <env key="GOROOT" value="${build.go_root}" />
             <arg value="clean" />
         </exec>
 
         <exec executable="make" dir="${vyos.source}" failonerror="true">
-            <env key="GOROOT" value="${build.go_root}" />
-            <env key="GOROOT_LA" value="${build.go_root_la}" />
             <arg value="package" />
             <arg value="ARCH=amd64 arm64 loong64" />
         </exec>

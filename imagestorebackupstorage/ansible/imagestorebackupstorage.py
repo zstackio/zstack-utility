@@ -73,10 +73,11 @@ IS_AARCH64 = host_info.host_arch == 'aarch64'
 IS_MIPS64EL = host_info.host_arch == 'mips64el'
 IS_LOONGARCH64 = host_info.host_arch == 'loongarch64'
 
-src_pkg_imagestorebackupstorage = "zstack-store.{}.bin".format(host_info.host_arch)
 if host_info.host_arch == 'x86_64':
+    src_pkg_imagestorebackupstorage = "zstack-store.bin"
     src_pkg_exporter = "collectd_exporter"
 else:
+    src_pkg_imagestorebackupstorage = "zstack-store.{}.bin".format(host_info.host_arch)
     src_pkg_exporter = "collectd_exporter_{}".format(host_info.host_arch)
 
 if client != "true":

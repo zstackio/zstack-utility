@@ -9413,8 +9413,7 @@ host side snapshot files chian:
             return VmPlugin.GUESTTOOLS_STATE_NOT_CONNECT, None
         try:
             version_data = qga.guest_exec_bash_no_exitcode(
-                r"/usr/local/zstack/zwatch-vm-agent/zwatch-vm-agent -version | grep -Eo '([0-9]*[\.])*[0-9]*' |"
-                " head -n 1 2>/dev/null").strip()
+                "/usr/local/zstack/zwatch-vm-agent/zwatch-vm-agent -version 2>/dev/null").strip()
         except:
             version_data = None
         running_data = qga.guest_exec_bash_no_exitcode(
