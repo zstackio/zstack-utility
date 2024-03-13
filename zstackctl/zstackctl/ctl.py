@@ -8497,7 +8497,7 @@ class UpgradeDbCmd(Command):
         def migrate():
             # set wait_timeout to 28800s(8 hours) to avoid 'MySQL has gone away' error
             # because the database upgrading process may cost a long time
-            init_sql = "set wait_timeout=28800;"
+            init_sql = "set wait_timeout=28800; set interactive_timeout=28800;"
 
             try:
                 schema_path = 'filesystem:%s' % upgrading_schema_dir
