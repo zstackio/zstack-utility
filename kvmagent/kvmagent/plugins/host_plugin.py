@@ -1582,7 +1582,7 @@ if __name__ == "__main__":
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
         updates = cmd.updatePackages if cmd.updatePackages else ""
         releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
-        yum_cmd = "yum --enablerepo=* clean all && "
+        yum_cmd = "yum --enablerepo=* clean all && echo {}>/etc/yum/vars/YUM0 && ".format(releasever)
         # If upgrade qemu-kvm and libvirt at the same time
         # you need to upgrade qemu-kvm and then upgrade libvirt
         # to ensure that libvirtd is rebooted after upgrading qemu-kvm
@@ -1597,12 +1597,12 @@ if __name__ == "__main__":
             yum_cmd = yum_cmd + update_qemu_cmd.format(releasever,
                                                        ',zstack-experimental-mn' if cmd.enableExpRepo else '')
         if "libvirt" in updates or (cmd.releaseVersion != '' and "libvirt" not in exclude):
-            update_libvirt_cmd = "export YUM0={};yum remove libvirt libvirt-libs libvirt-client libvirt-python libvirt-admin libvirt-bash-completion libvirt-daemon-driver-lxc -y {} && " \
+            update_libvirt_cmd = "export YUM0={};yum remove libvirt libvirt-libs libvirt-client libvirt-python libvirt-admin libvirt-bash-completion libvirt-daemon-driver-lxc -y {} && export YUM0={};" \
                                  "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} install libvirt libvirt-client libvirt-python -y && "
             yum_cmd = yum_cmd + update_libvirt_cmd.format(releasever,
-                                                          '--noautoremove' if releasever in ['rl84', 'h84r', 'ky10sp1', 'ky10sp2', 'ky10sp3'] else '',
+                                                          '--noautoremove' if releasever in ['rl84', 'h84r', 'ky10sp1', 'ky10sp2', 'ky10sp3'] else '', releasever,
                                                           ',zstack-experimental-mn' if cmd.enableExpRepo else '')
-        upgrade_os_cmd = "export YUM0={};echo {}>/etc/yum/vars/YUM0;yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
+        upgrade_os_cmd = "export YUM0={};yum --enablerepo=* clean all && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
         yum_cmd = yum_cmd + upgrade_os_cmd.format(releasever, releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
 
         rsp = UpdateHostOSRsp()
