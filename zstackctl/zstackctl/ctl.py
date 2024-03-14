@@ -1757,66 +1757,21 @@ class ShowStatusCmd(Command):
             else:
                 write_status('Starting, should be ready in a few seconds')
 
+        # version format: "Version: ${zsv_version} (${detail_version})"
+        # example:        "Version: 4.2.0 (ZStack-ZSphere 4.2.0.32)"
         def show_version():
-            try:
-                db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
-            except CtlError as e:
-                info('version: %s' % colored('unknown, %s' % e.message.strip(), 'yellow'))
-                return
-
-            if db_password:
-                cmd = ShellCmd('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
-                            (db_user, shell_quote(db_password), db_hostname, db_port))
-            else:
-                cmd = ShellCmd('''mysql -u %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
-                            (db_user, db_hostname, db_port))
-
-            cmd(False)
-            if cmd.return_code != 0:
-                msg = 'unknown, %s %s' % (cmd.stderr, cmd.stdout)
-                info('version: %s' % colored(msg.strip(), 'yellow'))
-                return
-
-            out = cmd.stdout
-            if 'schema_version' not in out:
-                version = '0.6'
-            else:
-                version = get_zstack_version(db_hostname, db_port, db_user, db_password)
-                if len(version.split('.')) >= 4:
-                    version = '.'.join(version.split('.')[:3])
+            zsv_version = get_zsv_version()
+            if not zsv_version:
+                zsv_version = colored('Unknown', 'yellow')
 
             detailed_version = get_detail_version()
-            if detailed_version is not None:
-                info('version: %s (%s)' % (version, detailed_version))
-            else:
-                info('version: %s' % version)
-        def show_hci_version():
-            full_version = get_hci_full_version()
-            if not full_version:
-                return
-            version = full_version.strip(' \t\n\r')
-            if version is not None:
-                if version[0].isdigit():
-                    info('Cube version: %s (Cube %s)' % (version.split('-')[0], version))
-                else:
-                    list = version.split('-')
-                    hci_version = list[-3]
-                    hci_name = version.split("-%s-" % hci_version)
-                    info(hci_name[0] + ' version: %s (%s)' % (hci_version, version))
+            if not detailed_version:
+                detailed_version = colored('Unknown', 'yellow')
 
-        def show_zsv_version():
-            zsv_version = get_zsv_version()
-            if zsv_version:
-                info('ZSphere version: %s' % zsv_version)
-            else:
-                info(colored('ZSphere version: Unknown', 'yellow'))
+            info('Version: %s (%s)' % (zsv_version, detailed_version))
 
         info('\n'.join(info_list))
         show_version()
-        if is_hyper_converged_host():
-            show_hci_version()
-        elif is_zsv_env():
-            show_zsv_version()
 
         s = check_zstack_status()
         if s is not None and not s:
