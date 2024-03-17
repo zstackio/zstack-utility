@@ -1,10 +1,11 @@
 import os
 import coverage
 from zstacklib.test.utils import env
+from zstacklib.utils import debug
 
 Out_flag = True
 
-
+debug.install_runtime_tracedumper()
 class PytestExtension(object):
 
     cov = None

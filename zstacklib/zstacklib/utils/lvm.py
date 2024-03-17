@@ -1814,9 +1814,12 @@ def check_pv_status(vgUuid, timeout):
 
     return True, ""
 
+@bash.in_bash
+def vgck(vgUuid, timeout):
+    return bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (timeout, vgUuid))
 
 def lvm_vgck(vgUuid, timeout):
-    health, o, e = bash.bash_roe('timeout -s SIGKILL %s vgck %s 2>&1' % (360 if timeout < 360 else timeout, vgUuid))
+    health, o, e = vgck(vgUuid, 360 if timeout < 360 else timeout)
     check_stuck_vglk()
 
     if health != 0:
