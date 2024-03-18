@@ -1033,6 +1033,8 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
                 bash_r("rm -f %s/*" % self.PXELINUX_CFG_PATH)
             if os.path.exists(self.UEFI_GRUB_CFG_PATH):
                 bash_r("rm -f %s/*" % self.UEFI_GRUB_CFG_PATH)
+                # remove all grub.cfg-01-MAC symlinks
+                bash_r("rm -f %s/grub.cfg-01-*" % self.TFTPBOOT_PATH)
             if os.path.exists(self.KS_CFG_PATH):
                 bash_r("rm -f %s/*" % self.KS_CFG_PATH)
             if os.path.exists(self.NGINX_MN_PROXY_CONF_PATH):
@@ -1050,6 +1052,10 @@ echo "STARTMODE='auto'" >> $IFCFGFILE
             uefi_grub_cfg_file = os.path.join(self.UEFI_GRUB_CFG_PATH, "grub.cfg-01-" + mac_as_name)
             if os.path.exists(uefi_grub_cfg_file):
                 os.remove(uefi_grub_cfg_file)
+
+            uefi_grub_cfg_symlink = os.path.join(self.TFTPBOOT_PATH, "grub.cfg-01-" + mac_as_name)
+            if os.path.exists(uefi_grub_cfg_symlink):
+                os.remove(uefi_grub_cfg_symlink)
 
             ks_cfg_file = os.path.join(self.KS_CFG_PATH, mac_as_name)
             if os.path.exists(ks_cfg_file):
