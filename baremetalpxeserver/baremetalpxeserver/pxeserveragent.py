@@ -314,6 +314,10 @@ menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class g
         with open(self.UEFI_DEFAULT_GRUB_CFG, 'w') as f:
             f.write(grub_cfg)
 
+        # remove symlink if exists
+        if os.path.exists(self.UEFI_BOOT_GRUB_CFG):
+            os.remove(self.UEFI_BOOT_GRUB_CFG)
+
         # create link for grub.cfg (for get baremetal hardinfo)
         rel_path = os.path.relpath(self.UEFI_DEFAULT_GRUB_CFG, os.path.dirname(self.UEFI_BOOT_GRUB_CFG))
         os.symlink(rel_path, self.UEFI_BOOT_GRUB_CFG)
@@ -526,6 +530,11 @@ menuentry 'Install OS on Bare Metal Instance' --class fedora --class gnu-linux -
             f.write(grub_cfg)
         # create link for grub.cfg-01-MAC (for baremetal instance deploy)
         grub_link_cfg_file = os.path.join(self.TFTPBOOT_PATH, "grub.cfg-01-" + ks_cfg_name)
+
+        # remove symlink if exists
+        if os.path.exists(grub_link_cfg_file):
+            os.remove(grub_link_cfg_file)
+
         rel_path = os.path.relpath(grub_cfg_file, os.path.dirname(grub_link_cfg_file))
         os.symlink(rel_path, grub_link_cfg_file)
 
