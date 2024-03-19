@@ -25,6 +25,7 @@ import json
 import fcntl
 import simplejson
 import xxhash
+import glob
 
 from inspect import stack
 import xml.etree.ElementTree as etree
@@ -1430,6 +1431,30 @@ def get_all_bridge_interface(bridge_name):
     cmd(is_exception=False)
     vifs = cmd.stdout.split('\n')
     return [v.strip(" \t\r\n") for v in vifs]
+
+def get_vf_index_by_pci_address(pci_address):
+    if not pci_address:
+        return None
+    physfn_path = "/sys/bus/pci/devices/%s/physfn" % pci_address
+    if not os.path.exists(physfn_path):
+        return None
+    virtfn_path = glob.glob("%s/virtfn*" % physfn_path)
+    if not virtfn_path:
+        return None
+    for virtfn_link in virtfn_path:
+        if os.readlink(virtfn_link).split('/')[-1] == pci_address:
+            return int(virtfn_link.split('/')[-1].split('virtfn')[-1])
+
+def get_pf_name_by_vf_pci_address(pci_address):
+    if not pci_address:
+        return None
+    physfn_path = "/sys/bus/pci/devices/%s/physfn" % pci_address
+    if not os.path.exists(physfn_path):
+        return None
+    netdev_dirs = glob.glob("%s/net/*" % physfn_path)
+    if not netdev_dirs:
+        return None
+    return netdev_dirs[0].split('/')[-1]
 
 def delete_bridge(bridge_name):
     vifs = get_all_bridge_interface(bridge_name)
