@@ -27,6 +27,8 @@ logger = log.get_logger(__name__)
 class KvmError(Exception):
     '''kvm error'''
 
+class BlockJobError(Exception):
+    '''block job error'''
 
 class KvmAgent(plugin.Plugin):
     '''
