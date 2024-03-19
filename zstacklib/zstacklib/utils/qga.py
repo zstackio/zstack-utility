@@ -41,7 +41,7 @@ VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
 """
 # qga command wait 30 seconds
 qga_exec_wait_interval = 1
-qga_exec_wait_retry = 30
+qga_exec_wait_retry = 120
 qga_channel_state_connected = 'connected'
 qga_channel_state_disconnected = 'disconnected'
 
