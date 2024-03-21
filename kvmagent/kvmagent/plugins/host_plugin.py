@@ -1146,6 +1146,7 @@ class HostPlugin(kvmagent.KvmAgent):
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
+        rsp.libvirtPackageVersion = linux.get_libvirt_package_version()
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
         rsp.uptime = shell.call('uptime -s').strip()
@@ -1624,7 +1625,7 @@ if __name__ == "__main__":
                 rsp.success = False
                 rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo, stdout: %s, stderr: %s" % (shell_cmd.stdout, shell_cmd.stderr)
 
-        rsp.libvirtVersion = shell.call("rpm -q libvirt --qf ' %{VERSION}-%{RELEASE}'")
+        rsp.libvirtVersion = linux.get_libvirt_package_version()
 
         return jsonobject.dumps(rsp)
 
