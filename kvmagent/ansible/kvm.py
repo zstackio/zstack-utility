@@ -50,6 +50,7 @@ unittest_flag = 'false'
 mn_ip = None
 isInstallHostShutdownHook = 'false'
 isEnableKsm = 'none'
+restart_libvirtd = 'false'
 
 
 # get parameter from shell
@@ -801,8 +802,10 @@ def start_kvmagent():
     if chroot_env != 'false':
         return
 
-    if any(status != "changed:False" for status in [libvirtd_status, libvirtd_conf_status, qemu_conf_status, copy_smart_nics_status]):
-        # name: restart libvirtd if status is stop or cfg changed
+    if init == 'true' or restart_libvirtd == 'true':
+        # name: restart libvirtd when init installation to make sure qemu.conf changes
+        # or restart libvirtd when restartLibvirtd is true (from control plane settings)
+        # take effects
         service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
     # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
     # the kvm agent status when we want to restart it to use the latest kvm agent code
