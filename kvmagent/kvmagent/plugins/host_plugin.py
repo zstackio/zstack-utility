@@ -1268,6 +1268,9 @@ if __name__ == "__main__":
             rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo"
         else:
             logger.debug("successfully run: %s" % yum_cmd)
+
+        rsp.libvirtVersion = shell.call("rpm -q libvirt --qf ' %{VERSION}-%{RELEASE}'")
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

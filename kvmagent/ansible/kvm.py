@@ -48,6 +48,7 @@ releasever = ''
 unsupported_iproute_list = ["nfs4"]
 mn_ip = None
 isInstallHostShutdownHook = 'false'
+restart_libvirtd = 'false'
 
 
 # get parameter from shell
@@ -772,8 +773,9 @@ def start_kvmagent():
     if chroot_env != 'false':
         return
 
-    if init == 'true':
+    if init == 'true' or restart_libvirtd == 'true':
         # name: restart libvirtd when init installation to make sure qemu.conf changes
+        # or restart libvirtd when restartLibvirtd is true (from control plane settings)
         # take effects
         service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
 
