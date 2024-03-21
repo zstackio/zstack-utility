@@ -10376,7 +10376,7 @@ host side snapshot files chian:
         for file_path in file_path_list:
             eject_floppy_with_file_path(vm, file_path)
 
-    def set_domain_network_device(vm_uuid, device_xml, operate_type='attach'):
+    def set_domain_network_device(self, vm_uuid, device_xml, operate_type='attach'):
         @linux.retry(times=3, sleep_time=1)
         def _retry_set_domain_device(xml_file):
             try:
@@ -10396,7 +10396,7 @@ host side snapshot files chian:
         _retry_set_domain_device(device_xml_file)
         os.remove(device_xml_file)
 
-    def set_domain_iflink_state(vm_uuid, nic_name, link_state):
+    def set_domain_iflink_state(self, vm_uuid, nic_name, link_state):
         if not vm_uuid or not nic_name:
             raise Exception('vm_uuid or nic_name is None')
         if link_state not in ['up', 'down']:
@@ -10415,56 +10415,74 @@ host side snapshot files chian:
         DISCONNECTING = 'Disconnecting'
         RECONNECTING = 'Reconnecting'
 
-        def _check_vnic_is_attached(vm, nic):
+        def _check_nic_is_attached(vm, nic, interface_type=None):
+            if interface_type not in ['bridge', 'hostdev']:
+                raise Exception('invalid interface type: %s' % interface_type)
             for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ != nic.mac:
                     continue
-                if iface.type_ == 'bridge':
+                if iface.type_ == interface_type:
                     return iface.dump()
 
             return None
 
-        def _build_vnic_xml_from_vf(vm, nic):
-            interface = etree.Element('interface', attrib={'type': 'bridge'})
-            e(interface, 'mac', None, attrib={'address': nic.mac})
-            e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
-            e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
-            e(interface, 'target', None, attrib={'dev': '%s.1' % nic.nicInternalName})
-            e(interface, 'link', None, attrib={'state': 'down'})
-            e(interface, 'model', None, attrib={'type': 'virtio'})
-            queue_num = nic.vHostAddOn.queueNum if nic.vHostAddOn.queueNum else 1
-            rx_buffer_size = nic.vHostAddOn.rxBufferSize if nic.vHostAddOn.rxBufferSize else 1024
-            tx_buffer_size = nic.vHostAddOn.txBufferSize if nic.vHostAddOn.txBufferSize else 1024
-            e(interface, 'driver ', None, attrib={'name': 'vhost',
-                            'txmode': 'iothread',
-                            'ioeventfd': 'on',
-                            'event_idx': 'off',
-                            'queues': str(queue_num),
-                            'rx_queue_size': str(rx_buffer_size),
-                            'tx_queue_size': str(tx_buffer_size)})
-
-            return etree.tostring(interface)
+        def _build_xml_from_vf(vm, nic, nic_type=None):
+            if nic_type not in ['VNIC', 'VF']:
+                raise Exception('invalid nic type: %s' % nic_type)
+            if nic_type == 'VNIC':
+                interface = etree.Element('interface', attrib={'type': 'bridge'})
+                e(interface, 'mac', None, attrib={'address': nic.mac})
+                e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
+                e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
+                e(interface, 'target', None, attrib={'dev': '%s.1' % nic.nicInternalName})
+                e(interface, 'link', None, attrib={'state': 'down'})
+                e(interface, 'model', None, attrib={'type': 'virtio'})
+                queue_num = nic.vHostAddOn.queueNum if nic.vHostAddOn.queueNum else 1
+                rx_buffer_size = nic.vHostAddOn.rxBufferSize if nic.vHostAddOn.rxBufferSize else 1024
+                tx_buffer_size = nic.vHostAddOn.txBufferSize if nic.vHostAddOn.txBufferSize else 1024
+                e(interface, 'driver ', None, attrib={'name': 'vhost',
+                                'txmode': 'iothread',
+                                'ioeventfd': 'on',
+                                'event_idx': 'off',
+                                'queues': str(queue_num),
+                                'rx_queue_size': str(rx_buffer_size),
+                                'tx_queue_size': str(tx_buffer_size)})
+                return etree.tostring(interface)
+            else:
+                interface = Vm._build_interface_xml(nic, action='Update')
+                return etree.tostring(interface)
 
         def _change_vf_ha_state_enable(vm, nic):
             # attach vnic to vm
-            nic_xml = _check_vnic_is_attached(vm, nic)
+            nic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
             if nic_xml is None:
-                nic_xml = _build_vnic_xml_from_vf(vm, nic)
-                set_domain_network_device(vm.uuid, nic_xml, operate_type='attach')
+                nic_xml = _build_xml_from_vf(vm, nic, nic_type='VNIC')
+                self.set_domain_network_device(vm.uuid, nic_xml, operate_type='attach')
             else:
-                set_domain_iflink_state(vm.uuid, '%s.1' % nic.nicInternalName, 'down')
+                self.set_domain_iflink_state(vm.uuid, '%s.1' % nic.nicInternalName, 'down')
 
-        def _change_vf_ha_state_disconnect(vm_uuid, nic):
-            nic_name = '%s.1' % nic.nicInternalName
-            set_domain_iflink_state(vm_uuid, nic_name, 'up')
-            return
+            vf_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
+            if vf_xml is None:
+                vf_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
+                self.set_domain_network_device(vm.uuid, vf_xml, operate_type='attach')
+
+        def _change_vf_ha_state_disconnect(vm, nic):
+            vnic_name = '%s.1' % nic.nicInternalName
+            self.set_domain_iflink_state(vm.uuid, vnic_name, 'up')
+            vf_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
+            if vf_xml is not None:
+                self.set_domain_network_device(vm.uuid, vf_xml, operate_type='detach')
+
+        def _change_vf_ha_state_reconnect(vm, nic):
+            nic_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
+            if nic_xml is None:
+                nic_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
+                self.set_domain_network_device(vm.uuid, nic_xml, operate_type='attach')
 
         def _change_vf_ha_state_disable(vm, nic):
-            nic_xml = _check_vnic_is_attached(vm, nic)
-            if nic_xml is None:
-                return
-            set_domain_network_device(vm.uuid, nic_xml, operate_type='detach')
-            return
+            nic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
+            if nic_xml is not None:
+                self.set_domain_network_device(vm.uuid, nic_xml, operate_type='detach')
 
         def _check_cmd(cmd):
             if cmd.haState not in [ENABLED, DISCONNECTING, DISABLED]:
@@ -10481,7 +10499,9 @@ host side snapshot files chian:
             if cmd.haState == ENABLED:
                 _change_vf_ha_state_enable(vm, cmd.nic)
             elif cmd.haState == DISCONNECTING:
-                _change_vf_ha_state_disconnect(vm.uuid, cmd.nic)
+                _change_vf_ha_state_disconnect(vm, cmd.nic)
+            elif cmd.haState == RECONNECTING:
+                _change_vf_ha_state_reconnect(vm, cmd.nic)
             elif cmd.haState == DISABLED:
                 _change_vf_ha_state_disable(vm, cmd.nic)
             else:
