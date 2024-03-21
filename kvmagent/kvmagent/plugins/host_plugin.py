@@ -824,6 +824,7 @@ class HostPlugin(kvmagent.KvmAgent):
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
+        rsp.libvirtPackageVersion = linux.get_libvirt_package_version()
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
 
@@ -1269,7 +1270,7 @@ if __name__ == "__main__":
         else:
             logger.debug("successfully run: %s" % yum_cmd)
 
-        rsp.libvirtVersion = shell.call("rpm -q libvirt --qf ' %{VERSION}-%{RELEASE}'")
+        rsp.libvirtVersion = linux.get_libvirt_package_version()
 
         return jsonobject.dumps(rsp)
 
