@@ -1037,6 +1037,19 @@ class TakeVmConsoleScreenshotRsp(kvmagent.AgentResponse):
         self.imageData = None
 
 
+class ChangeVfNicHaStateCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ChangeVfNicHaStateCmd, self).__init__()
+        self.vmUuid = None
+        self.nic = None
+        self.haState = None
+
+
+class ChangeVfNicHaStateRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ChangeVfNicHaStateRsp, self).__init__()
+
+
 class VncPortIptableRule(object):
     def __init__(self):
         self.host_ip = None
@@ -4242,6 +4255,11 @@ class Vm(object):
             if not linux.wait_callback_success(check_device, interval=0.5, timeout=10):
                 raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
 
+        def find_vf_device_xml():
+            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.type_ == 'hostdev' and iface.mac.address_ == cmd.nic.mac:
+                    return iface.dump()
+
         if check_device(None):
             return
 
@@ -4250,7 +4268,11 @@ class Vm(object):
             if cmd.nic.type in ovs.OvsDpdkSupportVnic:
                 cmd.nic.srcPath = ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(cmd.vmUuid, cmd.nic.nicInternalName)
 
-            xml = self._interface_cmd_to_xml(cmd, action='Detach')
+            xml = None
+            if cmd.nic.type == 'VF':
+                xml = find_vf_device_xml()
+            else:
+                xml = self._interface_cmd_to_xml(cmd, action='Detach')
             logger.debug('detaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
                 self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
@@ -6472,6 +6494,8 @@ class VmPlugin(kvmagent.KvmAgent):
     SSH_KEY_PAIR_DETACH_FROM_VM = "/sshkeypair/detach"
 
     DETACH_VIRTIO_DRIVER_PATH = "/vm/virtio/detach"
+
+    SET_VM_VF_NIC_STATE = "/vm/vfnic/state"
 
     VM_OP_START = "start"
     VM_OP_STOP = "stop"
@@ -10352,6 +10376,126 @@ host side snapshot files chian:
         for file_path in file_path_list:
             eject_floppy_with_file_path(vm, file_path)
 
+    def set_domain_network_device(vm_uuid, device_xml, operate_type='attach'):
+        @linux.retry(times=3, sleep_time=1)
+        def _retry_set_domain_device(xml_file):
+            try:
+                if operate_type == 'attach':
+                    shell.call('virsh attach-device --domain %s --file %s --live' % (vm_uuid, xml_file))
+                else:
+                    shell.call('virsh detach-device --domain %s --file %s --live' % (vm_uuid, xml_file))
+            except Exception as e:
+                raise Exception('failed to attach device, error: %s' % str(e))
+
+        if not vm_uuid or not device_xml:
+            raise Exception('vm_uuid or device_xml is None')
+        if operate_type not in ['attach', 'detach']:
+            raise Exception('operate_type: %s is invalid' % operate_type)
+
+        device_xml_file = linux.write_to_temp_file(device_xml)
+        _retry_set_domain_device(device_xml_file)
+        os.remove(device_xml_file)
+
+    def set_domain_iflink_state(vm_uuid, nic_name, link_state):
+        if not vm_uuid or not nic_name:
+            raise Exception('vm_uuid or nic_name is None')
+        if link_state not in ['up', 'down']:
+            raise Exception('link_state is invalid')
+        o = shell.call('virsh domif-setlink %s %s %s' % (vm_uuid, nic_name, link_state))
+        if "successfully" not in o:
+            raise Exception('update nic device state failed')
+
+    @kvmagent.replyerror
+    def set_vf_nic_state(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ChangeVfNicHaStateRsp()
+
+        DISABLED = 'Disabled'
+        ENABLED = 'Enabled'
+        DISCONNECTING = 'Disconnecting'
+        RECONNECTING = 'Reconnecting'
+
+        def _check_vnic_is_attached(vm, nic):
+            for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ != nic.mac:
+                    continue
+                if iface.type_ == 'bridge':
+                    return iface.dump()
+
+            return None
+
+        def _build_vnic_xml_from_vf(vm, nic):
+            interface = etree.Element('interface', attrib={'type': 'bridge'})
+            e(interface, 'mac', None, attrib={'address': nic.mac})
+            e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
+            e(interface, 'source', None, attrib={'bridge': nic.bridgeName})
+            e(interface, 'target', None, attrib={'dev': '%s.1' % nic.nicInternalName})
+            e(interface, 'link', None, attrib={'state': 'down'})
+            e(interface, 'model', None, attrib={'type': 'virtio'})
+            queue_num = nic.vHostAddOn.queueNum if nic.vHostAddOn.queueNum else 1
+            rx_buffer_size = nic.vHostAddOn.rxBufferSize if nic.vHostAddOn.rxBufferSize else 1024
+            tx_buffer_size = nic.vHostAddOn.txBufferSize if nic.vHostAddOn.txBufferSize else 1024
+            e(interface, 'driver ', None, attrib={'name': 'vhost',
+                            'txmode': 'iothread',
+                            'ioeventfd': 'on',
+                            'event_idx': 'off',
+                            'queues': str(queue_num),
+                            'rx_queue_size': str(rx_buffer_size),
+                            'tx_queue_size': str(tx_buffer_size)})
+
+            return etree.tostring(interface)
+
+        def _change_vf_ha_state_enable(vm, nic):
+            # attach vnic to vm
+            nic_xml = _check_vnic_is_attached(vm, nic)
+            if nic_xml is None:
+                nic_xml = _build_vnic_xml_from_vf(vm, nic)
+                set_domain_network_device(vm.uuid, nic_xml, operate_type='attach')
+            else:
+                set_domain_iflink_state(vm.uuid, '%s.1' % nic.nicInternalName, 'down')
+
+        def _change_vf_ha_state_disconnect(vm_uuid, nic):
+            nic_name = '%s.1' % nic.nicInternalName
+            set_domain_iflink_state(vm_uuid, nic_name, 'up')
+            return
+
+        def _change_vf_ha_state_disable(vm, nic):
+            nic_xml = _check_vnic_is_attached(vm, nic)
+            if nic_xml is None:
+                return
+            set_domain_network_device(vm.uuid, nic_xml, operate_type='detach')
+            return
+
+        def _check_cmd(cmd):
+            if cmd.haState not in [ENABLED, DISCONNECTING, DISABLED]:
+                raise Exception('invalid vf nic ha state: %s' % cmd.haState)
+
+            vm = get_vm_by_uuid(cmd.vmUuid)
+            if not vm or vm.state != Vm.VM_STATE_RUNNING:
+                raise Exception('vm[uuid:%s] is not running' % cmd.vmUuid)
+
+            return vm
+
+        try:
+            vm = _check_cmd(cmd)
+            if cmd.haState == ENABLED:
+                _change_vf_ha_state_enable(vm, cmd.nic)
+            elif cmd.haState == DISCONNECTING:
+                _change_vf_ha_state_disconnect(vm.uuid, cmd.nic)
+            elif cmd.haState == DISABLED:
+                _change_vf_ha_state_disable(vm, cmd.nic)
+            else:
+                raise Exception('not support vf nic ha state: %s' % cmd.haState)
+
+            logger.debug('successfully change vf nic ha state to %s' % cmd.haState)
+            rsp.success = True
+        except Exception as err:
+            logger.warn('failed to change vf nic ha state, error: %s' % str(err))
+            rsp.success = False
+            rsp.error = str(err)
+        finally:
+            return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -10453,6 +10597,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.TAKE_VM_CONSOLE_SCREENSHOT_PATH, self.take_console_screenshot)
         http_server.register_async_uri(self.FSTRIM_VM_PATH, self.fstrim_vm)
         http_server.register_async_uri(self.DETACH_VIRTIO_DRIVER_PATH, self.detach_virtio_driver)
+        http_server.register_async_uri(self.SET_VM_VF_NIC_STATE, self.set_vf_nic_state)
 
         self.clean_old_sshfs_mount_points()
         self.register_libvirt_event()
