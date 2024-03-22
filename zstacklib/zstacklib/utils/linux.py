@@ -1447,6 +1447,14 @@ def check_bridge_with_interface(vlan_interface, expected_bridge_name):
         raise Exception('failed to check vlan interface[%s], it has been occupied by bridge[%s]'
                         % (vlan_interface, bridge_name))
 
+def update_bridge_interface_configuration(old_interface, new_interface, bridge_name, l2_network_uuid):
+    check_bridge_with_interface(old_interface, bridge_name)
+    ip_link_set_net_device_nomaster(old_interface)
+    ip_link_set_net_device_master(new_interface, bridge_name)
+    set_bridge_alias_using_phy_nic_name(bridge_name, new_interface)
+    set_device_uuid_alias(new_interface, l2_network_uuid)
+
+
 def find_bridge_having_physical_interface(ifname):
     if is_bridge_slave(ifname):
         br_name = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % ifname)
@@ -1495,7 +1503,7 @@ def ip_link_set_net_device_master(net_device, master):
 def ip_link_set_net_device_nomaster(net_device):
     shell.call("ip link set %s nomaster" % net_device)
     # Double check, because sometimes the master might not be removed successfully
-    actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE'" % net_device).strip('\n')
+    actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE'" % net_device, exception=False).strip('\n')
     if actual_result:
         raise Exception("set net device[%s] nomaster failed, try again now" % net_device)
 
@@ -2427,6 +2435,40 @@ def get_nics_by_cidr(cidr):
                 nics.append({e.name:ip})
 
     return nics
+
+def get_vxlan_details(vxlan_interface):
+    cmd = shell.ShellCmd("ip -d link show dev {name}".format(name=vxlan_interface))
+    cmd(is_exception=False)
+    if cmd.return_code == 0:
+        for line in cmd.stdout.split("\n"):
+            if "vxlan id" in line:
+                vtep_ip = line.split("local ")[1].split(" ")[0]
+                dst_port = line.split("dstport ")[1].split(" ")[0]
+                return vtep_ip, dst_port
+    return None, None
+
+
+def change_vxlan_interface(old_vni, new_vni):
+    old_vxlan = "vxlan" + str(old_vni)
+    vtep_ip, dst_port = get_vxlan_details(old_vxlan)
+    if not vtep_ip or not dst_port:
+        raise Exception("Failed to get details for VXLAN interface: {}".format(old_vxlan))
+
+    new_vxlan = "vxlan" + str(new_vni)
+    cmd = shell.ShellCmd(
+        "ip link add {name} type vxlan id {id} dstport {dstport} local {ip} learning noproxy nol2miss nol3miss".format(
+            name=new_vxlan, id=new_vni, dstport=dst_port, ip=vtep_ip))
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        raise Exception("Failed to create new VXLAN interface: {}".format(new_vxlan))
+
+    cmd = shell.ShellCmd("ip link set {name} up".format(name=new_vxlan))
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        raise Exception("Failed to set new VXLAN interface up: {}".format(new_vxlan))
+
+    logger.debug("Successfully changed VXLAN interface from {old} to {new}.".format(old=old_vxlan, new=new_vxlan))
+
 
 def create_vxlan_interface(vni, vtepIp,dstport):
     vni = str(vni)
