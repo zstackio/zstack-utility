@@ -2317,6 +2317,10 @@ class TempAccessible(object):
             os.chmod(self.fpath, self.fmode)
 
 
+def get_libvirt_package_version():
+    return shell.call("rpm -q libvirt --qf ' %{VERSION}-%{RELEASE}'")
+
+
 def get_libvirt_version():
     return shell.call("libvirtd --version").split()[-1]
 
