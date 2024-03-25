@@ -9680,7 +9680,7 @@ host side snapshot files chian:
 
         r, o, err = bash.bash_roe("virsh qemu-agent-command %s --cmd '{\"execute\":\"guest-fstrim\"}'" % cmd.vmUuid)
         if r != 0:
-            logger.warn("vm[uuid:%s] failed to fstrim : %s, %s" % (self.uuid, o, err))
+            logger.warn("vm[uuid:%s] failed to fstrim : %s, %s" % (cmd.vmUuid, o, err))
             rsp.success = False
             rsp.error = err
 
