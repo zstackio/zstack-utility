@@ -94,6 +94,8 @@ def get_phy_dev_from_bridge_name(bridge_name, vlan_id=None):
             if not phy_nic:
                 phy_dev = bridge_name.replace('br_', '', 1) + "." + vlan_number
             else:
+                if "." in phy_nic:
+                    phy_nic = phy_nic.rsplit('.', 1)[0]
                 phy_dev = "%s.%s" % (phy_nic, vlan_number)
         elif vlan_id.startswith("vxlan"):
             vxlan_number = vlan_id.replace("vxlan", "")
@@ -309,6 +311,7 @@ class DhcpEnv(object):
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
         BR_NAME = self.bridge_name
+        # VLAN_ID sample: vlan100, vxlan200
         VLAN_ID = self.vlan_id
         DHCP_IP = self.dhcp_server_ip
         DHCP6_IP = self.dhcp_server6_ip

@@ -1014,6 +1014,12 @@ configure lldp status rx-only \n
                 linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.newVlan)
             linux.update_bridge_interface_configuration(old_vlan_interface, new_vlan_interface,
                                                         cmd.bridgeName, cmd.l2NetworkUuid)
+            # switch to NoVlan Network need keep physical dev ip and route in bridge
+            if not cmd.newVlan and cmd.oldVlan:
+                linux.move_dev_route(cmd.physicalInterfaceName, cmd.bridgeName)
+            # switch to Vlan Network will return bridge ip and route to physical dev
+            if cmd.newVlan and not cmd.oldVlan:
+                linux.move_dev_route(cmd.bridgeName, cmd.physicalInterfaceName)
             logger.debug('successfully update bridge[%s] vlan interface from device[%s] to device[%s]'
                 % (cmd.bridgeName, cmd.oldVlanInterface, cmd.newVlanInterface))
         except Exception as e:

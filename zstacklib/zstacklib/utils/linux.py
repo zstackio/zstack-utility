@@ -1577,30 +1577,40 @@ def create_bridge(bridge_name, interface, move_route=True):
     # MAC address.
     shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
 
-    if not move_route:
-        return
+    if move_route:
+        move_dev_route(interface, bridge_name)
 
-    out = shell.call('ip addr show dev %s | grep "inet "' % interface, exception=False)
+
+def move_dev_route(src_dev, dest_dev):
+    """
+    Move IP address and routes from one network device (src_dev) to another (dest_dev).
+
+    Args:
+    - src_dev: The source device from which the IP and routes will be moved.
+    - dest_dev: The destination device to which the IP and routes will be moved.
+    """
+    # Check if the source device has an IP address set
+    out = shell.call('ip addr show dev %s | grep "inet "' % src_dev, exception=False)
     if not out:
-        logger.debug("Interface %s doesn't set ip address yet. No need to move route. " % interface)
+        logger.debug("Source device %s doesn't have an IP address set. No need to move routes." % src_dev)
         return
 
-    #record old routes
+    # Record old routes associated with the source device
     routes = []
-    r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % interface)
+    r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % src_dev)
     for line in r_out.split('\n'):
         if line != "":
             routes.append(line)
             shell.call('ip route del %s' % line)
 
-    #mv ip on interface to bridge
+    # Move IP address from the source device to the destination device
     ip = out.strip().split()[1]
-    shell.call('ip addr del %s dev %s' % (ip, interface))
-    r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (bridge_name, ip), exception=False)
+    shell.call('ip addr del %s dev %s' % (ip, src_dev))
+    r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (dest_dev, ip), exception=False)
     if not r_out:
-        shell.call('ip addr add %s dev %s' % (ip, bridge_name))
+        shell.call('ip addr add %s dev %s' % (ip, dest_dev))
 
-    #restore routes on bridge
+    # Restore routes on the destination device
     for r in routes:
         shell.call('ip route add %s' % r)
 
