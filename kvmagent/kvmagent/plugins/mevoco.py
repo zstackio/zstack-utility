@@ -84,18 +84,34 @@ class RemoveForwardDnsRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(RemoveForwardDnsRsp, self).__init__()
 
-def get_phy_dev_from_bridge_name(bridge_name):
-    # for vlan, BR_NAME is "br_eth0_100", vlan sub interface: eth0.100,
-    # for vxlan, BR_NAME is "br_vx_7863", vxlan sub interface vxlan7863"
-    phy_dev = bridge_name.replace('br_', '', 1)
-    if phy_dev[:2] == "vx":
-        phy_dev = phy_dev.replace("vx", "vxlan").replace("_", "")
+def get_phy_dev_from_bridge_name(bridge_name, vlan_id=None):
+    phy_dev = ""
+
+    if vlan_id:
+        if vlan_id.startswith("vlan"):
+            vlan_number = vlan_id.replace("vlan", "")
+            phy_nic = linux.get_bridge_phy_nic_name_from_alias(bridge_name)
+            if not phy_nic:
+                phy_dev = bridge_name.replace('br_', '', 1) + "." + vlan_number
+            else:
+                if "." in phy_nic:
+                    phy_nic = phy_nic.rsplit('.', 1)[0]
+                phy_dev = "%s.%s" % (phy_nic, vlan_number)
+        elif vlan_id.startswith("vxlan"):
+            vxlan_number = vlan_id.replace("vxlan", "")
+            phy_dev = "vxlan" + vxlan_number
     else:
-        phy_nic = linux.get_bridge_phy_nic_name_from_alias(bridge_name)
-        if not phy_nic:
-            phy_dev = phy_dev.replace("_", ".")
+        # for vlan, BR_NAME is "br_eth0_100", vlan sub interface: eth0.100,
+        # for vxlan, BR_NAME is "br_vx_7863", vxlan sub interface vxlan7863"
+        phy_dev = bridge_name.replace('br_', '', 1)
+        if phy_dev[:2] == "vx":
+            phy_dev = phy_dev.replace("vx", "vxlan").replace("_", "")
         else:
-            phy_dev = re.sub(r"^.*_", "%s." % phy_nic, phy_dev)
+            phy_nic = linux.get_bridge_phy_nic_name_from_alias(bridge_name)
+            if not phy_nic:
+                phy_dev = phy_dev.replace("_", ".")
+            else:
+                phy_dev = re.sub(r"^.*_", "%s." % phy_nic, phy_dev)
 
     return phy_dev
 
@@ -110,9 +126,10 @@ def getDhcpEbtableChainName(dhcpIp):
         return "ZSTACK-%s" % dhcpIp
 
 class UserDataEnv(object):
-    def __init__(self, bridge_name, namespace_name):
+    def __init__(self, bridge_name, namespace_name, vlan_id):
         self.bridge_name = bridge_name
         self.namespace_name = namespace_name
+        self.vlan_id = vlan_id
         self.outer_dev = None
         self.inner_dev = None
 
@@ -126,7 +143,8 @@ class UserDataEnv(object):
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
         BR_NAME = self.bridge_name
-        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
+        VLAN_ID = self.vlan_id
+        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name, self.vlan_id)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
         MAX_MTU = linux.MAX_MTU_OF_VNIC
@@ -166,6 +184,7 @@ class DhcpEnv(object):
 
     def __init__(self):
         self.bridge_name = None
+        self.vlan_id = None
         self.dhcp_server_ip = None
         self.dhcp_server6_ip = None
         self.dhcp_netmask = None
@@ -292,6 +311,8 @@ class DhcpEnv(object):
         logger.debug('use id[%s] for the namespace[%s]' % (NAMESPACE_ID, NAMESPACE_NAME))
 
         BR_NAME = self.bridge_name
+        # VLAN_ID sample: vlan100, vxlan200
+        VLAN_ID = self.vlan_id
         DHCP_IP = self.dhcp_server_ip
         DHCP6_IP = self.dhcp_server6_ip
         DHCP_NETMASK = self.dhcp_netmask
@@ -300,7 +321,7 @@ class DhcpEnv(object):
             PREFIX_LEN = linux.netmask_to_cidr(DHCP_NETMASK)
         PREFIX6_LEN = self.prefixLen
         ADDRESS_MODE = self.addressMode
-        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
+        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name, VLAN_ID)
         OUTER_DEV = "outer%s" % NAMESPACE_ID
         INNER_DEV = "inner%s" % NAMESPACE_ID
         if DHCP_IP is not None:
@@ -891,7 +912,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
             iproute.IpNetnsShell(ns).set_link_up(userdata_br_inner_dev)
 
-        p = UserDataEnv(to.bridgeName, to.namespaceName)
+        p = UserDataEnv(to.bridgeName, to.namespaceName, to.vlanId)
         INNER_DEV = None
         DHCP_IP = None
         NS_NAME = to.namespaceName
@@ -921,7 +942,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         # set ebtables
         BR_NAME = to.bridgeName
-        ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME)
+        VLAN_ID = to.vlanId
+        ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME, VLAN_ID)
 
         MAC = iproute.IpNetnsShell(NS_NAME).get_mac(INNER_DEV)
         CHAIN_NAME="USERDATA-%s" % BR_NAME
@@ -1323,6 +1345,7 @@ mimetype.assign = (
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         p = DhcpEnv()
         p.bridge_name = cmd.bridgeName
+        p.vlan_id = cmd.vlanId
         p.dhcp_server_ip = cmd.dhcpServerIp
         p.dhcp_server6_ip = cmd.dhcp6ServerIp
         p.dhcp_netmask = cmd.dhcpNetmask
@@ -1357,6 +1380,7 @@ mimetype.assign = (
         for info in cmd.dhcpInfos:
             p = DhcpEnv()
             p.bridge_name = info.bridgeName
+            p.vlan_id = info.vlanId
             p.dhcp_server_ip = info.dhcpServerIp
             p.dhcp_server6_ip = info.dhcp6ServerIp
             p.dhcp_netmask = info.dhcpNetmask

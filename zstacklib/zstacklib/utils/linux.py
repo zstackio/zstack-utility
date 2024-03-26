@@ -405,6 +405,15 @@ def set_bridge_alias_using_phy_nic_name(bridge_name, nic_name):
 def get_bridge_phy_nic_name_from_alias(bridge_name):
     return shell.call("ip link show %s | awk '/alias/{ print $NF; exit }'" % bridge_name).strip()
 
+def get_bridge_alias_related_slave(bridge_name):
+    phy_nic_alias = get_bridge_phy_nic_name_from_alias(bridge_name)
+    slaves = shell.call("bridge link show | grep 'master %s'"
+                        " | awk '{print $2}' | sed 's/://' | sed 's/@.*$//'" % bridge_name).strip().split('\n')
+    for slave in slaves:
+        if slave.startswith(phy_nic_alias):
+            return slave
+    return None
+
 def get_total_disk_size(dir_path):
     stat = os.statvfs(dir_path)
     return stat.f_blocks * stat.f_frsize
@@ -1432,6 +1441,20 @@ def delete_bridge(bridge_name):
     shell.run("ip link set %s down" % bridge_name)
     shell.run("brctl delbr %s" % bridge_name)
 
+def check_bridge_with_interface(vlan_interface, expected_bridge_name):
+    bridge_name = find_bridge_having_physical_interface(vlan_interface)
+    if bridge_name and bridge_name != expected_bridge_name:
+        raise Exception('failed to check vlan interface[%s], it has been occupied by bridge[%s]'
+                        % (vlan_interface, bridge_name))
+
+def update_bridge_interface_configuration(old_interface, new_interface, bridge_name, l2_network_uuid):
+    check_bridge_with_interface(old_interface, bridge_name)
+    ip_link_set_net_device_nomaster(old_interface)
+    ip_link_set_net_device_master(new_interface, bridge_name)
+    set_bridge_alias_using_phy_nic_name(bridge_name, new_interface)
+    set_device_uuid_alias(new_interface, l2_network_uuid)
+
+
 def find_bridge_having_physical_interface(ifname):
     if is_bridge_slave(ifname):
         br_name = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % ifname)
@@ -1475,6 +1498,14 @@ def ip_link_set_net_device_master(net_device, master):
     actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % net_device).strip('\n')
     if not actual_result or actual_result != master:
         raise Exception("set net device[%s] master to [%s] failed, try again now" % (net_device, master))
+
+@retry(times=2, sleep_time=1)
+def ip_link_set_net_device_nomaster(net_device):
+    shell.call("ip link set %s nomaster" % net_device)
+    # Double check, because sometimes the master might not be removed successfully
+    actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE'" % net_device, exception=False).strip('\n')
+    if actual_result:
+        raise Exception("set net device[%s] nomaster failed, try again now" % net_device)
 
 def delete_novlan_bridge(bridge_name, interface, move_route=True):
     if not is_network_device_existing(bridge_name):
@@ -1546,30 +1577,40 @@ def create_bridge(bridge_name, interface, move_route=True):
     # MAC address.
     shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
 
-    if not move_route:
-        return
+    if move_route:
+        move_dev_route(interface, bridge_name)
 
-    out = shell.call('ip addr show dev %s | grep "inet "' % interface, exception=False)
+
+def move_dev_route(src_dev, dest_dev):
+    """
+    Move IP address and routes from one network device (src_dev) to another (dest_dev).
+
+    Args:
+    - src_dev: The source device from which the IP and routes will be moved.
+    - dest_dev: The destination device to which the IP and routes will be moved.
+    """
+    # Check if the source device has an IP address set
+    out = shell.call('ip addr show dev %s | grep "inet "' % src_dev, exception=False)
     if not out:
-        logger.debug("Interface %s doesn't set ip address yet. No need to move route. " % interface)
+        logger.debug("Source device %s doesn't have an IP address set. No need to move routes." % src_dev)
         return
 
-    #record old routes
+    # Record old routes associated with the source device
     routes = []
-    r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % interface)
+    r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % src_dev)
     for line in r_out.split('\n'):
         if line != "":
             routes.append(line)
             shell.call('ip route del %s' % line)
 
-    #mv ip on interface to bridge
+    # Move IP address from the source device to the destination device
     ip = out.strip().split()[1]
-    shell.call('ip addr del %s dev %s' % (ip, interface))
-    r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (bridge_name, ip), exception=False)
+    shell.call('ip addr del %s dev %s' % (ip, src_dev))
+    r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (dest_dev, ip), exception=False)
     if not r_out:
-        shell.call('ip addr add %s dev %s' % (ip, bridge_name))
+        shell.call('ip addr add %s dev %s' % (ip, dest_dev))
 
-    #restore routes on bridge
+    # Restore routes on the destination device
     for r in routes:
         shell.call('ip route add %s' % r)
 
@@ -2404,6 +2445,40 @@ def get_nics_by_cidr(cidr):
                 nics.append({e.name:ip})
 
     return nics
+
+def get_vxlan_details(vxlan_interface):
+    cmd = shell.ShellCmd("ip -d link show dev {name}".format(name=vxlan_interface))
+    cmd(is_exception=False)
+    if cmd.return_code == 0:
+        for line in cmd.stdout.split("\n"):
+            if "vxlan id" in line:
+                vtep_ip = line.split("local ")[1].split(" ")[0]
+                dst_port = line.split("dstport ")[1].split(" ")[0]
+                return vtep_ip, dst_port
+    return None, None
+
+
+def change_vxlan_interface(old_vni, new_vni):
+    old_vxlan = "vxlan" + str(old_vni)
+    vtep_ip, dst_port = get_vxlan_details(old_vxlan)
+    if not vtep_ip or not dst_port:
+        raise Exception("Failed to get details for VXLAN interface: {}".format(old_vxlan))
+
+    new_vxlan = "vxlan" + str(new_vni)
+    cmd = shell.ShellCmd(
+        "ip link add {name} type vxlan id {id} dstport {dstport} local {ip} learning noproxy nol2miss nol3miss".format(
+            name=new_vxlan, id=new_vni, dstport=dst_port, ip=vtep_ip))
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        raise Exception("Failed to create new VXLAN interface: {}".format(new_vxlan))
+
+    cmd = shell.ShellCmd("ip link set {name} up".format(name=new_vxlan))
+    cmd(is_exception=False)
+    if cmd.return_code != 0:
+        raise Exception("Failed to set new VXLAN interface up: {}".format(new_vxlan))
+
+    logger.debug("Successfully changed VXLAN interface from {old} to {new}.".format(old=old_vxlan, new=new_vxlan))
+
 
 def create_vxlan_interface(vni, vtepIp,dstport):
     vni = str(vni)
