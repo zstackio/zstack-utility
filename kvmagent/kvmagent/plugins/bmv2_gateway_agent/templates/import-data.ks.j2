@@ -65,7 +65,15 @@ def get_dest_dev(dest_wwn):
     raise Exception("Failed to find dest disk[%s]" % dest_wwn)
 
 def get_src_dev():
+    cmd = "mkdir -p /etc/iscsi && touch /etc/iscsi/initiatorname.iscsi && echo 'InitiatorName=iqn.2015-01.io.zstack:initiator.instance.{{instance_uuid}}' > /etc/iscsi/initiatorname.iscsi"
+    shell_cmd(cmd)
+    cmd = "systemctl restart iscsid"
+    shell_cmd(cmd)
+    time.sleep(1)
     cmd = "iscsiadm -m discovery -t sendtargets -p {{gateway_ip}}:3260"
+    shell_cmd(cmd)
+    time.sleep(1)
+    cmd = "iscsiadm --mode node --targetname {{iqn_name}} -p {{gateway_ip}}:3260 --login -o new"
     shell_cmd(cmd)
     time.sleep(1)
     cmd = "iscsiadm --mode node --targetname {{iqn_name}} -p {{gateway_ip}}:3260 --login"
