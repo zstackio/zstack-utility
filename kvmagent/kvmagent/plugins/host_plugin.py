@@ -2398,11 +2398,11 @@ done
             to.name = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
 
             def _set_pci_to_type():
-                gpu_vendors = ["NVIDIA", "AMD"]
-                custom_gpu_vendors = "Display controller"
+                gpu_vendors = ["NVIDIA", "AMD", "Haiguang"]
+
                 if any(vendor in to.description for vendor in gpu_vendors) \
-                        and ('VGA compatible controller' in to.type or
-                             (pci_device_mapper.get('VGA compatible controller') is not None
+                        and ('VGA compatible controller' in to.type or 'Display controller' in to.type
+                             or (pci_device_mapper.get('VGA compatible controller') is not None
                                and pci_device_mapper.get('VGA compatible controller') in to.type)):
                     to.type = "GPU_Video_Controller"
                 elif any(vendor in to.description for vendor in gpu_vendors) \
