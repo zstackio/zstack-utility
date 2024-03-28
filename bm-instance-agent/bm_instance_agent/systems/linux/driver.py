@@ -248,8 +248,9 @@ class LinuxDriver(base.SystemDriverBase):
         self.rescan_and_trigger_udev(volume_obj)
 
     def rescan_and_trigger_udev(self, volume_obj):
-        volume_iqn = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
-        if volume_obj:
+        volume_iqn = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1].strip()
+        if volume_iqn:
+            LOG.info("skip rescan and trigger udev")
             return
         stdout, stderr = processutils.trycmd("timeout 30 iscsiadm -m session -R", shell=True)
         if stderr:
