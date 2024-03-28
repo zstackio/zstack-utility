@@ -1163,7 +1163,7 @@ def collect_memory_overcommit_statistics():
     metrics = {
         'host_ksm_pages_shared_in_bytes': GaugeMetricFamily('host_ksm_pages_shared_in_bytes',
                                                'host ksm shared pages', None, []),
-        'host_ksm_pages_shareing_in_bytes': GaugeMetricFamily('host_ksm_pages_shareing_in_bytes',
+        'host_ksm_pages_sharing_in_bytes': GaugeMetricFamily('host_ksm_pages_sharing_in_bytes',
                                                   'host ksm sharing pages', None, []),
         'host_ksm_pages_unshared_in_bytes': GaugeMetricFamily('host_ksm_pages_unshared_in_bytes',
                                                     'host ksm unshared pages', None, []),
