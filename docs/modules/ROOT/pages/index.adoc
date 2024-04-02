@@ -28,7 +28,6 @@
     * xref:zstackctl:index.adoc[zstackctl]：zstack-ctl 命令行，用于控制 zstack 以及执行日志收集、状态查看、License 管理等运维功能，此外还有一些个别业务的控制或运维功能（例如 zstack mini 的重置等）
   其他:::
     * xref:zstacklib:index.adoc[zstacklib]：用于 kvmagent、cephprimarystorage 等仓库的 library，注意部分项目可能会有自己的同名的 library 但可能不是同一个（例如 zstackctl 目录下也有一个 `zstacklib.py`）
-    * xref:appbuildsystem:index.adoc[appbuildsystem]：用于构建应用中心的应用
 
 [NOTE]
 .其他的目录
