@@ -10485,7 +10485,7 @@ host side snapshot files chian:
                 self.set_domain_network_device(vm.uuid, nic_xml, operate_type='detach')
 
         def _check_cmd(cmd):
-            if cmd.haState not in [ENABLED, DISCONNECTING, DISABLED]:
+            if cmd.haState not in [ENABLED, DISCONNECTING, RECONNECTING, DISABLED]:
                 raise Exception('invalid vf nic ha state: %s' % cmd.haState)
 
             vm = get_vm_by_uuid(cmd.vmUuid)
