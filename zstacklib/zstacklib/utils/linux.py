@@ -2465,6 +2465,15 @@ def change_vxlan_interface(old_vni, new_vni):
         raise Exception("Failed to get details for VXLAN interface: {}".format(old_vxlan))
 
     new_vxlan = "vxlan" + str(new_vni)
+
+    check_cmd = shell.ShellCmd("ip link show {name}".format(name=new_vxlan))
+    check_cmd(is_exception=False)
+    if check_cmd.return_code == 0:
+        delete_cmd = shell.ShellCmd("ip link delete {name}".format(name=new_vxlan))
+        delete_cmd(is_exception=False)
+        if delete_cmd.return_code != 0:
+            raise Exception("Failed to delete existing VXLAN interface: {}".format(new_vxlan))
+
     cmd = shell.ShellCmd(
         "ip link add {name} type vxlan id {id} dstport {dstport} local {ip} learning noproxy nol2miss nol3miss".format(
             name=new_vxlan, id=new_vni, dstport=dst_port, ip=vtep_ip))
