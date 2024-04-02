@@ -1,0 +1,64 @@
+#!/bin/sh
+
+# the following is chkconfig init header
+#
+# zstack-zbs-primarystorage:  zstack zbs primary storage agent daemon
+#
+# chkconfig: 345 97 03
+# description:  This is a daemon instructed by zstack management server \
+#               to perform primary storage related operations\
+#               See http://zstack.org
+#
+# processname: zstack-zbs-primarystorage
+# pidfile: /var/run/zstack/zbs-primarystorage.pid
+#
+
+check_status() {
+  pidfile='/var/run/zstack/zbs-primarystorage.pid'
+	if [ ! -f $pidfile ]; then
+		echo "zstack zbs-primarystorage agent is stopped"
+		exit 1
+	else
+		pid=`cat $pidfile`
+		ps -p $pid > /dev/null
+		if [ $? -eq 0 ]; then
+			echo "zstack zbs-primarystorage agent is running, pid is $pid"
+			exit 0
+		else
+			echo "zstack zbs-primarystorage is stopped, but pidfile at $pidfile is not cleaned. It may be caused by the agent crashed at last time, manually cleaning it would be ok"
+			exit 1
+		fi
+	fi
+}
+
+apply_resource_settings() {
+	if [ `ulimit -Hn` -lt 16384 ]; then
+	    ulimit -Hn 16384
+	fi
+
+	if [ `ulimit -Sn` -lt 16384 ]; then
+	    ulimit -Sn 16384
+	fi
+}
+
+if [ $# -eq 0 ]; then
+	echo "usage: $0
+[start|stop|restart|status]"
+	exit 1
+fi
+
+if [ "$@" = "status" ]; then
+	check_status
+else
+	apply_resource_settings
+
+	. /var/lib/zstack/virtualenv/zbsp/bin/activate && python -c "from zbsprimarystorage import zdaemon; zdaemon.main()" $@
+fi
+
+if [ $? -eq 0 ]; then
+    echo "$@ zstack zbs-primarystorage agent .... SUCCESS"
+    exit 0
+else
+    echo "$@ zstack zbs-primarystorage agent .... FAILED"
+    exit 1
+fi
