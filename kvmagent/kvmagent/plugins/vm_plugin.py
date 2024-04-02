@@ -101,6 +101,10 @@ LOONGARCH64_CPU_MODEL = "Loongson-3A5000"
 LINUX_SCRIPT_LIB_PATH = "/var/lib/zstack/script/"
 WINDOWS_SCRIPT_LIB_PATH = "C:/Program Files/Qemu-ga/script/"
 
+DEFAULT_ZBS_CONF_PATH = "/etc/zbs/client.conf"
+DEFAULT_ZBS_USER_NAME = "zbs"
+PROTOCOL_CBD_PREFIX = "cbd:"
+
 
 class RetryException(Exception):
     pass
@@ -1606,6 +1610,22 @@ class BlkIscsi(object):
             logger.warn('failed to logout device[%s], %s' % (dev_path, str(e)))
 
 
+class IsoCbd(object):
+    def __init__(self):
+        self.iso = None
+
+    def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None, bootOrder=None):
+        disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
+        e(disk, 'source', None, {'name': make_cbd_conf(self.iso.path.split("@")[0]), 'protocol': 'cbd'})
+        e(disk, 'target', None, {'dev': target_dev, 'bus': target_bus_type})
+        if bus and unit:
+            e(disk, 'address', None, {'type': 'drive', 'bus': bus, 'unit': unit})
+        e(disk, 'readonly', None)
+        if bootOrder is not None and bootOrder > 0:
+            e(disk, 'boot', None, {'order': str(bootOrder)})
+        return disk
+
+
 class IsoCeph(object):
     def __init__(self):
         self.iso = None
@@ -2204,6 +2224,11 @@ def make_spool_conf(imgfmt, dev_letter, volume):
 
     os.chmod(fpath, 0o600)
     return fpath
+
+
+def make_cbd_conf(install_path):
+    return install_path[len(PROTOCOL_CBD_PREFIX):] + "_" + DEFAULT_ZBS_USER_NAME + "_:" + DEFAULT_ZBS_CONF_PATH
+
 
 def is_spice_tls():
     return bash.bash_r("grep '^[[:space:]]*spice_tls[[:space:]]*=[[:space:]]*1' /etc/libvirt/qemu.conf")
@@ -2970,6 +2995,13 @@ class Vm(object):
                 e(disk, 'target', None, {'dev': dev_format % dev_letter, 'bus': bus_type})
             return disk
 
+        def cbd_volume():
+            disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+            e(disk, 'source', None, {'protocol': 'cbd', 'name': make_cbd_conf(volume.installPath)})
+            e(disk, 'target', None, {'dev': 'vd%s' % self.DEVICE_LETTERS[volume.deviceId], 'bus': 'virtio'})
+            return disk
+
         dev_letter = self._get_device_letter(volume, addons)
         volume = file_volume_check(volume)
 
@@ -2994,6 +3026,8 @@ class Vm(object):
             disk_element = spool_volume()
         elif volume.deviceType == 'vhost':
             disk_element = vhost_volume()
+        elif volume.deviceType == 'cbd':
+            disk_element = cbd_volume()
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
@@ -3353,6 +3387,9 @@ class Vm(object):
                     return disk, disk.backingStore.source.file_
             elif volume.deviceType == 'vhost':
                 if disk.source.path__ and disk.source.path_ == volume.installPath:
+                    return disk, disk.target.dev_
+            elif volume.deviceType == 'cbd':
+                if disk.source.name__ and disk.source.name_ == make_cbd_conf(volume.installPath):
                     return disk, disk.target.dev_
 
         if not is_exception:
@@ -4060,6 +4097,10 @@ class Vm(object):
 
         if iso.path.startswith('ceph'):
             ic = IsoCeph()
+            ic.iso = iso
+            cdrom = ic.to_xmlobject(dev, bus)
+        elif iso.path.startswith('cbd'):
+            ic = IsoCbd()
             ic.iso = iso
             cdrom = ic.to_xmlobject(dev, bus)
         else:
@@ -5291,6 +5332,10 @@ class Vm(object):
                     ic = IsoCeph()
                     ic.iso = iso
                     devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
+                elif iso.path.startswith('cbd'):
+                    ic = IsoCbd()
+                    ic.iso = iso
+                    devices.append(ic.to_xmlobject(cdrom_config.targetDev, default_bus_type, cdrom_config.bus, cdrom_config.unit, iso.bootOrder))
                 elif iso.type == "vhostuser":
                     cdrom = make_empty_cdrom(iso, cdrom_config, iso.bootOrder, iso.resourceUuid)
                     source = e(cdrom, 'source', None, {'type': 'unix', 'path': iso.path})
@@ -5582,6 +5627,13 @@ class Vm(object):
                         preserve_hd_device_config(disk, _v)
                 return disk
 
+            def cbd_volume(_dev_letter, _v):
+                disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+                e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+                e(disk, 'source', None, {'protocol': 'cbd', 'name': make_cbd_conf(_v.installPath)})
+                e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
+                return disk
+
             def volume_qos(volume_xml_obj):
                 if not cmd.addons:
                     return
@@ -5657,6 +5709,8 @@ class Vm(object):
                     vol = spool_volume(dev_letter, v)
                 elif v.deviceType == 'vhost':
                     vol = vhost_volume(dev_letter, v)
+                elif v.deviceType == 'cbd':
+                    vol = cbd_volume(dev_letter, v)
                 else:
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 

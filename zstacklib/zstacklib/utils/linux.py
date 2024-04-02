@@ -2312,6 +2312,20 @@ def get_free_port():
     s.close()
     return port
 
+def get_free_port_in_range(start_port, end_port):
+    for port in range(start_port, end_port):
+        try:
+            s = socket.socket()
+            s.bind(('', port))
+            s.close()
+            return port
+        except socket.error as e:
+            if e.errno == errno.EADDRINUSE:
+                continue
+            else:
+                raise
+    raise Exception("no free port found in range[%d, %d]" % (start_port, end_port))
+
 def is_port_available(port):
     with contextlib.closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
         try:
