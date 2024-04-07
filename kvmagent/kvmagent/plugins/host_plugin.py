@@ -1257,9 +1257,10 @@ class HostPlugin(kvmagent.KvmAgent):
             host_cpu_model_name = host_cpu_info[0]
             rsp.hostCpuModelName = host_cpu_model_name
 
-            transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
-            static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
-            rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
+            cpuMHz = shell.call("lscpu | awk '/CPU MHz/{ print $NF }'")
+            # in case lscpu doesn't show cpu max mhz
+            cpuMHz = "2500.0000" if cpuMHz.strip() == '' else cpuMHz
+            rsp.cpuGHz = '%.2f' % (float(cpuMHz) / 1000)
 
             cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
             # On openeuler, lscpu otuputs 'per cluster' instead of 'per socket'
