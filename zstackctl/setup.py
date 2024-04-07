@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '5.0.0'
+version = '5.1.0'
 
 setup(name='zstackctl',
       version=version,
