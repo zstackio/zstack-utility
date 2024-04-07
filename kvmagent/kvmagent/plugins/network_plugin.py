@@ -990,6 +990,8 @@ configure lldp status rx-only \n
             linux.change_vxlan_interface(cmd.oldVlan, cmd.newVlan)
             linux.update_bridge_interface_configuration(old_vxlan_interface, new_vxlan_interface,
                                                         cmd.bridgeName, cmd.l2NetworkUuid)
+            if cmd.peers:
+                linux.populate_vxlan_fdbs([new_vxlan_interface], cmd.peers)
             logger.debug('successfully update bridge[%s] vxlan interface from device[%s] to device[%s]'
                 % (cmd.bridgeName, cmd.oldVlanInterface, cmd.newVlanInterface))
         except Exception as e:
