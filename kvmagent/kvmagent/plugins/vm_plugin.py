@@ -5230,20 +5230,18 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
             #When platform=other and default_bus_type=ide, the maximum number of volume is three
-            if machine_type == 'pc':
-                volume_hd_configs = [
-                    VolumeIDEConfig('0', '0'),
-                    VolumeIDEConfig('1', '1'),
-                    VolumeIDEConfig('1', '0')
-                ]
-            elif machine_type == 'q35':
+            if machine_type == 'q35':
                 volume_hd_configs = [
                     VolumeIDEConfig('0', '0'),
                     VolumeIDEConfig('0', '4'),
                     VolumeIDEConfig('0', '5')
                 ]
             else:
-                raise Exception("unexpected machine type %s" % machine_type)
+                volume_hd_configs = [
+                    VolumeIDEConfig('0', '0'),
+                    VolumeIDEConfig('1', '1'),
+                    VolumeIDEConfig('1', '0')
+                ]
 
             def quorumbased_volume(_dev_letter, _v):
                 def make_backingstore(volume_path):
