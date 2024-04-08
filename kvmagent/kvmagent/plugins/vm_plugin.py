@@ -4635,6 +4635,15 @@ class Vm(object):
         if cmd.architecture and cmd.architecture != HOST_ARCH:
             raise kvmagent.KvmError("Image architecture[{}] not matched host architecture[{}].".format(cmd.architecture, HOST_ARCH))
         default_bus_type = ('ide', 'sata', 'scsi')[max(machine_type == 'q35', (HOST_ARCH in ['aarch64', 'mips64el', 'loongarch64']) * 2)]
+        image_platform_in_lower = cmd.imagePlatform.lower()
+
+        # platform support use no virtio for ide/sata disk on other platform vms
+        # in this case we need to deduplicate the device address because cdrom and disk can't share the same address
+        # and the default address is hd[a-z] for ide/sata disk logically
+        hd_device_address_deduplicate = False
+        if default_bus_type in ('ide', 'sata') and image_platform_in_lower == 'other':
+            hd_device_address_deduplicate = True
+
         elements = {}
 
         def make_root():
@@ -5221,11 +5230,20 @@ class Vm(object):
             volumes = [cmd.rootVolume]
             volumes.extend(cmd.dataVolumes)
             #When platform=other and default_bus_type=ide, the maximum number of volume is three
-            volume_ide_configs = [
-                VolumeIDEConfig('0', '0'),
-                VolumeIDEConfig('1', '1'),
-                VolumeIDEConfig('1', '0')
-            ]
+            if machine_type == 'pc':
+                volume_hd_configs = [
+                    VolumeIDEConfig('0', '0'),
+                    VolumeIDEConfig('1', '1'),
+                    VolumeIDEConfig('1', '0')
+                ]
+            elif machine_type == 'q35':
+                volume_hd_configs = [
+                    VolumeIDEConfig('0', '0'),
+                    VolumeIDEConfig('0', '4'),
+                    VolumeIDEConfig('0', '5')
+                ]
+            else:
+                raise Exception("unexpected machine type %s" % machine_type)
 
             def quorumbased_volume(_dev_letter, _v):
                 def make_backingstore(volume_path):
@@ -5269,8 +5287,8 @@ class Vm(object):
                 else:
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
-                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                        allocat_ide_config(disk, _v)
+                    if hd_device_address_deduplicate:
+                        preserve_hd_device_config(disk, _v)
 
                 return disk
 
@@ -5305,8 +5323,8 @@ class Vm(object):
                 else:
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
-                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                        allocat_ide_config(disk, _v)
+                    if hd_device_address_deduplicate:
+                        preserve_hd_device_config(disk, _v)
                 return disk
 
             def iscsibased_volume(_dev_letter, _v):
@@ -5368,8 +5386,8 @@ class Vm(object):
                 else:
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
-                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                        allocat_ide_config(disk, _v)
+                    if hd_device_address_deduplicate:
+                        preserve_hd_device_config(disk, _v)
                 return disk
 
             def ceph_volume(_dev_letter, _v):
@@ -5403,8 +5421,8 @@ class Vm(object):
                         return ceph_virtio()
                     else:
                         disk = ceph_blk()
-                        if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                            allocat_ide_config(disk, _v)
+                        if hd_device_address_deduplicate:
+                            preserve_hd_device_config(disk, _v)
                         return disk
 
                 d = build_ceph_disk()
@@ -5443,8 +5461,8 @@ class Vm(object):
                 else:
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
-                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                        allocat_ide_config(disk, _v)
+                    if hd_device_address_deduplicate:
+                        preserve_hd_device_config(disk, _v)
 
                 return disk
 
@@ -5470,8 +5488,8 @@ class Vm(object):
                 else:
                     dev_format = Vm._get_disk_target_dev_format(default_bus_type)
                     e(disk, 'target', None, {'dev': dev_format % _dev_letter, 'bus': default_bus_type})
-                    if default_bus_type == "ide" and cmd.imagePlatform.lower() == "other":
-                        allocat_ide_config(disk, _v)
+                    if hd_device_address_deduplicate:
+                        preserve_hd_device_config(disk, _v)
                 return disk
 
             def volume_qos(volume_xml_obj):
@@ -5519,16 +5537,16 @@ class Vm(object):
                 qs = dict(urlparse.parse_qsl(u.query))
                 return qs.get("r")
 
-            def allocat_ide_config(_disk, _volume):
+            def preserve_hd_device_config(_disk, _volume):
                 if _volume.deviceAddress:
-                    e(_disk, 'address', None, {'type': 'drive', 'bus': _volume.deviceAddress.bus, 'unit': _volume.deviceAddress.unit})
-                    volume_ide_configs.pop(0)
+                    # just pop config and deviceAddress will be set in the next step
+                    volume_hd_configs.pop(0)
                 else:
-                    if len(volume_ide_configs) == 0:
+                    if len(volume_hd_configs) == 0:
                         err = "insufficient IDE address."
                         logger.warn(err)
                         raise kvmagent.KvmError(err)
-                    volume_ide_config = volume_ide_configs.pop(0)
+                    volume_ide_config = volume_hd_configs.pop(0)
                     e(_disk, 'address', None, {'type': 'drive', 'bus': volume_ide_config.bus, 'unit': volume_ide_config.unit})
 
             def make_volume(dev_letter, v, r, dataSourceOnly=False):
