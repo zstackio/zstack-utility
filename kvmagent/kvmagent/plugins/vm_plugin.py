@@ -7574,12 +7574,13 @@ class VmPlugin(kvmagent.KvmAgent):
                         logger.warn('unable to find vm {0} on host {1}'.format(cmd.vmUuid, cmd.srcHostIp))
                         raise kvmagent.KvmError('unable to find vm %s on host %s' % (cmd.vmUuid, cmd.srcHostIp))
                     vm.migrate(cmd)
-            else:
+            elif cmd.reload and cmd.disks:
                 ## storage migration recovery
-                if cmd.reload and cmd.disks and self._check_vm_live_migate_status(cmd):
-                    logger.info("vm[%s] has been migrated to host[%s] successfully" % (cmd.vmUuid, cmd.destHostIp))
-                    return jsonobject.dumps(rsp)
-
+                rsp.success = self._check_vm_live_migate_status(cmd)
+                if not rsp.success:
+                    rsp.error = 'unable to resume storage migration of vm %s' % cmd.vmUuid
+                return jsonobject.dumps(rsp)
+            else:
                 vm = get_vm_by_uuid(cmd.vmUuid)
                 vm.migrate(cmd)
 
@@ -7976,8 +7977,10 @@ class VmPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         vm = get_vm_by_uuid(cmd.vmUuid)
-        if cmd.reload and self._check_block_copy(vm, cmd):
-            logger.info('block[%s] migration of vm[%s] has been completed' % (cmd.oldVolumePath, vm.uuid))
+        if cmd.reload:
+            rsp.success = self._check_block_copy(vm, cmd)
+            if not rsp.success:
+                rsp.error = 'unable to resume storage migration of vm %s' % cmd.vmUuid
             return jsonobject.dumps(rsp)
 
         self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
