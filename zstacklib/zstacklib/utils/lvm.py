@@ -1505,21 +1505,33 @@ def _active_lv(path, shared=False):
 
 
 @bash.in_bash
-@linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
 def _deactive_lv(path, raise_exception=True):
     if not lv_exists(path):
         return
     if not lv_is_active(path):
         return
-    r = 0
-    e = None
-    if raise_exception:
-        o = bash.bash_errorout("lvchange -an %s" % path)
-    else:
-        r, o, e = bash.bash_roe("lvchange -an %s" % path)
-    if lv_is_active(path):
-        raise RetryException("lv %s is still active after lvchange -an, returns code: %s, stdout: %s, stderr: %s"
-                             % (path, r, o, e))
+
+    @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
+    def _deactive():
+        r = 0
+        e = None
+        if raise_exception:
+            o = bash.bash_errorout("lvchange -an %s" % path)
+        else:
+            r, o, e = bash.bash_roe("lvchange -an %s" % path)
+        if lv_is_active(path):
+            raise RetryException("lv %s is still active after lvchange -an, returns code: %s, stdout: %s, stderr: %s"
+                                 % (path, r, o, e))
+    try:
+        _deactive()
+    except Exception as e:
+        if "in use" in str(e):
+            # just for debugging
+            o = linux.lsof(path)
+            if o == "":
+                o = ['vm-' + p.name for p in linux.find_qemu_for_volume_in_use(path)]
+            logger.warn("find lv used by other process:\n%s" % str(o))
+        raise
 
 def get_lv_discard_options(path, discard):
     discard = discard == LvDiscardStrategy.ALWAYS or (discard == LvDiscardStrategy.AUTO and not is_slow_discard_lv(path))
@@ -2435,21 +2447,6 @@ def disable_multipath():
     if is_multipath_running():
         raise RetryException("multipath is still running")
 
-
-class QemuStruct(object):
-    def __init__(self, pid):
-        self.pid = pid
-        args = bash.bash_o("ps -o args --width 99999 --pid %s" % pid)
-        self.name = args.split(' -uuid ')[-1].split(' ')[0].replace("-", "")
-        self.state = bash.bash_o("virsh domstate %s" % self.name).strip()
-
-
-@bash.in_bash
-def find_qemu_for_lv_in_use(lv_path):
-    # type: (str) -> list[QemuStruct]
-    dm_path = os.path.realpath(lv_path)
-    pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm -c qemu-system| grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
-    return [QemuStruct(pid) for pid in pids]
 
 
 pv_allocate_strategy = {}  # type:dict

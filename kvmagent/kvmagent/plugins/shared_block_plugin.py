@@ -1361,7 +1361,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     lvm.deactive_lv(fpath)
                 except Exception as e:
                     if killProcess:
-                        qemus = lvm.find_qemu_for_lv_in_use(fpath)
+                        qemus = linux.find_qemu_for_volume_in_use(fpath)
                         if len(qemus) == 0:
                             return
                         for qemu in qemus:
