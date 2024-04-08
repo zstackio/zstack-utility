@@ -127,6 +127,14 @@ class FiberChannelLunStruct(ScsiLunStruct):
         self.storageWwnn = ""
 
 
+class NvmeController():
+    def __init__(self):
+        self.name = ''
+        self.transport = ''
+        self.address = ''
+        self.wwids = set()
+
+
 class NvmeLunStruct(ScsiLunStruct):
     def __init__(self):
         super(NvmeLunStruct, self).__init__()
@@ -584,7 +592,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = NvmeServerConnectRsp()
 
-        rsp.nvmeLunStructs = self.connect_nvme_server(cmd)
+        rsp.nvmeLunStructs = self.connect_nvme_controller(cmd)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -592,7 +600,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        self.disconnect_nvme_server(cmd)
+        self.disconnect_nvme_controller(cmd)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1271,8 +1279,36 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         logger.debug("found existing nqns: %s" % str(nqns))
         return nqns
 
+    def get_nvme_subsystem_controllers(self, subsysnqn):
+        nvme_subsystems = []
+        controllers = []
+        if os.path.exists("/sys/class/nvme-subsystem"):
+            nvme_subsystems = os.listdir("/sys/class/nvme-subsystem")
+
+        for target in nvme_subsystems:
+            nqn = linux.read_file("/sys/class/nvme-subsystem/%s/subsysnqn" % target).strip()
+            if nqn != subsysnqn:
+                continue
+            parent_dir = "/sys/class/nvme-subsystem/%s" % target
+            for f in os.listdir(parent_dir):
+                if not (os.path.basename(f).startswith("nvme") and os.path.exists("%s/%s/address" % (parent_dir, f))):
+                    continue
+                controller = NvmeController()
+                controller.name = f
+                controller.address = linux.read_file("%s/%s/address" % (parent_dir, f)).strip()
+                controller.transport = linux.read_file("%s/%s/transport" % (parent_dir, f)).strip()
+                controller.wwids = set()
+                for ff in os.listdir("%s/%s/" % (parent_dir, f)):
+                    if not (os.path.basename(ff).startswith("nvme") and os.path.exists("%s/%s/%s/wwid" % (parent_dir, f, ff))):
+                        continue
+                    controller.wwids.add(linux.read_file("%s/%s/%s/wwid" % (parent_dir, f, ff)).strip())
+                controllers.append(controller)
+
+
+        return controllers
+
     @bash.in_bash
-    def connect_nvme_server(self, cmd):
+    def connect_nvme_controller(self, cmd):
         r, o, e = bash.bash_roe("timeout 60 nvme discover -a %s -s %s -t %s | grep subnqn:" % (cmd.ip, cmd.port, cmd.transport))
         if r != 0:
             raise Exception("unable find any nqn on server[%s:%s, transport:%s], error: %s" % (cmd.ip, cmd.port, cmd.transport, str(e)))
@@ -1281,23 +1317,26 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for line in o.splitlines():
             discovered_nqns.add(line.strip().split()[1])
 
-        existing_nqns = self.get_nqns()
-        connected_nqn_cnt = 0
+        wwids = set()
+        any_nqn_connected = False
+        error = ""
         for nqn in discovered_nqns:
-            if nqn in existing_nqns:
-                connected_nqn_cnt = connected_nqn_cnt + 1
-                continue
             r, o, e = bash.bash_roe("timeout 60 nvme connect -a %s -s %s -t %s --nqn %s" % (cmd.ip, cmd.port, cmd.transport, nqn))
-            if r == 0:
-                connected_nqn_cnt = connected_nqn_cnt + 1
+            for controller in self.get_nvme_subsystem_controllers(nqn):
+                if controller.transport == cmd.transport and controller.address == "traddr=%s,trsvcid=%s" % (cmd.ip, cmd.port):
+                    any_nqn_connected = True
+                    wwids = wwids.union(controller.wwids)
+                    break
+            if not any_nqn_connected:
+                error = e
 
-        if connected_nqn_cnt == 0:
-            raise Exception("unable connect any nqn on server[%s:%s, transport:%s], error: %s" % (cmd.ip, cmd.port, cmd.transport, str(e)))
+        if not any_nqn_connected:
+            raise Exception("unable connect any nqn on server[%s:%s, transport:%s], error: %s" % (cmd.ip, cmd.port, cmd.transport, str(error)))
 
-        return filter(lambda l: l.nqn in discovered_nqns, self.get_nvme_luns(rescan=True))
+        return filter(lambda l: l.nqn in discovered_nqns and set(l.wwids).intersection(wwids), self.get_nvme_luns(rescan=True))
 
     @bash.in_bash
-    def disconnect_nvme_server(self, cmd):
+    def disconnect_nvme_controller(self, cmd):
         r, o, e = bash.bash_roe("timeout 60 nvme discover -a %s -s %s -t %s | grep subnqn:" % (cmd.ip, cmd.port, cmd.transport))
         if r != 0:
             logger.warn("unable find any nqn on server[%s:%s, transport:%s], %s" % (cmd.ip, cmd.port, cmd.transport, str(e)))
@@ -1308,9 +1347,11 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             discovered_nqns.add(line.strip().split()[1])
 
         for nqn in discovered_nqns:
-            r, o, e = bash.bash_roe("timeout 60 nvme disconnect --nqn %s" % nqn)
-            if r != 0:
-                logger.warn("disconnect nvme nqn[%s] failed: %s" % (nqn, e))
+            for controller in self.get_nvme_subsystem_controllers(nqn):
+                if controller.transport == cmd.transport and controller.address == "traddr=%s,trsvcid=%s" % (cmd.ip, cmd.port):
+                    r, o, e = bash.bash_roe("timeout 60 nvme disconnect -d %s" % controller.name)
+                    if r != 0:
+                        logger.warn("disconnect nvme nqn[%s] failed: %s" % (nqn, e))
 
     @bash.in_bash
     def get_megaraid_devices_storcli(self, smart_scan_result):
