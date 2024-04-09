@@ -1211,9 +1211,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
         with lvm.OperateLv(dst_abs_path, shared=False):
-            current_size = int(lvm.get_lv_size(dst_abs_path))
-            if current_size < cmd.requiredSize:
-                lvm.extend_lv_from_cmd(dst_abs_path, cmd.requiredSize, cmd, extend_thin_by_specified_size=True)
+            lvm.extend_lv_from_cmd(dst_abs_path, cmd.requiredSize, cmd, extend_thin_by_specified_size=True, skip_if_sufficient=True)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
