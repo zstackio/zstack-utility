@@ -10453,31 +10453,41 @@ host side snapshot files chian:
                 return etree.tostring(interface)
 
         def _change_vf_ha_state_enable(vm, nic):
-            # attach vnic to vm
-            nic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
-            if nic_xml is None:
-                nic_xml = _build_xml_from_vf(vm, nic, nic_type='VNIC')
-                self.set_domain_network_device(vm.uuid, nic_xml, operate_type='attach')
+            # 1. attach temporary vnic to vm, and set link state to down
+            vnic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
+            if vnic_xml is None:
+                vnic_xml = _build_xml_from_vf(vm, nic, nic_type='VNIC')
+                self.set_domain_network_device(vm.uuid, vnic_xml, operate_type='attach')
             else:
                 self.set_domain_iflink_state(vm.uuid, '%s.1' % nic.nicInternalName, 'down')
 
+            # 2. just check vf is attached to vm, if not, attach it
             vf_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
             if vf_xml is None:
                 vf_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
                 self.set_domain_network_device(vm.uuid, vf_xml, operate_type='attach')
 
         def _change_vf_ha_state_disconnect(vm, nic):
+            # 1. set temporary vnic link state to up
             vnic_name = '%s.1' % nic.nicInternalName
             self.set_domain_iflink_state(vm.uuid, vnic_name, 'up')
+
+            # 2. detach vf from vm
             vf_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
             if vf_xml is not None:
                 self.set_domain_network_device(vm.uuid, vf_xml, operate_type='detach')
 
         def _change_vf_ha_state_reconnect(vm, nic):
-            nic_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
-            if nic_xml is None:
-                nic_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
-                self.set_domain_network_device(vm.uuid, nic_xml, operate_type='attach')
+            # 1. attach new vf to vm
+            vf_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
+            if vf_xml is None:
+                vf_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
+                self.set_domain_network_device(vm.uuid, vf_xml, operate_type='attach')
+
+            # 2. detach temporary vnic from vm
+            vnic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
+            if vnic_xml is not None:
+                self.set_domain_network_device(vm.uuid, vnic_xml, operate_type='detach')
 
         def _change_vf_ha_state_disable(vm, nic):
             nic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
