@@ -1274,10 +1274,14 @@ if misc.isHyperConvergedHost():
 else:
     kvmagent.register_prometheus_collector(collect_physical_cpu_state)
 
+class SetServiceTypeOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(SetServiceTypeOnHostNetworkInterfaceRsp, self).__init__()
 
 class PrometheusPlugin(kvmagent.KvmAgent):
 
     COLLECTD_PATH = "/prometheus/collectdexporter/start"
+    SET_SERVICE_TYPE_ON_HOST_NETWORK_INTERFACE = "/host/setservicetype/networkinterface"
 
     @kvmagent.replyerror
     @in_bash
@@ -1629,9 +1633,26 @@ WantedBy=multi-user.target
         else:
             PAGE_SIZE = int(output)
 
+    @kvmagent.replyerror
+    def set_service_type_on_host_network_interface(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = SetServiceTypeOnHostNetworkInterfaceRsp()
+        rsp.success = False
+
+        dev_name = cmd.interfaceName
+        if cmd.vlanId is not None and cmd.vlanId is not 0:
+            dev_name = '%s.%s' % (cmd.interfaceName, cmd.vlanId)
+
+        register_service_type(dev_name, cmd.serviceType)
+        rsp.success = True
+
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.COLLECTD_PATH, self.start_prometheus_exporter)
+        http_server.register_async_uri(self.SET_SERVICE_TYPE_ON_HOST_NETWORK_INTERFACE,
+                                       self.set_service_type_on_host_network_interface)
 
         self.init_global_config()
         self.install_colletor()

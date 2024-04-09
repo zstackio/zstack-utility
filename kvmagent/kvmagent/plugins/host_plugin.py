@@ -40,7 +40,6 @@ from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.report import Report
 import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
-from kvmagent.plugins.prometheus import get_service_type_map, register_service_type
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
@@ -227,10 +226,6 @@ class SetServiceTypeOnHostNetworkInterfaceCmd(kvmagent.AgentCommand):
         self.interfaceName = None
         self.vlanId = None
         self.serviceType = []
-
-class SetServiceTypeOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
-    def __init__(self):
-        super(SetServiceTypeOnHostNetworkInterfaceRsp, self).__init__()
 
 class HostPhysicalMemoryStruct(object):
     def __init__(self):
@@ -906,7 +901,7 @@ class HostPlugin(kvmagent.KvmAgent):
     CHECK_INTERFACE_VLAN = "/host/checkvlan/networkinterface"
     GET_INTERFACE_VLAN = "/host/getvlan/networkinterface"
     GET_INTERFACE_NAME = "/host/getname/networkinterface"
-    SET_SERVICE_TYPE_ON_HOST_NETWORK_INTERFACE = "/host/setservicetype/networkinterface"
+
     HOST_XFS_SCRAPE_PATH = "/host/xfs/scrape"
     HOST_SHUTDOWN = "/host/shutdown"
     HOST_REBOOT = "/host/reboot"
@@ -2142,21 +2137,6 @@ done
         rsp.interfaceNames = interface_names
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    def set_service_type_on_host_network_interface(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = SetServiceTypeOnHostNetworkInterfaceRsp()
-        rsp.success = False
-
-        dev_name = cmd.interfaceName
-        if cmd.vlanId is not None and cmd.vlanId is not 0:
-            dev_name = '%s.%s' % (cmd.interfaceName, cmd.vlanId)
-
-        register_service_type(dev_name, cmd.serviceType)
-        rsp.success = True
-
-        return jsonobject.dumps(rsp)
-
     @staticmethod
     def get_host_networking_interfaces(managementServerIp):
         nics = []
@@ -3300,7 +3280,7 @@ done
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
         http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
-        http_server.register_async_uri(self.SET_SERVICE_TYPE_ON_HOST_NETWORK_INTERFACE, self.set_service_type_on_host_network_interface)
+
         http_server.register_async_uri(self.CHECK_INTERFACE_VLAN, self.check_interface_vlan)
         http_server.register_async_uri(self.GET_INTERFACE_VLAN, self.get_interface_vlan)
         http_server.register_async_uri(self.GET_INTERFACE_NAME, self.get_interface_name)
