@@ -987,6 +987,8 @@ configure lldp status rx-only \n
         if cmd.oldVlan:
             old_vxlan_interface = 'vxlan%s' % cmd.oldVlan
         try:
+            if cmd.peers:
+                linux.delete_vxlan_fdbs([old_vxlan_interface], cmd.peers)
             linux.change_vxlan_interface(cmd.oldVlan, cmd.newVlan)
             linux.update_bridge_interface_configuration(old_vxlan_interface, new_vxlan_interface,
                                                         cmd.bridgeName, cmd.l2NetworkUuid)

@@ -2465,6 +2465,10 @@ def change_vxlan_interface(old_vni, new_vni):
         raise Exception("Failed to get details for VXLAN interface: {}".format(old_vxlan))
     new_vxlan = "vxlan" + str(new_vni)
     create_vxlan_interface(new_vni, vtep_ip, dst_port)
+    cmd = shell.ShellCmd("ip link set %s address `cat /sys/class/net/%s/address`" % (new_vxlan, old_vxlan))
+    cmd(is_exception=False)
+    cmd = shell.ShellCmd("ip link set {name} down".format(name=old_vxlan))
+    cmd(is_exception=False)
     cmd = shell.ShellCmd("ip link set {name} up".format(name=new_vxlan))
     cmd(is_exception=False)
     if cmd.return_code != 0:
