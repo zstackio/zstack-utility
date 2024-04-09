@@ -132,7 +132,7 @@ class AutoReporter(object):
                 return True
 
             percent = self.progress_getter()
-            if percent and str(percent).isdigit():
+            if str(percent).isdigit():
                 self.report.progress_report(str(percent), "report", self.detail_getter())
 
         linux.wait_callback_success(report, callback_data=None, timeout=self.timeout)
