@@ -18,6 +18,8 @@ import traceback
 import jinja2
 import urllib2
 
+from utils import log
+
 # set global default value
 start_time = datetime.datetime.now()
 logger = logging.getLogger("deploy-ha-Log")
@@ -222,7 +224,7 @@ def create_log(logger_dir, logger_file):
         os.makedirs(logger_dir)
     logger.setLevel(logging.DEBUG)
     fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    handler = logging_handlers.RotatingFileHandler(
+    handler = log.ZstackRotatingFileHandler(
         '%s/%s' % (logger_dir, logger_file),
         maxBytes=10 * 1024 * 1024,
         backupCount=30)
