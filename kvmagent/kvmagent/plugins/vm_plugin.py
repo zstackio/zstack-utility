@@ -6146,7 +6146,7 @@ class Vm(object):
         if cmd.additionalQmp:
             make_qemu_commandline()
 
-        if cmd.useHugePage or cmd.MemAccess in "shared":
+        if cmd.useHugePage or cmd.MemAccess in "shared" or cmd.noSharePages:
             make_memory_backing()
 
         if HOST_ARCH == "x86_64" and cmd.vmCpuVendorId and cmd.vmCpuVendorId != "None":
