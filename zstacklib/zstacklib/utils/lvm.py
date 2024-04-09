@@ -1385,12 +1385,12 @@ def extend_lv(path, extend_size, skip_if_sufficient=False):
                              (path, extend_size, r, o, e))
 
 @bash.in_bash
-def extend_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
+def extend_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False, skip_if_sufficient=False):
     # type: (str, long, object, bool) -> None
     if cmd.provisioning is None or \
             cmd.addons is None or \
             cmd.provisioning != VolumeProvisioningStrategy.ThinProvisioning:
-        extend_lv(path, size)
+        extend_lv(path, size, skip_if_sufficient)
         return
 
     current_size = int(get_lv_size(path))
@@ -1401,11 +1401,11 @@ def extend_lv_from_cmd(path, size, cmd, extend_thin_by_specified_size=False):
             size = v_size
         else:
             size = size + cmd.addons[thinProvisioningInitializeSize]
-        extend_lv(path, size)
+        extend_lv(path, size, skip_if_sufficient)
         return
 
     if int(size) - current_size > cmd.addons[thinProvisioningInitializeSize]:
-        extend_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize])
+        extend_lv(path, current_size + cmd.addons[thinProvisioningInitializeSize], skip_if_sufficient)
     else:
         extend_lv(path, size, True)
 
