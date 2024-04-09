@@ -10415,6 +10415,8 @@ host side snapshot files chian:
         DISCONNECTING = 'Disconnecting'
         RECONNECTING = 'Reconnecting'
 
+        ZERO_MAC = '00:00:00:00:00:00'
+
         def _check_nic_is_attached(vm, nic, interface_type=None):
             if interface_type not in ['bridge', 'hostdev']:
                 raise Exception('invalid interface type: %s' % interface_type)
@@ -10466,6 +10468,7 @@ host side snapshot files chian:
             if vf_xml is None:
                 vf_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
                 self.set_domain_network_device(vm.uuid, vf_xml, operate_type='attach')
+            shell.call('ip link set %s vf %s mac %s' % (pf_name, vf_index, nic.mac), exception=False)
 
         def _change_vf_ha_state_disconnect(vm, nic):
             # 1. set temporary vnic link state to up
@@ -10476,6 +10479,7 @@ host side snapshot files chian:
             vf_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
             if vf_xml is not None:
                 self.set_domain_network_device(vm.uuid, vf_xml, operate_type='detach')
+            shell.call('ip link set %s vf %s mac %s' % (pf_name, vf_index, ZERO_MAC), exception=False)
 
         def _change_vf_ha_state_reconnect(vm, nic):
             # 1. attach new vf to vm
@@ -10483,6 +10487,7 @@ host side snapshot files chian:
             if vf_xml is None:
                 vf_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
                 self.set_domain_network_device(vm.uuid, vf_xml, operate_type='attach')
+            shell.call('ip link set %s vf %s mac %s' % (pf_name, vf_index, nic.mac), exception=False)
 
             # 2. detach temporary vnic from vm
             vnic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
@@ -10506,6 +10511,8 @@ host side snapshot files chian:
 
         try:
             vm = _check_cmd(cmd)
+            pf_name = linux.get_pf_name_by_vf_pci_address(cmd.nic.pciDeviceAddress)
+            vf_index = linux.get_vf_index_by_pci_address(cmd.nic.pciDeviceAddress)
             if cmd.haState == ENABLED:
                 _change_vf_ha_state_enable(vm, cmd.nic)
             elif cmd.haState == DISCONNECTING:
