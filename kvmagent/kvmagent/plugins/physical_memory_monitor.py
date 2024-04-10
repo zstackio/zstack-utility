@@ -63,15 +63,19 @@ class PhysicalMemoryMonitor(kvmagent.KvmAgent):
 			zero error return: "edac-util: No errors to report."
 			non-zero error return: "csrow0: ch0: 43722040 Corrected Errors"
 		'''
-		r, o, e = bash.bash_roe("edac-util --report=default")
+		_, o, e = bash.bash_roe("edac-util --report=default", ret_code=-1)
+		# ret_code=-1 is just a hard code to get bash stderr!
 		# ZHCI-1484: The edac module will not be loaded in some env and command returns 'No memory controller data found',
 		# add a judgment to work around it.
 		# ZHCI-1502: 'No memory controller data found' may be output in std_out or std_error.
-		if r == 0 and not self.trigger_flag and ("No errors to report" not in str(o) and "No memory controller data found" not in str(o)+str(e)):
+
+		if "No memory controller data found" in str(o)+str(e):
+			self.trigger_flag = False
+		elif "No errors to report" in str(o)+str(e):
+			self.trigger_flag = False
+		elif not self.trigger_flag:
 			self.send_physical_memory_ecc_error_alarm_to_mn(o)
 			self.trigger_flag = True
-		else:
-			self.trigger_flag = False
 			
 		thread.timer(self.interval, self.monitor_physical_memory_ecc_error, args=[time_lock_now]).start()
 	
