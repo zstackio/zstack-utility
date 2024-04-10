@@ -7895,7 +7895,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         job_over = False
         @thread.AsyncThread
-        @linux.retry(times=10, sleep_time=1)
+        @linux.retry(times=10, sleep_time=0.5)
         def _touch_qmp_socket():
             if job_over:
                 return
