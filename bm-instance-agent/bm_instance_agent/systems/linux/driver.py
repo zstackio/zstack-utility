@@ -40,7 +40,7 @@ def _check_initiator_config(instance_uuid):
     stdout, stderr = processutils.trycmd(cmd, shell=True)
     if stderr:
         LOG.info("get iscsid status failed, try to restart iscsid service")
-        cmd = 'systemctl restart iscsid'
+        cmd = 'systemctl restart iscsid || service iscsid restart'
         processutils.execute(cmd, shell=True)
 
     conf_path = '/etc/iscsi/initiatorname.iscsi'
