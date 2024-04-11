@@ -2031,6 +2031,9 @@ def find_process_by_command(comm, cmdlines=None):
     for pid in pids:
         try:
             comm_path = os.readlink(os.path.join('/proc', pid, 'exe')).split(";")[0]
+            if comm_path.endswith("(deleted)") and not os.path.exists(comm_path):
+                comm_path = comm_path[0:-9].strip()
+
             if comm_path != comm and os.path.basename(comm_path) != comm:
                 continue
 
