@@ -29,6 +29,7 @@ import xml.dom.minidom as minidom
 #from typing import List, Any, Union
 from distutils.version import LooseVersion
 from collections import Counter
+from collections import deque
 
 import zstacklib.utils.ip as ip
 import zstacklib.utils.ebtables as ebtables
@@ -49,7 +50,7 @@ from zstacklib.utils import uuidhelper
 from zstacklib.utils import xmlobject
 from zstacklib.utils import xmlhook
 from zstacklib.utils import misc
-from zstacklib.utils import qemu_img, qemu
+from zstacklib.utils import qemu_img, qemu, qmp
 from zstacklib.utils import ebtables
 from zstacklib.utils import vm_operator
 from zstacklib.utils import pci
@@ -1208,7 +1209,7 @@ def is_qemu_support_migrate_with_bitmap(version):
     return LooseVersion(version) >= LooseVersion("4.2.0-640")
 
 def is_libvirt_support_migrate_with_bitmap(version):
-    return LooseVersion(version) < LooseVersion('6.0.0')
+    return LooseVersion(version) < LooseVersion('6.0.0') or LooseVersion(version) >= LooseVersion('8.0.0')
 
 def is_libvirt_support_blockdev(version):
     return LooseVersion(version) > LooseVersion('6.0.0')
@@ -3744,9 +3745,11 @@ class Vm(object):
         stage = get_task_stage(cmd)
         timeout = get_timeout(cmd)
         class MigrateDaemon(plugin.TaskDaemon):
-            def __init__(self, domain):
+            def __init__(self, domain, uuid):
                 super(MigrateDaemon, self).__init__(cmd, 'MigrateVm')
                 self.domain = domain
+                self.uuid = uuid
+                self.progress_status =deque(maxlen=60)
 
             def _get_percent(self):
                 try:
@@ -3780,6 +3783,15 @@ class Vm(object):
 
                         if remain == 0:
                             return result
+
+                        self.progress_status.append(remain)
+                        average = sum(self.progress_status) / len(self.progress_status)
+                        jobBlocked = len(self.progress_status) >= 60 and self.progress_status[0] == average
+                        jobRunning = self.progress_status[0] != 0
+                        if jobBlocked and jobRunning:
+                            raise kvmagent.BlockJobError(
+                                "the block job status is abnormal, details is ioHung. Please check backup storage and backup network.")
+
                         if self.progress_reporter.report.detail and self.progress_reporter.report.detail.hasattr('remain'):
                             speed = self.progress_reporter.report.detail.__getitem__('remain') - remain
                             remaining_migration_time = (remain / speed) if speed != 0 else self.progress_reporter.report.detail.__getitem__('remaining_migration_time')
@@ -3788,12 +3800,15 @@ class Vm(object):
                         return result
                 except libvirt.libvirtError:
                     pass
+                except kvmagent.BlockJobError as e:
+                    logger.error(e)
+                    self._cancel()
                 except:
                     logger.debug(linux.get_exception_stacktrace())
 
             def _cancel(self):
                 logger.debug('cancelling vm[uuid:%s] migration' % cmd.vmUuid)
-                self.domain.abortJob()
+                vm_block_job_cancel(self.uuid)
 
             def __exit__(self, exc_type, exc_val, exc_tb):
                 super(MigrateDaemon, self).__exit__(exc_type, exc_val, exc_tb)
@@ -3809,7 +3824,7 @@ class Vm(object):
         is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
         check_mirror_jobs(cmd.vmUuid, is_migrate_without_bitmaps)
 
-        with MigrateDaemon(self.domain):
+        with MigrateDaemon(self.domain, self.uuid):
             logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
             if storage_migration_required:
@@ -6138,17 +6153,6 @@ def _stop_world():
     http.AsyncUirHandler.STOP_WORLD = True
     VmPlugin.queue_singleton.queue.put("exit")
 
-def qmp_subcmd(s_cmd):
-    # object-add option props (removed in 6.0).
-    # Specify the properties for the object as top-level arguments instead.
-    if LooseVersion(QEMU_VERSION) >= LooseVersion("6.0.0") and re.match(r'.*object-add.*arguments.*props.*', s_cmd):
-            j_cmd = json.loads(s_cmd)
-            props = j_cmd.get("arguments").get("props")
-            j_cmd.get("arguments").pop("props")
-            j_cmd.get("arguments").update(props)
-            s_cmd = json.dumps(j_cmd)
-    return s_cmd
-
 def block_volume_over_incorrect_driver(volume):
     return volume.deviceType == "file" and volume.installPath.startswith("/dev/")
 
@@ -6172,9 +6176,8 @@ def iso_check(iso):
 
     return iso
 
-@in_bash
 def execute_qmp_command(domain_id, command):
-    return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, qmp_subcmd(command)))
+    return qmp.execute_qmp_command(domain_id, command)
 
 def get_vm_blocks(domain_id):
     r, o, e = execute_qmp_command(domain_id, '{ "execute": "query-block" }')
@@ -6230,12 +6233,10 @@ def get_vm_migration_caps(domain_id, cap_key):
 
 
 def check_mirror_jobs(domain_id, migrate_without_bitmaps):
-    isc = ImageStoreClient()
-    volumes = isc.query_mirror_volumes(domain_id)
-    if volumes:
-        for v in volumes.keys():
-            logger.info("stop mirror for %s:%s" % (domain_id, v))
-            isc.stop_mirror(domain_id, False, v)
+    try:
+        ImageStoreClient().stop_backup_jobs(domain_id)
+    except Exception as e:
+        raise kvmagent.KvmError('clear backup jobs error %s' % str(e))
 
     if not get_vm_migration_caps(domain_id, "dirty-bitmaps"):
         return
@@ -6270,6 +6271,41 @@ def check_install_path_by_qmp(domain_id, disk_name, path):
         return strs[0] in file_content and strs[1] in file_content
 
     return False
+
+
+def vm_block_job_cancel(vm):
+    retry_times = 30
+    interval = 2
+    for times in range(retry_times):
+        try:
+            job_ids = qmp.get_block_job_ids(vm)
+            if not job_ids:
+                logger.debug('Block job successfully cancelled.')
+                return
+            for job_id in job_ids:
+                qmp.block_job_cancel(vm, job_id)
+        except libvirt.libvirtError as e:
+            logger.debug('failed to cancel vm[uuid:%s] block copy, details is %s' % (vm, e))
+            return
+        time.sleep(interval)
+    vm_block_job_yank(vm)
+
+
+def vm_block_job_yank(vm):
+    if not qmp.do_yank(vm):
+        return
+
+    retry_times = 20
+    interval = 3
+    for times in range(retry_times):
+        try:
+            if not qmp.get_block_job_ids(vm):
+                logger.debug("Block job successfully cancelled.")
+                return
+        except libvirt.libvirtError as e:
+            logger.debug('failed to force cancel vm[uuid:%s] block copy, details is %s' % (vm, e))
+            return
+        time.sleep(interval)
 
 
 class LibvirtError(object):
@@ -7676,7 +7712,7 @@ class VmPlugin(kvmagent.KvmAgent):
             def _cancel(self):
                 logger.debug('cancelling vm[uuid:%s] blockCopy disk[%s]' % (vmUuid, self.disk_name))
                 # cancel block job async
-                self.domain.blockJobAbort(self.disk_name)
+                self.domain.blockJobAbort(self.disk_name, libvirt.VIR_DOMAIN_BLOCK_JOB_ABORT_ASYNC)
 
             def _get_percent(self):
                 # type: () -> int
@@ -8120,11 +8156,11 @@ host side snapshot files chian:
 
     def do_cancel_vm_backup_jobs(self, cmd):
         isc = ImageStoreClient()
-        isc.stop_vm_backup_jobs(cmd.vmUuid)
+        isc.stop_vm_backup_jobs(cmd.vmUuid, cmd.force)
 
     def do_cancel_volume_backup_job(self, cmd, drive):
         isc = ImageStoreClient()
-        isc.stop_volume_backup_job(cmd.vmUuid, drive)
+        isc.stop_volume_backup_job(cmd.vmUuid, drive, cmd.force)
 
     # returns list[VolumeBackupInfo]
     def do_take_volumes_backup(self, cmd, target_disks, bitmaps, dstdir):
@@ -8341,7 +8377,7 @@ host side snapshot files chian:
             target_disk, _ = vm._get_target_disk(cmd.volume)
             node_name = self.get_disk_device_name(target_disk)
             isc = ImageStoreClient()
-            isc.stop_mirror(cmd.vmUuid, cmd.complete, node_name)
+            isc.stop_mirror(cmd.vmUuid, cmd.complete, node_name, cmd.force)
         except Exception as e:
             content = traceback.format_exc()
             logger.warn("stop volume mirror failed: " + str(e) + '\n' + content)
