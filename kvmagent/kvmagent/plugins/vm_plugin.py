@@ -11257,6 +11257,35 @@ host side snapshot files chian:
             content = traceback.format_exc()
             logger.warn("traceback: %s" % content)
 
+    def _vm_shutdown_event_from_guest(self, conn, dom, event, detail, opaque):
+        try:
+            event = LibvirtEventManager.event_to_string(event)
+            if event not in (LibvirtEventManager.EVENT_SHUTDOWN,):
+                return
+
+            if detail != libvirt.VIR_DOMAIN_EVENT_SHUTDOWN_GUEST:
+                return
+
+            vm_uuid = dom.name()
+            logger.info("vm shutdown event from guest " + vm_uuid)
+            # this is an operation outside zstack, report it
+            url = self.config.get(kvmagent.SEND_COMMAND_URL)
+            if not url:
+                logger.warn('cannot find SEND_COMMAND_URL, unable to report shutdown event of vm[uuid:%s]' % vm_uuid)
+                return
+
+            @thread.AsyncThread
+            def report_to_management_node():
+                cmd = ReportVmShutdownEventCmd()
+                cmd.vmUuid = vm_uuid
+                syslog.syslog('report shutdown event for guest ' + vm_uuid)
+                http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportvmshutdown/from/guest'})
+
+            report_to_management_node()
+        except:
+            content = traceback.format_exc()
+            logger.warn("traceback: %s" % content)
+
     def _vm_start_event(self, conn, dom, event, detail, opaque):
         try:
             event = LibvirtEventManager.event_to_string(event)
@@ -11399,6 +11428,7 @@ host side snapshot files chian:
                                                   self._set_vnc_port_iptable_rule)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_REBOOT, self._vm_reboot_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_shutdown_event_from_guest)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_start_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_crashed_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
