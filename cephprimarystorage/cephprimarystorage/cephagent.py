@@ -67,7 +67,7 @@ class AgentResponse(object):
         self.error = error if error else ''
         self.totalCapacity = None
         self.availableCapacity = None
-        self.poolCapacities = None
+        self.poolCapacities = None  # type: list[CephPoolCapacity]
         self.type = None
 
     def set_err(self, err):
@@ -744,12 +744,28 @@ class CephAgent(plugin.TaskManager):
     def rollback_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         spath = self._normalize_install_path(cmd.snapshotPath)
+        rsp = RollbackSnapshotRsp()
+        self._set_capacity_to_response(rsp)
+
+        self.validate_snapshot_rollback(spath, rsp, cmd.capacityThreshold)
+
         driver = self.get_driver(cmd)
         driver.rollback_snapshot(cmd)
-        rsp = RollbackSnapshotRsp()
         rsp.size = self._get_file_size(spath)
-        self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
+
+    def validate_snapshot_rollback(self, spath, rsp, threshold=0.9):
+        if not threshold or threshold > 0.9:
+            threshold = 0.9
+
+        asize = self._get_file_actual_size(spath)
+        if asize is None:
+            return
+
+        pool_name = spath.split("/")[0]
+        for cap in rsp.poolCapacities:
+            if cap.name == pool_name and cap.usedCapacity + asize > cap.totalCapacity * threshold:
+                raise Exception("In the worst case, The rollback operation will exceed the 90%% capacity of the pool[%s]" % pool_name)
 
     @staticmethod
     def _wrap_shareable_cmd(cmd, cmd_string):
