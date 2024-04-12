@@ -414,20 +414,7 @@ class SanlockHealthChecker(AbstractStorageFencer):
     def update_vm_ha_params(self, vg_uuids):
         if len(vg_uuids) == 0:
             return
-
-        if not os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH):
-            return
-
-        with open(SHAREBLOCK_VM_HA_PARAMS_PATH, 'r+') as f:
-            cmd = f.read().strip()
-            if len(cmd) == 0:
-                return
-
-            cmd_json = json.loads(cmd)
-            cmd_json["vgUuids"] = vg_uuids
-            f.seek(0)
-            f.truncate(0)
-            f.write(jsonobject.dumps(cmd_json))
+        update_shareblock_vm_ha_params(vg_uuids)
 
     def firevg(self, vg_uuid):
         self.fired_vgs[vg_uuid] = time.time()
@@ -995,6 +982,37 @@ global_allow_fencer_rule = {} # type: dict[str, list]
 global_block_fencer_rule = {} # type: dict[str, list]
 global_fencer_rule_lock = threading.Lock()
 SHAREBLOCK_VM_HA_PARAMS_PATH = "/var/run/zstack/shareBlockVmHaParams"
+WRITE_SHAREBLOCKVMHAPARAMS_LOCK = threading.Lock()
+
+
+def create_shareblock_vm_ha_params(cmd):
+    with WRITE_SHAREBLOCKVMHAPARAMS_LOCK:
+        if os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH):
+            return
+        with open(SHAREBLOCK_VM_HA_PARAMS_PATH, "w") as f:
+            f.write(jsonobject.dumps(cmd))
+
+
+def update_shareblock_vm_ha_params(vg_uuids):
+    with WRITE_SHAREBLOCKVMHAPARAMS_LOCK:
+        if not os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH):
+            return
+        with open(SHAREBLOCK_VM_HA_PARAMS_PATH, 'r+') as f:
+            cmd = f.read().strip()
+            if len(cmd) == 0:
+                return
+
+            cmd_json = jsonobject.loads(cmd)
+            cmd_json["vgUuids"] = vg_uuids
+            f.seek(0)
+            f.truncate(0)
+            f.write(jsonobject.dumps(cmd_json))
+
+
+def remove_shareblock_vm_ha_params():
+    with WRITE_SHAREBLOCKVMHAPARAMS_LOCK:
+        if os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH):
+            os.remove(SHAREBLOCK_VM_HA_PARAMS_PATH)
 
 def add_fencer_rule(cmd):
     with global_fencer_rule_lock:
@@ -1570,8 +1588,8 @@ class HaPlugin(kvmagent.KvmAgent):
     def cancel_sharedblock_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.cancel_fencer(cmd.vgUuid)
-        if os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH) and len(self.sblk_health_checker.all_vgs) == 0:
-            os.remove(SHAREBLOCK_VM_HA_PARAMS_PATH)
+        if len(self.sblk_health_checker.all_vgs) == 0:
+            remove_shareblock_vm_ha_params()
         return jsonobject.dumps(AgentRsp())
 
     def do_heartbeat_on_sharedblock(self, cmd):
@@ -1744,9 +1762,7 @@ class HaPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def setup_sharedblock_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if not os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH):
-            with open(SHAREBLOCK_VM_HA_PARAMS_PATH, 'w') as f:
-                f.write(jsonobject.dumps(cmd))
+        create_shareblock_vm_ha_params(cmd)
 
         self.setup_sharedblock_self_fencer_from_json(cmd)
         return jsonobject.dumps(AgentRsp())
