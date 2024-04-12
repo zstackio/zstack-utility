@@ -768,22 +768,26 @@ class CephAgent(plugin.TaskManager):
         rsp = RollbackSnapshotRsp()
         self._set_capacity_to_response(rsp)
 
-        self.validate_snapshot_rollback(spath, rsp)
+        self.validate_snapshot_rollback(spath, rsp, cmd.capacityThreshold)
 
         driver = self.get_driver(cmd)
         driver.rollback_snapshot(cmd)
         rsp.size = self._get_file_size(spath)
         return jsonobject.dumps(rsp)
 
-    def validate_snapshot_rollback(self, spath, rsp):
+    def validate_snapshot_rollback(self, spath, rsp, threshold=0.9):
+        if not threshold or threshold > 0.9:
+            threshold = 0.9
+
         asize = self._get_file_actual_size(spath)
         if asize is None:
             return
 
         pool_name = spath.split("/")[0]
         for cap in rsp.poolCapacities:
-            if cap.name == pool_name and cap.usedCapacity + asize > cap.totalCapacity * 0.9:
-                raise Exception("In the worst case, The rollback operation will exceed the 90%% capacity of the pool[%s]" % pool_name)
+            if cap.name == pool_name and cap.usedCapacity + asize > cap.totalCapacity * threshold:
+                raise Exception("In the worst case, The rollback operation will exceed pool[%s] capacity threshold %d%%"
+                                % (pool_name, threshold * 100))
 
     @staticmethod
     def _wrap_shareable_cmd(cmd, cmd_string):
