@@ -781,9 +781,8 @@ class CephAgent(plugin.TaskManager):
             return
 
         pool_name = spath.split("/")[0]
-        if pool_name in rsp.poolCapacities:
-            cap = rsp.poolCapacities[pool_name]
-            if cap.usedCapacity + asize > cap.totalCapacity * 0.9:
+        for cap in rsp.poolCapacities:
+            if cap.name == pool_name and cap.usedCapacity + asize > cap.totalCapacity * 0.9:
                 raise Exception("In the worst case, The rollback operation will exceed the 90%% capacity of the pool[%s]" % pool_name)
 
     @staticmethod
