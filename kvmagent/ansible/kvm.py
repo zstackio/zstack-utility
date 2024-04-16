@@ -233,7 +233,8 @@ def install_kvm_pkg():
         cube_rpm_mapping = {
             'x86_64_centos': "lm_sensors",
             'aarch64_kylin': "lm_sensors edac-utils",
-            'x86_64_kylin': "lm_sensors edac-utils Arcconf"
+            'x86_64_kylin': "lm_sensors edac-utils Arcconf",
+            'x86_64_rocky': "lm_sensors"
         }
 
         # handle zstack_repo
