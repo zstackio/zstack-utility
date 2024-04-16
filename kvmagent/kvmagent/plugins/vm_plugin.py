@@ -4694,8 +4694,11 @@ class Vm(object):
             backing = e(root, 'memoryBacking')
             if cmd.useHugePage:
                 e(backing, "hugepages")
-                e(backing, "nosharepages")
                 e(backing, "allocation", attrib={'mode': 'immediate'})
+
+            if cmd.noSharePages or cmd.useHugePage:
+                e(backing, "nosharepages")
+
             if cmd.MemAccess in "shared":
                 # <access mode="shared|private"/>
                 e(backing, "access", attrib={'mode': 'shared'})

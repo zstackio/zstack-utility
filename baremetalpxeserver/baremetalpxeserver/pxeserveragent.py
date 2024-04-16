@@ -315,11 +315,12 @@ menuentry 'ZStack Get Bare Metal Chassis Hardware Info' --class fedora --class g
             f.write(grub_cfg)
 
         # remove symlink if exists
-        if os.path.exists(self.UEFI_BOOT_GRUB_CFG):
+        if os.path.exists(self.UEFI_BOOT_GRUB_CFG) and os.path.islink(self.UEFI_BOOT_GRUB_CFG):
             os.remove(self.UEFI_BOOT_GRUB_CFG)
 
         # create link for grub.cfg (for get baremetal hardinfo)
         rel_path = os.path.relpath(self.UEFI_DEFAULT_GRUB_CFG, os.path.dirname(self.UEFI_BOOT_GRUB_CFG))
+
         os.symlink(rel_path, self.UEFI_BOOT_GRUB_CFG)
 
         # init inspector_ks.cfg
@@ -532,7 +533,7 @@ menuentry 'Install OS on Bare Metal Instance' --class fedora --class gnu-linux -
         grub_link_cfg_file = os.path.join(self.TFTPBOOT_PATH, "grub.cfg-01-" + ks_cfg_name)
 
         # remove symlink if exists
-        if os.path.exists(grub_link_cfg_file):
+        if os.path.exists(grub_link_cfg_file) and os.path.islink(grub_link_cfg_file):
             os.remove(grub_link_cfg_file)
 
         rel_path = os.path.relpath(grub_cfg_file, os.path.dirname(grub_link_cfg_file))
