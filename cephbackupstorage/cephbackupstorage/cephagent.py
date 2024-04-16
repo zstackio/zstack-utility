@@ -315,6 +315,13 @@ def get_boundary(entity):
     return ib
 
 
+def get_image_format_from_header(ioctx, image_name):
+    qcow2_length = 0x9007
+    ifo = ImageFileObject(rbd.Image(ioctx, image_name))
+    buf = ifo.read(qcow2_length)
+    return get_image_format_from_buf(buf)
+
+
 def get_image_format_from_buf(qhdr):
     if qhdr[:4] == 'QFI\xfb':
         if qhdr[16:20] == '\x00\x00\x00\00':
@@ -396,7 +403,7 @@ def stream_body(entity, boundary, param, task, ioctx):
                  (param.image_uuid, param.slice_index, param.slice_offset, param.slice_size))
 
 
-def complete_upload(task):
+def complete_upload(task, ioctx):
     # type: (UploadTask) -> None
     try:
         file_format = linux.get_img_fmt('rbd:' + task.tmpPath)
@@ -433,6 +440,9 @@ def complete_upload(task):
 
     if task.lastError:
         raise Exception(task.lastError)
+
+    _, img_name = task.dstPath.split('/')
+    task.image_format = get_image_format_from_header(ioctx, img_name)
     task.success()
 
 
@@ -806,7 +816,10 @@ class CephAgent(object):
         self.upload_slice(req.body, upload_param, task)
 
         if task.allow_image_completing():
-            complete_upload(task)
+            pool, img_name = task.dstPath.split('/')
+            ioctx = self.get_ioctx(pool)
+            complete_upload(task, ioctx)
+
 
     @staticmethod
     def get_upload_param(req_header):
