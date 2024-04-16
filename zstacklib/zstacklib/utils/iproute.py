@@ -85,12 +85,12 @@ class NamespaceAlreadyExists(RuntimeError):
 
 class InvalidScope(RuntimeError):
     def __init__(self, scope):
-        super(NoSuchScope, self).__init__("Scope : %(scope)s is invalid." % {'scope': scope})
+        super(InvalidScope, self).__init__("Scope : %(scope)s is invalid." % {'scope': scope})
         self.scope = scope
 
 class InvalidIpVersion(RuntimeError):
     def __init__(self, ip_version):
-        super(NoSuchScope, self).__init__("IpVersion : %(ip_version)s is invalid." % {'ip_version': ip_version})
+        super(InvalidIpVersion, self).__init__("IpVersion : %(ip_version)s is invalid." % {'ip_version': ip_version})
         self.ip_version = ip_version
 
 class NoSuchLinkDevice(RuntimeError):
