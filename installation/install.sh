@@ -2474,6 +2474,12 @@ install_zops(){
     fi
 }
 
+install_apps_market_server(){
+    echo_title "Install or upgrade apps market"
+    echo ""
+    show_spinner is_install_apps_market_server
+}
+
 setup_install_param(){
     echo_title "Setup Install Parameters"
     echo ""
@@ -3194,6 +3200,12 @@ is_upgrade_zops(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     zops_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/zops -name "zops-installer*" | head -n 1`
     bash $zops_installer_bin upgrade >>$ZSTACK_INSTALL_LOG 2>&1
+    [ $? -eq 0 ] && pass
+}
+
+is_install_apps_market_server(){
+    apps_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE -name "appsmarket-server*" | head -n 1`
+    bash $apps_installer_bin >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -eq 0 ] && pass
 }
 
@@ -4281,6 +4293,9 @@ if [ x"$UPGRADE" = x'y' ]; then
     #Upgrade or install zops
     install_zops
 
+    #Install apps-market-server
+    install_apps_market_server
+
     #Setup audit.rules
     setup_audit_file
 
@@ -4520,6 +4535,9 @@ fi
 
 #Install/Upgrade zops
 install_zops
+
+#Install apps-market-server
+install_apps_market_server
 
 echo ""
 echo_star_line
