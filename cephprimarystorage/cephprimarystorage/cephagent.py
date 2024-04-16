@@ -511,8 +511,9 @@ class CephAgent(plugin.TaskManager):
                     total_size += int(item.used_size)
                 return total_size
 
-        r, size = bash.bash_ro("rbd du %s | awk 'END {if(NF==3) {print $3} else {print $4,$5} }' | sed s/[[:space:]]//g" % path, pipe_fail=True)
+        r, size, e = bash.bash_roe("rbd du %s | awk 'END {if(NF==3) {print $3} else {print $4,$5} }' | sed s/[[:space:]]//g" % path, pipe_fail=True)
         if r != 0:
+            logger.warn("failed to get actual size of %s, because %s" % (path, e))
             return None
 
         size = size.strip()
@@ -857,6 +858,7 @@ class CephAgent(plugin.TaskManager):
         if do_create:
             driver = self.get_driver(cmd)
             rsp = driver.create_snapshot(cmd, rsp)
+            rsp.actualSize = self._get_file_actual_size(spath)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
