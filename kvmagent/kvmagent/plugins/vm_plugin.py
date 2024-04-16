@@ -681,6 +681,16 @@ class ReportVmStateCmd(object):
 class ReportVmShutdownEventCmd(object):
     def __init__(self):
         self.vmUuid = None
+        self.detail = ''
+        self.opaque = None
+
+    def set_detail_with_libvirt_code(self, shutdown_detail_code):
+        if shutdown_detail_code == libvirt.VIR_DOMAIN_EVENT_SHUTDOWN_FINISHED:
+            self.detail = 'finished'
+        elif shutdown_detail_code == libvirt.VIR_DOMAIN_EVENT_SHUTDOWN_GUEST:
+            self.detail = 'by guest'
+        elif shutdown_detail_code == libvirt.VIR_DOMAIN_EVENT_SHUTDOWN_HOST:
+            self.detail = 'by host'
 
 class ReportVmStartEventCmd(object):
     def __init__(self):
@@ -10769,7 +10779,10 @@ host side snapshot files chian:
             def report_to_management_node():
                 cmd = ReportVmShutdownEventCmd()
                 cmd.vmUuid = vm_uuid
-                syslog.syslog('report shutdown event for vm ' + vm_uuid)
+                cmd.set_detail_with_libvirt_code(detail)
+                cmd.opaque = opaque
+
+                syslog.syslog('report shutdown event for vm ' + vm_uuid + ' with detail: ' + cmd.detail)
                 http.json_dump_post(url, cmd, {'commandpath': '/kvm/reportvmshutdown'})
 
             report_to_management_node()
