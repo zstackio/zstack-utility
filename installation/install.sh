@@ -4288,15 +4288,14 @@ fi
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
+    #Install apps-market-server
+    install_apps_market_server
 
     #only upgrade zstack
     upgrade_zstack
 
     #Upgrade or install zops
     install_zops
-
-    #Install apps-market-server
-    install_apps_market_server
 
     #Setup audit.rules
     setup_audit_file
@@ -4465,6 +4464,9 @@ fi
 #Install license
 install_license
 
+#Install apps-market-server
+install_apps_market_server
+
 #Start ${PRODUCT_NAME} 
 if [ -z $NOT_START_ZSTACK ]; then
     start_zstack
@@ -4537,9 +4539,6 @@ fi
 
 #Install/Upgrade zops
 install_zops
-
-#Install apps-market-server
-install_apps_market_server
 
 echo ""
 echo_star_line
