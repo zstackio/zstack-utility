@@ -2477,6 +2477,7 @@ install_zops(){
 install_apps_market_server(){
     echo_title "Install or upgrade apps market"
     echo ""
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     show_spinner is_install_apps_market_server
 }
 
@@ -3204,6 +3205,7 @@ is_upgrade_zops(){
 }
 
 is_install_apps_market_server(){
+    echo_subtitle "Install application market"
     apps_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE -name "appsmarket-server*" | head -n 1`
     bash $apps_installer_bin >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -eq 0 ] && pass
