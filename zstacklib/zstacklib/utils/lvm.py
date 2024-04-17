@@ -1573,14 +1573,11 @@ def refresh_lv_uuid_cache_if_need():
 
 
 def lv_uuid(path):
-    if path in lv_uuid_cache:
-        return lv_uuid_cache.get(path)
     cmd = shell.ShellCmd("lvs --nolocking -t --noheadings %s -ouuid" % path)
     cmd(is_exception=False)
     uuid = cmd.stdout.strip()
     if cmd.return_code == 0 and uuid != '':
-        lv_uuid_cache.update({path: uuid})
-    return uuid
+        return uuid
 
 
 def lv_is_active(lv_path):
@@ -1589,6 +1586,12 @@ def lv_is_active(lv_path):
     if r == 0:
         return True
     return os.path.exists(lv_path)
+
+
+def get_lv_attr(lv_path, *attr):
+    o = bash.bash_o("lvs --nolocking -t --noheadings %s -o%s --reportformat json" % (lv_path, ",".join(attr)))
+    o = simplejson.loads(o)
+    return o["report"][0]["lv"][0]
 
 
 @bash.in_bash
@@ -1719,19 +1722,22 @@ def get_new_snapshot_name(absolutePath, remove_oldest=True):
 def get_lv_locking_type(path):
     @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
     def _get_lv_locking_type(path):
-        output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
+        output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % uuid)
         return LvmlockdLockType.from_abbr(output.strip(), raise_exception=True)
 
     locking_type = LvmlockdLockType.NULL
     active = None
+    uuid = None
     with lock.NamedLock(path.split("/")[-1]):
         try:
-            active = lv_is_active(path)
+            attr = get_lv_attr(path, "lv_uuid", "lv_active")
+            uuid = attr.get("lv_uuid")
+            active = attr.get("lv_active") == "active"
             if not active:
                 return locking_type
             locking_type = _get_lv_locking_type(path)
         except Exception as e:
-            output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % lv_uuid(path))
+            output = bash.bash_o("lvmlockctl -i | grep %s | head -n1 | awk '{print $3}'" % uuid)
             locking_type = LvmlockdLockType.from_abbr(output.strip(), raise_exception=False)
             if active is True and locking_type == LvmlockdLockType.NULL:
                 # NOTE(weiw): this usually because of manipulation of locking by hand
