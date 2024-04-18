@@ -2405,9 +2405,9 @@ sp_setup_install_param(){
     if [ x"$SANYUAN_INSTALL" = x"y" ];then
         zstack-ctl configure identity.init.type="PRIVILEGE_ADMIN"
         zstack-ctl configure sanyuan.installed=true
-	cpu_over_provisioning_ratio_config_file = $ZSTACK_INSTALL_ROOT/apache-tomcat/webapps/zstack/WEB-INF/classes/globalConfig/host.xml
-	sed -i '/The over provisioning ratio for CPU number/{n;d}' ${cpu_over_provisioning_ratio_config_file}
-	sed -i '/The over provisioning ratio for CPU number/a\        <defaultValue>1</defaultValue>' ${cpu_over_provisioning_ratio_config_file}
+        cpu_over_provisioning_ratio_config_file=$ZSTACK_INSTALL_ROOT/apache-tomcat/webapps/zstack/WEB-INF/classes/globalConfig/host.xml
+        sed -i '/The over provisioning ratio for CPU number/{n;d}' ${cpu_over_provisioning_ratio_config_file}
+        sed -i '/The over provisioning ratio for CPU number/a\        <defaultValue>1</defaultValue>' ${cpu_over_provisioning_ratio_config_file}
     fi
 
     # Port 9090 is already used by system service on KylinOS(ft2000)
