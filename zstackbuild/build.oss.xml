@@ -71,7 +71,6 @@
     <import file="${basedir}/projects/zstack-cephb.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephp.xml" optional="false" />
     <import file="${basedir}/projects/zstack-baremetalpxeserver.xml" optional="false" />
-    <import file="${basedir}/projects/zstack-appbuildsystem.xml" optional="false" />
     <import file="${basedir}/projects/zstack-console-proxy.xml" optional="false" />
     <import file="${basedir}/projects/zstack-setting.xml" optional="false" />
     <import file="${basedir}/projects/zstack-testagent.xml" optional="false" />
@@ -289,9 +288,6 @@
                 <antcall target="build-baremetalpxeserver"/>
             </sequential>
             <sequential>
-                <antcall target="build-appbuildsystem"/>
-            </sequential>
-            <sequential>
                 <antcall target="build-zstack-vyos"/>
             </sequential>
         </parallel>
@@ -369,9 +365,6 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-baremetalpxeserver"/>
-            </sequential>
-            <sequential>
-                <antcall target="assemble-appbuildsystem"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-zstack-vyos"/>
