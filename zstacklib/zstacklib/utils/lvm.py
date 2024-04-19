@@ -7,6 +7,7 @@ import time
 import traceback
 import weakref
 import re
+import warnings
 import datetime
 import xml.etree.ElementTree as etree
 
@@ -30,6 +31,8 @@ logger = log.get_logger(__name__)
 LV_RESERVED_SIZE = 1024*1024*4
 LVM_CONFIG_PATH = "/etc/lvm"
 LVM_CONFIG_FILE = '/etc/lvm/lvm.conf'
+LVM_LOCAL_CONFIG_FILE = '/etc/lvm/lvmlocal.conf'
+LVM_CONFIG_TMP_FILE = '/etc/lvm/lvm.conf.tmp'
 SANLOCK_CONFIG_FILE_PATH = "/etc/sanlock/sanlock.conf"
 DEB_SANLOCK_CONFIG_FILE_PATH = "/etc/default/sanlock"
 LIVE_LIBVIRT_XML_DIR = "/var/run/libvirt/qemu"
@@ -586,7 +589,28 @@ def reset_lvm_conf_default():
     cmd(is_exception=False)
 
 
+
+def get_lvm_default_config():
+    class Config():
+        def __init__(self, config_str):
+            self.config_str = config_str
+
+        def modify(self, config_dict):
+            for keyword in config_dict:
+                self.config_str = re.sub(r'.*%s.*' % keyword, "%s=%s" % (keyword, config_dict[keyword]), self.config_str)
+
+        def write_to_file(self, path, create_if_not_exist=True):
+            linux.write_file(path, self.config_str, create_if_not_exist=create_if_not_exist)
+
+    @linux.retry(3, 1)
+    def _get_config():
+        return bash.bash_errorout("lvmconfig --type default")
+
+    return Config(_get_config())
+
+
 def config_lvm_by_sed(keyword, entry, files):
+    warnings.warn("config_lvm_by_sed() is deprecated", DeprecationWarning)
     if not os.path.exists(LVM_CONFIG_PATH):
         raise Exception("can not find lvm config path: %s, config lvm failed" % LVM_CONFIG_PATH)
 
@@ -612,7 +636,7 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
         for f in files:
             bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
             bash.bash_r("sed -i 's/.*\\b%s.*/global_%s/g' %s/%s" % ("global_filter", filter_str, LVM_CONFIG_PATH, f))
-        linux.sync_file(LVM_CONFIG_FILE)
+            linux.sync_file(os.path.join(LVM_CONFIG_PATH, f))
         return
 
     filter_str = 'filter=["r|\\/dev\\/cdrom|"'
@@ -626,7 +650,7 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
 
     for f in files:
         bash.bash_r("sed -i 's/.*\\b%s.*/%s/g' %s/%s" % ("filter", filter_str, LVM_CONFIG_PATH, f))
-    linux.sync_file(LVM_CONFIG_FILE)
+        linux.sync_file(os.path.join(LVM_CONFIG_PATH, f))
 
 
 def modify_sanlock_config(key, value):

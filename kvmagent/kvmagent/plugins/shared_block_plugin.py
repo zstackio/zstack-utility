@@ -3,6 +3,7 @@ import os.path
 import re
 import random
 import traceback
+import difflib
 
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
@@ -615,22 +616,31 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         def config_lvm(host_id, enableLvmetad=False):
             lvm.backup_lvm_config()
-            lvm.reset_lvm_conf_default()
-            lvm.config_lvm_by_sed("use_lvmlockd", "use_lvmlockd=1", ["lvm.conf", "lvmlocal.conf"])
-            if enableLvmetad:
-                lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=1", ["lvm.conf", "lvmlocal.conf"])
-            else:
-                lvm.config_lvm_by_sed("use_lvmetad", "use_lvmetad=0", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("host_id", "host_id=%s" % host_id, ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("sanlock_lv_extend", "sanlock_lv_extend=%s" % DEFAULT_SANLOCK_LV_SIZE, ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("lvmlockd_lock_retries", "lvmlockd_lock_retries=6", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("issue_discards", "issue_discards=0", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("reserved_stack", "reserved_stack=256", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=131072", ["lvm.conf", "lvmlocal.conf"])
+            config = lvm.get_lvm_default_config()
+            config.modify({
+                "use_lvmlockd": 1,
+                "host_id": host_id,
+                "sanlock_lv_extend": DEFAULT_SANLOCK_LV_SIZE,
+                "lvmlockd_lock_retries": 6,
+                "issue_discards": 0,
+                "reserved_stack": 256,
+                "reserved_memory": 131072,
+                "use_lvmetad": 1 if enableLvmetad else 0
+            })
             if kvmagent.get_host_os_type() == "debian":
-                lvm.config_lvm_by_sed("udev_rules", "udev_rules=0", ["lvm.conf", "lvmlocal.conf"])
-                lvm.config_lvm_by_sed("udev_sync", "udev_sync=0", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_filter(["lvm.conf", "lvmlocal.conf"], preserve_disks=allDiskPaths)
+                config.modify({"udev_rules": 0, "udev_sync": 0})
+            config.write_to_file(lvm.LVM_CONFIG_TMP_FILE)
+            lvm.config_lvm_filter([os.path.basename(lvm.LVM_CONFIG_TMP_FILE)], preserve_disks=allDiskPaths)
+
+            new_config = linux.read_file(lvm.LVM_CONFIG_TMP_FILE)
+            old_config = linux.read_file(lvm.LVM_LOCAL_CONFIG_FILE)
+            diff = list(difflib.unified_diff(old_config.splitlines() if old_config is not None else [], new_config.splitlines()))
+            if len(diff) == 0:
+                logger.debug("lvm config has not changed")
+            else:
+                linux.write_file(lvm.LVM_CONFIG_FILE, new_config, create_if_not_exist=True)
+                linux.write_file(lvm.LVM_LOCAL_CONFIG_FILE, new_config, create_if_not_exist=True)
+                logger.debug("lvm config has changed:\n %s" % '\n'.join(diff))
 
             lvm.modify_sanlock_config("sh_retries", 20)
             lvm.modify_sanlock_config("logfile_priority", 7)
