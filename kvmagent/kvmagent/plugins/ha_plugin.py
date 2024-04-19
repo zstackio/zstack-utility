@@ -999,10 +999,10 @@ def update_shareblock_vm_ha_params(vg_uuids):
             return
         with open(SHAREBLOCK_VM_HA_PARAMS_PATH, 'r+') as f:
             cmd = f.read().strip()
-            if len(cmd) == 0:
+            if len(cmd) == 0 or cmd == '{}':
                 return
 
-            cmd_json = jsonobject.loads(cmd)
+            cmd_json = json.loads(cmd)
             cmd_json["vgUuids"] = vg_uuids
             f.seek(0)
             f.truncate(0)
