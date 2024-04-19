@@ -90,9 +90,9 @@ releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
 
 # get remote host arch
-IS_AARCH64 = host_info.host_arch == 'aarch64'
-IS_MIPS64EL = host_info.host_arch == 'mips64el'
-IS_LOONGARCH64 = host_info.host_arch == 'loongarch64'
+IS_AARCH64 = host_info.host_arch.rstrip() == 'aarch64'
+IS_MIPS64EL = host_info.host_arch.rstrip() == 'mips64el'
+IS_LOONGARCH64 = host_info.host_arch.rstrip() == 'loongarch64'
 
 repo_dir = "/opt/zstack-dvd/{}".format(host_info.host_arch)
 if isZYJ == "false" and not os.path.isdir(repo_dir):
@@ -909,10 +909,12 @@ def do_kvm_host_config():
     run_remote_command(command, host_post_info, False, False, isZYJ)
 
     # aarch64 zyj does not support iptables currently
-    if host_info.host_arch == "aarch64":
+    if IS_AARCH64:
+        banner("bannder skip restart iptables")
         return
 
-    command = "systemctl list-unit-files iptables.service  | grep \"0 unit files\" || systemctl is-active iptables | grep -q inactive && systemctl restart iptables"
+    banner("restart iptables on x86 zyj")
+    command = "systemctl is-active iptables | grep -q inactive && systemctl restart iptables"
     host_post_info.post_label = "ansible.shell.do.zyj.host.config"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info, False, False, isZYJ)
