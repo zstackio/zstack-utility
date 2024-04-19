@@ -100,7 +100,7 @@ class ImageStoreClient(object):
         with linux.ShowLibvirtErrorOnException(vm):
             cmdstr = '%s stopmirr -force=%s -domain %s -delbitmap=%s -drive "%s"' % \
                      (self.ZSTORE_CLI_PATH, force, vm, complete, node)
-            shell.check_run(cmdstr)
+            shell.call(cmdstr)
 
     def query_mirror_volumes(self, vm):
         with linux.ShowLibvirtErrorOnException(vm):

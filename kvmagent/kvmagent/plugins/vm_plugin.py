@@ -6312,6 +6312,9 @@ def _stop_world():
 def block_volume_over_incorrect_driver(volume):
     return volume.deviceType == "file" and volume.installPath.startswith("/dev/")
 
+def volume_support_block_node(volume):
+    return volume.deviceType != "vhost"
+
 def file_volume_check(volume):
     # `file` support has been removed with block/char devices since qemu-6.0.0
     # https://github.com/qemu/qemu/commit/8d17adf34f501ded65a106572740760f0a75577c
@@ -7590,9 +7593,10 @@ class VmPlugin(kvmagent.KvmAgent):
                     return jsonobject.dumps(rsp)
                 raise kvmagent.KvmError('unable to find data volume[%s] on vm[uuid:%s]' % (volume.installPath, vm.uuid))
 
-            node_name = self.get_disk_device_name(target_disk)
-            isc = ImageStoreClient()
-            isc.stop_mirror(cmd.vmInstanceUuid, True, node_name)
+            if volume_support_block_node(volume):
+                node_name = self.get_disk_device_name(target_disk)
+                isc = ImageStoreClient()
+                isc.stop_mirror(cmd.vmInstanceUuid, True, node_name)
 
             vm.detach_data_volume(volume)
         except kvmagent.KvmError as e:
