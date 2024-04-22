@@ -3704,7 +3704,7 @@ class Vm(object):
             parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
             parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
             if bandwidth != 0:
-                parameter_map[libvirt.VIR_MIGRATE_PARAM_BANDWIDTH] = bandwidth
+                parameter_map[libvirt.VIR_MIGRATE_PARAM_BANDWIDTH] = (bandwidth + len(disks) - 1) // len(disks)
         else:
             disks, destXml = self._build_domain_new_xml({})
         logger.debug("migrate dest xml:%s" % destXml)
