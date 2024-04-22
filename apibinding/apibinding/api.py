@@ -99,7 +99,7 @@ class Api(object):
             logger.warn(
                 'Logout session[uuid:%s] failed because %s' % (session_uuid, self._error_code_to_string(reply.error)))
 
-    def async_call_wait_for_complete(self, apicmd, apievent=None, exception_on_error=True, interval=500, fail_soon=False):
+    def async_call_wait_for_complete(self, apicmd, apievent=None, exception_on_error=True, interval=500, fail_soon=False, headers={}):
         # try to find event class from inventory.py for masking sensitive fields
         def create_event(apicmd):
             if not apicmd:
@@ -132,7 +132,7 @@ class Api(object):
         cmd = {apicmd.FULL_NAME: apicmd}
         log_cmd = '{"%s": "%s"}' % (apicmd.FULL_NAME, log.mask_sensitive_field(apicmd, jsonobject.dumps(apicmd)))
         logger.debug("async call[url: %s, request: %s]" % (self.api_url, log_cmd))
-        jstr = http.json_dump_post(self.api_url, cmd, fail_soon=fail_soon, print_curl=self.curl)
+        jstr = http.json_dump_post(self.api_url, cmd, headers=headers, fail_soon=fail_soon, print_curl=self.curl)
         rsp = jsonobject.loads(jstr)
         if rsp.state == 'Done':
             logger.debug("async call[url: %s, response: %s]" % (self.api_url, mask_result(apievent, rsp.result)))
