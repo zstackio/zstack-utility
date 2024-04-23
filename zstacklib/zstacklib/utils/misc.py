@@ -74,7 +74,10 @@ def isHyperConvergedHost():
         return True
 
     if os.path.exists("/usr/local/hyperconverged/conf/deployed_info"):
-        return True
+        with open('/usr/local/hyperconverged/conf/deployed_info', 'r') as f:
+            content = f.read()
+            if 'cloud' not in content:
+                return True
 
     return False
 
