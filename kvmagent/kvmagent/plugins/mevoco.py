@@ -1204,7 +1204,7 @@ mimetype.assign = (
             windows_meta_data_password = os.path.join(root, 'password')
             with open(windows_meta_data_password, 'w') as fd:
                 fd.write('')
-        
+
         if to.agentConfig:
             pvpanic_file_path = os.path.join(meta_root, 'pvpanic')
             with open(pvpanic_file_path, 'w') as fd:
@@ -1417,7 +1417,7 @@ mimetype.assign = (
                 lst = []
                 namespace_dhcp[d.namespaceName] = lst
             lst.append(d)
-        
+
         self.do_apply_dhcp(namespace_dhcp, cmd.rebuild)
         rsp = ApplyDhcpRsp()
         return jsonobject.dumps(rsp)
@@ -1536,7 +1536,10 @@ dhcp-range={{g}}
             if dinfo4 is not None:
                 ranges.append("%s,static" % dinfo4.gateway)
             if dinfo6 is not None:
-                ranges.append(dinfo6.firstIp + "," + dinfo6.endIp + ",static," + str(dinfo6.prefixLength) + ",24h",)
+                dhcp_range = '%s,%s,static,%s,24h' % (dinfo6.firstIp, dinfo6.endIp, dinfo6.prefixLength)
+                ra_param = '\nenable-ra' \
+                           '\nra-param=inner%s,0,0' % br_num
+                ranges.append(dhcp_range + ra_param if dinfo6.enableRa else dhcp_range)
 
             tmpt = Template(conf_file)
             conf_file = tmpt.render({
@@ -1703,6 +1706,10 @@ dhcp-range={{range}}
             if not br_num:
                 raise Exception('cannot find the ID for the namespace[%s]' % namespace_name)
 
+            dhcp_range = '%s,%s,static,%s,24h' % (dhcp[0].firstIp, dhcp[0].endIp, dhcp[0].prefixLength)
+            ra_param = '\nenable-ra' \
+                       '\nra-param=inner%s,0,0' % br_num
+
             tmpt = Template(conf_file)
             conf_file = tmpt.render({
                 'dns': dns_path,
@@ -1710,7 +1717,7 @@ dhcp-range={{range}}
                 'option': option_path,
                 'log': log_path,
                 'iface_name': 'inner%s' % br_num,
-                'range': dhcp[0].firstIp + "," + dhcp[0].endIp + ",static," + str(dhcp[0].prefixLength) + ",24h",
+                'range': dhcp_range + ra_param if dhcp[0].enableRa else dhcp_range,
             })
 
             restart_dnsmasq = rebuild
