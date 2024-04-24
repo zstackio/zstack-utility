@@ -390,7 +390,9 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False, print_
     return ret[0]
 
 
-def json_dump_post(uri, body=None, headers={}, fail_soon=False, print_curl=False):
+def json_dump_post(uri, body=None, headers=None, fail_soon=False, print_curl=False):
+    if headers is None:
+        headers = {}
     content = None
     if body is not None:
         content = jsonobject.dumps(body)
