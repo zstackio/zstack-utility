@@ -1142,7 +1142,8 @@ Parse command parameters error:
 
         pydoc.pager(help_string)
 
-    def get_client_ip(self, hostname, port):
+    @staticmethod
+    def get_client_ip(hostname, port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.connect((hostname, port))
         client_ip = s.getsockname()[0]
@@ -1211,14 +1212,12 @@ Parse command parameters error:
         self.no_secure = options.no_secure
         self.curl = options.curl
         self.api = api.Api(host=self.hostname, port=self.port, curl=self.curl)
+        xxf = self.get_client_ip(hostname=self.hostname, port=int(self.port))
+        self.headers = {
+            "X-Forwarded-For": xxf,
+            "User-Agent": "zstack-cli"
+        }
 
-        self.headers = {}
-        if self.hostname != "localhost":
-            xxf = self.get_client_ip(self.hostname, int(self.port))
-            self.headers = {
-                "X-Forwarded-For": xxf,
-                "User-Agent": "zstack-cli"
-            }
 
 def main():
     parser = optparse.OptionParser()
