@@ -99,8 +99,12 @@ class Api(object):
             logger.warn(
                 'Logout session[uuid:%s] failed because %s' % (session_uuid, self._error_code_to_string(reply.error)))
 
-    def async_call_wait_for_complete(self, apicmd, apievent=None, exception_on_error=True, interval=500, fail_soon=False, headers={}):
+    def async_call_wait_for_complete(self, apicmd, apievent=None, exception_on_error=True, interval=500, fail_soon=False,
+                                     headers=None):
+        if headers is None:
+            headers = {}
         # try to find event class from inventory.py for masking sensitive fields
+
         def create_event(apicmd):
             if not apicmd:
                 return None
