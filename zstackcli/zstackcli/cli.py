@@ -1215,7 +1215,7 @@ Parse command parameters error:
         xxf = self.get_client_ip(hostname=self.hostname, port=int(self.port))
         self.headers = {
             "X-Forwarded-For": xxf,
-            "User-Agent": "zstack-cli"
+            "User-Agent": "cli"
         }
 
 
