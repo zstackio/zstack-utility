@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="zstack-zbsp builder" basedir="../">
+    <property name="zbsp.bdir" location="${build.dir}/zbsp" />
+    <property name="zbsp.ansible.dir" location="${ansible.dir}/zbsp/" />
+
+    <target name="build-zbsp" >
+        <makeDir dir="${zbsp.bdir}" />
+
+        <checkProperty property="zbsp.source" />
+        <checkProperty property="zbsp.serviceFile" />
+        <checkFile file="${zbsp.source}" />
+        <checkFile file="${zbsp.source}/setup.py" />
+        <checkFile file="${zbsp.serviceFile}" />
+
+        <delete dir="${zbsp.source}/dist" />
+
+        <exec executable="python" dir="${zbsp.source}" failonerror="true">
+            <arg value="setup.py" />
+            <arg value="sdist" />
+        </exec>
+
+        <copy todir="${zbsp.bdir}/">
+            <fileset dir="${zbsp.source}/">
+                <exclude name="**/*~" />
+                <include name="dist/*.tar.gz" />
+                <include name="ansible/**/*" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="assemble-zbsp">
+        <makeDir dir="${zbsp.ansible.dir}" />
+
+        <copy todir="${zbsp.ansible.dir}">
+            <fileset dir="${zbsp.bdir}/ansible">
+                <include name="**/*" />
+            </fileset>
+            <fileset dir="${zbsp.bdir}/dist">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy file="${zbsp.serviceFile}" todir="${zbsp.ansible.dir}" />
+    </target>
+</project>

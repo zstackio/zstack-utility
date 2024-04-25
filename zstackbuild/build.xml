@@ -79,6 +79,7 @@
     <import file="${basedir}/projects/zstack-iscsi.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephb.xml" optional="false" />
     <import file="${basedir}/projects/zstack-cephp.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-zbsp.xml" optional="false" />
     <import file="${basedir}/projects/zstack-appbuildsystem.xml" optional="false" />
     <import file="${basedir}/projects/zstack-console-proxy.xml" optional="false" />
     <import file="${basedir}/projects/zstack-setting.xml" optional="false" />
@@ -292,6 +293,9 @@
                 <antcall target="build-cephp"/>
             </sequential>
             <sequential>
+                <antcall target="build-zbsp"/>
+            </sequential>
+            <sequential>
                 <antcall target="build-zstack-agent"/>
             </sequential>
             <sequential>
@@ -381,6 +385,9 @@
             </sequential>
             <sequential>
                 <antcall target="assemble-cephp"/>
+            </sequential>
+            <sequential>
+                <antcall target="assemble-zbsp"/>
             </sequential>
             <sequential>
                 <antcall target="assemble-agent-server"/>

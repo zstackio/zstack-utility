@@ -881,6 +881,7 @@ class IscsiNodeStatus(object):
         self.vm_uuids = vm_uuids
         self.heartbeat_time = time.time()
 
+
 class IscsiHeartbeatController(AbstractStorageFencer):
     ha_fencer_name = "iscsi"
 
@@ -966,6 +967,115 @@ class IscsiHeartbeatController(AbstractStorageFencer):
 
     def _heartbeat_io_check(self):
         heartbeat_check = shell.ShellCmd('sg_inq %s' % self.heartbeat_path)
+        heartbeat_check(False)
+        if heartbeat_check.return_code != 0:
+            logger.warn('failed to check heartbeat[%s], %s' % (self.heartbeat_path, heartbeat_check.stderr))
+            return False
+
+        return True
+
+    def _kill_vm(self):
+        running_vm_uuids = set()
+        ret = {}
+        for covering_path in self.covering_paths:
+            running_vm_uuids.update(find_ps_running_vm(covering_path))
+
+        for vm_uuid in running_vm_uuids:
+            pid = linux.get_vm_pid(vm_uuid)
+            linux.kill_process(pid)
+            ret[vm_uuid] = pid
+        return ret
+
+
+class CbdNodeStatus(object):
+    def __init__(self, vm_uuids):
+        self.vm_uuids = vm_uuids
+        self.heartbeat_time = time.time()
+
+
+class CbdHeartbeatController(AbstractStorageFencer):
+    ha_fencer_name = "cbd"
+
+    def __init__(self, interval, max_attempts, ps_uuid, run_fencer_list):
+        super(CbdHeartbeatController, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
+        self.heartbeat_url = None
+        self.heartbeat_path = None
+        self.host_id = -1
+        self.heartbeat_required_space = 1024 * 1024 * 1024  # 1G
+        self.host_uuid = None
+        self.covering_paths = []
+
+        self.fencer_triggered_callback = None  # type: callable[list[str], str]
+        self.report_storage_status_callback = None  # type: callable
+
+    def get_ha_fencer_name(self):
+        return CbdHeartbeatController.ha_fencer_name
+
+    def write_fencer_heartbeat(self):
+        running_vm_uuids = set()
+        # running_vm_uuids.update(find_ps_running_vm(covering_path))
+
+        if self._heartbeat_io_check() and self._fill_heartbeat_file(list(running_vm_uuids)):
+            self.reset_failure_count()
+            return True
+
+        self.failure += 1
+        if self.failure == self.max_attempts:
+            logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
+                        'shutdown ourselves' % (self.heartbeat_path, self.max_attempts))
+
+            return False
+
+        return True
+
+    def read_fencer_heartbeat(self, host_uuid, ps_uuid):
+        # type: (str, str) -> (float, list[str])
+        status = self._read_heartbeat_file()
+        return status.heartbeat_time, status.vm_uuids
+
+    def exec_fencer(self):
+        try:
+            self._exec_fencer()
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+
+    def _exec_fencer(self):
+        if self.write_fencer_heartbeat() is False:
+            self.report_storage_status_callback([self.ps_uuid], 'Disconnected')
+            killed_vms = self._kill_vm()
+
+            if len(killed_vms) != 0:
+                self.fencer_triggered_callback([self.ps_uuid], ','.join(killed_vms.keys()))
+                clean_network_config(killed_vms.keys())
+
+    def is_fencer_private_args_change(self, cmd):
+        pass
+
+    def update_ha_fencer(self, cmd, ha_fencer):
+        pass
+
+    @bash.in_bash
+    def _fill_heartbeat_file(self, vm_uuids):
+        # type: (list[str]) -> bool
+        # offset = self.host_id * self.heartbeat_required_space
+        tmp_file = linux.write_to_temp_file(jsonobject.dumps(CbdNodeStatus(vm_uuids)) + EOF)
+
+        cmd = 'qemu-io -c "write -q -P 0x04 0 8k" -f cbd {}_zbs_:/etc/zbs/client.conf'.format(self.heartbeat_path)
+
+        r, o, e = bash.bash_roe("timeout 20 " + cmd)
+        linux.rm_file_force(tmp_file)
+        return r == 0
+
+    def _read_heartbeat_file(self):
+        # type: () -> CbdNodeStatus
+
+        offset = self.host_id * self.heartbeat_required_space
+        with open(self.heartbeat_path, 'r') as fd:
+            fd.seek(offset)
+            return jsonobject.loads(fd.read(1024*1024).split(EOF)[0])
+
+    def _heartbeat_io_check(self):
+        heartbeat_check = shell.ShellCmd('qemu-io -c "read 0G 12k" -f cbd {}_zbs_:/etc/zbs/client.conf'.format(self.heartbeat_path))
         heartbeat_check(False)
         if heartbeat_check.return_code != 0:
             logger.warn('failed to check heartbeat[%s], %s' % (self.heartbeat_path, heartbeat_check.stderr))
@@ -1321,6 +1431,8 @@ class HaPlugin(kvmagent.KvmAgent):
     ADD_VM_FENCER_RULE_TO_HOST = "/add/vm/fencer/rule/to/host"
     REMOVE_VM_FENCER_RULE_FROM_HOST = "/remove/vm/fencer/rule/from/host"
     GET_VM_FENCER_RULE = "/get/vm/fencer/rule/"
+    CBD_CONFIGURE_CLIENT_PATH = "/cbd/configure/client"
+    CBD_SETUP_SELF_FENCER_PATH = "/ha/cbd/setupselffencer"
 
     RET_SUCCESS = "success"
     RET_FAILURE = "failure"
@@ -1510,6 +1622,73 @@ class HaPlugin(kvmagent.KvmAgent):
             logger.debug('stop self-fencer on block primary storage %s' % cmd.uuid)
 
         heartbeat_on_block()
+        return jsonobject.dumps(AgentRsp())
+
+    @kvmagent.replyerror
+    def configure_cbd_client(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+
+        cbd_client_conf_path = "/etc/zbs/client.conf"
+        if not os.path.exists(cbd_client_conf_path):
+            rsp.success = False
+            rsp.error = ("update cbd client conf fail, %s not exist." % cbd_client_conf_path)
+            return jsonobject.dumps(rsp)
+
+        mds_info_list = ["{}:{}".format(mds_info.mdsAddr, mds_info.mdsPort) for mds_info in cmd.mdsInfos]
+        mds_info_str = ",".join(mds_info_list)
+        bash.bash_o('sed -i "s/^mds\.listen\.addr=.*/mds.listen.addr=%s/" %s' % (mds_info_str, cbd_client_conf_path))
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def setup_cbd_self_fencer(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        created_time = time.time()
+        self.setup_fencer(cmd.uuid, created_time)
+
+        @thread.AsyncThread
+        def heartbeat_on_cbd(ps_uuid, covering_paths):
+            fencer_list = []
+            if cmd.fencers is not None:
+                fencer_list = cmd.fencers
+
+            if host_storage_name in fencer_list:
+                fencer_list.append(CbdHeartbeatController.ha_fencer_name)
+
+            cbd_controller = CbdHeartbeatController(cmd.interval, cmd.maxAttempts, ps_uuid, fencer_list)
+            cbd_controller.covering_paths = covering_paths
+            cbd_controller.report_storage_status = False
+            cbd_controller.storage_failure = False
+            cbd_controller.failure = 0
+            cbd_controller.strategy = cmd.strategy
+            cbd_controller.storage_check_timeout = cmd.storageCheckerTimeout
+            cbd_controller.host_uuid = cmd.hostUuid
+            cbd_controller.host_id = cmd.hostId
+            cbd_controller.heartbeat_required_space = cmd.heartbeatRequiredSpace
+            cbd_controller.heartbeat_path = cmd.heartbeatUrl
+            cbd_controller.heartbeat_url = cmd.heartbeatUrl
+            cbd_controller.fencer_triggered_callback = self.report_self_fencer_triggered
+            cbd_controller.report_storage_status_callback = self.report_storage_status
+
+            self.setup_fencer(ps_uuid, created_time)
+            update_fencer = True
+            try:
+                fencer_init = {cbd_controller.get_ha_fencer_name(): cbd_controller}
+                logger.debug("cbd start run fencer list :%s" % ",".join(fencer_list))
+                while self.run_fencer(ps_uuid, created_time):
+                    time.sleep(cmd.interval)
+                    cbd_controller.exec_fencer_list(fencer_init, update_fencer)
+                    update_fencer = False
+
+                logger.debug('stop self-fencer on of cbd protocol storage ' + ps_uuid)
+            except Exception as e:
+                logger.debug('self-fencer on cbd protocol storage %s stopped abnormally, %s' % (ps_uuid, e))
+                content = traceback.format_exc()
+                logger.warn(content)
+                self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
+
+        heartbeat_on_cbd(cmd.uuid, cmd.coveringPaths)
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -2153,6 +2332,8 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ADD_VM_FENCER_RULE_TO_HOST, self.add_vm_fencer_rule_to_host)
         http_server.register_async_uri(self.REMOVE_VM_FENCER_RULE_FROM_HOST, self.remove_vm_fencer_rule_from_host)
         http_server.register_async_uri(self.GET_VM_FENCER_RULE, self.get_vm_fencer_rule)
+        http_server.register_async_uri(self.CBD_CONFIGURE_CLIENT_PATH, self.configure_cbd_client)
+        http_server.register_async_uri(self.CBD_SETUP_SELF_FENCER_PATH, self.setup_cbd_self_fencer)
 
 
     def stop(self):

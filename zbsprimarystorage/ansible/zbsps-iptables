@@ -1,0 +1,64 @@
+#!/bin/bash
+
+ports=
+mnCidrs=
+comments=
+
+usage()
+{
+    echo "usage: configure-iptables --module module --ports ports [--cidrs mnCidrs]"
+}
+
+while [ -n "$1" ]; do
+	case "$1" in
+	-p | --ports ) shift;ports=$1 ;;
+	-c | --cidrs ) shift;mnCidrs=$1 ;;
+	-m | --module ) shift;comments=$1 ;;
+	*) usage;exit 1 ;;
+	esac
+	shift
+done
+
+if [ x"$ports" = x"" ]; then
+    usage
+    exit 1
+fi
+
+#remove old iptables rule with comment "ImageStoreBackupStorage.dst.port.rules"
+iptables-save | grep $comments | \
+    while read LINE; do
+        drule=${LINE//\"/}
+        iptables ${drule/-A/-D}
+    done
+
+#create ipset for MN subnets
+if [ x"$mnCidrs" != x"" ]; then
+    ipset create ZS-MN hash:net -exist
+    ipset flush ZS-MN
+    IFS=,
+    read -ra cidrs <<<"$mnCidrs"
+    for cidr in ${cidrs[@]}; do
+        ipset add ZS-MN $cidr
+    done
+fi
+
+#install new ip table rule
+IFS=,
+read -ra portss <<<"$ports"
+for port in ${portss[@]}; do
+    if [ x"$mnCidrs" = x"" ]; then
+        if [[ $port = u* ]]; then
+            udpPort=${port/u/}
+            iptables -I INPUT -p udp -m comment --comment $comments -m udp --dport $udpPort -j ACCEPT
+        else
+            iptables -I INPUT -p tcp -m comment --comment $comments -m tcp --dport $port -j ACCEPT
+        fi
+    else
+        if [[ $port = u* ]]; then
+            udpPort=${port/u/}
+            iptables -I INPUT -m set --match-set ZS-MN src -p udp -m comment --comment $comments -m udp --dport $udpPort -j ACCEPT
+        else
+            iptables -I INPUT -m set --match-set ZS-MN src -p tcp -m comment --comment $comments -m tcp --dport $port -j ACCEPT
+        fi
+    fi
+done
