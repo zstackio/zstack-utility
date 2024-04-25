@@ -655,10 +655,16 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        r, o, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-        if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
-            self.mega_raid_locate_storcli(cmd, o)
-            return jsonobject.dumps(rsp)
+        if misc.isHyperConvergedHost():
+            r, o, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
+            if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
+                self.mega_raid_locate_storcli(cmd, o)
+                return jsonobject.dumps(rsp)
+        else:
+            r, o, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+            if r == 0 and "Adapter #" in o:
+                self.mega_raid_locate_megacli(cmd, o)
+                return jsonobject.dumps(rsp)
 
         r, o, e = bash.bash_roe("arcconf list")
         if r == 0 and "Controller ID" in o:
@@ -813,7 +819,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = RaidScanRsp()
         r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
         if r == 0 and o.strip() != "":
-            rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_storcli(o)
+            if misc.isHyperConvergedHost():
+                rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_storcli(o)
+            else:
+                rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_megacli(o)
             return jsonobject.dumps(rsp)
 
         r, o, e = bash.bash_roe("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
