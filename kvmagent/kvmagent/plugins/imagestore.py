@@ -139,8 +139,9 @@ class ImageStoreClient(object):
             PFILE = linux.create_temp_file()
             cmdstr = '%s querylat -domain %s -count %d > %s' % (self.ZSTORE_CLI_PATH, vm, times, PFILE)
             if shell.run(cmdstr) != 0 or os.path.getsize(PFILE) == 0:
+                linux.rm_file_force(PFILE)
                 logger.debug("Failed to query latency for vm: [%s]", vm)
-                return maxInfoMap, minInfoMap
+                return vm, maxInfoMap, minInfoMap
 
             with open(PFILE) as fd:
                 linux.rm_file_force(PFILE)
