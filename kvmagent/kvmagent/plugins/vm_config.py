@@ -153,6 +153,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         VmQga.VM_OS_LINUX_SUSE_D: ("12", "15",),
         VmQga.VM_OS_LINUX_ORACLE: ("7",),
         VmQga.VM_OS_LINUX_REDHAT: ("7", "8",),
+        VmQga.VM_OS_LINUX_ANOLIS: ("7", "8",),
         VmQga.VM_OS_LINUX_UBUNTU: ("14", "16", "18", "20", "22",),
         VmQga.VM_OS_LINUX_DEBIAN: ("9", "10",),
         VmQga.VM_OS_LINUX_FEDORA: ("30", "31",),
