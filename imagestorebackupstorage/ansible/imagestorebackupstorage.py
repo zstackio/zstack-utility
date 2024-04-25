@@ -105,7 +105,7 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if host_info.distro in RPM_BASED_OS:
-    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace qemu-storage-daemon"
+    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace"
 
     releasever_mapping = {
         'h84r': ' collectd-disk pyparted',
@@ -123,7 +123,7 @@ if host_info.distro in RPM_BASED_OS:
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
     qemu_pkg = ' '.join(_qemu_pkg)
-    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs nmap-ncat lvm2 lvm2-libs'
+    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs nmap-ncat lvm2 lvm2-libs qemu-storage-daemon'
     # common imagestorebackupstorage deps of ky10 that need to update
     ky10_update_list = "nettle collectd collectd-disk collectd-virt exfat-utils fuse-exfat"
     ky10sp3_update_list = "qemu-block-rbd"
