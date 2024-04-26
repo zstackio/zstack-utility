@@ -31,6 +31,18 @@ devices {
                 rr_weight priorities
                 no_path_retry fail
         }
+        device {
+                vendor "ET"
+                product "ET_WDS"
+                hardware_handler "0"
+                path_grouping_policy "multibus"
+                path_selector "queue-length 0"
+                failback immediate
+                path_checker           tur
+                prio                   const
+                no_path_retry fail
+                fast_io_fail_tmo 120
+        }
 }
 """
 
@@ -98,18 +110,6 @@ def rescan_sids_target_name(target_name):
         stdout, stderr = processutils.trycmd(rescan_cmd, shell=True)
         if stderr:
             LOG.info("iscsiadm -m session -r %s --rescan fail, because %s" % (session_id, stderr))
-
-
-def rescan_for_detach(volume_obj):
-    volume_iqn = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1].strip()
-    if volume_iqn:
-        LOG.info("skip rescan for detach")
-        return
-
-    stdout, stderr = processutils.trycmd("timeout 30 iscsiadm -m session -R", shell=True)
-    if stderr:
-        LOG.info("timeout 30 iscsiadm -m session -R failed, because %s" % stderr)
-        return
 
 
 class LinuxDriver(base.SystemDriverBase):
@@ -255,14 +255,11 @@ class LinuxDriver(base.SystemDriverBase):
         """
         for volume_access_path_gateway_ip in volume_access_path_gateway_ips:
             self.detach_volume_for_target_ip(instance_obj, volume_obj, volume_access_path_gateway_ip)
-        rescan_for_detach(volume_obj)
 
     def detach_volume_for_target_ip(self, instance_obj, volume_obj, target_ip):
         # Get the session id
         sid = None
         volume_iqn = volume_obj.iscsi_path.replace('iscsi://', '').split("/")[1]
-        if not volume_iqn:
-            return
         if instance_obj.custom_iqn:
             iqn = instance_obj.custom_iqn
         elif volume_iqn:
