@@ -109,7 +109,7 @@ if host_info.distro in RPM_BASED_OS:
 
     releasever_mapping = {
         'h84r': ' collectd-disk pyparted iscsi-initiator-utils',
-        'h2203sp1o': ' collectd-disk iscsi-initiator-utils',
+        'h2203sp1o': ' collectd-disk iscsi-initiator-utils python2-pyparted',
     }
 
     for k in kylin:
@@ -123,11 +123,10 @@ if host_info.distro in RPM_BASED_OS:
     _skip_list = re.split(r'[|;,\s]\s*', skip_packages)
     _qemu_pkg = [ pkg for pkg in qemu_pkg.split() if pkg not in _skip_list ]
     qemu_pkg = ' '.join(_qemu_pkg)
-    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs nmap-ncat lvm2 lvm2-libs'
+    svr_pkgs = 'ntfs-3g exfat-utils fuse-exfat btrfs-progs nmap-ncat lvm2 lvm2-libs qemu-storage-daemon'
     # common imagestorebackupstorage deps of ky10 that need to update
     ky10_update_list = "nettle collectd collectd-disk collectd-virt exfat-utils fuse-exfat"
     ky10sp3_update_list = "qemu-block-rbd"
-    common_update_list = 'qemu-storage-daemon'
 
     if client == "true" :
         if host_info.major_version < 7:
@@ -141,10 +140,9 @@ if host_info.distro in RPM_BASED_OS:
             run_remote_command(command, host_post_info)
 
             if releasever in kylin:
-                common_update_list = common_update_list + ' ' + ky10_update_list
-            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
-                common_update_list, zstack_repo)
-            run_remote_command(command, host_post_info)
+                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
+                    ky10_update_list, zstack_repo)
+                run_remote_command(command, host_post_info)
     else:
         if zstack_repo == 'false':
             batch_yum_install_package(qemu_pkg.split(), host_post_info)
@@ -154,15 +152,14 @@ if host_info.distro in RPM_BASED_OS:
             run_remote_command(command, host_post_info)
 
             if releasever in kylin:
-                common_update_list = common_update_list + ' ' + ky10_update_list
                 if IS_LOONGARCH64 and yum_check_package("qemu", host_post_info):
                     command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
-                        ky10sp3_update_list, zstack_repo)
+                                  ky10sp3_update_list, zstack_repo)
                     run_remote_command(command, host_post_info)
 
-            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
-                common_update_list, zstack_repo)
-            run_remote_command(command, host_post_info)
+                command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
+                    ky10_update_list, zstack_repo)
+                run_remote_command(command, host_post_info)
 
             if releasever not in ['c72', 'c74']:
                 command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in $pkg_list; do yum "
