@@ -903,10 +903,17 @@ def set_gpu_blacklist():
 
 @only_on_zyj(isZYJ)
 def do_kvm_host_config():
+    global qemu_conf_status
     command = "chmod 755 /var/lib/zstack/"
     host_post_info.post_label = "ansible.shell.do.zyj.host.config"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info, False, False, isZYJ)
+
+    command = 'mkdir -p /etc/pki/qemu/'
+    run_remote_command(command, host_post_info, False, False, isZYJ)
+    qemu_conf_src = os.path.join(file_root, "qemu.conf")
+    qemu_conf_dst = "/etc/libvirt/qemu.conf"
+    qemu_conf_status = copy_to_remote(qemu_conf_src, qemu_conf_dst, None, host_post_info)
 
     # aarch64 zyj does not support iptables currently
     if IS_AARCH64:
