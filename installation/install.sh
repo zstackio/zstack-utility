@@ -2474,11 +2474,11 @@ install_zops(){
     fi
 }
 
-install_apps_market_server(){
-    echo_title "Install or upgrade apps market"
+install_marketplace_server(){
+    echo_title "Install or upgrade marketplace server"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    show_spinner is_install_apps_market_server
+    show_spinner is_install_marketplace_server
 }
 
 setup_install_param(){
@@ -3204,10 +3204,10 @@ is_upgrade_zops(){
     [ $? -eq 0 ] && pass
 }
 
-is_install_apps_market_server(){
-    echo_subtitle "Install application market"
-    apps_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE -name "appsmarket-server*" | head -n 1`
-    bash $apps_installer_bin >>$ZSTACK_INSTALL_LOG 2>&1
+is_install_marketplace_server(){
+    echo_subtitle "Install market place server"
+    marketplace_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE -name "marketplace-server*" | head -n 1`
+    bash $marketplace_installer_bin >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -eq 0 ] && pass
 }
 
@@ -4288,8 +4288,8 @@ fi
 download_zstack
 
 if [ x"$UPGRADE" = x'y' ]; then
-    #Install apps-market-server
-    install_apps_market_server
+    #Install marketplace-server
+    install_marketplace_server
 
     #only upgrade zstack
     upgrade_zstack
@@ -4464,8 +4464,8 @@ fi
 #Install license
 install_license
 
-#Install apps-market-server
-install_apps_market_server
+#Install marketplace-server
+install_marketplace_server
 
 #Start ${PRODUCT_NAME} 
 if [ -z $NOT_START_ZSTACK ]; then
