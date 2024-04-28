@@ -25,6 +25,7 @@ import urllib3
 
 import cStringIO as c
 import csv
+import socket
 
 import zstacklib.utils.log as log
 import zstacklib.utils.linux as linux
@@ -599,7 +600,7 @@ Parse command parameters error:
                     setattr(msg, 'sessionUuid', self.session_uuid)
 
             start_time = time.time()
-            (name, event) = self.api.async_call_wait_for_complete(msg, apievent=event, fail_soon=True)
+            (name, event) = self.api.async_call_wait_for_complete(msg, apievent=event, fail_soon=True, headers=self.headers)
             end_time = time.time()
 
             if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,
@@ -1141,6 +1142,14 @@ Parse command parameters error:
 
         pydoc.pager(help_string)
 
+    @staticmethod
+    def get_client_ip(hostname, port):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((hostname, port))
+        client_ip = s.getsockname()[0]
+        s.close()
+        return client_ip
+
     def __init__(self, options):
         """
         Constructor
@@ -1203,6 +1212,11 @@ Parse command parameters error:
         self.no_secure = options.no_secure
         self.curl = options.curl
         self.api = api.Api(host=self.hostname, port=self.port, curl=self.curl)
+        xxf = self.get_client_ip(hostname=self.hostname, port=int(self.port))
+        self.headers = {
+            "X-Forwarded-For": xxf,
+            "User-Agent": "cli"
+        }
 
 
 def main():
