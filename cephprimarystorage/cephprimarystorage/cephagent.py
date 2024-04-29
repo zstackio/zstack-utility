@@ -772,7 +772,8 @@ class CephAgent(plugin.TaskManager):
         pool_name = spath.split("/")[0]
         for cap in rsp.poolCapacities:
             if cap.name == pool_name and cap.usedCapacity + asize > cap.totalCapacity * threshold:
-                raise Exception("In the worst case, The rollback operation will exceed the 90%% capacity of the pool[%s]" % pool_name)
+                raise Exception("In the worst case, The rollback operation will exceed pool[%s] capacity threshold %d%%"
+                                % (pool_name, threshold * 100))
 
     @staticmethod
     def _wrap_shareable_cmd(cmd, cmd_string):
