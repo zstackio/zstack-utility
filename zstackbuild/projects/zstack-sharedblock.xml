@@ -15,6 +15,7 @@
         </exec>
 
         <exec executable="make" dir="${zstacksharedblock.source}" failonerror="true">
+            <env key="GOROOT" value="/usr/lib/golang1.18" />
             <arg value="package" />
             <arg value="ARCH= amd64 arm64 mips64le" />
         </exec>
