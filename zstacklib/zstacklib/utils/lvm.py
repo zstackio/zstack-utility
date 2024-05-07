@@ -925,6 +925,7 @@ def start_vg_lock(vgUuid, hostId, retry_times_for_checking_vg_lockspace):
             vg_lock_exists(vgUuid)
         except Exception:
             check_lockspace()
+            sanlock.init_gllk_if_need(vgUuid)
             raise
     try:
         vg_lock_exists(vgUuid)
