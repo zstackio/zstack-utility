@@ -10441,24 +10441,31 @@ host side snapshot files chian:
             eject_floppy_with_file_path(vm, file_path)
 
     def set_domain_network_device(self, vm_uuid, device_xml, operate_type='attach'):
-        @linux.retry(times=3, sleep_time=1)
-        def _retry_set_domain_device(xml_file):
-            try:
-                if operate_type == 'attach':
-                    shell.call('virsh attach-device --domain %s --file %s --live' % (vm_uuid, xml_file))
-                else:
-                    shell.call('virsh detach-device --domain %s --file %s --live' % (vm_uuid, xml_file))
-            except Exception as e:
-                raise Exception('failed to attach device, error: %s' % str(e))
+        def check_nic_is_attached(_):
+            vm_domain = get_vm_by_uuid(vm_uuid)
+            tree = etree.fromstring(device_xml)
+            for iface in vm_domain.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.mac.address_ == tree.find('mac').attrib['address'] and iface.type_ == tree.attrib['type']:
+                    return True
+            return False
 
-        if not vm_uuid or not device_xml:
-            raise Exception('vm_uuid or device_xml is None')
-        if operate_type not in ['attach', 'detach']:
-            raise Exception('operate_type: %s is invalid' % operate_type)
-
-        device_xml_file = linux.write_to_temp_file(device_xml)
-        _retry_set_domain_device(device_xml_file)
-        os.remove(device_xml_file)
+        try:
+            if not vm_uuid or not device_xml:
+                raise Exception('vm_uuid or device_xml is None')
+            if operate_type not in ['attach', 'detach']:
+                raise Exception('operate_type: %s is invalid' % operate_type)
+            logger.debug('operate_type: %s, device_xml: %s' % (operate_type, device_xml))
+            vm_domain = get_vm_by_uuid(vm_uuid)
+            if operate_type == 'attach':
+                vm_domain.domain.attachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                if not linux.wait_callback_success(check_nic_is_attached, interval=2, timeout=5):
+                    raise Exception('nic device is still detached after 10s. please check the device xml: %s' % device_xml)
+            else:
+                vm_domain.domain.detachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                if linux.wait_callback_success(check_nic_is_attached, interval=2, timeout=5):
+                    raise Exception('nic device is still attached after 10s. please check the device xml: %s' % device_xml)
+        except Exception as e:
+                raise Exception('failed to %s device, error: %s' % (operate_type, str(e)))
 
     def set_domain_iflink_state(self, vm_uuid, nic_name, link_state):
         if not vm_uuid or not nic_name:
@@ -10488,6 +10495,8 @@ host side snapshot files chian:
                 if iface.mac.address_ != nic.mac:
                     continue
                 if iface.type_ == interface_type:
+                    if iface.hasattr('alias'):
+                        iface.del_node('alias')
                     return iface.dump()
 
             return None
@@ -10532,7 +10541,6 @@ host side snapshot files chian:
             if vf_xml is None:
                 vf_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
                 self.set_domain_network_device(vm.uuid, vf_xml, operate_type='attach')
-            shell.call('ip link set %s vf %s mac %s' % (pf_name, vf_index, nic.mac), exception=False)
 
         def _change_vf_ha_state_disconnect(vm, nic):
             # 1. set temporary vnic link state to up
@@ -10551,7 +10559,6 @@ host side snapshot files chian:
             if vf_xml is None:
                 vf_xml = _build_xml_from_vf(vm, nic, nic_type='VF')
                 self.set_domain_network_device(vm.uuid, vf_xml, operate_type='attach')
-            shell.call('ip link set %s vf %s mac %s' % (pf_name, vf_index, nic.mac), exception=False)
 
             # 2. detach temporary vnic from vm
             vnic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
