@@ -421,9 +421,25 @@ def check_delta_lease(vg_uuid, host_id):
                 "dd of=/dev/mapper/{0}-lvmlock bs={1} seek={2} count=1 oflag=direct".format(vg_uuid, sector_size, seek))
     return True
 
-def check_vglk_paxos_lease(vg_uuid):
+@bash.in_bash
+def init_vglk_if_need(vg_uuid):
     sector_size = get_sector_size(vg_uuid)
-    return vertify_paxos_lease(vg_uuid, "VGLK", VGLK_BEGIN * sector_size_to_align_size(sector_size)) == 0
+    if vertify_paxos_lease(vg_uuid, "VGLK", VGLK_BEGIN * sector_size_to_align_size(sector_size)) == 0:
+        return False
+
+    direct_init_resource("lvm_%s:VGLK:/dev/mapper/%s-lvmlock:%s" % (vg_uuid, vg_uuid, VGLK_BEGIN * sector_size_to_align_size(sector_size)))
+    return True
+
+
+@bash.in_bash
+def init_gllk_if_need(vg_uuid):
+    sector_size = get_sector_size(vg_uuid)
+    if vertify_paxos_lease(vg_uuid, "_GLLK_disabled", GLLK_BEGIN * sector_size_to_align_size(sector_size)) == 0 or \
+            vertify_paxos_lease(vg_uuid, "GLLK", GLLK_BEGIN * sector_size_to_align_size(sector_size)) == 0:
+        return False
+
+    direct_init_resource("lvm_%s:_GLLK_disabled:/dev/mapper/%s-lvmlock:%s" % (vg_uuid, vg_uuid, GLLK_BEGIN * sector_size_to_align_size(sector_size)))
+    return True
 
 
 def dd_check_lockspace(path):
