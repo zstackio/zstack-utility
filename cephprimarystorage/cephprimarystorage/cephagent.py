@@ -439,8 +439,21 @@ class CephAgent(plugin.TaskManager):
         if not ceph.is_xsky():
             return
 
+        # xdc version >= 4
+        #   xms-cli Version: SDS_4.2.000.4
+        #   Git SHA: 7b49f2b-dirty
+        #   Go Version: go1.12.4
+        #   Go OS/Arch: linux/amd64
+        # xdc version < 4
+        #   xms-cli version 3.2.17.1, build 0cdee40-dirty
         o = shell.call('xms-cli --version')
-        xms_version = o.split("\n")[0].split("xms-cli Version:")[1].split("_")[1].strip()
+        if 'xms-cli Version:' in o:
+            xms_version = o.split("\n")[0].split("xms-cli Version:")[1].split("_")[1].strip()
+        elif 'xms-cli version ' in o:
+            xms_version = o.strip().split('xms-cli version ')[1].split(',')[0].strip()
+        else:
+            xms_version = None
+            logger.warn('can not get xms version, the xms-cli version output is: %s' % o)
         if xms_version and LooseVersion(xms_version) >= LooseVersion('5.2.106.2.230330'):
             return
 
