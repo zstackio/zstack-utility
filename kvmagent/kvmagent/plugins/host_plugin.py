@@ -793,7 +793,9 @@ class PciDeviceTO(object):
         self.name = ""
         self.description = ""
         self.vendorId = ""
+        self.vendor = ""
         self.deviceId = ""
+        self.device = ""
         self.subvendorId = ""
         self.subdeviceId = ""
         self.pciDeviceAddress = ""
@@ -804,6 +806,8 @@ class PciDeviceTO(object):
         self.maxPartNum = "0"
         self.ramSize = ""
         self.mdevSpecifications = []
+        self.rev = ""
+        self.addonInfo = {}
 
 class MttyDeviceTO(object):
     def __init__(self):
@@ -2470,6 +2474,8 @@ done
             return 'AMD'
         elif 'NVIDIA Corporation' in name:
             return 'NVIDIA'
+        elif 'Haiguang' in name:
+            return 'Haiguang'
         else:
             return name.replace('Co., Ltd ', '')
 
@@ -2501,9 +2507,11 @@ done
                     to.description = _class + ": "
                 elif title == 'Vendor':
                     vendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
+                    to.vendor = vendor_name
                     to.vendorId = content.split('[')[-1].strip(']')
                     to.description += vendor_name + " "
                 elif title == "Device":
+                    to.device = content
                     device_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
                     to.deviceId = content.split('[')[-1].strip(']')
                     to.description += device_name
@@ -2550,11 +2558,63 @@ done
 
             _set_pci_to_type()
 
+            self._collect_gpu_addoninfo(to, vendor_name)
+
             # if support both mdev and sriov, then set the pci device to VFIO_MDEV_VIRTUALIZABLE
             if not self._get_vfio_mdev_info(to) and not self._get_sriov_info(to):
                 to.virtStatus = "UNVIRTUALIZABLE"
             if to.vendorId != '' and to.deviceId != '':
                 rsp.pciDevicesInfo.append(to)
+
+    def _collect_gpu_addoninfo(self, to, vendor_name):
+        if to.type in ['GPU_3D_Controller', 'GPU_Video_Controller']:
+            if vendor_name == 'NVIDIA':
+                self._collect_nvidia_gpu_info(to)
+            if vendor_name == 'AMD':
+                self._collect_amd_gpu_info(to)
+
+
+    @in_bash
+    def _collect_nvidia_gpu_info(self, to):
+        if shell.run("which nvidia-smi") != 0:
+            logger.debug("no nvidia-smi")
+            return
+
+        r, o, e = bash_roe("nvidia-smi --query-gpu=gpu_bus_id,memory.total,power.limit,gpu_serial"
+                           " --format=csv,noheader")
+        if r != 0:
+            logger.error("nvidia query gpu is error, %s " % e)
+            return
+
+        for part in o.split('\n'):
+            if len(part.strip()) == 0:
+                continue
+            gpuinfo = part.split(',')
+            if to.pciDeviceAddress in gpuinfo[0].strip():
+                to.addonInfo["memory"] = gpuinfo[1].strip()
+                to.addonInfo["power"] = gpuinfo[2].strip()
+                to.addonInfo["serialNumber"] = gpuinfo[3].strip()
+                to.addonInfo["isDriverLoaded"] = True
+
+    @in_bash
+    def _collect_amd_gpu_info(self, to):
+        #todo collect amd gpu info
+        if shell.run("which rocm-smi") != 0:
+            logger.debug("no rocm-smi")
+            return
+
+        r, o, e = bash_roe("/opt/rocm/bin/rocm-smi --showbus --showmeminfo vram --showpower --showserial --json")
+        if r != 0:
+            logger.error("amd query gpu is error, %s " % e)
+            return
+
+        gpu_info_json = json.loads(o.strip())
+        for card_name, card_data in gpu_info_json.items():
+            if to.pciDeviceAddress.lower() in card_data['PCI Bus'].lower():
+                to.addonInfo["memory"] = card_data['VRAM Total Memory (B)']
+                to.addonInfo["power"] = card_data['Average Graphics Package Power (W)']
+                to.addonInfo["serialNumber"] = card_data['Serial Number']
+                to.addonInfo["isDriverLoaded"] = True
 
     # moved from vm_plugin to host_plugin
     @kvmagent.replyerror

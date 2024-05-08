@@ -15,6 +15,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
+from zstacklib.utils import shell
 from zstacklib.utils import misc
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
@@ -34,7 +35,10 @@ disk_list_record = None
 cpu_status_abnormal_list_record = set()
 memory_status_abnormal_list_record = set()
 fan_status_abnormal_list_record = set()
-disk_status_abnormal_list_record = {}
+power_supply_status_abnormal_list_record = set()
+gpu_status_abnormal_list_record = set()
+disk_status_abnormal_list_record = set()
+raid_status_abnormal_list_record = set()
 
 # collect domain max memory
 domain_max_memory = {}
@@ -44,168 +48,104 @@ def read_number(fname):
     return 0 if not res else int(res)
 
 
-@thread.AsyncThread
-def send_cpu_status_alarm_to_mn(cpu_id, status):
-    class PhysicalCpuStatusAlarm(object):
-        def __init__(self):
-            self.status = None
-            self.cpuName = None
-            self.host = None
-    
+class PhysicalStatusAlarm:
+    def __init__(self, host=None, alarm_type=None, **kwargs):
+        self.host = host
+        self.type = alarm_type
+        self.additionalProperties = kwargs
+
+    def to_dict(self):
+        result = {
+            "host": self.host,
+            "type": self.type,
+            "additionalProperties": self.additionalProperties
+        }
+        return result
+
+
+def send_alarm_to_mn(alarm_type, unique_id, **kwargs):
     if ALARM_CONFIG is None:
         return
-    
+
     url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
     if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical cpu status alarm info to management node")
+        logger.warn("Cannot find SEND_COMMAND_URL, unable to transmit {alarm_type} alarm info to management node"
+                    .format(alarm_type=alarm_type))
         return
-    
-    global cpu_status_abnormal_list_record
-    if cpu_id not in cpu_status_abnormal_list_record:
-        physical_cpu_status_alarm = PhysicalCpuStatusAlarm()
-        physical_cpu_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_cpu_status_alarm.cpuName = cpu_id
-        physical_cpu_status_alarm.status = status
-        http.json_dump_post(url, physical_cpu_status_alarm, {'commandpath': '/host/physical/cpu/status/alarm'})
-        cpu_status_abnormal_list_record.add(cpu_id)
+
+    global_vars = globals()
+    record_list_name = "{alarm_type}_status_abnormal_list_record".format(alarm_type=alarm_type) 
+    record_list = global_vars.get(record_list_name, set())
+    if unique_id not in record_list:
+        alarm = PhysicalStatusAlarm(
+            host=ALARM_CONFIG.get(kvmagent.HOST_UUID),
+            alarm_type=alarm_type,
+            **kwargs
+        )
+        http.json_dump_post(url, alarm.to_dict(), {'commandpath': '/host/physical/hardware/status/alarm'})
+        record_list.add(unique_id)
+        global_vars[record_list_name] = record_list
+
+
+@thread.AsyncThread
+def send_cpu_status_alarm_to_mn(cpu_id, status):
+    send_alarm_to_mn('cpu', cpu_id, cpuName=cpu_id, status=status)
+
+
+@thread.AsyncThread
+def send_physical_gpu_status_alarm_to_mn(pcideviceAddress, status):
+    send_alarm_to_mn('gpu', pcideviceAddress, pcideviceAddress=pcideviceAddress, status=status)
 
 
 @thread.AsyncThread
 def send_physical_memory_status_alarm_to_mn(locator, status):
-    class PhysicalMemoryStatusAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.locator = None
-            self.status = None
-    
-    if ALARM_CONFIG is None:
-        return
-    
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical memory status alarm info to management node")
-        return
-    
-    global memory_status_abnormal_list_record
-    if locator not in memory_status_abnormal_list_record:
-        physical_memory_status_alarm = PhysicalMemoryStatusAlarm()
-        physical_memory_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_memory_status_alarm.locator = locator
-        physical_memory_status_alarm.status = status
-        http.json_dump_post(url, physical_memory_status_alarm, {'commandpath': '/host/physical/memory/status/alarm'})
-        memory_status_abnormal_list_record.add(locator)
+    send_alarm_to_mn('memory', locator, locator=locator, status=status)
+
+
+@thread.AsyncThread
+def send_physical_power_supply_status_alarm_to_mn(name, status):
+    send_alarm_to_mn('powerSupply', name, name=name, status=status)
 
 
 @thread.AsyncThread
 def send_physical_fan_status_alarm_to_mn(fan_name, status):
-    class PhysicalFanStatusAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.fan_name = None
-            self.status = None
-    
-    if ALARM_CONFIG is None:
-        return
-    
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical fan status alarm info to management node")
-        return
-
-    global fan_status_abnormal_list_record
-    if fan_name not in fan_status_abnormal_list_record:
-        physical_fan_status_alarm = PhysicalFanStatusAlarm()
-        physical_fan_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_fan_status_alarm.fan_name = fan_name
-        physical_fan_status_alarm.status = status
-        http.json_dump_post(url, physical_fan_status_alarm, {'commandpath': '/host/physical/fan/status/alarm'})
-        fan_status_abnormal_list_record.add(fan_name)
+    send_alarm_to_mn('fan', fan_name, name=fan_name, status=status)
 
 
 @thread.AsyncThread
 def send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state):
-    class PhysicalDiskStatusAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.slot_number = None
-            self.enclosure_device_id = None
-            self.drive_state = None
-            self.serial_number = None
-    
+    send_alarm_to_mn('disk', serial_number, serial_number=serial_number, slot_number=slot_number,
+                     enclosure_device_id=enclosure_device_id, drive_state=drive_state)
+
+@thread.AsyncThread
+def send_raid_state_alarm_to_mn(target_id, state):
+    send_alarm_to_mn('raid', target_id, target_id=target_id, status=state)
+
+def send_disk_insert_or_remove_alarm_to_mn(alarm_type, serial_number, slot):
     if ALARM_CONFIG is None:
         return
-    
+
     url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
     if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical disk status alarm info to management node")
+        logger.warn("Cannot find SEND_COMMAND_URL, unable to transmit {alarm_type} alarm info to management node".format(alarm_type=alarm_type))
         return
 
-    global disk_status_abnormal_list_record
-    if (serial_number not in disk_status_abnormal_list_record.keys()) \
-            or (serial_number in disk_status_abnormal_list_record.keys()
-                and disk_status_abnormal_list_record[serial_number] != drive_state):
-        physical_disk_status_alarm = PhysicalDiskStatusAlarm()
-        physical_disk_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_disk_status_alarm.slot_number = slot_number
-        physical_disk_status_alarm.enclosure_device_id = enclosure_device_id
-        physical_disk_status_alarm.drive_state = drive_state
-        physical_disk_status_alarm.serial_number = serial_number
-        http.json_dump_post(url, physical_disk_status_alarm, {'commandpath': '/host/physical/disk/status/alarm'})
-        disk_status_abnormal_list_record[serial_number] = drive_state
+    alarm = PhysicalStatusAlarm(
+        host=ALARM_CONFIG.get(kvmagent.HOST_UUID),
+        serial_number=serial_number,
+        enclosure_device_id=slot.split("-")[0],
+        slot_number=slot.split("-")[1]
+    )
+    http.json_dump_post(url, alarm, {'commandpath': '/host/physical/disk/{alarm_type}/alarm'.format(alarm_type=alarm_type)})
 
-
+@thread.AsyncThread
 def send_physical_disk_insert_alarm_to_mn(serial_number, slot):
-    class PhysicalDiskInsertAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.serial_number = None
-            self.slot_number = None
-            self.enclosure_device_id = None
-            
-    if ALARM_CONFIG is None:
-        return
-   
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical disk insert alarm info to management node")
-        return
-
-    physical_disk_insert_alarm = PhysicalDiskInsertAlarm()
-    physical_disk_insert_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-    physical_disk_insert_alarm.serial_number = serial_number
-    physical_disk_insert_alarm.enclosure_device_id = slot.split("-")[0]
-    physical_disk_insert_alarm.slot_number = slot.split("-")[1]
-    http.json_dump_post(url, physical_disk_insert_alarm, {'commandpath': '/host/physical/disk/insert/alarm'})
+    send_disk_insert_or_remove_alarm_to_mn('insert', serial_number, slot)
 
 
+@thread.AsyncThread
 def send_physical_disk_remove_alarm_to_mn(serial_number, slot):
-    class PhysicalDiskRemoveAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.serial_number = None
-            self.slot_number = None
-            self.enclosure_device_id = None
-    
-    if ALARM_CONFIG is None:
-        return
-    
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical disk remove alarm info to management node")
-        return
-
-    physical_disk_remove_alarm = PhysicalDiskRemoveAlarm()
-    physical_disk_remove_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-    physical_disk_remove_alarm.serial_number = serial_number
-    physical_disk_remove_alarm.enclosure_device_id = slot.split("-")[0]
-    physical_disk_remove_alarm.slot_number = slot.split("-")[1]
-    http.json_dump_post(url, physical_disk_remove_alarm, {'commandpath': '/host/physical/disk/remove/alarm'})
+    send_disk_insert_or_remove_alarm_to_mn('remove', serial_number, slot)
 
 
 def collect_memory_locator():
@@ -500,7 +440,7 @@ def convert_disk_state_to_int(state):
     state = state.lower().strip()
     if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state \
             or "hot spare" in state or "raw" in state or "onln" == state or "ghs" == state or "dhs" == state \
-            or "ugood" == state:
+            or "ugood" == state or "cpybck" == state:
         return 0
     elif "rebuild" in state or "rbld" == state:
         return 5
@@ -536,6 +476,12 @@ def collect_raid_state():
     return metrics.values()
 
 
+def handle_raid_state(target_id, state_int):
+    if state_int == 100:
+        send_raid_state_alarm_to_mn(target_id, state_int)
+        return
+    raid_status_abnormal_list_record.discard(target_id)
+
 def collect_arcconf_raid_state(metrics, infos):
     disk_list = {}
     for line in infos.splitlines():
@@ -562,8 +508,10 @@ def collect_arcconf_raid_state(metrics, infos):
                 target_id = l.strip().split(" ")[-1]
             elif "Status of Logical Device" in l and target_id != "unknown":
                 state = l.strip().split(":")[-1].strip()
-                metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
-        
+                state_int = convert_raid_state_to_int(state)
+                metrics['raid_state'].add_metric([target_id], state_int)
+                handle_raid_state(target_id, state_int)
+
         for infos in device_arr[1:]:
             drive_state = serial_number = slot_number = enclosure_device_id = "unknown"
             is_hard_drive = False
@@ -588,8 +536,8 @@ def collect_arcconf_raid_state(metrics, infos):
             disk_status = convert_disk_state_to_int(drive_state)
             metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], disk_status)
             disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-            if disk_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
-                disk_status_abnormal_list_record.pop(serial_number)
+            if disk_status == 0 and serial_number in disk_status_abnormal_list_record:
+                disk_status_abnormal_list_record.discard(serial_number)
             elif disk_status != 0:
                 send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state)
 
@@ -611,7 +559,9 @@ def collect_sas_raid_state(metrics, infos):
                 state = info.strip().split(":")[-1].strip()
                 if "Inactive" in state:
                     continue
-                metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
+                state_int = convert_raid_state_to_int(state)
+                metrics['raid_state'].add_metric([target_id], state_int)
+                handle_raid_state(target_id, state_int)
         
         disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State|Serial No|Drive Type'" % line.strip())
         enclosure_device_id = slot_number = state = serial_number = "unknown"
@@ -631,8 +581,8 @@ def collect_sas_raid_state(metrics, infos):
                 metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
                 if drive_status != 20:
                     disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-                if drive_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
-                    disk_status_abnormal_list_record.pop(serial_number)
+                if drive_status == 0 and serial_number in disk_status_abnormal_list_record:
+                    disk_status_abnormal_list_record.discard(serial_number)
                 elif drive_status != 0:
                     send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
 
@@ -657,6 +607,7 @@ def collect_mega_raid_state(metrics, infos):
             disk_group = data[attr][0]["DG/VD"].split("/")[0]
             converted_vd_state = convert_raid_state_to_int(vd_state)
             metrics['raid_state'].add_metric([disk_group], converted_vd_state)
+            handle_raid_state(disk_group, converted_vd_state)
 
     # collect disk state
     o = bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J").strip()
@@ -677,8 +628,8 @@ def collect_mega_raid_state(metrics, infos):
             pd_attributes = data["Drive %s - Detailed Information" % pd_path]["Drive %s Device attributes" % pd_path]
             serial_number = pd_attributes["SN"].replace(" ", "")
             disk_list[serial_number] = "%s-%s" % (enclosure_id, slot_id)
-            if converted_pd_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
-                disk_status_abnormal_list_record.pop(serial_number)
+            if converted_pd_status == 0 and serial_number in disk_status_abnormal_list_record:
+                disk_status_abnormal_list_record.discard(serial_number)
             elif converted_pd_status != 0:
                 send_physical_disk_status_alarm_to_mn(serial_number, slot_id, enclosure_id, converted_pd_status)
 
@@ -944,37 +895,85 @@ def collect_ipmi_state():
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
 
+@thread.AsyncThread
+def check_equipment_state_from_ipmitool():
+    sensor_handlers = {
+        "Memory": send_physical_memory_status_alarm_to_mn,
+        "Fan": send_physical_fan_status_alarm_to_mn,
+        "Power_Supply": send_physical_power_supply_status_alarm_to_mn
+    }
 
-def collect_physical_cpu_state():
+    r, memory_infos = bash_ro("ipmi-sensors --sensor-types=Memory,fan,Power_Supply -Q --ignore-unrecognized-events --comma-separated-output "
+                              "--no-header-output --sdr-cache-recreate --output-event-bitmask --output-sensor-state")
+    if r == 0:
+        for memory_info in memory_infos.splitlines():
+            memory = memory_info.split(",")
+            sensor_name = memory[1].strip()
+            sensor_type = memory[2].strip()
+            sensor_state = memory[3].strip()
+
+            if sensor_state.lower() == "critical" and sensor_type in sensor_handlers:
+                sensor_handlers[sensor_type](sensor_name, sensor_state)
+            else:
+                fan_status_abnormal_list_record.discard(sensor_name)
+                power_supply_status_abnormal_list_record.discard(sensor_name)
+                memory_status_abnormal_list_record.discard(sensor_name)
+
+def collect_equipment_state_from_ipmi():
     metrics = {
+        "ipmi_status": GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
         "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
+    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
-    r, cpu_info = bash_ro(
-        "ipmitool sdr elist | grep -E -i '^CPU[0-9]*(\ |_)Temp|CPU[0-9]*(\ |_)Status'")  # type: (int, str)
-    if r == 0:
-        count = 0
-        for info in cpu_info.splitlines():
-            info = info.strip().lower()
-            cpu_id = "CPU" + str(count)
-            if "temp" in info:
-                cpu_temp = info.split("|")[4].strip()
-                metrics['cpu_temperature'].add_metric([cpu_id], float(filter(str.isdigit, cpu_temp)) if bool(re.search(r'\d', cpu_temp)) else float(0))
-                count = count + 1
+    r, cpu_info = bash_ro("ipmitool sdr elist | grep -i cpu")  # type: (int, str)
+    if r != 0:
+        return metrics.values()
 
-        count = 0
-        for info in cpu_info.splitlines():
-            info = info.strip().lower()
-            cpu_id = "CPU" + str(count)
-            if "status" in info:
-                cpu_status = info.split("|")[4].strip()
-                cpu_status = 0 if "presence detected" == cpu_status else 10
-                metrics['cpu_status'].add_metric([cpu_id], float(cpu_status))
-                count = count + 1
-    
-    collect_equipment_state_last_result = metrics.values()
-    return collect_equipment_state_last_result
+    check_equipment_state_from_ipmitool()
+
+    '''
+        ================
+        CPU TEMPERATURE
+        ================
+        CPU1_Temp        | 39h | ok  |  7.18 | 34 degrees C
+        CPU1_Core_Temp   | 39h | ok  |  7.18 | 34 degrees C
+        CPU_Temp_01      | 39h | ok  |  7.18 | 34 degrees C
+        CPU1 Temp        | 39h | ok  |  7.18 | 34 degrees C
+        CPU1 Core Rem    | 04h | ok  |  3.96 | 41 degrees C
+        
+        ================
+        CPU STATUS
+        ================
+        CPU_STATUS_01    | 52h | ok  |  3.0 | Presence detected
+        CPU1 Status      | 3Ch | ok  |  3.96 | Presence detected
+        CPU1_Status      | 7Eh | ok  |  3.0 | Presence detected
+    '''
+
+    cpu_temperature_pattern = r'^(cpu\d+_temp|cpu\d+_core_temp|cpu_temp_\d+|cpu\d+ temp|cpu\d+ core rem)$'
+    cpu_status_pattern = r'^(cpu_status_\d+|cpu\d+ status|cpu\d+_status)$'
+
+    for line in cpu_info.lower().splitlines():
+        sensor = line.split("|")
+        if len(sensor) != 5:
+            continue
+        sensor_id = sensor[0].strip()
+        sensor_value = sensor[4].strip()
+        if re.match(cpu_temperature_pattern, sensor_id):
+            cpu_id = int(re.sub(r'\D', '', sensor_id))
+            cpu_temperature = filter(str.isdigit, sensor_value) if bool(re.search(r'\d', sensor_value)) else 0
+            metrics['cpu_temperature'].add_metric(["CPU%d" % cpu_id], float(cpu_temperature))
+        if re.match(cpu_status_pattern, sensor_id):
+            cpu_id = int(re.sub(r'\D', '', sensor_id))
+            cpu_status = 0 if "presence detected" == sensor_value else 10
+            metrics['cpu_status'].add_metric(["CPU%d" % cpu_id], float(cpu_status))
+            if cpu_status == 10:
+                send_cpu_status_alarm_to_mn(cpu_id, info.Status)
+            else:
+                cpu_status_abnormal_list_record.discard(cpu_id)
+
+    return metrics.values()
 
 
 def collect_equipment_state():
@@ -1228,6 +1227,160 @@ def collect_host_conntrack_statistics():
 
     return metrics.values()
 
+def parse_nvidia_smi_output_to_list(data):
+    lines = data.splitlines()
+    vgpu_list = []
+    current_vgpu = None
+    for line in lines:
+        indentation = len(line) - len(line.lstrip())
+        line = line.strip()
+        if "vGPU ID" in line:
+            if current_vgpu is not None:
+                vgpu_list.append(current_vgpu)
+            current_vgpu = {}
+        if ':' in line and current_vgpu is not None:
+            key, value = map(str.strip, line.split(':', 1))
+            if value.isdigit():
+                value = int(value)
+            elif value.replace('.', '', 1).isdigit() and '%' in value:
+                value = float(value.replace('%', ''))
+            current_vgpu[key] = value
+    if current_vgpu is not None:
+        vgpu_list.append(current_vgpu)
+    return vgpu_list
+
+
+def collect_nvidia_gpu_status():
+    metrics = {
+        "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_fan_speed": GaugeMetricFamily('gpu_fan_speed', 'current percentage of gpu fan speed', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_utilization": GaugeMetricFamily('gpu_utilization', 'gpu utilization', None, ['pci_device_address']),
+        "gpu_memory_utilization": GaugeMetricFamily('gpu_memory_utilization', 'gpu memory utilization', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_rxpci_in_bytes": GaugeMetricFamily('gpu_rxpci_in_bytes', 'gpu rxpci in bytes', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_txpci_in_bytes": GaugeMetricFamily('gpu_txpci_in_bytes', 'gpu txpci in bytes', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_status": GaugeMetricFamily('gpu_status', 'gpu status, 0 is critical, 1 is nominal', None, ['pci_device_address', 'gpuStatus', 'gpu_serial']),
+        "vgpu_utilization": GaugeMetricFamily('vgpu_utilization', 'vgpu utilization', None, ['vm_uuid', 'mdev_uuid']),
+        "vgpu_memory_utilization": GaugeMetricFamily('vgpu_memory_utilization', 'vgpu memory utilization', None, ['vm_uuid', 'mdev_uuid'])
+    }
+
+    if has_nvidia_smi() is False:
+        return metrics.values()
+
+    r, gpu_info = bash_ro(
+        "nvidia-smi --query-gpu=power.draw,temperature.gpu,fan.speed,utilization.gpu,utilization.memory,index,gpu_bus_id,gpu_serial --format=csv,noheader")
+    if r != 0:
+        return metrics.values()
+
+    gpu_index_mapping_pciaddress = {}
+    for info in gpu_info.splitlines():
+        info = info.strip().split(',')
+        pci_device_address = info[-2].strip()
+        gpu_serial = info[-1].strip()
+        if len(pci_device_address.split(':')[0]) == 8:
+            pci_device_address = pci_device_address[4:]
+
+        metrics['gpu_power_draw'].add_metric([pci_device_address, gpu_serial], float(info[0].replace('W', '').strip()))
+        metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(info[1].strip()))
+        metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(info[2].replace('%', '').strip()))
+        metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(info[3].replace('%', '').strip()))
+        metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(info[4].replace('%', '').strip()))
+        gpuStatus, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
+        metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
+        gpu_index_mapping_pciaddress[info[5].strip()] = pci_device_address
+
+        if gpuStatus == 'critical':
+            send_physical_gpu_status_alarm_to_mn(gpuStatus, pci_device_address)
+        else:
+            gpu_status_abnormal_list_record.discard(pci_device_address)
+
+    r, gpu_pci_rx_tx = bash_ro("nvidia-smi dmon -c 1 -s t")
+    if r != 0:
+        return metrics.values()
+
+    for gpu_index_rx_tx in gpu_pci_rx_tx.splitlines()[2:]:
+        index_rx_tx = gpu_index_rx_tx.split()
+        pci_device_address = gpu_index_mapping_pciaddress[index_rx_tx[0]]
+        if pci_device_address is None:
+            logger.error("No PCI address found for GPU index {index_rx_tx[0]}")
+            continue
+
+        metrics['gpu_rxpci_in_bytes'].add_metric([pci_device_address, gpu_serial], float(index_rx_tx[1]) * 1024 * 1024)
+        metrics['gpu_txpci_in_bytes'].add_metric([pci_device_address, gpu_serial], float(index_rx_tx[2]) * 1024 * 1024)
+
+    r, vgpu_info = bash_ro("nvidia-smi vgpu -q")
+    if r != 0 or "VM Name" not in vgpu_info:
+        return metrics.values()
+
+    for vgpu in parse_nvidia_smi_output_to_list(vgpu_info):
+        vm_uuid = vgpu["VM Name"]
+        mdev_uuid = vgpu["MDEV UUID"].replace('-', '')
+        metrics['vgpu_utilization'].add_metric([vm_uuid, mdev_uuid], float(vgpu['Gpu'].replace('%', '').strip()))
+        metrics['vgpu_memory_utilization'].add_metric([vm_uuid, mdev_uuid],
+                                                      float(vgpu['Memory'].replace('%', '').strip()))
+    return metrics.values()
+
+
+def collect_amd_gpu_status():
+    metrics = {
+        "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_fan_speed": GaugeMetricFamily('gpu_fan_speed', 'current percentage of gpu fan speed', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_utilization": GaugeMetricFamily('gpu_utilization', 'gpu utilization', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_memory_utilization": GaugeMetricFamily('gpu_memory_utilization', 'gpu memory utilization', None,
+                                                    ['pci_device_address', 'gpu_serial']),
+        "gpu_status": GaugeMetricFamily('gpu_status', 'gpu status, 0 is critical, 1 is nominal', None,
+                                        ['pci_device_address', 'gpuState', 'gpu_serial']),
+        "gpu_rxpci": GaugeMetricFamily('gpu_rxpci', 'gpu rxpci', None, ['pci_device_address']),
+        "gpu_txpci": GaugeMetricFamily('gpu_txpci', 'gpu txpci', None, ['pci_device_address'])
+    }
+
+    if has_rocm_smi() is False:
+        return metrics.values()
+
+    r, gpu_info = bash_ro('rocm-smi --showpower --showtemp  --showmemuse --showuse --showfan --showbus  --showserial --json')
+    if r != 0:
+        return metrics.values()
+
+    gpu_info_json = json.loads(gpu_info.strip())
+    for card_name, card_data in gpu_info_json.items():
+        gpu_serial = card_data['Serial Number']
+        pci_device_address = card_data['PCI Bus']
+        metrics['gpu_power_draw'].add_metric([pci_device_address, gpu_serial],
+                                             float(card_data['Average Graphics Package Power (W)']))
+        metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(card_data['Temperature (Sensor edge) (C)']))
+        metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(card_data['Fan Speed (%)']))
+        metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU use (%)']))
+        gpuState , gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
+        metrics['gpu_status'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_status_int_value)
+        metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU memory use (%)']))
+
+        if gpuState == 'critical':
+            send_physical_gpu_status_alarm_to_mn(gpuState, pci_device_address)
+        else:
+            gpu_status_abnormal_list_record.discard(pci_device_address)
+
+    return metrics.values()
+
+@in_bash
+def convert_pci_status_to_int(pci_address):
+    r, pci_status = bash_ro("lspci -s %s| grep -i 'rev ff'" % pci_address)
+    if r == 0 and len(pci_status.strip()) != 0:
+        return "critical", 0
+
+    return "nominal", 1
+
+
+def has_nvidia_smi():
+    return shell.run("which nvidia-smi") == 0
+
+def has_rocm_smi():
+    if bash_r("lsmod | grep -q amdgpu") != 0:
+        if bash_r("modprobe amdgpu") != 0:
+            return False
+    return shell.run("which rocm-smi") == 0
+
+
 
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
@@ -1244,11 +1397,14 @@ if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_equipment_state)
     
 if misc.isHyperConvergedHost():
-    kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_ipmi_state)
-    kvmagent.register_prometheus_collector(collect_ssd_state)
 else:
-    kvmagent.register_prometheus_collector(collect_physical_cpu_state)
+    kvmagent.register_prometheus_collector(collect_equipment_state_from_ipmi)
+
+kvmagent.register_prometheus_collector(collect_raid_state)
+kvmagent.register_prometheus_collector(collect_ssd_state)
+kvmagent.register_prometheus_collector(collect_nvidia_gpu_status)
+kvmagent.register_prometheus_collector(collect_amd_gpu_status)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):
@@ -1439,6 +1595,37 @@ WantedBy=multi-user.target
             os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
+        @in_bash
+        def start_ipmi_exporter(cmd):
+            bash_errorout("modprobe ipmi_msghandler; modprobe ipmi_devintf; modprobe ipmi_poweroff; modprobe ipmi_si; modprobe ipmi_watchdog")
+            EXPORTER_PATH = cmd.binaryPath
+            LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
+            ARGUMENTS = cmd.startupArguments
+
+            conf_path = os.path.join(os.path.dirname(EXPORTER_PATH), 'ipmi.yml')
+
+            conf = '''
+# Configuration file for ipmi_exporter
+modules:
+  default:
+    collectors:
+      - bmc
+      - ipmi
+      - dcmi
+      - chassis
+    exclude_sensor_ids:
+      - 2
+      - 29
+      - 32'''
+
+            if not os.path.exists(conf_path) or open(conf_path, 'r').read() != conf:
+                with open(conf_path, 'w') as fd:
+                    fd.write(conf)
+
+            os.chmod(EXPORTER_PATH, 0o755)
+            run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
+
+
         para = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
@@ -1454,6 +1641,8 @@ WantedBy=multi-user.target
         for cmd in para.cmds:
             if "collectd_exporter" in cmd.binaryPath:
                 start_collectd_exporter(cmd)
+            elif "ipmi_exporter" in cmd.binaryPath:
+                start_ipmi_exporter(cmd)
             else:
                 start_exporter(cmd)
 
