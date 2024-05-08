@@ -625,10 +625,12 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
             return success_heartbeat
 
         self.failure += 1
-        if self.failure == self.max_attempts:
+        if self.failure >= self.max_attempts:
             logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                         'shutdown ourselves' % (self.get_heartbeat_file_path, self.max_attempts))
-
+            # reset failure count to make sure this fencer still
+            # run to fence vm and recover storage during failures
+            self.failure = 0
             success_heartbeat = False
         return success_heartbeat
 
