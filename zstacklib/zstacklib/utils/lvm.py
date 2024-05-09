@@ -2030,7 +2030,8 @@ def check_stuck_vglk_and_gllk():
         for stucked in stucked_vglks.values():  # type: str
             if "ADD" in stucked or "REM" in stucked:
                 continue
-            cmd = "sanlock client release -%s" % stucked.replace(" p ", " -p ")
+            # r lvm_aaf953ae7a984e529cdf53953f236fee:VGLK:/dev/mapper/aaf953ae7a984e529cdf53953f236fee-lvmlock:69206016:2031 C 3
+            cmd = "sanlock client release -%s" % stucked.replace(" p ", " -p ").replace(" C ", " -C ")
             r, o, e = bash.bash_roe(cmd)
             logger.warn("find stuck vglk and already released, detail: [return_code: %s, stdout: %s, stderr: %s]" %
                         (r, o, e))
