@@ -1,3 +1,4 @@
+import os.path
 import time
 
 from kvmagent.test.nfs_testsuit.test_ha_plugin_testsub import NfsPluginTestStub
@@ -46,7 +47,8 @@ class TestHaNfsPlugin(TestCase, NfsPluginTestStub):
         dstPsDir = "/tmp/nfs-storage/"
         linux.mkdir(dstPsDir)
 
-        image_path = "/opt/zstack/nfsprimarystorage/prim-{}/imagecache/template/{}/".format(primaryStorageUuid, imageUuid)
+        cache_dir = "/opt/zstack/nfsprimarystorage/prim-{}/imagecache".format(primaryStorageUuid)
+        image_path = "{}/template/{}/".format(cache_dir, imageUuid)
         shell.call('mkdir -p %s' % image_path)
 
         installUrl = "/opt/zstack/nfsprimarystorage/prim-{}/rootVolumes/acct-36c27e8ff05c4780bf6d2fa65700f22e/vol-{}/{}.qcow2" \
@@ -60,6 +62,11 @@ class TestHaNfsPlugin(TestCase, NfsPluginTestStub):
                                                                 volumeUuid, primaryStorageUuid, primaryStorageUuid, kvmHostAddons)
 
         self.assertEqual(True, rsp.success, rsp.error)
+
+        rsp = nfs_plugin_utils.get_volume_base_image(installUrl, os.path.dirname(installUrl),
+                                                     os.path.dirname(image_path), volumeUuid)
+        self.assertEqual(image_path + "min-vm.qcow2", rsp.path, "found wrong base image %s" % rsp.path)
+        self.assertEqual([], rsp.otherPaths, "found wrong base images %s" % rsp.otherPaths)
 
         linux.qcow2_fill(10*1024**2, 20*1024**2, installUrl)
         srcPath = "/opt/zstack/nfsprimarystorage/prim-{}/rootVolumes/acct-36c27e8ff05c4780bf6d2fa65700f22e/vol-{}/".format(primaryStorageUuid, volumeUuid)
