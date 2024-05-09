@@ -1208,15 +1208,14 @@ def get_qcow2_base_backing_file_recusively(path):
 def get_qcow2_base_image_recusively(vol_install_dir, image_cache_dir):
     real_vol_dir = os.path.realpath(vol_install_dir)
     real_cache_dir = os.path.realpath(image_cache_dir)
-    backing_files = shell.call(
-        "set -o pipefail; find %s -type f -name '*.qcow2' -exec %s {} \;| grep 'backing file:' | awk '{print $3}'"
-        % (real_vol_dir, qemu_img.subcmd('info'))).splitlines()
 
     base_image = set()
-    for backing_file in backing_files:
-        real_image_path = os.path.realpath(backing_file)
-        if real_image_path.startswith(real_cache_dir):
-            base_image.add(real_image_path)
+    for p in list_all_file(real_vol_dir):
+        backing_file = qcow2_get_backing_file(p)
+        if backing_file:
+            real_image_path = os.path.realpath(backing_file)
+            if real_image_path.startswith(real_cache_dir):
+                base_image.add(real_image_path)
 
     if len(base_image) == 1:
         return base_image.pop()
