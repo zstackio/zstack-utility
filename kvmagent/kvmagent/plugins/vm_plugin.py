@@ -3776,7 +3776,7 @@ class Vm(object):
 
         def is_external_shared_storage():
             from zstacklib.utils.linux import get_fs_type
-            share_list_type = ["fuseblk"] 
+            share_list_type = ["fuseblk", "gpfs"] 
             vdisk_source_type = (get_fs_type(s) for s in self.list_blk_sources())
             if any(s.startswith('/dev/') for s in self.list_blk_sources()) or any(item in share_list_type for item in vdisk_source_type):
                 return True
