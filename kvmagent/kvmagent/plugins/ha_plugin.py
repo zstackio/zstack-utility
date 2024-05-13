@@ -210,6 +210,14 @@ class PhysicalNicFencer(AbstractHaFencer):
     def get_ha_fencer_name(self):
         return "hostBusinessNic"
 
+    def skip_vm_bussiness_nic_check(self, vm_uuid):
+        # block storage skip fencer due to not supported
+        if is_block_fencer(self.get_ha_fencer_name(), vm_uuid):
+            logger.debug("skip vm %s nic fencer, not supported on block storage" % vm_uuid)
+            return True
+
+        return False
+
     def find_vm_use_falut_nic(self):
         vm_use_falut_nic_pids_dict = {}
         falut_nic = self.find_falut_business_nic()
@@ -217,34 +225,88 @@ class PhysicalNicFencer(AbstractHaFencer):
             return vm_use_falut_nic_pids_dict, falut_nic
         logger.debug("nics[%s] is down" % ",".join(falut_nic))
 
-        zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
-        vm_in_process_uuid_list = shell.call("virsh list | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
-        for vm_uuid in vm_in_process_uuid_list.splitlines():
-            if is_block_fencer(self.get_ha_fencer_name(), vm_uuid):
+        r = bash.bash_r("timeout 5 virsh list")
+        if r == 0:
+            vm_use_falut_nic_pids_dict = self.find_vm_use_falut_nic_with_virsh(falut_nic)
+        else:
+            vm_use_falut_nic_pids_dict = self.find_vm_use_falut_nic_without_virsh(falut_nic)
+
+        return vm_use_falut_nic_pids_dict, falut_nic
+
+
+    def is_bridge_related_to_nic(self, bridge, nic):
+        if len(bridge) == 0:
+            return False
+
+        if '_' in bridge:
+            bridge = bridge.split('_')[1]
+
+        if '.' in bridge:
+            bridge = bridge.split('.')[0]
+
+        if len(bridge) == 0:
+            return False
+
+        if bridge.strip() in nic:
+            return True
+
+        return False
+
+
+    # get interface and bridge from xml
+    def find_vm_use_falut_nic_without_virsh(self, falut_nic):
+        vm_use_falut_nic_pids_dict = {}
+        vm_in_process_uuid_list = find_vm_uuid_list_by_process()
+        for vm_uuid in vm_in_process_uuid_list:
+            if self.skip_vm_bussiness_nic_check(vm_uuid):
+                continue
+
+            file_name = "%s.xml" % vm_uuid
+            xml = linux.read_file(os.path.join(LIVE_LIBVIRT_XML_DIR, file_name))
+            if not xml:
+                logger.warn("cannot read xml file %s" % file_name)
+                continue
+
+            vm = linux.VmStruct()
+            vm.uuid = vm_uuid
+            vm.pid = linux.get_vm_pid(vm_uuid)
+            vm.load_from_xml(xml)
+
+            for bridge_nic in vm.bridges:
+                if not self.is_bridge_related_to_nic(bridge_nic, falut_nic):
+                    continue
+
+                vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
+                if not vm_pid:
+                    logger.warn('vm %s pid not found' % vm_uuid)
+                    continue
+
+                vm_use_falut_nic_pids_dict[vm_uuid] = vm_pid
+
+        logger.debug("vm_use_falut_nic_pids_dict: %s" % vm_use_falut_nic_pids_dict)
+        return vm_use_falut_nic_pids_dict
+
+
+    def find_vm_use_falut_nic_with_virsh(self, falut_nic):
+        vm_use_falut_nic_pids_dict = {}
+        vm_in_process_uuid_list = find_vm_uuid_list_by_virsh()
+        for vm_uuid in vm_in_process_uuid_list:
+            if self.skip_vm_bussiness_nic_check(vm_uuid):
                 continue
 
             bridge_nics = shell.call("virsh domiflist %s | grep bridge | awk '{print $3}'" % vm_uuid)
             for bridge_nic in bridge_nics.splitlines():
-                if len(bridge_nic) == 0:
+                if not self.is_bridge_related_to_nic(bridge_nic, falut_nic):
                     continue
 
-                if '_' in bridge_nic:
-                    bridge_nic = bridge_nic.split('_')[1]
-
-                if '.' in bridge_nic:
-                    bridge_nic = bridge_nic.split('.')[0]
-
-                if len(bridge_nic) == 0:
+                vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
+                if not vm_pid:
+                    logger.warn('vm %s pid not found' % vm_uuid)
                     continue
 
-                if bridge_nic.strip() in falut_nic:
-                    vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
-                    if not vm_pid:
-                        logger.warn('vm %s pid not found' % vm_uuid)
-                        continue
-                    vm_use_falut_nic_pids_dict[vm_uuid] = vm_pid
+                vm_use_falut_nic_pids_dict[vm_uuid] = vm_pid
         logger.debug("vm_use_falut_nic_pids_dict: %s" % vm_use_falut_nic_pids_dict)
-        return vm_use_falut_nic_pids_dict, falut_nic
+        return vm_use_falut_nic_pids_dict
 
     def find_falut_business_nic(self):
         nics = []
@@ -955,13 +1017,21 @@ def clean_network_config(vm_uuids):
         logger.debug('clean network config handler: %s\n' % c)
         thread.ThreadFacade.run_in_thread(c, (vm_uuids,))
 
+zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
+
+def find_vm_uuid_list_by_process():
+    vm_in_process_uuid_list = shell.call("ps -ef | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'")
+    return vm_in_process_uuid_list.splitlines()
+
+def find_vm_uuid_list_by_virsh():
+    vm_in_virsh_uuid_list = shell.call("virsh list | egrep -o %s" % zstack_uuid_pattern + " | sort | uniq")
+    return vm_in_virsh_uuid_list.splitlines()
 
 def find_ps_running_vm(store_uuid):
-    zstack_uuid_pattern = "'[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}'"
-    vm_in_process_uuid_list = shell.call("virsh list | egrep -o " + zstack_uuid_pattern + " | sort | uniq")
+    vm_in_process_uuid_list = find_vm_uuid_list_by_virsh()
 
     vm_in_ps_uuid_list = []
-    for vm_uuid in vm_in_process_uuid_list.splitlines():
+    for vm_uuid in vm_in_process_uuid_list:
         out = bash.bash_o("virsh dumpxml %s | grep '<source' | head -1 | grep %s" % (vm_uuid.strip(), store_uuid)).strip().splitlines()
         if len(out) != 0:
             vm_in_ps_uuid_list.append(vm_uuid.strip())
@@ -1024,12 +1094,12 @@ def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
     virsh_list = shell.call("virsh list --all")
     logger.debug("virsh_list:\n" + virsh_list)
     
-    vm_in_process_uuid_list = shell.call("ps -ef | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'")
-    logger.debug('vm_in_process_uuid_list:\n' + vm_in_process_uuid_list)
+    vm_in_process_uuid_list = find_vm_uuid_list_by_process()
+    logger.debug('vm_in_process_uuid_list:\n' + '\n'.join(vm_in_process_uuid_list))
 
     # kill vm's qemu process
     vm_pids_dict = {}
-    for vm_uuid in vm_in_process_uuid_list.splitlines():
+    for vm_uuid in vm_in_process_uuid_list:
         vm_uuid = vm_uuid.strip()
         if not vm_uuid:
             continue
