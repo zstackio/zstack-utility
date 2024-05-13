@@ -126,6 +126,7 @@ class VolumeTO(object):
     def __init__(self):
         self.installPath = None
         self.deviceType = None
+        self.format = None
         self.is_cdrom = False
 
     @staticmethod
@@ -136,9 +137,12 @@ class VolumeTO(object):
             source = xml_obj.find('source')
             if source is not None and 'file' in source.attrib:
                 v = VolumeTO()
-                v.installPath = xml_obj.find('source').attrib['file']
+                v.installPath = source.attrib['file']
                 v.deviceType = "file"
                 v.is_cdrom = xml_obj.attrib['device'] == 'cdrom'
+                driver = xml_obj.find('driver')
+                if driver is not None and 'type' in driver.attrib:
+                    v.format = driver.attrib['type']
                 return v
 
     # TODO remove it, should converted in MN
@@ -7820,7 +7824,7 @@ class VmPlugin(kvmagent.KvmAgent):
     def _get_new_disk(old_disk, volume=None):
         def filebased_volume(_v):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'qcow2', 'cache': _v.cacheMode, 'discard': 'unmap'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': driver_type, 'cache': _v.cacheMode, 'discard': 'unmap'})
             e(disk, 'source', None, {'file': _v.installPath})
             return disk
 
@@ -7854,7 +7858,7 @@ class VmPlugin(kvmagent.KvmAgent):
         def block_volume(_v):
             disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None,
-              {'name': 'qemu', 'type': 'qcow2', 'cache': 'none', 'io': 'native'})
+              {'name': 'qemu', 'type': driver_type, 'cache': 'none', 'io': 'native'})
             e(disk, 'source', None, {'dev': _v.installPath})
             return disk
 
@@ -7870,6 +7874,7 @@ class VmPlugin(kvmagent.KvmAgent):
             if not (volume and block_volume_over_incorrect_driver(volume) and block_device_use_block_type()):
                 return old_disk  # no change
 
+        driver_type = volume.format if volume.format else 'qcow2'
         volume = file_volume_check(volume)
         if volume.deviceType == 'file':
             ele = filebased_volume(volume)
