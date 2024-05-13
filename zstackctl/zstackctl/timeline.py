@@ -48,7 +48,7 @@ class TaskLet(object):
         return self.get_duration() < other.get_duration()
 
     def __str__(self):
-        return "{} {}: {} {}".format(self.task_type, self.task_id, self.begin_time, self.end_time)
+        return "{} {}: {} {}".format(self.task_type, self.task_id, self.begin_time, pretty_end_time(self.end_time))
 
 def parse_timestamp(timestamp):
     return datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S.%f')
@@ -57,6 +57,8 @@ def parse_timestamp(timestamp):
 def compact_line(line, length):
     return line if len(line) <= length else line[:(length-3)]+"..."
 
+def pretty_end_time(end_time):
+    return "None                   " if end_time is None else end_time
 
 class CloudBusTask(TaskLet):
     def __init__(self, msgid):
@@ -70,7 +72,7 @@ class CloudBusTask(TaskLet):
         return self.msg_name.split(".")[-1]
 
     def __str__(self):
-        return "{} -> {} {}: {}".format(self.begin_time, self.end_time, self.task_type, self.msg_name.split(".")[-1])
+        return "{} -> {} {}: {}".format(self.begin_time, pretty_end_time(self.end_time), self.task_type, self.msg_name.split(".")[-1])
 
 class DispatchQueueTask(TaskLet):
     def __init__(self, taskname):
@@ -79,7 +81,7 @@ class DispatchQueueTask(TaskLet):
         self.task_id = taskname
 
     def __str__(self):
-        return "{} -> {} {}: {}".format(self.begin_time, self.end_time, self.task_type, self.task_id)
+        return "{} -> {} {}: {}".format(self.begin_time, pretty_end_time(self.end_time), self.task_type, self.task_id)
 
 class RESTRequestTask(TaskLet):
     def __init__(self, url, taskuuid):
@@ -92,7 +94,7 @@ class RESTRequestTask(TaskLet):
         return self.req_url
 
     def __str__(self):
-        return "{} -> {} {}: {}".format(self.begin_time, self.end_time, self.task_type, self.req_url)
+        return "{} -> {} {}: {}".format(self.begin_time, pretty_end_time(self.end_time), self.task_type, self.req_url)
 
 class FlowChainTask(TaskLet):
     def __init__(self, fcid, name):
@@ -105,7 +107,7 @@ class FlowChainTask(TaskLet):
         return self.flow_name
 
     def __str__(self):
-        return "{} -> {} {}: {}".format(self.begin_time, self.end_time, self.task_type, self.flow_name)
+        return "{} -> {} {}: {}".format(self.begin_time, pretty_end_time(self.end_time), self.task_type, self.flow_name)
 
 def parse_message(name, jsonstr):
     msgobj = json.loads(jsonstr).get(name)

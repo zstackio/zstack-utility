@@ -10759,7 +10759,8 @@ class TimelineCmd(Command):
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
-        parser.add_argument('--log-file', required=True, default="", help='text or gzip archive log files, seperated by "," without whitespace')
+        parser.add_argument('--log-file', default="",
+                            help='text or gzip archive log files, seperated by "," without whitespace. Default is current management-server.log and all files today.')
         parser.add_argument('-k', '--key', required=True, default="", help='the API or task UUID for search. ' + timeline_doc)
         parser.add_argument('-t', '--top', type=int, default=0, help='show top N time consumers')
         parser.add_argument('-p', '--plot', action='store_true', help='generate a Gnuplot script')
@@ -10768,6 +10769,16 @@ class TimelineCmd(Command):
         timeline = TaskTimeline()
 
         log_file_list = args.log_file.split(',')
+        if args.log_file == "":
+            log_dir = os.path.join(ctl.zstack_home, "../../logs/")
+            log_dir = os.path.normpath(log_dir)
+            log_path = os.path.join(log_dir, "management-server.log")
+            log_file_list = [log_path]
+
+            current_time = datetime.now()
+            pattern = "management-server-%s-*" % (current_time.strftime("%Y-%m-%d"))
+            log_file_list.extend(glob.glob(os.path.join(log_dir, pattern)))
+
         for log_file in log_file_list:
             if not os.path.isfile(log_file):
                 raise CtlError("The log file %s was not found!" % args.log_file)
