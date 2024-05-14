@@ -976,6 +976,10 @@ def get_img_file_fmt(src):
 
 
 def get_img_fmt(src):
+    if os.path.exists(src):
+        with open(src, 'rb') as f:
+            return get_fmt_from_magic(f.read(4))
+
     fmt = shell.call(
         "set -o pipefail; %s %s | grep -w '^file format' | awk '{print $3}'" % (qemu_img.subcmd('info'), src))
     fmt = fmt.strip(' \t\r\n')
@@ -983,6 +987,16 @@ def get_img_fmt(src):
         logger.debug("/usr/bin/qemu-img info %s" % src)
         raise Exception('unknown format[%s] of the image file[%s]' % (fmt, src))
     return fmt
+
+
+def get_fmt_from_magic(magic):
+    if magic == 'QFI\xfb':
+        return 'qcow2'
+    elif magic == 'KDMV':
+        return 'vmdk'
+    else:
+        return 'raw'
+
 
 def qcow2_clone(src, dst, size=""):
     fmt = get_img_fmt(src)
