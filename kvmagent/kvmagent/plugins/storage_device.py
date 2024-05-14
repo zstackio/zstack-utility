@@ -338,20 +338,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    def refresh_scsi_info(self, paths):
-        if not paths:
-            return
-        has_wwid_dev = set()
-        for f in os.listdir('/dev/disk/by-id/'):
-            dev = os.path.basename(os.path.realpath(os.path.join('/dev/disk/by-id/', f)))
-            if f.startswith("dm-uuid-mpath-"):
-                has_wwid_dev.update(linux.listdir("/sys/class/block/%s/slaves/" % dev))
-            elif f.startswith("scsi-"):
-                has_wwid_dev.add(dev)
-
-        need_refresh_disks = [os.path.basename(os.path.realpath(os.path.join("/dev/disk/by-path", p))) for p in paths]
-        for dev in set(need_refresh_disks) - has_wwid_dev:
-            bash.bash_r("udevadm trigger --sysname-match=%s" % dev)
+    def trigger_events_for_block(self):
+        bash.bash_r("udevadm trigger --subsystem-match=block")
 
     @lock.lock('iscsiadm')
     @kvmagent.replyerror
@@ -468,7 +456,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
                 # refresh mpath dev if any
                 refresh_mpath(disks)
-                self.refresh_scsi_info(disks)
+                self.trigger_events_for_block()
 
                 if len(disks) == 0:
                     rsp.iscsiTargetStructList.append(t)
@@ -563,7 +551,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     shell.run('multipathd resize map '+os.path.realpath(p))
         linux.set_fail_if_no_path()
         paths = [lun.path for lun in rsp.fiberChannelLunStructs]
-        self.refresh_scsi_info(paths)
+        self.trigger_events_for_block()
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
