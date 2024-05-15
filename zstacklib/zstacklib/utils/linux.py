@@ -1103,16 +1103,20 @@ def qcow2_rebase(backing_file, target):
     else:
         backing_option = '-b "%s"' % backing_file
 
-    top_virtual_size = int(qcow2_get_virtual_size(target))
-    backing_chain = qcow2_get_backing_chain(target)
-    for idx, bf in enumerate(backing_chain):
-        if idx == len(backing_chain)-1 and get_img_fmt(bf) != 'qcow2':
-            break
-        bf_virtual_size = int(qcow2_get_virtual_size(bf))
-        if bf_virtual_size < top_virtual_size:
-            qemu_img_resize(bf, top_virtual_size)
-        if bf == backing_file:
-            break
+    def resize_backing_if_need():
+        top_virtual_size = int(qcow2_get_virtual_size(target))
+        backing_chain = qcow2_get_backing_chain(target)
+        for idx, bf in enumerate(backing_chain):
+            if idx == len(backing_chain)-1 and get_img_fmt(bf) != 'qcow2':
+                break
+            bf_virtual_size = int(qcow2_get_virtual_size(bf))
+            if bf_virtual_size < top_virtual_size:
+                qemu_img_resize(bf, top_virtual_size)
+            if bf == backing_file:
+                break
+
+    if qemu_img.resize_backing_before_rebase():
+        resize_backing_if_need()
 
     with TempAccessible(target):
         shell.call('%s -f qcow2 %s %s' % (qemu_img.subcmd('rebase'), backing_option, target))
