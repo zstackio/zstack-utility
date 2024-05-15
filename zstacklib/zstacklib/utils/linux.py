@@ -2991,4 +2991,5 @@ def compare_segmented_xxhash(src_path, dst_path, total_size, raise_exception=Fal
     return True
 
 def check_unixsock_connection(socket_path, timeout=10):
+    # NOTE: -z option may not be supported in some lower versions of Ncat, such as 6.40
     return shell.run("nc -z -U %s -w %s" % (socket_path, timeout))

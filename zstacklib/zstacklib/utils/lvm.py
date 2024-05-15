@@ -765,11 +765,11 @@ def get_lvm_version():
 
 @bash.in_bash
 def is_lvmlockd_socket_abnormal():
-    if linux.check_unixsock_connection(LVMLOCKD_SOCKET) == 0:
-        return False
-
-    @linux.retry(3, 1)
-    def check_lvmlockd_log():
+    @linux.retry(2, 1)
+    def check_socket():
+        r = bash.bash_r("timeout 10 lvmlockctl -i > /dev/null")
+        if r == 0:
+            return
         # check if lvmlockd can receive the lvm command
         fake_vg = 'fake_vg_%s' % linux.get_current_timestamp()
         start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -778,7 +778,7 @@ def is_lvmlockd_socket_abnormal():
         if not lvmlockd_log_search('vgck', start_time, end_time):
             raise RetryException("lvmlockd socket exceptions!")
     try:
-        check_lvmlockd_log()
+        check_socket()
         return False
     except Exception as e:
         logger.warn(str(e))
