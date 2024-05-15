@@ -155,15 +155,17 @@ class NamespaceInfraEnv(object):
       |     +-------------------+                                                 |
       |                             NAMESPACE                                     |
       +---------------------------------------------------------------------------+
+
+    这个class是dhcp, userdata, 地址冲突检测等功能的公共部分，为了简单，namespace使用topo结构，
+    这个class实现topo的创建，删除动作
     """
     CONNECT_ALL_NETNS_BR_NAME = "br_conn_all_ns"
     CONNECT_ALL_NETNS_BR_OUTER_IP = "169.254.64.1"
     CONNECT_ALL_NETNS_BR_INNER_IP = "169.254.64.2"
     IP_MASK_BIT = 18
 
-    def __init__(self, vm_bridge_name, namespace_name, vlan_id):
+    def __init__(self, vm_bridge_name, namespace_name):
         self.vm_bridge_name = vm_bridge_name
-        self.vlan_id = vlan_id
         self.host_bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
         self.namespace_name = namespace_name
         self.namespace_id = ip.get_namespace_id(self.namespace_name)
@@ -185,100 +187,6 @@ class NamespaceInfraEnv(object):
         self._add_near_host_inner_ip_if_not_exist()
         self._add_near_vm_inner_ip_if_not_exist()
         self._set_namespace_attribute()
-
-    @lock.lock('namespace_infra_env')
-    @in_bash
-    @lock.file_lock('/run/xtables.lock')
-    def add_ip_eb_tables(self, l3_network_uuid, ip_addr, netmask):
-        DEV = self.near_vm_inner
-        NS_NAME = self.namespace_name
-        CIDR = ip.IpAddress(ip_addr).toCidr(netmask)
-        self._add_vm_route_if_not_exist(CIDR)
-
-        # set ebtables
-        BR_NAME = self.vm_bridge_name
-        ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME, self.vlan_id)
-
-        MAC = iproute.IpNetnsShell(NS_NAME).get_mac(DEV)
-        CHAIN_NAME = "USERDATA-%s" % BR_NAME
-        # max length of ebtables chain name is 31
-        if (len(BR_NAME) <= 12):
-            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, l3_network_uuid[0:8])
-        else:
-            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], l3_network_uuid[0:8])
-
-        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -N {{EBCHAIN_NAME}}')
-
-        if bash_r(EBTABLES_CMD + " -t nat -L PREROUTING | grep -- '--logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}'") != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}')
-
-        # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
-        macAddr = ip.removeZeroFromMacAddress(MAC)
-        RULE = "-p IPv4 --ip-src %s --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % (CIDR, macAddr)
-        ret = bash_r(EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '{{RULE}}' > /dev/null")
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
-
-        ret = bash_r(
-            EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '--arp-ip-dst %s' > /dev/null" % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
-        if ret != 0:
-            bash_errorout(
-                EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}}  -p arp  --arp-ip-dst %s -j DROP' % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
-
-        ret = bash_r(EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '-j RETURN' > /dev/null")
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -t nat -A {{EBCHAIN_NAME}} -j RETURN')
-
-        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -N {{EBCHAIN_NAME}}')
-
-        ret = bash_r(
-            EBTABLES_CMD + " -L FORWARD | grep -- '-p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}' > /dev/null")
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}')
-
-        ret = bash_r(EBTABLES_CMD + " -L {{EBCHAIN_NAME}} | grep -- '-i {{ETH_NAME}} -j DROP' > /dev/null")
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
-
-        ret = bash_r(EBTABLES_CMD + " -L {{EBCHAIN_NAME}} | grep -- '-o {{ETH_NAME}} -j DROP' > /dev/null")
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
-
-        ret = bash_r("ebtables-save | grep '\-A {{EBCHAIN_NAME}} -j RETURN'")
-        if ret != 0:
-            bash_errorout(EBTABLES_CMD + ' -A {{EBCHAIN_NAME}} -j RETURN')
-
-    @lock.lock('namespace_infra_env')
-    @lock.file_lock('/run/xtables.lock')
-    @in_bash
-    def del_ip_eb_tables(self, l3_network_uuid):
-        BR_NAME = self.vm_bridge_name
-        # max length of ebtables chain name is 31
-        if (len(BR_NAME) <= 12):
-            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, l3_network_uuid[0:8])
-        else:
-            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], l3_network_uuid[0:8])
-
-        cmds = []
-        o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
-        o = o.strip(" \t\r\n")
-        if o:
-            for l in o.split("\n"):
-                # we don't distinguish if the rule is in filter table or nat table
-                # but try both. The wrong table will silently fail
-                cmds.append(EBTABLES_CMD + " -t filter %s" % l.replace("-A", "-D"))
-                cmds.append(EBTABLES_CMD + " -t nat %s" % l.replace("-A", "-D"))
-
-        if bash_r("ebtables-save | grep :{{CHAIN_NAME}}") == 0:
-            cmds.append(EBTABLES_CMD + " -t filter -X %s" % CHAIN_NAME)
-            cmds.append(EBTABLES_CMD + " -t nat -X %s" % CHAIN_NAME)
-
-        if len(cmds) > 0:
-            bash_r("\n".join(cmds))
 
     @lock.lock('namespace_infra_env')
     @in_bash
@@ -422,6 +330,9 @@ class NamespaceInfraEnv(object):
             bash_errorout('ip netns exec {{NS_NAME}} ip r add {{CIDR}} dev {{DEV}}')
 
 class UserDataEnv(object):
+    """
+    userdata namespace
+    """
     def __init__(self, bridge_name, namespace_name, vlan_id):
         self.bridge_name = bridge_name
         self.namespace_name = namespace_name
@@ -434,6 +345,101 @@ class UserDataEnv(object):
     def delete(self, l3_network_uuid):
         self.infra_env.del_ip_eb_tables(l3_network_uuid)
         self.infra_env.delete_dev()
+
+    @lock.lock('namespace_infra_env')
+    @in_bash
+    @lock.file_lock('/run/xtables.lock')
+    def add_ip_eb_tables(self, l3_network_uuid, ip_addr, netmask):
+        DEV = self.near_vm_inner
+        NS_NAME = self.namespace_name
+        CIDR = ip.IpAddress(ip_addr).toCidr(netmask)
+        self._add_vm_route_if_not_exist(CIDR)
+
+        # set ebtables
+        BR_NAME = self.vm_bridge_name
+        ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME, self.vlan_id)
+
+        MAC = iproute.IpNetnsShell(NS_NAME).get_mac(DEV)
+        CHAIN_NAME = "USERDATA-%s" % BR_NAME
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, l3_network_uuid[0:8])
+        else:
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], l3_network_uuid[0:8])
+
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -N {{EBCHAIN_NAME}}')
+
+        if bash_r(EBTABLES_CMD + " -t nat -L PREROUTING | grep -- '--logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}'") != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}')
+
+        # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
+        macAddr = ip.removeZeroFromMacAddress(MAC)
+        RULE = "-p IPv4 --ip-src %s --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % (CIDR, macAddr)
+        ret = bash_r(EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '{{RULE}}' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '--arp-ip-dst %s' > /dev/null" % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
+        if ret != 0:
+            bash_errorout(
+                EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}}  -p arp  --arp-ip-dst %s -j DROP' % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
+
+        ret = bash_r(EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '-j RETURN' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -A {{EBCHAIN_NAME}} -j RETURN')
+
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -N {{EBCHAIN_NAME}}')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -L FORWARD | grep -- '-p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}')
+
+        ret = bash_r(EBTABLES_CMD + " -L {{EBCHAIN_NAME}} | grep -- '-i {{ETH_NAME}} -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
+
+        ret = bash_r(EBTABLES_CMD + " -L {{EBCHAIN_NAME}} | grep -- '-o {{ETH_NAME}} -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
+
+        ret = bash_r("ebtables-save | grep '\-A {{EBCHAIN_NAME}} -j RETURN'")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -A {{EBCHAIN_NAME}} -j RETURN')
+
+    @lock.lock('namespace_infra_env')
+    @lock.file_lock('/run/xtables.lock')
+    @in_bash
+    def del_ip_eb_tables(self, l3_network_uuid):
+        BR_NAME = self.vm_bridge_name
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, l3_network_uuid[0:8])
+        else:
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], l3_network_uuid[0:8])
+
+        cmds = []
+        o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
+        o = o.strip(" \t\r\n")
+        if o:
+            for l in o.split("\n"):
+                # we don't distinguish if the rule is in filter table or nat table
+                # but try both. The wrong table will silently fail
+                cmds.append(EBTABLES_CMD + " -t filter %s" % l.replace("-A", "-D"))
+                cmds.append(EBTABLES_CMD + " -t nat %s" % l.replace("-A", "-D"))
+
+        if bash_r("ebtables-save | grep :{{CHAIN_NAME}}") == 0:
+            cmds.append(EBTABLES_CMD + " -t filter -X %s" % CHAIN_NAME)
+            cmds.append(EBTABLES_CMD + " -t nat -X %s" % CHAIN_NAME)
+
+        if len(cmds) > 0:
+            bash_r("\n".join(cmds))
+
 
 class DhcpEnv(object):
     DHCP6_STATEFUL = "Stateful-DHCP"
@@ -450,7 +456,7 @@ class DhcpEnv(object):
         self.ipVersion = 0
         self.prefixLen = 0
         self.addressMode = self.DHCP6_STATEFUL
-        self.infra_env = NamespaceInfraEnv(self.bridge_name, self.namespace_name, self.vlan_id)
+        self.infra_env = NamespaceInfraEnv(self.bridge_name, self.namespace_name)
 
     @lock.file_lock('/run/xtables.lock')
     @in_bash
@@ -856,7 +862,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     @in_bash
     def cleanup_dhcp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        dhcp_env = DhcpEnv(cmd.bridgeName, cmd.namespaceName) ######TODO:shixin
+        dhcp_env = DhcpEnv(cmd.bridgeName, cmd.namespaceName)
         dhcp_env.delete()
 
         return jsonobject.dumps(DeleteNamespaceRsp())
@@ -1075,7 +1081,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             with open(index_file_path, 'w') as fd:
                 fd.write('')
 
-        ud_env = UserdataEnv(to.bridgeName, to.namespaceName)
+        ud_env = UserdataEnv(to.bridgeName, to.namespaceName) ###TODO: shixin, vlanid
         ud_env.prepare(to.l3NetworkUuid, to.vmIp, to.netmask)
         chain_name = "USERDATA-%s" % to.bridgeName
         self.work_userdata_iptables(chain_name, to)
