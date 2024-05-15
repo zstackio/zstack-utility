@@ -2077,6 +2077,22 @@ def get_all_vm_states():
 def get_all_vm_sync_states():
     return get_active_vm_uuids_states()
 
+def get_all_vm_states_with_process():
+    states = {}
+
+    # Occasionally, virsh might not be able to list all VM instances with
+    # uri=qemu://system.  To prevend this situation, we double check the
+    # 'rsp.states' agaist QEMU process lists.
+    output = bash.bash_o("ps -ef | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
+    for guest in output:
+        if guest.lower() == "ZStack Management Node VM".lower()\
+                or guest.startswith("guestfs-"):
+            continue
+        logger.warn('guest [%s] not found in virsh list' % guest)
+        states[guest] = Vm.VM_STATE_RUNNING
+
+    return states
+
 def get_running_vms():
     @LibvirtAutoReconnect
     def get_all_ids(conn):
@@ -6805,8 +6821,13 @@ class VmPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def check_vm_state(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        states = get_all_vm_states()
         rsp = CheckVmStateRsp()
+        r = bash.bash_r("timeout 5 virsh list")
+        if r == 0:
+            states = get_all_vm_states()
+        else:
+            states = get_all_vm_states_with_process()
+
         for uuid in cmd.vmUuids:
             s = states.get(uuid)
             if not s or s == Vm.VM_STATE_RUNNING:
@@ -7012,9 +7033,7 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    def vm_sync(self, req):
-        rsp = VmSyncResponse()
+    def get_vm_state_from_libvirt(self, rsp):
         rsp.states, rsp.vmInShutdowns = get_all_vm_sync_states()
 
         # In case of an reboot inside the VM.  Note that ZS will only define transient VM's.
@@ -7034,20 +7053,24 @@ class VmPlugin(kvmagent.KvmAgent):
                 elif states[uuid] != Vm.VM_STATE_PAUSED:
                     rsp.states[uuid] = states[uuid]
 
-        # Occasionally, virsh might not be able to list all VM instances with
-        # uri=qemu://system.  To prevend this situation, we double check the
-        # 'rsp.states' agaist QEMU process lists.
-        output = bash.bash_o("ps -ef | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K.*?,' | sed 's/.$//'").splitlines()
-        for guest in output:
-            if guest in rsp.states \
-                    or guest.lower() == "ZStack Management Node VM".lower()\
-                    or guest.startswith("guestfs-"):
-                continue
-            logger.warn('guest [%s] not found in virsh list' % guest)
-            rsp.states[guest] = Vm.VM_STATE_RUNNING
+    @kvmagent.replyerror
+    def vm_sync(self, req):
+        rsp = VmSyncResponse()
+
+        r = bash.bash_r("timeout 5 virsh list")
+        if r == 0:
+            self.get_vm_state_from_libvirt(rsp)
+
+        if rsp.states is None:
+            rsp.states = {}
+
+        states_from_qemu_process = get_all_vm_states_with_process()
+        for guest, state in states_from_qemu_process.items():
+            if guest not in rsp.states:
+                rsp.states[guest] = state
 
         libvirt_running_vms = rsp.states.keys()
-        no_qemu_process_running_vms = list(set(libvirt_running_vms).difference(set(output)))
+        no_qemu_process_running_vms = list(set(libvirt_running_vms).difference(set(states_from_qemu_process.keys())))
         for vm in no_qemu_process_running_vms:
             rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
 
