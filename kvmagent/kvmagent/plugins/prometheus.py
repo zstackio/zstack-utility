@@ -838,10 +838,10 @@ def collect_ipmi_state():
         if r == 0:
             count = 0
             for info in cpu_temps.splitlines():
-                match = re.search( r'^Physical id[^+]*\+(\d*\.\d+)', info)
+                match = re.search(r'^(Physical|Package) id[^+]*\+(\d*\.\d+)', info)
                 if match:
                     cpu_id = "CPU" + str(count)
-                    metrics['cpu_temperature'].add_metric([cpu_id], float(match.group(1).strip()))
+                    metrics['cpu_temperature'].add_metric([cpu_id], float(match.group(2).strip()))
                     count = count + 1
 
             if count == 0:
