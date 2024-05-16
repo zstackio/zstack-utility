@@ -1013,9 +1013,3 @@ class IpNetnsShell:
                        (self.netns, address, prefix, link_name))
         logger.debug("exec cmd: ip netns exec %s ip address add %s/%d dev %s, result: %s"
                      % (self.netns, address, prefix, link_name, o))
-
-    def del_ip_address(self, address, dev):
-        o = shell.call('ip netns exec %s ip address del %s dev %s' %
-                       (self.netns, address, dev))
-        logger.debug("exec cmd: ip netns exec %s ip address add %s dev %s, result: %s"
-                     % (self.netns, address, dev, o))
