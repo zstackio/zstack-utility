@@ -230,11 +230,14 @@ def install_kvm_pkg():
             'aarch64': 'edk2-aarch64'
         }
 
-        cube_rpm_mapping = {
+        cube_distro_mapping = {
             'x86_64_centos': "lm_sensors",
             'aarch64_kylin': "lm_sensors edac-utils",
             'x86_64_kylin': "lm_sensors edac-utils Arcconf",
-            'x86_64_rocky': "lm_sensors"
+        }
+
+        cube_releasever_mapping = {
+            'h84r': "lm_sensors"
         }
 
         # handle zstack_repo
@@ -255,7 +258,7 @@ def install_kvm_pkg():
 
             if isRemoteCube:
                 cube_distro_info = host_info.host_arch + "_" + distro_head
-                common_dep_list = "%s %s" % (common_dep_list, cube_rpm_mapping.get(cube_distro_info, ''))
+                common_dep_list = "%s %s %s" % (common_dep_list, cube_distro_mapping.get(cube_distro_info, ''), cube_releasever_mapping.get(releasever, ''))
 
             dep_list = common_dep_list
             update_list = common_update_list
