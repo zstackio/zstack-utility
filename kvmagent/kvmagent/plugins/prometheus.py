@@ -1369,7 +1369,7 @@ def collect_amd_gpu_state():
 
 @in_bash
 def convert_pci_state_to_int(pci_address):
-    r, pci_status = bash_ro("lspci -s %s| grep -i 'ref ff'" % pci_address)
+    r, pci_status = bash_ro("lspci -s %s| grep -i 'rev ff'" % pci_address)
     if r == 0 and len(pci_status.strip()) != 0:
         return 0
 
