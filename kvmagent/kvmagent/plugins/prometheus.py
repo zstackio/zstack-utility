@@ -35,6 +35,7 @@ disk_list_record = None
 cpu_status_abnormal_list_record = set()
 memory_status_abnormal_list_record = set()
 fan_status_abnormal_list_record = set()
+power_supply_status_abnormal_list_record = set()
 disk_status_abnormal_list_record = {}
 
 # collect domain max memory
@@ -98,6 +99,31 @@ def send_physical_memory_status_alarm_to_mn(locator, status):
         http.json_dump_post(url, physical_memory_status_alarm, {'commandpath': '/host/physical/memory/status/alarm'})
         memory_status_abnormal_list_record.add(locator)
 
+@thread.AsyncThread
+def send_physical_power_supply_status_alarm_to_mn(name, status):
+    class PhysicalPowerSupplyStatusAlarm(object):
+        def __init__(self):
+            self.host = None
+            self.name = None
+            self.status = None
+
+    if ALARM_CONFIG is None:
+        return
+
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit physical fan status alarm info to management node")
+        return
+
+    global power_supply_status_abnormal_list_record
+    if name not in power_supply_status_abnormal_list_record:
+        physical_power_supply_status_alarm = PhysicalPowerSupplyStatusAlarm()
+        physical_power_supply_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+        physical_power_supply_status_alarm.name = name
+        physical_power_supply_status_alarm.status = status
+        http.json_dump_post(url, physical_power_supply_status_alarm, {'commandpath': '/host/physical/powersupply/status/alarm'})
+        power_supply_status_abnormal_list_record.add(name)
 
 @thread.AsyncThread
 def send_physical_fan_status_alarm_to_mn(fan_name, status):
@@ -945,16 +971,43 @@ def collect_ipmi_state():
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
 
+@thread.AsyncThread
+def check_equipment_state_from_ipmitool():
+    sensor_handlers = {
+        "Memory": send_physical_memory_status_alarm_to_mn,
+        "Fan": send_physical_fan_status_alarm_to_mn,
+        "Power_Supply": send_physical_power_supply_status_alarm_to_mn
+    }
 
-def collect_physical_cpu_state():
+    r, memory_infos = bash_ro("ipmi-sensors --sensor-types=Memory,fan,Power_Supply -Q --ignore-unrecognized-events --comma-separated-output "
+                              "--no-header-output --sdr-cache-recreate --output-event-bitmask --output-sensor-state")
+    if r == 0:
+        for memory_info in memory_infos.splitlines():
+            memory = memory_info.split(",")
+            sensor_name = memory[1].strip()
+            sensor_type = memory[2].strip()
+            sensor_state = memory[3].strip()
+
+            if sensor_state.lower() == "critical" and sensor_type in sensor_handlers:
+                sensor_handlers[sensor_type](sensor_name, sensor_state)
+            else:
+                fan_status_abnormal_list_record.discard(sensor_name)
+                power_supply_status_abnormal_list_record.discard(sensor_name)
+                memory_status_abnormal_list_record.discard(sensor_name)
+
+def collect_equipment_state_from_ipmi():
     metrics = {
+        "ipmi_status": GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
         "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
+    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
     r, cpu_info = bash_ro("ipmitool sdr elist | grep -i cpu")  # type: (int, str)
     if r != 0:
         return metrics.values()
+
+    check_equipment_state_from_ipmitool()
 
     '''
         ================
@@ -991,6 +1044,10 @@ def collect_physical_cpu_state():
             cpu_id = int(re.sub(r'\D', '', sensor_id))
             cpu_status = 0 if "presence detected" == sensor_value else 10
             metrics['cpu_status'].add_metric(["CPU%d" % cpu_id], float(cpu_status))
+            if cpu_status == 10:
+                send_cpu_status_alarm_to_mn(cpu_id, info.Status)
+            else:
+                cpu_status_abnormal_list_record.discard(cpu_id)
 
     return metrics.values()
 
@@ -1406,12 +1463,12 @@ if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_equipment_state)
     
 if misc.isHyperConvergedHost():
-    kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_ipmi_state)
-    kvmagent.register_prometheus_collector(collect_ssd_state)
 else:
-    kvmagent.register_prometheus_collector(collect_physical_cpu_state)
+    kvmagent.register_prometheus_collector(collect_equipment_state_from_ipmi)
 
+kvmagent.register_prometheus_collector(collect_raid_state)
+kvmagent.register_prometheus_collector(collect_ssd_state)
 kvmagent.register_prometheus_collector(collect_nvidia_gpu_state)
 kvmagent.register_prometheus_collector(collect_amd_gpu_state)
 
@@ -1608,6 +1665,37 @@ WantedBy=multi-user.target
             os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
+        @in_bash
+        def start_ipmi_exporter(cmd):
+            bash_errorout("modprobe ipmi_msghandler; modprobe ipmi_devintf; modprobe ipmi_poweroff; modprobe ipmi_si; modprobe ipmi_watchdog")
+            EXPORTER_PATH = cmd.binaryPath
+            LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
+            ARGUMENTS = cmd.startupArguments
+
+            conf_path = os.path.join(os.path.dirname(EXPORTER_PATH), 'ipmi.yml')
+
+            conf = '''
+# Configuration file for ipmi_exporter
+modules:
+  default:
+    collectors:
+      - bmc
+      - ipmi
+      - dcmi
+      - chassis
+    exclude_sensor_ids:
+      - 2
+      - 29
+      - 32'''
+
+            if not os.path.exists(conf_path) or open(conf_path, 'r').read() != conf:
+                with open(conf_path, 'w') as fd:
+                    fd.write(conf)
+
+            os.chmod(EXPORTER_PATH, 0o755)
+            run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
+
+
         para = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
@@ -1623,6 +1711,8 @@ WantedBy=multi-user.target
         for cmd in para.cmds:
             if "collectd_exporter" in cmd.binaryPath:
                 start_collectd_exporter(cmd)
+            elif "ipmi_exporter" in cmd.binaryPath:
+                start_ipmi_exporter(cmd)
             else:
                 start_exporter(cmd)
 
