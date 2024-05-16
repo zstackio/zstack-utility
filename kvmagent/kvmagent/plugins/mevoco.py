@@ -440,6 +440,7 @@ class Mevoco(kvmagent.KvmAgent):
     RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
     BATCH_APPLY_USER_DATA = "/flatnetworkprovider/userdata/batchapply"
     DHCP_DELETE_NAMESPACE_PATH = "/flatnetworkprovider/dhcp/deletenamespace"
+    DHCP_FLUSH_NAMESPACE_PATH = "/flatnetworkprovider/dhcp/flush"
     CLEANUP_USER_DATA = "/flatnetworkprovider/userdata/cleanup"
     SET_DNS_FORWARD_PATH = '/dns/forward/set'
     REMOVE_DNS_FORWARD_PATH = '/dns/forward/remove'
@@ -476,6 +477,7 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RELEASE_USER_DATA, self.release_userdata)
         http_server.register_async_uri(self.RESET_DEFAULT_GATEWAY_PATH, self.reset_default_gateway)
         http_server.register_async_uri(self.DHCP_DELETE_NAMESPACE_PATH, self.delete_dhcp_namespace)
+        http_server.register_async_uri(self.DHCP_FLUSH_NAMESPACE_PATH, self.flush_dhcp_namespace)
         http_server.register_async_uri(self.CLEANUP_USER_DATA, self.cleanup_userdata)
         http_server.register_async_uri(self.SET_DNS_FORWARD_PATH, self.setup_dns_forward)
         http_server.register_async_uri(self.REMOVE_DNS_FORWARD_PATH, self.remove_dns_forward)
@@ -602,33 +604,50 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
             self._delete_ebtables_chain_by_name(CHAIN_NAME)
 
+    @in_bash
+    def _del_bridge_fdb_entry_for_inner_dev(self, cmd):
+        BR_NAME = cmd.bridgeName
+        NAMESPACE_NAME = cmd.namespaceName
+        ns_id = iproute.IpNetnsShell.get_netns_id(NAMESPACE_NAME)
+        INNER_DEV = "inner" + ns_id
+
+        # get pf name for inner dev
+        r, PHY_DEV, e = bash_roe(
+            "brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
+        if r != 0:
+            logger.error("cannot get physical interface name from bridge " + BR_NAME)
+            return
+        PHY_DEV = PHY_DEV.strip(' \t\n\r')
+
+        # get mac address of inner dev
+        INNER_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
+
+        iproute.del_fdb_entry(PHY_DEV, INNER_MAC)
+
     @kvmagent.replyerror
     @in_bash
     def delete_dhcp_namespace(self, req):
-        def _del_bridge_fdb_entry_for_inner_dev():
-            BR_NAME = cmd.bridgeName
-            NAMESPACE_NAME = cmd.namespaceName
-            ns_id = iproute.IpNetnsShell.get_netns_id(NAMESPACE_NAME)
-            INNER_DEV = "inner" + ns_id
-
-            # get pf name for inner dev
-            r, PHY_DEV, e = bash_roe(
-                "brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
-            if r != 0:
-                logger.error("cannot get physical interface name from bridge " + BR_NAME)
-                return
-            PHY_DEV = PHY_DEV.strip(' \t\n\r')
-
-            # get mac address of inner dev
-            INNER_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
-
-            iproute.del_fdb_entry(PHY_DEV, INNER_MAC)
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        _del_bridge_fdb_entry_for_inner_dev()
+        self._del_bridge_fdb_entry_for_inner_dev(cmd)
         self._delete_dhcp(cmd.namespaceName)
 
         return jsonobject.dumps(DeleteNamespaceRsp())
+
+    @in_bash
+    def _flush_dhcp(self, namespace):
+        outer = "outer%s" % ip.get_namespace_id(namespace)
+        self._delete_dhcp4(namespace)
+        self._delete_dhcp6(namespace)
+        bash_r(
+            "ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namespace)
+
+    @kvmagent.replyerror
+    @in_bash
+    def flush_dhcp_namespace(self, req):
+        # kill dnsmasq, but will not delete the namespace
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._del_bridge_fdb_entry_for_inner_dev(cmd)
+        self._flush_dhcp(cmd.namespaceName)
 
     @kvmagent.replyerror
     @in_bash
