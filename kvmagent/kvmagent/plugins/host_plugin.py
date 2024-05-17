@@ -2478,6 +2478,18 @@ done
             logger.debug("no rocm-smi")
             return
 
+        r, o, e = bash_roe("/opt/rocm/bin/rocm-smi --showbus --showmeminfo vram --showpower --showserial --json")
+        if r != 0:
+            logger.error("amd query gpu is error, %s " % e)
+            return
+
+        gpu_info_json = json.loads(o.strip())
+        for card_name, card_data in gpu_info_json.items():
+            if to.pciDeviceAddress.lower() in card_data['PCI Bus'].lower():
+                to.addonInfo["memory"] = card_data['VRAM Total Memory (B)']
+                to.addonInfo["power"] = card_data['Average Graphics Package Power (W)']
+                to.addonInfo["serialNumber"] = card_data['Serial Number']
+
     # moved from vm_plugin to host_plugin
     @kvmagent.replyerror
     def get_pci_info(self, req):
