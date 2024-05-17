@@ -123,9 +123,16 @@ class VmStruct(object):
         self.root_volume = ""
         self.uuid = ""
         self.volumes = []
+        self.bridges = []
 
     def load_from_xml(self, xml):
-        def load_source(element):
+        def load_interface_source(element):
+            for e in element:
+                if e.tag == "source":
+                    if "bridge" in e.attrib:
+                        self.bridges.append(e.attrib["bridge"])
+
+        def load_disk_source(element):
             is_root_vol = False
             path = None
             for e in element:
@@ -150,7 +157,9 @@ class VmStruct(object):
                     if e2.tag == "devices":
                         for e3 in e2:
                             if e3.tag == "disk":
-                                load_source(e3)
+                                load_disk_source(e3)
+                            if e3.tag == "interface":
+                                load_interface_source(e3)
                         return
 
 
