@@ -641,6 +641,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         bash_r(
             "ps aux | grep -v grep | grep -w dnsmasq | grep -w %s | awk '{printf $2}' | xargs -r kill -9" % namespace)
 
+        return jsonobject.dumps(DeleteNamespaceRsp())
+
     @kvmagent.replyerror
     @in_bash
     def flush_dhcp_namespace(self, req):
