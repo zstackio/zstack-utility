@@ -14,5 +14,7 @@ logger = log.get_logger(__name__)
 
 
 def get_image_hash(img_path):
-    _, md5 = commands.getstatusoutput("md5sum %s | cut -d ' ' -f 1" % img_path)
-    return md5
+    (status, output) = commands.getstatusoutput("md5sum %s | cut -d ' ' -f 1" % img_path)
+    if status != 0:
+        raise Exception('get image %s hash failed: %s' % (img_path, output))
+    return output
