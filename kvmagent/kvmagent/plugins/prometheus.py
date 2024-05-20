@@ -1271,14 +1271,14 @@ def parse_nvidia_smi_output_to_list(data):
 
 def collect_nvidia_gpu_state():
     metrics = {
-        "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address']),
-        "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None, ['pci_device_address']),
-        "gpu_fan_speed": GaugeMetricFamily('gpu_fan_speed', 'current percentage of gpu fan speed', None, ['pci_device_address']),
+        "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_fan_speed": GaugeMetricFamily('gpu_fan_speed', 'current percentage of gpu fan speed', None, ['pci_device_address', 'gpu_serial']),
         "gpu_utilization": GaugeMetricFamily('gpu_utilization', 'gpu utilization', None, ['pci_device_address']),
-        "gpu_memory_utilization": GaugeMetricFamily('gpu_memory_utilization', 'gpu memory utilization', None, ['pci_device_address']),
-        "gpu_rxpci_in_bytes": GaugeMetricFamily('gpu_rxpci_in_bytes', 'gpu rxpci in bytes', None, ['pci_device_address']),
-        "gpu_txpci_in_bytes": GaugeMetricFamily('gpu_txpci_in_bytes', 'gpu txpci in bytes', None, ['pci_device_address']),
-        "gpu_state": GaugeMetricFamily('gpu_state', 'gpu status, 0 is CRITICAL, 1 is OK', None, ['pci_device_address']),
+        "gpu_memory_utilization": GaugeMetricFamily('gpu_memory_utilization', 'gpu memory utilization', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_rxpci_in_bytes": GaugeMetricFamily('gpu_rxpci_in_bytes', 'gpu rxpci in bytes', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_txpci_in_bytes": GaugeMetricFamily('gpu_txpci_in_bytes', 'gpu txpci in bytes', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_state": GaugeMetricFamily('gpu_state', 'gpu status, 0 is critical, 1 is nominal', None, ['pci_device_address', 'gpuState', 'gpu_serial']),
         "vgpu_utilization": GaugeMetricFamily('vgpu_utilization', 'vgpu utilization', None, ['vm_uuid', 'mdev_uuid']),
         "vgpu_memory_utilization": GaugeMetricFamily('vgpu_memory_utilization', 'vgpu memory utilization', None, ['vm_uuid', 'mdev_uuid'])
     }
@@ -1287,23 +1287,25 @@ def collect_nvidia_gpu_state():
         return metrics.values()
 
     r, gpu_info = bash_ro(
-        "nvidia-smi --query-gpu=power.draw,temperature.gpu,fan.speed,utilization.gpu,utilization.memory,index,gpu_bus_id --format=csv,noheader")
+        "nvidia-smi --query-gpu=power.draw,temperature.gpu,fan.speed,utilization.gpu,utilization.memory,index,gpu_bus_id,gpu_serial --format=csv,noheader")
     if r != 0:
         return metrics.values()
 
     gpu_index_mapping_pciaddress = {}
     for info in gpu_info.splitlines():
         info = info.strip().split(',')
-        pci_device_address = info[-1].strip()
+        pci_device_address = info[-2].strip()
+        gpu_serial = info[-1].strip()
         if len(pci_device_address.split(':')[0]) == 8:
             pci_device_address = pci_device_address[4:]
 
-        metrics['gpu_power_draw'].add_metric([pci_device_address], float(info[0].replace('W', '').strip()))
-        metrics['gpu_temperature'].add_metric([pci_device_address], float(info[1].strip()))
-        metrics['gpu_fan_speed'].add_metric([pci_device_address], float(info[2].replace('%', '').strip()))
-        metrics['gpu_utilization'].add_metric([pci_device_address], float(info[3].replace('%', '').strip()))
-        metrics['gpu_memory_utilization'].add_metric([pci_device_address], float(info[4].replace('%', '').strip()))
-        metrics['gpu_state'].add_metric([pci_device_address], convert_pci_state_to_int(pci_device_address))
+        metrics['gpu_power_draw'].add_metric([pci_device_address, gpu_serial], float(info[0].replace('W', '').strip()))
+        metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(info[1].strip()))
+        metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(info[2].replace('%', '').strip()))
+        metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(info[3].replace('%', '').strip()))
+        metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(info[4].replace('%', '').strip()))
+        gpuState, gpu_state_int_value = convert_pci_state_to_int(pci_device_address)
+        metrics['gpu_state'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_state_int_value)
         gpu_index_mapping_pciaddress[info[5].strip()] = pci_device_address
 
     r, gpu_pci_rx_tx = bash_ro("nvidia-smi dmon -c 1 -s t")
@@ -1317,8 +1319,8 @@ def collect_nvidia_gpu_state():
             logger.error("No PCI address found for GPU index {index_rx_tx[0]}")
             continue
 
-        metrics['gpu_rxpci_in_bytes'].add_metric([pci_device_address], float(index_rx_tx[1]) * 1024 * 1024)
-        metrics['gpu_txpci_in_bytes'].add_metric([pci_device_address], float(index_rx_tx[2]) * 1024 * 1024)
+        metrics['gpu_rxpci_in_bytes'].add_metric([pci_device_address, gpu_serial], float(index_rx_tx[1]) * 1024 * 1024)
+        metrics['gpu_txpci_in_bytes'].add_metric([pci_device_address, gpu_serial], float(index_rx_tx[2]) * 1024 * 1024)
 
     r, vgpu_info = bash_ro("nvidia-smi vgpu -q")
     if r != 0 or "VM Name" not in vgpu_info:
@@ -1335,14 +1337,14 @@ def collect_nvidia_gpu_state():
 
 def collect_amd_gpu_state():
     metrics = {
-        "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address']),
-        "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None, ['pci_device_address']),
-        "gpu_fan_speed": GaugeMetricFamily('gpu_fan_speed', 'current percentage of gpu fan speed', None, ['pci_device_address']),
-        "gpu_utilization": GaugeMetricFamily('gpu_utilization', 'gpu utilization', None, ['pci_device_address']),
+        "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_fan_speed": GaugeMetricFamily('gpu_fan_speed', 'current percentage of gpu fan speed', None, ['pci_device_address', 'gpu_serial']),
+        "gpu_utilization": GaugeMetricFamily('gpu_utilization', 'gpu utilization', None, ['pci_device_address', 'gpu_serial']),
         "gpu_memory_utilization": GaugeMetricFamily('gpu_memory_utilization', 'gpu memory utilization', None,
-                                                    ['pci_device_address']),
-        "gpu_state": GaugeMetricFamily('gpu_state', 'gpu status, 0 is CRITICAL, 1 is OK', None,
-                                        ['pci_device_address']),
+                                                    ['pci_device_address', 'gpu_serial']),
+        "gpu_state": GaugeMetricFamily('gpu_state', 'gpu status, 0 is critical, 1 is nominal', None,
+                                        ['pci_device_address', 'gpuState', 'gpu_serial']),
         "gpu_rxpci": GaugeMetricFamily('gpu_rxpci', 'gpu rxpci', None, ['pci_device_address']),
         "gpu_txpci": GaugeMetricFamily('gpu_txpci', 'gpu txpci', None, ['pci_device_address'])
     }
@@ -1350,20 +1352,22 @@ def collect_amd_gpu_state():
     if has_rocm_smi() is False:
         return metrics.values()
 
-    r, gpu_info = bash_ro('/opt/rocm/bin/rocm-smi --showpower --showtemp  --showmemuse --showuse --showfan --showbus  --json')
+    r, gpu_info = bash_ro('rocm-smi --showpower --showtemp  --showmemuse --showuse --showfan --showbus  --showserial --json')
     if r != 0:
         return metrics.values()
 
     gpu_info_json = json.loads(gpu_info.strip())
     for card_name, card_data in gpu_info_json.items():
+        gpu_serial = card_data['Serial Number']
         pci_device_address = card_data['PCI Bus']
-        metrics['gpu_power_draw'].add_metric([pci_device_address],
+        metrics['gpu_power_draw'].add_metric([pci_device_address, gpu_serial],
                                              float(card_data['Average Graphics Package Power (W)']))
-        metrics['gpu_temperature'].add_metric([pci_device_address], float(card_data['Temperature (Sensor edge) (C)']))
-        metrics['gpu_fan_speed'].add_metric([pci_device_address], float(card_data['Fan speed (%)']))
-        metrics['gpu_utilization'].add_metric([pci_device_address], float(card_data['GPU use (%)']))
-        metrics['gpu_state'].add_metric([pci_device_address], convert_pci_state_to_int(pci_device_address))
-        metrics['gpu_memory_utilization'].add_metric([pci_device_address], float(card_data['GPU memory use (%)']))
+        metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(card_data['Temperature (Sensor edge) (C)']))
+        metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(card_data['Fan Speed (%)']))
+        metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU use (%)']))
+        gpuState , gpu_state_int_value = convert_pci_state_to_int(pci_device_address)
+        metrics['gpu_state'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_state_int_value)
+        metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU memory use (%)']))
 
     return metrics.values()
 
@@ -1371,9 +1375,9 @@ def collect_amd_gpu_state():
 def convert_pci_state_to_int(pci_address):
     r, pci_status = bash_ro("lspci -s %s| grep -i 'rev ff'" % pci_address)
     if r == 0 and len(pci_status.strip()) != 0:
-        return 0
+        return "critical", 0
 
-    return 1
+    return "nominal", 1
 
 
 def has_nvidia_smi():
