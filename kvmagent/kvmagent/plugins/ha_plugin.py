@@ -861,6 +861,26 @@ class CephHeartbeatController(AbstractStorageFencer):
 
         return self.update_heartbeat_timestamp(self.ioctx, self.heartbeat_object_name, self.heartbeat_counter, self.storage_check_timeout)
 
+    def get_heartbeat_object_length(self):
+        used_time = 0
+        length = None
+        err = None
+
+        while used_time < self.storage_check_timeout:
+            try:
+                length = self.ioctx.stat(self.heartbeat_object_name)[0]
+            except rados.ObjectNotFound as e:
+                err = e
+                logger.debug("failed to get ceph object %s length, %s" % (self.heartbeat_object_name, e))
+
+            if length is not None:
+                break
+
+            time.sleep(1)
+            used_time += 1
+
+        return length, used_time, err
+
     def read_fencer_hearbeat(self, host_uuid, ps_uuid):
         current_heartbeat_count = [None]
         current_vm_uuids = [None]
@@ -874,11 +894,15 @@ class CephHeartbeatController(AbstractStorageFencer):
             finally:
                 read_complete.set()
 
-        length = self.ioctx.stat(self.heartbeat_object_name)[0]
+        length, used_time, err = self.get_heartbeat_object_length()
+        if err is not None:
+            logger.debug("failed to get ceph object %s length, %s" % (self.heartbeat_object_name, err))
+            return None, None
+
         completion = self.ioctx.aio_read(self.heartbeat_object_name, int(length), 0, get_current_completion)
 
         # Wait for the completion to be done
-        read_complete.wait(self.storage_check_timeout)
+        read_complete.wait(self.storage_check_timeout - used_time)
 
         logger.debug("read ceph current_heartbeat_count: %s, current_vm_uuids: %s" %
                      (current_heartbeat_count[0], current_vm_uuids[0]))
