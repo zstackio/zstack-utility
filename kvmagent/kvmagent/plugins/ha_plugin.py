@@ -687,10 +687,12 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
             return success_heartbeat
 
         self.failure += 1
-        if self.failure == self.max_attempts:
+        if self.failure >= self.max_attempts:
             logger.warn('failed to touch the heartbeat file[%s] %s times, we lost the connection to the storage,'
                         'shutdown ourselves' % (self.get_heartbeat_file_path, self.max_attempts))
-
+            # reset failure count to make sure this fencer still
+            # run to fence vm and recover storage during failures
+            self.failure = 0
             success_heartbeat = False
         return success_heartbeat
 
@@ -738,12 +740,16 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
                 self.prepare_heartbeat_dir()
 
     def after_kill_vm(self, killed_vm_pids):
-        if not killed_vm_pids or not self.mounted_by_zstack:
+        if not self.mounted_by_zstack:
             return
 
         try:
             kill_and_umount(self.mount_path, mount_path_is_nfs(self.mount_path))
         except UmountException:
+            if not killed_vm_pids:
+                logger.debug('umount %s failed, but no vm is killed' % self.mount_path)
+                return
+
             if shell.run('ps -p %s' % ' '.join(killed_vm_pids)) == 0:
                 virsh_list = shell.call("timeout 10 virsh list --all || echo 'cannot obtain virsh list'")
                 logger.debug("virsh_list:\n" + virsh_list)
