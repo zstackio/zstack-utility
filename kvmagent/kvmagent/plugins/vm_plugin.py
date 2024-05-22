@@ -8397,6 +8397,9 @@ host side snapshot files chian:
                 return bm, 'top', nodename, speed
 
             args = get_backup_args()
+            if args[1] == 'full' and os.getenv("oob", "true") == "true":
+                args = (args[0], 'oobfull', args[2], args[3])
+
             backupArgs[deviceId] = args
             final_backup_args.append(args)
 
@@ -8448,6 +8451,8 @@ host side snapshot files chian:
             return bitmap, 'top'
 
         bitmap, mode = get_parent_bitmap_mode()
+        if mode == 'full' and os.getenv("oob", "true") == "true":
+            mode = 'oobfull'
 
         if cmd.volumeWriteBandwidth:
             speed = cmd.volumeWriteBandwidth
