@@ -8392,7 +8392,7 @@ host side snapshot files chian:
         isc.stop_volume_backup_job(cmd.vmUuid, drive, cmd.force)
 
     # returns list[VolumeBackupInfo]
-    def do_take_volumes_backup(self, cmd, target_disks, bitmaps, dstdir):
+    def do_take_volumes_backup(self, cmd, target_disks, bitmaps, dest):
         isc = ImageStoreClient()
         backupArgs = {}
         final_backup_args = []
@@ -8425,8 +8425,14 @@ host side snapshot files chian:
             backupArgs[deviceId] = args
             final_backup_args.append(args)
 
+        ext_args = []
+        if cmd.pointInTime:
+            ext_args.append('-point-in-time')
+        if cmd.outOfBand:
+            ext_args.append('-oob')
+
         logger.info('{api: %s} taking backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
-        res = isc.backup_volumes(cmd.vmUuid, final_backup_args, dstdir, cmd.pointInTime, Report.from_spec(cmd, "VmBackup"), get_task_stage(cmd))
+        res = isc.backup_volumes(cmd.vmUuid, final_backup_args, dest, task_spec=cmd, extra_args=ext_args)
         logger.info('{api: %s} completed backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
 
         backres = jsonobject.loads(res)
@@ -8457,7 +8463,6 @@ host side snapshot files chian:
         isc = ImageStoreClient()
         parent = None
         bf = None
-        speed = 0
 
         if drivertype == 'qcow2':
             bf = linux.qcow2_get_backing_file(source_file)
@@ -8474,10 +8479,14 @@ host side snapshot files chian:
 
         bitmap, mode = get_parent_bitmap_mode()
 
+        ext_args = []
+        if cmd.pointInTime:
+            ext_args.append('-point-in-time')
+        if cmd.outOfBand:
+            ext_args.append('-oob')
         if cmd.volumeWriteBandwidth:
-            speed = cmd.volumeWriteBandwidth
-
-        actual_mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, cmd.pointInTime, speed, Report.from_spec(cmd, "VolumeBackup"), get_task_stage(cmd))
+            ext_args.append('-speed %s' % cmd.volumeWriteBandwidth)
+        actual_mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, task_spec=cmd, extra_args=ext_args)
         logger.info('{api: %s} finished backup volume with mode: %s' % (cmd.threadContext["api"], mode))
 
         if actual_mode == 'incremental':
