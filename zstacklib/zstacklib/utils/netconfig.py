@@ -261,12 +261,12 @@ class NetConfig(object):
 
     def _build_config(self):
         '''netconfig: build config'''
+        if self.config_dict is None:
+            self.config_dict = OrderedDict()
+
         raw_dict = self._parse_ifcfg_file()
         if not raw_dict:
             return
-
-        if self.config_dict is None:
-            self.config_dict = OrderedDict()
 
         for key, value in raw_dict.items():
             if key.startswith('IPADDR'):
@@ -291,7 +291,33 @@ class NetConfig(object):
         '''netconfig: parse ifcfg file'''
         ifcfg_file_path = os.path.join(self.config_path, 'ifcfg-%s' % self.name)
         if not os.path.exists(ifcfg_file_path):
-            return None
+            cmd = shell.ShellCmd('grep -r "DEVICE=%s" %s' % (self.name, self.config_path))
+            cmd(is_exception=False)
+            if cmd.return_code != 0:
+                return None
+
+            old_ifcfg_path = cmd.stdout.strip().split(":")[0]
+            old_ifcfg_name = old_ifcfg_path.split("/")[-1]
+            old_name = old_ifcfg_name.replace('ifcfg-', '')
+            logger.debug("the name[%s] of device[%s]'s ifcfg file does not match the device, now rename it"
+                         % (old_ifcfg_name, self.name))
+            try:
+                os.rename(old_ifcfg_path, ifcfg_file_path)
+
+                with open(ifcfg_file_path, 'r') as f:
+                    file_data = f.read()
+
+                name_line = "NAME=%s"
+                file_data = file_data.replace(name_line % old_name, name_line % self.name)
+
+                with open(ifcfg_file_path, 'w') as f:
+                    f.write(file_data)
+
+                logger.debug("successfully rename ifcfg file of %s" % self.name)
+
+            except Exception as e:
+                logger.debug("failed to rename ifcfg file of %s because %s" % (self.name, e))
+                return None
 
         config_dict = OrderedDict()
         with open(ifcfg_file_path, 'r') as file:
