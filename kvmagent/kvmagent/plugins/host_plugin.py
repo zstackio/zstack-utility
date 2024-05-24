@@ -66,6 +66,10 @@ BOND_MODE_ACTIVE_4 = "802.3ad"
 BOND_MODE_ACTIVE_5 = "balance-tlb"
 BOND_MODE_ACTIVE_6 = "balance-alb"
 
+DISTRO_USING_DNF = ['rl84', 'h84r', 'ky10sp1', 'ky10sp2', 'ky10sp3',
+                    'oe2203sp1', 'h2203sp1o']
+
+
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(ConnectResponse, self).__init__()
@@ -1601,7 +1605,7 @@ if __name__ == "__main__":
             update_libvirt_cmd = "export YUM0={};yum remove libvirt libvirt-libs libvirt-client libvirt-python libvirt-admin libvirt-bash-completion libvirt-daemon-driver-lxc -y {} && export YUM0={};" \
                                  "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} install libvirt libvirt-client libvirt-python -y && "
             yum_cmd = yum_cmd + update_libvirt_cmd.format(releasever,
-                                                          '--noautoremove' if releasever in ['rl84', 'h84r', 'ky10sp1', 'ky10sp2', 'ky10sp3'] else '', releasever,
+                                                          '--noautoremove' if releasever in DISTRO_USING_DNF else '', releasever,
                                                           ',zstack-experimental-mn' if cmd.enableExpRepo else '')
         upgrade_os_cmd = "export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
         yum_cmd = yum_cmd + upgrade_os_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
