@@ -30,6 +30,7 @@ class SanlockHostStatus(object):
                 if k == 'io_timeout': self.io_timeout = int(v)
                 elif k == 'last_check': self.last_check = int(v)
                 elif k == 'last_live': self.last_live = int(v)
+                elif k == 'owner_name': self.owner_name = v
             except ValueError:
                 logger.warn("unexpected sanlock status: %s" % line)
 
@@ -47,6 +48,9 @@ class SanlockHostStatus(object):
 
     def get_last_live(self):
         return self.last_live
+
+    def get_owner_name(self):
+        return self.owner_name
 
 
 class SanlockHostStatusParser(object):
@@ -89,6 +93,7 @@ class SanlockClientStatus(object):
                 if k == 'renewal_last_result': self.renewal_last_result = int(v)
                 elif k == 'renewal_last_attempt': self.renewal_last_attempt = int(v)
                 elif k == 'renewal_last_success': self.renewal_last_success = int(v)
+                elif k == 'io_timeout': self.io_timeout = int(v)
             except ValueError:
                 logger.warn("unexpected sanlock client status: %s" % line)
 
@@ -103,6 +108,9 @@ class SanlockClientStatus(object):
 
     def get_renewal_last_success(self):
         return self.renewal_last_success
+
+    def get_io_timeout(self):
+        return self.io_timeout
 
 
 class SanlockClientStatusParser(object):
@@ -310,10 +318,10 @@ class HostsState(object):
         logger.debug("get hosts state[%s] on lockspace %s" % (self.hosts, self.lockspace_name))
 
     def is_host_live(self, host_id):
-        return self.hosts.get(host_id) == "LIVE"
+        return self.hosts.get(str(host_id)) == "LIVE"
 
     def is_host_dead(self, host_id):
-        return self.hosts.get(host_id) == "DEAD"
+        return self.hosts.get(str(host_id)) == "DEAD"
     
     def get_live_min_hostid(self):
         ids = [int(id) for id in self.hosts.keys() if self.is_host_live(id)]
@@ -326,6 +334,9 @@ def get_hosts_state(lockspace_name):
     r, o, e = bash.bash_roe("sanlock client gets -h 1")
     if r == 0 and lockspace_name in o:
         return HostsState(o, lockspace_name)
+
+def get_host_name(lockspace_name, host_id):
+    bash.bash_r("sanlock client host_status -D ")
 
 
 @bash.in_bash
@@ -465,3 +476,6 @@ def sector_size_to_align_size(sector_size):
 
 class RetryException(Exception):
     pass
+
+def calc_id_renewal_fail_seconds(io_timeout):
+    return 8 * int(io_timeout)
