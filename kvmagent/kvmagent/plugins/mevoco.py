@@ -85,7 +85,7 @@ class NamespaceInfraEnv(object):
     def prepare_dev(self):
         logger.debug('use id[%s] for the namespace[%s]' % (self.namespace_id, self.namespace_name))
 
-        self._create_namespace_if_not_exist()
+        newCreate = self._create_namespace_if_not_exist()
         self._create_host_bridge_if_not_exist()
         self._add_host_bridge_ip_if_not_exist()
         self._create_link_pair_to_br_and_ns(self.vm_bridge_name, self.near_vm_inner, self.near_vm_outer)
@@ -93,6 +93,8 @@ class NamespaceInfraEnv(object):
         self._add_near_host_inner_ip_if_not_exist()
         self._add_near_vm_inner_ip_if_not_exist()
         self._set_namespace_attribute()
+
+        return newCreate
 
     @lock.lock('namespace_infra_env')
     @in_bash
@@ -203,6 +205,9 @@ class NamespaceInfraEnv(object):
         netns = iproute.IpNetnsShell.list_netns()
         if self.namespace_name not in netns:
             iproute.IpNetnsShell(self.namespace_name).add_netns(self.namespace_id)
+            return 1
+        else:
+            return 0
 
     def _create_link_pair_to_br_and_ns(self, bridge_name, inner_name, outer_name):
         self._cleanup_orphan_link_if_exist(inner_name, outer_name)
@@ -356,7 +361,8 @@ class DeleteNamespaceRsp(kvmagent.AgentResponse):
     pass
 
 class ArpingRsp(kvmagent.AgentResponse):
-    result = {}
+    def __init__(self):
+        self.result = {}
 
 class SetForwardDnsCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -957,7 +963,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
     def __do_arping_namepsace(self, ns, ip):
         macs = []
         r, o, e = bash_roe(
-            "ip netns exec %s arping -I %s -w 3 -D %s | grep 'Unicast reply from'"
+            "ip netns exec %s arping -I %s -w 1 -c 3 -D %s | grep 'Unicast reply from'"
             % (ns.namespace_name, ns.near_vm_inner, ip))
         if r != 0:
             return macs
@@ -966,8 +972,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         # example: Unicast reply from 172.25.19.33 [AC:1F:6B:EE:87:B2]  0.641ms
         lines = o.split("\r\n")
         for l in lines:
-            items = l.spilt(" ")
-            mac = items[4].strip['['].strip[']']
+            items = l.split(" ")
+            mac = items[4].strip('[').strip(']')
             macs.append(mac)
 
         return macs
@@ -979,15 +985,16 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         #get namespace
         ns = NamespaceInfraEnv(cmd.bridgeName, cmd.namespaceName)
-        ns.prepare_dev()
+        newCreated = ns.prepare_dev()
 
         #TODO: to be simple, current only 1 ip address is detected
-        #send arping
         macs = self.__do_arping_namepsace(ns, cmd.targetIps[0])
+
+        if newCreated:
+            ns.delete_dev()
 
         rsp = ArpingRsp()
         rsp.result[cmd.targetIps[0]] = macs
-
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
