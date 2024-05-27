@@ -2330,6 +2330,8 @@ done
             return 'AMD'
         elif 'NVIDIA Corporation' in name:
             return 'NVIDIA'
+        elif 'Haiguang' in name:
+            return 'Haiguang'
         else:
             return name.replace('Co., Ltd ', '')
 
@@ -2368,8 +2370,8 @@ done
                     to.type = _class
                     to.description = _class + ": "
                 elif title == 'Vendor':
-                    to.vendor = content
                     vendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
+                    to.vendor = vendor_name
                     to.vendorId = content.split('[')[-1].strip(']')
                     to.description += vendor_name + " "
                 elif title == "Device":

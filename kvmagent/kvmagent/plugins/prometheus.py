@@ -35,6 +35,8 @@ disk_list_record = None
 cpu_status_abnormal_list_record = set()
 memory_status_abnormal_list_record = set()
 fan_status_abnormal_list_record = set()
+power_supply_status_abnormal_list_record = set()
+gpu_status_abnormal_list_record = set()
 disk_status_abnormal_list_record = {}
 
 # collect domain max memory
@@ -71,6 +73,31 @@ def send_cpu_status_alarm_to_mn(cpu_id, status):
         http.json_dump_post(url, physical_cpu_status_alarm, {'commandpath': '/host/physical/cpu/status/alarm'})
         cpu_status_abnormal_list_record.add(cpu_id)
 
+@thread.AsyncThread
+def send_physical_gpu_status_alarm_to_mn(pcideviceAddress, status):
+    class PhysicalGpuStatusAlarm(object):
+        def __init__(self):
+            self.status = None
+            self.pcideviceAddress = None
+            self.host = None
+
+    if ALARM_CONFIG is None:
+        return
+
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit physical gpu status alarm info to management node")
+        return
+
+    global gpu_status_abnormal_list_record
+    if pcideviceAddress not in gpu_status_abnormal_list_record:
+        physical_gpu_status_alarm = PhysicalGpuStatusAlarm()
+        physical_gpu_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+        physical_gpu_status_alarm.pcideviceAddress = pcideviceAddress
+        physical_gpu_status_alarm.status = status
+        http.json_dump_post(url, physical_gpu_status_alarm, {'commandpath': '/host/physical/gpu/status/alarm'})
+        gpu_status_abnormal_list_record.add(pcideviceAddress)
 
 @thread.AsyncThread
 def send_physical_memory_status_alarm_to_mn(locator, status):
@@ -98,6 +125,31 @@ def send_physical_memory_status_alarm_to_mn(locator, status):
         http.json_dump_post(url, physical_memory_status_alarm, {'commandpath': '/host/physical/memory/status/alarm'})
         memory_status_abnormal_list_record.add(locator)
 
+@thread.AsyncThread
+def send_physical_power_supply_status_alarm_to_mn(name, status):
+    class PhysicalPowerSupplyStatusAlarm(object):
+        def __init__(self):
+            self.host = None
+            self.name = None
+            self.status = None
+
+    if ALARM_CONFIG is None:
+        return
+
+    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+    if not url:
+        logger.warn(
+            "cannot find SEND_COMMAND_URL, unable to transmit power supply status alarm info to management node")
+        return
+
+    global power_supply_status_abnormal_list_record
+    if name not in power_supply_status_abnormal_list_record:
+        physical_power_supply_status_alarm = PhysicalPowerSupplyStatusAlarm()
+        physical_power_supply_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
+        physical_power_supply_status_alarm.name = name
+        physical_power_supply_status_alarm.status = status
+        http.json_dump_post(url, physical_power_supply_status_alarm, {'commandpath': '/host/physical/powersupply/status/alarm'})
+        power_supply_status_abnormal_list_record.add(name)
 
 @thread.AsyncThread
 def send_physical_fan_status_alarm_to_mn(fan_name, status):
@@ -945,16 +997,43 @@ def collect_ipmi_state():
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
 
+@thread.AsyncThread
+def check_equipment_state_from_ipmitool():
+    sensor_handlers = {
+        "Memory": send_physical_memory_status_alarm_to_mn,
+        "Fan": send_physical_fan_status_alarm_to_mn,
+        "Power_Supply": send_physical_power_supply_status_alarm_to_mn
+    }
 
-def collect_physical_cpu_state():
+    r, memory_infos = bash_ro("ipmi-sensors --sensor-types=Memory,fan,Power_Supply -Q --ignore-unrecognized-events --comma-separated-output "
+                              "--no-header-output --sdr-cache-recreate --output-event-bitmask --output-sensor-state")
+    if r == 0:
+        for memory_info in memory_infos.splitlines():
+            memory = memory_info.split(",")
+            sensor_name = memory[1].strip()
+            sensor_type = memory[2].strip()
+            sensor_state = memory[3].strip()
+
+            if sensor_state.lower() == "critical" and sensor_type in sensor_handlers:
+                sensor_handlers[sensor_type](sensor_name, sensor_state)
+            else:
+                fan_status_abnormal_list_record.discard(sensor_name)
+                power_supply_status_abnormal_list_record.discard(sensor_name)
+                memory_status_abnormal_list_record.discard(sensor_name)
+
+def collect_equipment_state_from_ipmi():
     metrics = {
+        "ipmi_status": GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
         "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
+    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
     r, cpu_info = bash_ro("ipmitool sdr elist | grep -i cpu")  # type: (int, str)
     if r != 0:
         return metrics.values()
+
+    check_equipment_state_from_ipmitool()
 
     '''
         ================
@@ -991,6 +1070,10 @@ def collect_physical_cpu_state():
             cpu_id = int(re.sub(r'\D', '', sensor_id))
             cpu_status = 0 if "presence detected" == sensor_value else 10
             metrics['cpu_status'].add_metric(["CPU%d" % cpu_id], float(cpu_status))
+            if cpu_status == 10:
+                send_cpu_status_alarm_to_mn(cpu_id, info.Status)
+            else:
+                cpu_status_abnormal_list_record.discard(cpu_id)
 
     return metrics.values()
 
@@ -1269,7 +1352,7 @@ def parse_nvidia_smi_output_to_list(data):
     return vgpu_list
 
 
-def collect_nvidia_gpu_state():
+def collect_nvidia_gpu_status():
     metrics = {
         "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address', 'gpu_serial']),
         "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None, ['pci_device_address', 'gpu_serial']),
@@ -1278,7 +1361,7 @@ def collect_nvidia_gpu_state():
         "gpu_memory_utilization": GaugeMetricFamily('gpu_memory_utilization', 'gpu memory utilization', None, ['pci_device_address', 'gpu_serial']),
         "gpu_rxpci_in_bytes": GaugeMetricFamily('gpu_rxpci_in_bytes', 'gpu rxpci in bytes', None, ['pci_device_address', 'gpu_serial']),
         "gpu_txpci_in_bytes": GaugeMetricFamily('gpu_txpci_in_bytes', 'gpu txpci in bytes', None, ['pci_device_address', 'gpu_serial']),
-        "gpu_state": GaugeMetricFamily('gpu_state', 'gpu status, 0 is critical, 1 is nominal', None, ['pci_device_address', 'gpuState', 'gpu_serial']),
+        "gpu_status": GaugeMetricFamily('gpu_status', 'gpu status, 0 is critical, 1 is nominal', None, ['pci_device_address', 'gpuStatus', 'gpu_serial']),
         "vgpu_utilization": GaugeMetricFamily('vgpu_utilization', 'vgpu utilization', None, ['vm_uuid', 'mdev_uuid']),
         "vgpu_memory_utilization": GaugeMetricFamily('vgpu_memory_utilization', 'vgpu memory utilization', None, ['vm_uuid', 'mdev_uuid'])
     }
@@ -1304,9 +1387,14 @@ def collect_nvidia_gpu_state():
         metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(info[2].replace('%', '').strip()))
         metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(info[3].replace('%', '').strip()))
         metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(info[4].replace('%', '').strip()))
-        gpuState, gpu_state_int_value = convert_pci_state_to_int(pci_device_address)
-        metrics['gpu_state'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_state_int_value)
+        gpuStatus, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
+        metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
         gpu_index_mapping_pciaddress[info[5].strip()] = pci_device_address
+
+        if gpuStatus == 'critical':
+            send_physical_gpu_status_alarm_to_mn(gpuStatus, pci_device_address)
+        else:
+            gpu_status_abnormal_list_record.discard(pci_device_address)
 
     r, gpu_pci_rx_tx = bash_ro("nvidia-smi dmon -c 1 -s t")
     if r != 0:
@@ -1335,7 +1423,7 @@ def collect_nvidia_gpu_state():
     return metrics.values()
 
 
-def collect_amd_gpu_state():
+def collect_amd_gpu_status():
     metrics = {
         "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address', 'gpu_serial']),
         "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None, ['pci_device_address', 'gpu_serial']),
@@ -1343,7 +1431,7 @@ def collect_amd_gpu_state():
         "gpu_utilization": GaugeMetricFamily('gpu_utilization', 'gpu utilization', None, ['pci_device_address', 'gpu_serial']),
         "gpu_memory_utilization": GaugeMetricFamily('gpu_memory_utilization', 'gpu memory utilization', None,
                                                     ['pci_device_address', 'gpu_serial']),
-        "gpu_state": GaugeMetricFamily('gpu_state', 'gpu status, 0 is critical, 1 is nominal', None,
+        "gpu_status": GaugeMetricFamily('gpu_status', 'gpu status, 0 is critical, 1 is nominal', None,
                                         ['pci_device_address', 'gpuState', 'gpu_serial']),
         "gpu_rxpci": GaugeMetricFamily('gpu_rxpci', 'gpu rxpci', None, ['pci_device_address']),
         "gpu_txpci": GaugeMetricFamily('gpu_txpci', 'gpu txpci', None, ['pci_device_address'])
@@ -1365,14 +1453,19 @@ def collect_amd_gpu_state():
         metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(card_data['Temperature (Sensor edge) (C)']))
         metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(card_data['Fan Speed (%)']))
         metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU use (%)']))
-        gpuState , gpu_state_int_value = convert_pci_state_to_int(pci_device_address)
-        metrics['gpu_state'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_state_int_value)
+        gpuState , gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
+        metrics['gpu_status'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_status_int_value)
         metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU memory use (%)']))
+
+        if gpuState == 'critical':
+            send_physical_gpu_status_alarm_to_mn(gpuState, pci_device_address)
+        else:
+            gpu_status_abnormal_list_record.discard(pci_device_address)
 
     return metrics.values()
 
 @in_bash
-def convert_pci_state_to_int(pci_address):
+def convert_pci_status_to_int(pci_address):
     r, pci_status = bash_ro("lspci -s %s| grep -i 'rev ff'" % pci_address)
     if r == 0 and len(pci_status.strip()) != 0:
         return "critical", 0
@@ -1406,14 +1499,14 @@ if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_equipment_state)
     
 if misc.isHyperConvergedHost():
-    kvmagent.register_prometheus_collector(collect_raid_state)
     kvmagent.register_prometheus_collector(collect_ipmi_state)
-    kvmagent.register_prometheus_collector(collect_ssd_state)
 else:
-    kvmagent.register_prometheus_collector(collect_physical_cpu_state)
+    kvmagent.register_prometheus_collector(collect_equipment_state_from_ipmi)
 
-kvmagent.register_prometheus_collector(collect_nvidia_gpu_state)
-kvmagent.register_prometheus_collector(collect_amd_gpu_state)
+kvmagent.register_prometheus_collector(collect_raid_state)
+kvmagent.register_prometheus_collector(collect_ssd_state)
+kvmagent.register_prometheus_collector(collect_nvidia_gpu_status)
+kvmagent.register_prometheus_collector(collect_amd_gpu_status)
 
 class SetServiceTypeOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -1608,6 +1701,37 @@ WantedBy=multi-user.target
             os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
+        @in_bash
+        def start_ipmi_exporter(cmd):
+            bash_errorout("modprobe ipmi_msghandler; modprobe ipmi_devintf; modprobe ipmi_poweroff; modprobe ipmi_si; modprobe ipmi_watchdog")
+            EXPORTER_PATH = cmd.binaryPath
+            LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), cmd.binaryPath + '.log')
+            ARGUMENTS = cmd.startupArguments
+
+            conf_path = os.path.join(os.path.dirname(EXPORTER_PATH), 'ipmi.yml')
+
+            conf = '''
+# Configuration file for ipmi_exporter
+modules:
+  default:
+    collectors:
+      - bmc
+      - ipmi
+      - dcmi
+      - chassis
+    exclude_sensor_ids:
+      - 2
+      - 29
+      - 32'''
+
+            if not os.path.exists(conf_path) or open(conf_path, 'r').read() != conf:
+                with open(conf_path, 'w') as fd:
+                    fd.write(conf)
+
+            os.chmod(EXPORTER_PATH, 0o755)
+            run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
+
+
         para = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
@@ -1623,6 +1747,8 @@ WantedBy=multi-user.target
         for cmd in para.cmds:
             if "collectd_exporter" in cmd.binaryPath:
                 start_collectd_exporter(cmd)
+            elif "ipmi_exporter" in cmd.binaryPath:
+                start_ipmi_exporter(cmd)
             else:
                 start_exporter(cmd)
 
