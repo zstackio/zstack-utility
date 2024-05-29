@@ -4,6 +4,7 @@ import os
 import os.path
 import time
 import re
+import datetime
 import xml.etree.ElementTree as etree
 
 import simplejson
@@ -39,6 +40,7 @@ VOLUME_TAG = COMMON_TAG + "::volume"
 IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
+LVMLOCKD_SOCKET = "/run/lvm/lvmlockd.socket"
 
 
 class VolumeProvisioningStrategy(object):
@@ -542,6 +544,31 @@ def config_lvmlocal_conf(node, value):
     cmd = shell.ShellCmd("lvmconfig --mergedconfig --config %s=%s -f /etc/lvm/lvmlocal.conf" % (node, value))
     cmd(is_exception=True)
 
+@bash.in_bash
+def lvmlockd_log_search(lvmlockd_match_regexp, since, until):
+    return bash.bash_r('''journalctl --since '%s' --until '%s' --unit %s | grep -E '%s' ''' % (since, until, get_lvmlockd_service_name(), lvmlockd_match_regexp)) == 0
+
+@bash.in_bash
+def is_lvmlockd_socket_abnormal():
+    @linux.retry(2, 1)
+    def check_socket():
+        r = bash.bash_r("timeout 10 lvmlockctl -i > /dev/null")
+        if r == 0:
+            return
+        # check if lvmlockd can receive the lvm command
+        fake_vg = 'fake_vg_%s' % linux.get_current_timestamp()
+        start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        vgck(fake_vg, 10)
+        end_time = (datetime.datetime.now() + datetime.timedelta(seconds=2)).strftime("%Y-%m-%d %H:%M:%S")
+        if not lvmlockd_log_search('vgck', start_time, end_time):
+            raise RetryException("lvmlockd socket exceptions!")
+    try:
+        check_socket()
+        return False
+    except Exception as e:
+        logger.warn(str(e))
+        return True
+
 
 @bash.in_bash
 def start_lvmlockd(io_timeout=40):
@@ -549,10 +576,15 @@ def start_lvmlockd(io_timeout=40):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
     config_lvmlockd(io_timeout)
-    running_lockd_version = get_running_lvmlockd_version()
-    if running_lockd_version and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version()):
-        write_lvmlockd_adopt_file()
+    def is_lvmlockd_upgraded():
+        running_lockd_version = get_running_lvmlockd_version()
+        return running_lockd_version is not None and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version())
+
+    restart_lvmlockd = is_lvmlockd_upgraded() or (LooseVersion(get_lvmlockd_version()) >= LooseVersion("2.03") and is_lvmlockd_socket_abnormal())
+    if restart_lvmlockd:
         stop_lvmlockd()
+        write_lvmlockd_adopt_file()
+        linux.rm_file_force(LVMLOCKD_SOCKET)
     for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
