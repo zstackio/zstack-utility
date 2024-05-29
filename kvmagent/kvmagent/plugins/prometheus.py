@@ -119,7 +119,7 @@ def collect_lvm_capacity_statistics():
     if r == 0:
         linux.set_fail_if_no_path()
 
-    r, o, e = bash_roe("vgs --nolocking --noheading -oname")
+    r, o, e = bash_roe("vgs --nolocking -t --noheading -oname")
     if r != 0 or len(o.splitlines()) == 0:
         return metrics.values()
 
@@ -306,7 +306,7 @@ def collect_node_disk_wwid():
                                            'node disk wwid', None, ["disk", "wwid"])
     }
 
-    pvs = bash_o("pvs --nolocking --noheading -o pv_name").strip().splitlines()
+    pvs = bash_o("pvs --nolocking -t --noheading -o pv_name").strip().splitlines()
     for pv in pvs:
         multipath_wwid = None
         if bash_r("dmsetup table %s | grep multipath" % pv) == 0:

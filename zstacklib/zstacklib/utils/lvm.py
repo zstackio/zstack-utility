@@ -423,7 +423,7 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
         return
 
     filter_str = 'filter=["r|\\/dev\\/cdrom|"'
-    vgs = bash.bash_o("vgs --nolocking -oname --noheading").splitlines()
+    vgs = bash.bash_o("vgs --nolocking -t -oname --noheading").splitlines()
     for vg in vgs:
         filter_str += ', "r\\/dev\\/mapper\\/%s.*\\/"' % vg.strip()
     if no_drbd:
@@ -649,7 +649,7 @@ def drop_vg_lock(vgUuid):
 
 @bash.in_bash
 def get_vg_lvm_uuid(vgUuid):
-    return bash.bash_o("vgs --nolocking --noheading -ouuid %s" % vgUuid).strip()
+    return bash.bash_o("vgs --nolocking -t --noheading -ouuid %s" % vgUuid).strip()
 
 
 def get_running_host_id(vgUuid):
@@ -687,7 +687,7 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
     for disk in disks:
         exists_vg = None
 
-        r, o = bash.bash_ro("pvs --nolocking --noheading -o vg_name %s" % disk)
+        r, o = bash.bash_ro("pvs --nolocking -t --noheading -o vg_name %s" % disk)
         if r == 0 and o.strip() != "":
             exists_vg = o.strip()
 
@@ -747,12 +747,12 @@ def get_disk_holders(disk_names):
 @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
 def add_pv(vg_uuid, disk_path, metadata_size):
     bash.bash_errorout("vgextend --metadatasize %s %s %s" % (metadata_size, vg_uuid, disk_path))
-    if bash.bash_r("pvs --nolocking --readonly %s | grep %s" % (disk_path, vg_uuid)):
+    if bash.bash_r("pvs --nolocking -t --readonly %s | grep %s" % (disk_path, vg_uuid)):
         raise Exception("disk %s not added to vg %s after vgextend" % (disk_path, vg_uuid))
 
 
 def get_vg_size(vgUuid, raise_exception=True):
-    r, o, _ = bash.bash_roe("vgs --nolocking %s --noheadings --separator : --units b -o vg_size,vg_free,vg_lock_type" % vgUuid, errorout=raise_exception)
+    r, o, _ = bash.bash_roe("vgs --nolocking -t %s --noheadings --separator : --units b -o vg_size,vg_free,vg_lock_type" % vgUuid, errorout=raise_exception)
     if r != 0:
         return None, None
     vg_size, vg_free = o.strip().split(':')[0].strip("B"), o.strip().split(':')[1].strip("B")
@@ -778,7 +778,7 @@ def has_lv_tag(path, tag):
     if tag == "":
         logger.debug("check tag is empty, return false")
         return False
-    o = shell.call("lvs -Stags={%s} %s --nolocking --noheadings 2>/dev/null | wc -l" % (tag, path))
+    o = shell.call("lvs -Stags={%s} %s --nolocking -t --noheadings 2>/dev/null | wc -l" % (tag, path))
     return o.strip() == '1'
 
 
@@ -787,7 +787,7 @@ def has_one_lv_tag_sub_string(path, tags):
     if not tags or len(tags) == 0:
         logger.debug("check tag is empty, return false")
         return False
-    exists_tags = set(shell.call("lvs %s -otags --nolocking --noheadings" % path).strip().split(","))
+    exists_tags = set(shell.call("lvs %s -otags --nolocking -t --noheadings" % path).strip().split(","))
     for tag in tags:
         for exists_tag in exists_tags:
             if tag in exists_tag:
@@ -823,7 +823,7 @@ def delete_image(path, tag, deactive=True):
 
 
 def clean_vg_exists_host_tags(vgUuid, hostUuid, tag):
-    cmd = shell.ShellCmd("vgs %s -otags --nolocking --noheading | tr ',' '\n' | grep %s | grep %s" % (vgUuid, tag, hostUuid))
+    cmd = shell.ShellCmd("vgs %s -otags --nolocking -t --noheading | tr ',' '\n' | grep %s | grep %s" % (vgUuid, tag, hostUuid))
     cmd(is_exception=False)
     exists_tags = [x.strip() for x in cmd.stdout.splitlines()]
     if len(exists_tags) == 0:
@@ -907,10 +907,10 @@ def get_thin_pool_from_vg(vgName):
 
 class ThinPool(object):
     def __init__(self, path):
-        o = bash.bash_o("lvs --nolocking %s --separator ' ' -oname,data_percent,lv_size,pool_lv --noheading --unit B" % path).strip()
+        o = bash.bash_o("lvs --nolocking -t %s --separator ' ' -oname,data_percent,lv_size,pool_lv --noheading --unit B" % path).strip()
         self.name = o.split(" ")[0].strip()
         self.total = float(o.split(" ")[2].strip("B"))
-        self.thin_lvs = [l.strip() for l in bash.bash_o("lvs -Spool_lv=%s --noheadings --nolocking -oname" % self.name).strip().splitlines()]
+        self.thin_lvs = [l.strip() for l in bash.bash_o("lvs -Spool_lv=%s --noheadings --nolocking -t -oname" % self.name).strip().splitlines()]
         if len(self.thin_lvs) == 0 and not is_thin_lv(path):
             self.free = self.total
         else:
@@ -921,7 +921,7 @@ class ThinPool(object):
 
 
 def get_thin_pools_from_vg(vgName):
-    names = bash.bash_o("lvs --nolocking %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
+    names = bash.bash_o("lvs --nolocking -t %s -Slayout=pool -oname --noheading" % vgName).strip().splitlines()
     if len(names) == 0:
         return []
     return [ThinPool("/dev/%s/%s" % (vgName, n)) for n in names]
@@ -936,7 +936,7 @@ def dd_zero(path):
 def get_lv_size(path):
     if is_thin_lv(path):
         return get_thin_lv_size(path)
-    cmd = shell.ShellCmd("lvs --nolocking --noheading -osize --units b %s" % path)
+    cmd = shell.ShellCmd("lvs --nolocking -t --noheading -osize --units b %s" % path)
     cmd(is_exception=True, logcmd=False)
     return cmd.stdout.strip().strip("B")
 
@@ -947,7 +947,7 @@ def get_thin_lv_size(path):
 
 
 def is_thin_lv(path):
-    return bash.bash_r("lvs --nolocking --noheadings  -olayout %s | grep 'thin,sparse'" % path) == 0
+    return bash.bash_r("lvs --nolocking -t --noheadings  -olayout %s | grep 'thin,sparse'" % path) == 0
 
 
 @bash.in_bash
@@ -1068,26 +1068,26 @@ def remove_device_map_for_vg(vgUuid):
 
 @bash.in_bash
 def lv_exists(path):
-    r = bash.bash_r("lvs --nolocking %s" % path)
+    r = bash.bash_r("lvs --nolocking -t %s" % path)
     return r == 0
 
 
 @bash.in_bash
 def vg_exists(vgUuid):
-    cmd = shell.ShellCmd("vgs --nolocking %s" % (vgUuid))
+    cmd = shell.ShellCmd("vgs --nolocking -t %s" % (vgUuid))
     cmd(is_exception=False)
     return cmd.return_code == 0
 
 
 def lv_uuid(path):
-    cmd = shell.ShellCmd("lvs --nolocking --noheadings %s -ouuid" % path)
+    cmd = shell.ShellCmd("lvs --nolocking -t --noheadings %s -ouuid" % path)
     cmd(is_exception=False)
     return cmd.stdout.strip()
 
 
 def lv_is_active(lv_path):
     # NOTE(weiw): use readonly to get active may return 'unknown'
-    r = bash.bash_r("lvs --nolocking --noheadings %s -oactive | grep -w active" % lv_path)
+    r = bash.bash_r("lvs --nolocking -t --noheadings %s -oactive | grep -w active" % lv_path)
     if r == 0:
         return True
     return os.path.exists(lv_path)
@@ -1118,7 +1118,7 @@ def lv_rename(old_abs_path, new_abs_path, overwrite=False):
 
 
 def list_local_active_lvs(vgUuid):
-    cmd = shell.ShellCmd("lvs --nolocking %s --noheadings -opath -Slv_active=active" % vgUuid)
+    cmd = shell.ShellCmd("lvs --nolocking -t %s --noheadings -opath -Slv_active=active" % vgUuid)
     cmd(is_exception=False)
     result = []
     for i in cmd.stdout.strip().split("\n"):
@@ -1193,7 +1193,7 @@ def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_pe
 
 
 def delete_snapshots(lv_path):
-    all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking --noheadings | grep _snap_" % lv_path.split("/")[-1]).strip().splitlines()
+    all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking -t --noheadings | grep _snap_" % lv_path.split("/")[-1]).strip().splitlines()
     if len(all_snaps) == 0:
         return
     for snap in all_snaps:
@@ -1204,7 +1204,7 @@ def get_new_snapshot_name(absolutePath, remove_oldest=True):
     @bash.in_bash
     @lock.file_lock(absolutePath)
     def do_get_new_snapshot_name(name):
-        all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking --noheadings | grep _snap_" % name).strip().splitlines()
+        all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking -t --noheadings | grep _snap_" % name).strip().splitlines()
         if len(all_snaps) == 0:
             return name + "_snap_1"
         numbers = map(lambda x: int(x.strip().split("_")[-1]), all_snaps)
@@ -1421,7 +1421,7 @@ def fix_global_lock():
 
 
 def check_pv_status(vgUuid, timeout):
-    r, o , e = bash.bash_roe("timeout -s SIGKILL %s pvs --noheading --nolocking -Svg_name=%s -oname,missing" % (timeout, vgUuid))
+    r, o , e = bash.bash_roe("timeout -s SIGKILL %s pvs --noheading --nolocking -t -Svg_name=%s -oname,missing" % (timeout, vgUuid))
     if len(o) == 0 or r != 0:
         s = "can not find shared block in shared block group %s, detail: [return_code: %s, stdout: %s, stderr: %s]" % (vgUuid, r, o, e)
         logger.warn(s)
@@ -1440,7 +1440,7 @@ def check_pv_status(vgUuid, timeout):
     # if r is False:
     #     return r, s
 
-    health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
+    health = bash.bash_o('timeout -s SIGKILL %s vgs -oattr --nolocking -t --noheadings --shared %s ' % (10 if timeout < 10 else timeout, vgUuid)).strip()
     if health == "":
         logger.warn("can not get proper attr of vg, return false")
         return False, "primary storage %s attr get error, expect 'wz--ns' got %s" % (vgUuid, health)
@@ -1618,21 +1618,21 @@ def check_sanlock_status(lockspace):
 @bash.in_bash
 def get_pv_name_by_uuid(pvUuid):
     return bash.bash_o(
-        "timeout -s SIGKILL 10 pvs --noheading --nolocking -oname -Spv_uuid=%s" % pvUuid).strip()
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -t -oname -Spv_uuid=%s" % pvUuid).strip()
 
 
 @bash.in_bash
 def get_pv_uuid_by_path(pvPath):
     return bash.bash_o(
-        "timeout -s SIGKILL 10 pvs --noheading --nolocking -ouuid %s" % pvPath).strip()
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -t -ouuid %s" % pvPath).strip()
 
 
 @bash.in_bash
 def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
     pv_name = bash.bash_o(
-        "timeout -s SIGKILL 10 pvs --noheading --nolocking -oname -Spv_uuid=%s" % pvUuid).strip()
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -t -oname -Spv_uuid=%s" % pvUuid).strip()
     one_active_lv = lv_path if lv_path is not None else bash.bash_o(
-        "timeout -s SIGKILL 10 lvs --noheading --nolocking -opath,devices,tags " +
+        "timeout -s SIGKILL 10 lvs --noheading --nolocking -t -opath,devices,tags " +
         "-Sactive=active %s | grep %s | grep %s | awk '{print $1}' | head -n1" % (vgUuid, pv_name, VOLUME_TAG)).strip()
     if one_active_lv == "":
         return True
@@ -1646,7 +1646,7 @@ def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
 def get_invalid_pv_uuids(vgUuid, checkIo = False):
     invalid_pv_uuids = []
     pvs_outs = bash.bash_o(
-        "timeout -s SIGKILL 10 pvs --noheading --nolocking -Svg_name=%s -ouuid,name,missing" % vgUuid).strip().split("\n")
+        "timeout -s SIGKILL 10 pvs --noheading --nolocking -t -Svg_name=%s -ouuid,name,missing" % vgUuid).strip().split("\n")
     if len(pvs_outs) == 0:
         return
     for pvs_out in pvs_outs:
@@ -1678,7 +1678,7 @@ def is_volume_on_pvs(volume_path, pvUuids, includingMissing=True):
         pv_names.append("unknown")
     for f in files:
         o = bash.bash_o(
-            "timeout -s SIGKILL 10 lvs --noheading --nolocking %s -odevices" % f).strip().lower()  # type: str
+            "timeout -s SIGKILL 10 lvs --noheading --nolocking -t %s -odevices" % f).strip().lower()  # type: str
         logger.debug("volume %s is on pv %s" % (volume_path, o))
         if len(filter(lambda n: o.find(n.lower()) > 0, pv_names)) > 0:
             logger.debug("lv %s on pv %s(%s), return true" % (volume_path, pvUuids, pv_names))
@@ -1766,7 +1766,7 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
 
 @bash.in_bash
 def remove_partial_lv_dm(vgUuid):
-    o = bash.bash_o("lvs --noheading --nolocking %s -opath,tags -Slv_health_status=partial | grep %s" % (vgUuid, COMMON_TAG)).strip().splitlines()
+    o = bash.bash_o("lvs --noheading --nolocking -t %s -opath,tags -Slv_health_status=partial | grep %s" % (vgUuid, COMMON_TAG)).strip().splitlines()
     if len(o) == 0:
         return
 

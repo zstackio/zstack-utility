@@ -5757,9 +5757,9 @@ class CollectLogCmd(Command):
         command = "sanlock client host_status -D > %s/sanlock_host_info || true" % target_dir
         run_remote_command(command, host_post_info)
 
-        command = "lvs --nolocking -oall > %s/lvm_lvs_info || true" % target_dir
+        command = "lvs --nolocking -t -oall > %s/lvm_lvs_info || true" % target_dir
         run_remote_command(command, host_post_info)
-        command = "vgs --nolocking -oall > %s/lvm_vgs_info || true" % target_dir
+        command = "vgs --nolocking -t -oall > %s/lvm_vgs_info || true" % target_dir
         run_remote_command(command, host_post_info)
         command = "lvmconfig --type diff > %s/lvm_config_diff_info || true" % target_dir
         run_remote_command(command, host_post_info)

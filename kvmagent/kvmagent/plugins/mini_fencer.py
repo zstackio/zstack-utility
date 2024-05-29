@@ -88,7 +88,7 @@ def test_fencer(vg_name, resource_name):
 
 def do_test_fencer(vg_name):
     # type: (str) -> bool
-    r, fencer_ip = getstatusoutput("timeout 3 vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, FENCER_TAG))
+    r, fencer_ip = getstatusoutput("timeout 3 vgs %s -otags --nolocking -t --noheading | tr ',' '\\n' | grep %s" % (vg_name, FENCER_TAG))
     if r == 0 and fencer_ip and fencer_ip != "" and is_ip_address(fencer_ip):
         fencer_ip = fencer_ip.strip().split("::")[-1]
         return test_ip_address(fencer_ip)
@@ -104,7 +104,7 @@ def do_test_fencer(vg_name):
     if r == 0 and default_gateway and default_gateway != "" and is_ip_address(default_gateway):
         return test_ip_address(default_gateway)
 
-    mgmt_ip = getoutput("timeout 3 vgs %s -otags --nolocking --noheading | tr ',' '\\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
+    mgmt_ip = getoutput("timeout 3 vgs %s -otags --nolocking -t --noheading | tr ',' '\\n' | grep %s" % (vg_name, MANAGEMENT_TAG))
     mgmt_ip = mgmt_ip.strip().split("::")[-1]
     if not is_ip_address(mgmt_ip):
         logger.error("can not get mgmt nic")
