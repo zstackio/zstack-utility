@@ -10457,11 +10457,17 @@ host side snapshot files chian:
             logger.debug('operate_type: %s, device_xml: %s' % (operate_type, device_xml))
             vm_domain = get_vm_by_uuid(vm_uuid)
             if operate_type == 'attach':
-                vm_domain.domain.attachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                if vm_domain.state in [Vm.VM_STATE_RUNNING, Vm.VM_STATE_PAUSED]:
+                    vm_domain.domain.attachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                else:
+                    vm_domain.domain.attachDeviceFlags(device_xml)
                 if not linux.wait_callback_success(check_nic_is_attached, interval=2, timeout=5):
                     raise Exception('nic device is still detached after 10s. please check the device xml: %s' % device_xml)
             else:
-                vm_domain.domain.detachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                if vm_domain.state in [Vm.VM_STATE_RUNNING, Vm.VM_STATE_PAUSED]:
+                    vm_domain.domain.detachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                else:
+                    vm_domain.domain.detachDeviceFlags(device_xml)
                 if linux.wait_callback_success(check_nic_is_attached, interval=2, timeout=5):
                     raise Exception('nic device is still attached after 10s. please check the device xml: %s' % device_xml)
         except Exception as e:
@@ -10485,8 +10491,6 @@ host side snapshot files chian:
         ENABLED = 'Enabled'
         DISCONNECTING = 'Disconnecting'
         RECONNECTING = 'Reconnecting'
-
-        ZERO_MAC = '00:00:00:00:00:00'
 
         def _check_nic_is_attached(vm, nic, interface_type=None):
             if interface_type not in ['bridge', 'hostdev']:
@@ -10551,7 +10555,6 @@ host side snapshot files chian:
             vf_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
             if vf_xml is not None:
                 self.set_domain_network_device(vm.uuid, vf_xml, operate_type='detach')
-            shell.call('ip link set %s vf %s mac %s' % (pf_name, vf_index, ZERO_MAC), exception=False)
 
         def _change_vf_ha_state_reconnect(vm, nic):
             # 1. attach new vf to vm
@@ -10582,8 +10585,6 @@ host side snapshot files chian:
 
         try:
             vm = _check_cmd(cmd)
-            pf_name = linux.get_pf_name_by_vf_pci_address(cmd.nic.pciDeviceAddress)
-            vf_index = linux.get_vf_index_by_pci_address(cmd.nic.pciDeviceAddress)
             if cmd.haState == ENABLED:
                 _change_vf_ha_state_enable(vm, cmd.nic)
             elif cmd.haState == DISCONNECTING:
