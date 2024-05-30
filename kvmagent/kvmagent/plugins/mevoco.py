@@ -410,6 +410,7 @@ class DhcpNameSpaceEnv(object):
     def clean_dhcp6_iptables(self):
         self._del_dhcp6_tables()
 
+    @in_bash
     def _prepare_ip_iptables_ebtables_fdb(self):
         NAMESPACE_NAME = self.namespace_name
         BR_NAME = self.bridge_name
@@ -443,6 +444,7 @@ class DhcpNameSpaceEnv(object):
             self._prepare_dhcp6_iptables(DHCP6_IP, is_dual_stack)
 
     @staticmethod
+    @in_bash
     def _prepare_dhcp4_iptables():
         ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
         if ret != 0:
@@ -501,6 +503,7 @@ class DhcpNameSpaceEnv(object):
                 '%s -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill' % IPTABLES_CMD)
 
     @staticmethod
+    @in_bash
     def _prepare_dhcp6_iptables(dhcp6_ip, is_dual_stack=True):
         def _add_ebtables_rule6(rule):
             ret = bash_r(
@@ -551,6 +554,7 @@ class DhcpNameSpaceEnv(object):
                 bash_errorout(
                     '%s -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill' % IP6TABLES_CMD)
 
+    @in_bash
     def _add_dhcp_ip_if_not_exist(self, dhcp_ip, prefix_len, dhcp6_ip, prefix6_len, dev):
         ns = self.namespace_name
         ip4 = iproute.IpNetnsShell(ns).get_ip_address(4, dev)
@@ -560,6 +564,7 @@ class DhcpNameSpaceEnv(object):
             iproute.IpNetnsShell(ns).flush_ip_address(dev)
             if dhcp_ip is not None:
                 iproute.IpNetnsShell(ns).add_ip_address(dhcp_ip, prefix_len, dev)
+                iproute.IpNetnsShell(ns).add_ip_address("169.254.169.254", 32, dev)
             if dhcp6_ip is not None:
                 iproute.IpNetnsShell(ns).add_ip_address(dhcp6_ip, prefix6_len, dev)
 
@@ -572,6 +577,7 @@ class DhcpNameSpaceEnv(object):
 
         iproute.IpNetnsShell(ns).set_link_up(dev)
 
+    @in_bash
     def _del_dhcp_ip_if_exist(self):
         ns = self.namespace_name
         dev = self.infra_env.near_vm_inner
@@ -582,6 +588,7 @@ class DhcpNameSpaceEnv(object):
         if ip6:
             iproute.IpNetnsShell(ns).del_ip_address(ip6, dev)
 
+    @in_bash
     def _add_bridge_fdb_entry_for_inner_dev(self, dev):
         # to apply userdata service to vf nics, we need to add bridge fdb to allow vf <-> innerX
         # get pf name for inner dev
@@ -598,6 +605,7 @@ class DhcpNameSpaceEnv(object):
         # add bridge fdb entry for inner dev
         iproute.add_fdb_entry(PHY_DEV, DHCP_DEV_MAC)
 
+    @in_bash
     def _del_dhcp4_tables(self):
         ns = self.namespace_name
         dev = self.infra_env.near_vm_inner
@@ -621,6 +629,7 @@ class DhcpNameSpaceEnv(object):
                 bash_r(EBTABLES_CMD + ' -D FORWARD -j {{CHAIN_NAME}}')
                 bash_r(EBTABLES_CMD + ' -X {{CHAIN_NAME}}')
 
+    @in_bash
     def _del_dhcp6_tables(self):
         items = self.namespace_name.split('_')
         l3_uuid = items[-1]
@@ -643,6 +652,7 @@ class DhcpNameSpaceEnv(object):
             bash_r(EBTABLES_CMD + ' -D FORWARD -j {{DHCP6_CHAIN_NAME}}')
             bash_r(EBTABLES_CMD + ' -X {{DHCP6_CHAIN_NAME}}')
 
+    @in_bash
     def _del_bridge_fdb_entry_for_inner_dev(self):
         BR_NAME = self.bridge_name
         NAMESPACE_NAME = self.namespace_name
@@ -1015,6 +1025,7 @@ class DhcpEnv(object):
             iproute.IpNetnsShell(NAMESPACE_NAME).flush_ip_address(INNER_DEV)
             if DHCP_IP is not None:
                 iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(DHCP_IP, PREFIX_LEN, INNER_DEV)
+                iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address("169.254.169.254", 32, INNER_DEV)
             if DHCP6_IP is not None:
                 iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(DHCP6_IP, PREFIX6_LEN, INNER_DEV)
 
