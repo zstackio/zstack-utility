@@ -37,7 +37,8 @@ memory_status_abnormal_list_record = set()
 fan_status_abnormal_list_record = set()
 power_supply_status_abnormal_list_record = set()
 gpu_status_abnormal_list_record = set()
-disk_status_abnormal_list_record = {}
+disk_status_abnormal_list_record = set()
+raid_status_abnormal_list_record = set()
 
 # collect domain max memory
 domain_max_memory = {}
@@ -47,218 +48,104 @@ def read_number(fname):
     return 0 if not res else int(res)
 
 
-@thread.AsyncThread
-def send_cpu_status_alarm_to_mn(cpu_id, status):
-    class PhysicalCpuStatusAlarm(object):
-        def __init__(self):
-            self.status = None
-            self.cpuName = None
-            self.host = None
-    
+class PhysicalStatusAlarm:
+    def __init__(self, host=None, alarm_type=None, **kwargs):
+        self.host = host
+        self.type = alarm_type
+        self.additionalProperties = kwargs
+
+    def to_dict(self):
+        result = {
+            "host": self.host,
+            "type": self.type,
+            "additionalProperties": self.additionalProperties
+        }
+        return result
+
+
+def send_alarm_to_mn(alarm_type, unique_id, **kwargs):
     if ALARM_CONFIG is None:
         return
-    
+
     url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
     if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical cpu status alarm info to management node")
+        logger.warn("Cannot find SEND_COMMAND_URL, unable to transmit {alarm_type} alarm info to management node"
+                    .format(alarm_type=alarm_type))
         return
-    
-    global cpu_status_abnormal_list_record
-    if cpu_id not in cpu_status_abnormal_list_record:
-        physical_cpu_status_alarm = PhysicalCpuStatusAlarm()
-        physical_cpu_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_cpu_status_alarm.cpuName = cpu_id
-        physical_cpu_status_alarm.status = status
-        http.json_dump_post(url, physical_cpu_status_alarm, {'commandpath': '/host/physical/cpu/status/alarm'})
-        cpu_status_abnormal_list_record.add(cpu_id)
+
+    global_vars = globals()
+    record_list_name = "{alarm_type}_status_abnormal_list_record".format(alarm_type=alarm_type) 
+    record_list = global_vars.get(record_list_name, set())
+    if unique_id not in record_list:
+        alarm = PhysicalStatusAlarm(
+            host=ALARM_CONFIG.get(kvmagent.HOST_UUID),
+            alarm_type=alarm_type,
+            **kwargs
+        )
+        http.json_dump_post(url, alarm.to_dict(), {'commandpath': '/host/physical/hardware/status/alarm'})
+        record_list.add(unique_id)
+        global_vars[record_list_name] = record_list
+
+
+@thread.AsyncThread
+def send_cpu_status_alarm_to_mn(cpu_id, status):
+    send_alarm_to_mn('cpu', cpu_id, cpuName=cpu_id, status=status)
+
 
 @thread.AsyncThread
 def send_physical_gpu_status_alarm_to_mn(pcideviceAddress, status):
-    class PhysicalGpuStatusAlarm(object):
-        def __init__(self):
-            self.status = None
-            self.pcideviceAddress = None
-            self.host = None
+    send_alarm_to_mn('gpu', pcideviceAddress, pcideviceAddress=pcideviceAddress, status=status)
 
-    if ALARM_CONFIG is None:
-        return
-
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical gpu status alarm info to management node")
-        return
-
-    global gpu_status_abnormal_list_record
-    if pcideviceAddress not in gpu_status_abnormal_list_record:
-        physical_gpu_status_alarm = PhysicalGpuStatusAlarm()
-        physical_gpu_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_gpu_status_alarm.pcideviceAddress = pcideviceAddress
-        physical_gpu_status_alarm.status = status
-        http.json_dump_post(url, physical_gpu_status_alarm, {'commandpath': '/host/physical/gpu/status/alarm'})
-        gpu_status_abnormal_list_record.add(pcideviceAddress)
 
 @thread.AsyncThread
 def send_physical_memory_status_alarm_to_mn(locator, status):
-    class PhysicalMemoryStatusAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.locator = None
-            self.status = None
-    
-    if ALARM_CONFIG is None:
-        return
-    
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical memory status alarm info to management node")
-        return
-    
-    global memory_status_abnormal_list_record
-    if locator not in memory_status_abnormal_list_record:
-        physical_memory_status_alarm = PhysicalMemoryStatusAlarm()
-        physical_memory_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_memory_status_alarm.locator = locator
-        physical_memory_status_alarm.status = status
-        http.json_dump_post(url, physical_memory_status_alarm, {'commandpath': '/host/physical/memory/status/alarm'})
-        memory_status_abnormal_list_record.add(locator)
+    send_alarm_to_mn('memory', locator, locator=locator, status=status)
+
 
 @thread.AsyncThread
 def send_physical_power_supply_status_alarm_to_mn(name, status):
-    class PhysicalPowerSupplyStatusAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.name = None
-            self.status = None
+    send_alarm_to_mn('powerSupply', name, name=name, status=status)
 
-    if ALARM_CONFIG is None:
-        return
-
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit power supply status alarm info to management node")
-        return
-
-    global power_supply_status_abnormal_list_record
-    if name not in power_supply_status_abnormal_list_record:
-        physical_power_supply_status_alarm = PhysicalPowerSupplyStatusAlarm()
-        physical_power_supply_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_power_supply_status_alarm.name = name
-        physical_power_supply_status_alarm.status = status
-        http.json_dump_post(url, physical_power_supply_status_alarm, {'commandpath': '/host/physical/powersupply/status/alarm'})
-        power_supply_status_abnormal_list_record.add(name)
 
 @thread.AsyncThread
 def send_physical_fan_status_alarm_to_mn(fan_name, status):
-    class PhysicalFanStatusAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.fan_name = None
-            self.status = None
-    
-    if ALARM_CONFIG is None:
-        return
-    
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical fan status alarm info to management node")
-        return
-
-    global fan_status_abnormal_list_record
-    if fan_name not in fan_status_abnormal_list_record:
-        physical_fan_status_alarm = PhysicalFanStatusAlarm()
-        physical_fan_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_fan_status_alarm.fan_name = fan_name
-        physical_fan_status_alarm.status = status
-        http.json_dump_post(url, physical_fan_status_alarm, {'commandpath': '/host/physical/fan/status/alarm'})
-        fan_status_abnormal_list_record.add(fan_name)
+    send_alarm_to_mn('fan', fan_name, name=fan_name, status=status)
 
 
 @thread.AsyncThread
 def send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state):
-    class PhysicalDiskStatusAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.slot_number = None
-            self.enclosure_device_id = None
-            self.drive_state = None
-            self.serial_number = None
-    
+    send_alarm_to_mn('disk', serial_number, serial_number=serial_number, slot_number=slot_number,
+                     enclosure_device_id=enclosure_device_id, drive_state=drive_state)
+
+@thread.AsyncThread
+def send_raid_state_alarm_to_mn(target_id, state):
+    send_alarm_to_mn('raid', target_id, target_id=target_id, status=state)
+
+def send_disk_insert_or_remove_alarm_to_mn(alarm_type, serial_number, slot):
     if ALARM_CONFIG is None:
         return
-    
+
     url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
     if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical disk status alarm info to management node")
+        logger.warn("Cannot find SEND_COMMAND_URL, unable to transmit {alarm_type} alarm info to management node".format(alarm_type=alarm_type))
         return
 
-    global disk_status_abnormal_list_record
-    if (serial_number not in disk_status_abnormal_list_record.keys()) \
-            or (serial_number in disk_status_abnormal_list_record.keys()
-                and disk_status_abnormal_list_record[serial_number] != drive_state):
-        physical_disk_status_alarm = PhysicalDiskStatusAlarm()
-        physical_disk_status_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-        physical_disk_status_alarm.slot_number = slot_number
-        physical_disk_status_alarm.enclosure_device_id = enclosure_device_id
-        physical_disk_status_alarm.drive_state = drive_state
-        physical_disk_status_alarm.serial_number = serial_number
-        http.json_dump_post(url, physical_disk_status_alarm, {'commandpath': '/host/physical/disk/status/alarm'})
-        disk_status_abnormal_list_record[serial_number] = drive_state
+    alarm = PhysicalStatusAlarm(
+        host=ALARM_CONFIG.get(kvmagent.HOST_UUID),
+        serial_number=serial_number,
+        enclosure_device_id=slot.split("-")[0],
+        slot_number=slot.split("-")[1]
+    )
+    http.json_dump_post(url, alarm, {'commandpath': '/host/physical/disk/{alarm_type}/alarm'.format(alarm_type=alarm_type)})
 
-
+@thread.AsyncThread
 def send_physical_disk_insert_alarm_to_mn(serial_number, slot):
-    class PhysicalDiskInsertAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.serial_number = None
-            self.slot_number = None
-            self.enclosure_device_id = None
-            
-    if ALARM_CONFIG is None:
-        return
-   
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical disk insert alarm info to management node")
-        return
-
-    physical_disk_insert_alarm = PhysicalDiskInsertAlarm()
-    physical_disk_insert_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-    physical_disk_insert_alarm.serial_number = serial_number
-    physical_disk_insert_alarm.enclosure_device_id = slot.split("-")[0]
-    physical_disk_insert_alarm.slot_number = slot.split("-")[1]
-    http.json_dump_post(url, physical_disk_insert_alarm, {'commandpath': '/host/physical/disk/insert/alarm'})
+    send_disk_insert_or_remove_alarm_to_mn('insert', serial_number, slot)
 
 
+@thread.AsyncThread
 def send_physical_disk_remove_alarm_to_mn(serial_number, slot):
-    class PhysicalDiskRemoveAlarm(object):
-        def __init__(self):
-            self.host = None
-            self.serial_number = None
-            self.slot_number = None
-            self.enclosure_device_id = None
-    
-    if ALARM_CONFIG is None:
-        return
-    
-    url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
-    if not url:
-        logger.warn(
-            "cannot find SEND_COMMAND_URL, unable to transmit physical disk remove alarm info to management node")
-        return
-
-    physical_disk_remove_alarm = PhysicalDiskRemoveAlarm()
-    physical_disk_remove_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
-    physical_disk_remove_alarm.serial_number = serial_number
-    physical_disk_remove_alarm.enclosure_device_id = slot.split("-")[0]
-    physical_disk_remove_alarm.slot_number = slot.split("-")[1]
-    http.json_dump_post(url, physical_disk_remove_alarm, {'commandpath': '/host/physical/disk/remove/alarm'})
+    send_disk_insert_or_remove_alarm_to_mn('remove', serial_number, slot)
 
 
 def collect_memory_locator():
@@ -589,6 +476,12 @@ def collect_raid_state():
     return metrics.values()
 
 
+def handle_raid_state(target_id, state_int):
+    if state_int == 100:
+        send_raid_state_alarm_to_mn(target_id, state_int)
+        return
+    raid_status_abnormal_list_record.discard(target_id)
+
 def collect_arcconf_raid_state(metrics, infos):
     disk_list = {}
     for line in infos.splitlines():
@@ -615,8 +508,10 @@ def collect_arcconf_raid_state(metrics, infos):
                 target_id = l.strip().split(" ")[-1]
             elif "Status of Logical Device" in l and target_id != "unknown":
                 state = l.strip().split(":")[-1].strip()
-                metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
-        
+                state_int = convert_raid_state_to_int(state)
+                metrics['raid_state'].add_metric([target_id], state_int)
+                handle_raid_state(target_id, state_int)
+
         for infos in device_arr[1:]:
             drive_state = serial_number = slot_number = enclosure_device_id = "unknown"
             is_hard_drive = False
@@ -641,8 +536,8 @@ def collect_arcconf_raid_state(metrics, infos):
             disk_status = convert_disk_state_to_int(drive_state)
             metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], disk_status)
             disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-            if disk_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
-                disk_status_abnormal_list_record.pop(serial_number)
+            if disk_status == 0 and serial_number in disk_status_abnormal_list_record:
+                disk_status_abnormal_list_record.discard(serial_number)
             elif disk_status != 0:
                 send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state)
 
@@ -664,7 +559,9 @@ def collect_sas_raid_state(metrics, infos):
                 state = info.strip().split(":")[-1].strip()
                 if "Inactive" in state:
                     continue
-                metrics['raid_state'].add_metric([target_id], convert_raid_state_to_int(state))
+                state_int = convert_raid_state_to_int(state)
+                metrics['raid_state'].add_metric([target_id], state_int)
+                handle_raid_state(target_id, state_int)
         
         disk_info = bash_o("sas3ircu %s display | grep -E 'Enclosure #|Slot #|State|Serial No|Drive Type'" % line.strip())
         enclosure_device_id = slot_number = state = serial_number = "unknown"
@@ -684,8 +581,8 @@ def collect_sas_raid_state(metrics, infos):
                 metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
                 if drive_status != 20:
                     disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-                if drive_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
-                    disk_status_abnormal_list_record.pop(serial_number)
+                if drive_status == 0 and serial_number in disk_status_abnormal_list_record:
+                    disk_status_abnormal_list_record.discard(serial_number)
                 elif drive_status != 0:
                     send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
 
@@ -710,6 +607,7 @@ def collect_mega_raid_state(metrics, infos):
             disk_group = data[attr][0]["DG/VD"].split("/")[0]
             converted_vd_state = convert_raid_state_to_int(vd_state)
             metrics['raid_state'].add_metric([disk_group], converted_vd_state)
+            handle_raid_state(disk_group, converted_vd_state)
 
     # collect disk state
     o = bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J").strip()
@@ -730,8 +628,8 @@ def collect_mega_raid_state(metrics, infos):
             pd_attributes = data["Drive %s - Detailed Information" % pd_path]["Drive %s Device attributes" % pd_path]
             serial_number = pd_attributes["SN"].replace(" ", "")
             disk_list[serial_number] = "%s-%s" % (enclosure_id, slot_id)
-            if converted_pd_status == 0 and (serial_number in disk_status_abnormal_list_record.keys()):
-                disk_status_abnormal_list_record.pop(serial_number)
+            if converted_pd_status == 0 and serial_number in disk_status_abnormal_list_record:
+                disk_status_abnormal_list_record.discard(serial_number)
             elif converted_pd_status != 0:
                 send_physical_disk_status_alarm_to_mn(serial_number, slot_id, enclosure_id, converted_pd_status)
 

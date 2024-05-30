@@ -2472,6 +2472,7 @@ done
                 to.addonInfo["memory"] = gpuinfo[1].strip()
                 to.addonInfo["power"] = gpuinfo[2].strip()
                 to.addonInfo["serialNumber"] = gpuinfo[3].strip()
+                to.addonInfo["isDriverLoaded"] = True
 
     @in_bash
     def _collect_amd_gpu_info(self, to):
@@ -2491,6 +2492,7 @@ done
                 to.addonInfo["memory"] = card_data['VRAM Total Memory (B)']
                 to.addonInfo["power"] = card_data['Average Graphics Package Power (W)']
                 to.addonInfo["serialNumber"] = card_data['Serial Number']
+                to.addonInfo["isDriverLoaded"] = True
 
     # moved from vm_plugin to host_plugin
     @kvmagent.replyerror
