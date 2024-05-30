@@ -10455,21 +10455,23 @@ host side snapshot files chian:
             if operate_type not in ['attach', 'detach']:
                 raise Exception('operate_type: %s is invalid' % operate_type)
             logger.debug('operate_type: %s, device_xml: %s' % (operate_type, device_xml))
+            wait_interval = 2 if HOST_ARCH == "x86_64" else 12
+            wait_timeout = 5 if HOST_ARCH == "x86_64" else 10
             vm_domain = get_vm_by_uuid(vm_uuid)
             if operate_type == 'attach':
                 if vm_domain.state in [Vm.VM_STATE_RUNNING, Vm.VM_STATE_PAUSED]:
                     vm_domain.domain.attachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
                 else:
                     vm_domain.domain.attachDeviceFlags(device_xml)
-                if not linux.wait_callback_success(check_nic_is_attached, interval=2, timeout=5):
-                    raise Exception('nic device is still detached after 10s. please check the device xml: %s' % device_xml)
+                if not linux.wait_callback_success(check_nic_is_attached, interval=wait_interval, timeout=wait_timeout):
+                    raise Exception('nic device is still detached after %ss. please check the device xml: %s' % (wait_interval * wait_timeout, device_xml))
             else:
                 if vm_domain.state in [Vm.VM_STATE_RUNNING, Vm.VM_STATE_PAUSED]:
                     vm_domain.domain.detachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
                 else:
                     vm_domain.domain.detachDeviceFlags(device_xml)
-                if linux.wait_callback_success(check_nic_is_attached, interval=2, timeout=5):
-                    raise Exception('nic device is still attached after 10s. please check the device xml: %s' % device_xml)
+                if linux.wait_callback_success(check_nic_is_attached, interval=wait_interval, timeout=wait_timeout):
+                    raise Exception('nic device is still attached after %ss. please check the device xml: %s' % (wait_interval * wait_timeout, device_xml))
         except Exception as e:
                 raise Exception('failed to %s device, error: %s' % (operate_type, str(e)))
 
