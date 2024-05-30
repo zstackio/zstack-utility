@@ -10441,13 +10441,20 @@ host side snapshot files chian:
             eject_floppy_with_file_path(vm, file_path)
 
     def set_domain_network_device(self, vm_uuid, device_xml, operate_type='attach'):
-        def check_nic_is_attached(_):
-            vm_domain = get_vm_by_uuid(vm_uuid)
+        def check_nic_is_attached(expect_result=True):
+            vm = get_vm_by_uuid(vm_uuid)
             tree = etree.fromstring(device_xml)
-            for iface in vm_domain.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.mac.address_ == tree.find('mac').attrib['address'] and iface.type_ == tree.attrib['type']:
-                    return True
-            return False
+                    if expect_result:
+                        return True
+                    else:
+                        return False
+
+            if expect_result:
+                return False
+            else:
+                return True
 
         try:
             if not vm_uuid or not device_xml:
@@ -10455,23 +10462,21 @@ host side snapshot files chian:
             if operate_type not in ['attach', 'detach']:
                 raise Exception('operate_type: %s is invalid' % operate_type)
             logger.debug('operate_type: %s, device_xml: %s' % (operate_type, device_xml))
-            wait_interval = 2 if HOST_ARCH == "x86_64" else 12
-            wait_timeout = 5 if HOST_ARCH == "x86_64" else 10
             vm_domain = get_vm_by_uuid(vm_uuid)
             if operate_type == 'attach':
                 if vm_domain.state in [Vm.VM_STATE_RUNNING, Vm.VM_STATE_PAUSED]:
                     vm_domain.domain.attachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
                 else:
                     vm_domain.domain.attachDeviceFlags(device_xml)
-                if not linux.wait_callback_success(check_nic_is_attached, interval=wait_interval, timeout=wait_timeout):
-                    raise Exception('nic device is still detached after %ss. please check the device xml: %s' % (wait_interval * wait_timeout, device_xml))
+                if not linux.wait_callback_success(check_nic_is_attached, callback_data=True, timeout=60, interval=5):
+                    raise Exception('nic device is still detached after 60s. please check the device xml: %s' % device_xml)
             else:
                 if vm_domain.state in [Vm.VM_STATE_RUNNING, Vm.VM_STATE_PAUSED]:
                     vm_domain.domain.detachDeviceFlags(device_xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
                 else:
                     vm_domain.domain.detachDeviceFlags(device_xml)
-                if linux.wait_callback_success(check_nic_is_attached, interval=wait_interval, timeout=wait_timeout):
-                    raise Exception('nic device is still attached after %ss. please check the device xml: %s' % (wait_interval * wait_timeout, device_xml))
+                if not linux.wait_callback_success(check_nic_is_attached, callback_data=False, timeout=60, interval=5):
+                    raise Exception('nic device is still attached after 60s. please check the device xml: %s' % device_xml)
         except Exception as e:
                 raise Exception('failed to %s device, error: %s' % (operate_type, str(e)))
 
@@ -10550,8 +10555,11 @@ host side snapshot files chian:
 
         def _change_vf_ha_state_disconnect(vm, nic):
             # 1. set temporary vnic link state to up
-            vnic_name = '%s.1' % nic.nicInternalName
-            self.set_domain_iflink_state(vm.uuid, vnic_name, 'up')
+            vnic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
+            if vnic_xml is None:
+                vnic_xml = _build_xml_from_vf(vm, nic, nic_type='VNIC')
+                self.set_domain_network_device(vm.uuid, vnic_xml, operate_type='attach')
+            self.set_domain_iflink_state(vm.uuid, '%s.1' % nic.nicInternalName, 'up')
 
             # 2. detach vf from vm
             vf_xml = _check_nic_is_attached(vm, nic, interface_type='hostdev')
