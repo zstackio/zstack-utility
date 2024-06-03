@@ -16,6 +16,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lock
 from zstacklib.utils import lvm
+from zstacklib.utils import list_ops
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
 from zstacklib.utils import traceable_shell
@@ -297,6 +298,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     CONFIG_FILTER_PATH = "/sharedblock/disks/filter"
     CONVERT_VOLUME_FORMAT_PATH = "/sharedblock/volume/convertformat"
     SHRINK_SNAPSHOT_PATH = "/sharedblock/snapshot/shrink"
+    CHECK_LOCK_PATH = "/sharedblock/lock/check"
+    CHECK_STATE_PATH = "/sharedblock/vgstate/check"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -332,6 +335,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CONVERT_VOLUME_FORMAT_PATH, self.convert_volume_format)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.SHRINK_SNAPSHOT_PATH, self.shrink_snapshot)
+        http_server.register_async_uri(self.CHECK_STATE_PATH, self.check_vg_state)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -505,7 +509,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.config_lvm_by_sed("host_id", "host_id=%s" % host_id, ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("sanlock_lv_extend", "sanlock_lv_extend=%s" % DEFAULT_SANLOCK_LV_SIZE, ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("lvmlockd_lock_retries", "lvmlockd_lock_retries=6", ["lvm.conf", "lvmlocal.conf"])
-            lvm.config_lvm_by_sed("issue_discards", "issue_discards=1", ["lvm.conf", "lvmlocal.conf"])
+            lvm.config_lvm_by_sed("issue_discards", "issue_discards=0", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_stack", "reserved_stack=256", ["lvm.conf", "lvmlocal.conf"])
             lvm.config_lvm_by_sed("reserved_memory", "reserved_memory=131072", ["lvm.conf", "lvmlocal.conf"])
             if kvmagent.get_host_os_type() == "debian":
@@ -530,7 +534,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         config_lvm(cmd.hostId, cmd.enableLvmetad)
 
-        lvm.start_lvmlockd(cmd.ioTimeout)
+        lvm.start_lock_service(cmd.ioTimeout)
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, disks, cmd.hostUuid, allDisks, cmd.forceWipe, cmd.isFirst)
 
@@ -566,16 +570,17 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         lvm.check_stuck_vglk()
         logger.debug("starting vg %s lock..." % cmd.vgUuid)
-        lvm.start_vg_lock(cmd.vgUuid, retry_times_for_checking_vg_lockspace)
+        lvm.start_vg_lock(cmd.vgUuid, cmd.hostId, retry_times_for_checking_vg_lockspace)
 
         if lvm.lvm_vgck(cmd.vgUuid, 60)[0] is False and lvm.lvm_check_operation(cmd.vgUuid) is False:
             lvm.drop_vg_lock(cmd.vgUuid)
             logger.debug("restarting vg %s lock..." % cmd.vgUuid)
-            lvm.start_vg_lock(cmd.vgUuid, retry_times_for_checking_vg_lockspace)
+            lvm.start_vg_lock(cmd.vgUuid, cmd.hostId, retry_times_for_checking_vg_lockspace)
 
         # lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         # lvm.add_vg_tag(cmd.vgUuid, "%s::%s::%s::%s" % (HEARTBEAT_TAG, cmd.hostUuid, time.time(), bash.bash_o('hostname').strip()))
         self.clear_stalled_qmp_socket()
+        lvm.check_missing_pv(cmd.vgUuid)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
@@ -617,13 +622,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid):
-            cmd = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (vgUuid, INIT_TAG))
+            cmd = shell.ShellCmd("vgs --nolocking -t %s -otags | grep %s" % (vgUuid, INIT_TAG))
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 return True
 
             logger.debug("can not find vg %s with tag %s" % (vgUuid, INIT_TAG))
-            cmd = shell.ShellCmd("vgs --nolocking %s" % vgUuid)
+            cmd = shell.ShellCmd("vgs --nolocking -t %s" % vgUuid)
             cmd(is_exception=False)
             if cmd.return_code == 0:
                 logger.warn("found vg %s without tag %s" % (vgUuid, INIT_TAG))
@@ -691,7 +696,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
             return jsonobject.dumps(rsp)
 
-        command = shell.ShellCmd("vgs --nolocking %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
+        command = shell.ShellCmd("vgs --nolocking -t %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
             self.create_vg_if_not_found(cmd.vgUuid, {disk}, cmd.hostUuid, allDisks, cmd.forceWipe)
@@ -1353,4 +1358,53 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp.oldSize = old_size
         rsp.size = size
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_vg_state(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        if cmd.vgUuids is None or len(cmd.vgUuids) == 0:
+            return jsonobject.dumps(rsp)
+
+        rsp.failedVgs = {}
+
+        def vgck(vg_group):
+            if len(vg_group) == 0:
+                return
+
+            vgUuid = vg_group.pop(0)
+            r, o, e = lvm.vgck(vgUuid, 10)
+            if o is not None and o != "":
+                for es in o.strip().splitlines():
+                    if "lock start in progress" in es:
+                        break
+                    elif "held by other host" in es:
+                        break
+                    elif "Reading VG %s without a lock" % vgUuid in es:
+                        rsp.failedVgs.update({vgUuid : o})
+                        break
+                    elif 'Volume group "%s" not found' % vgUuid in es or re.search(r"volume group is missing \d physical volumes", es):
+                        rsp.failedVgs.update({vgUuid : o})
+                        break
+
+            vgck(vg_group)
+
+        # up to three worker threads executing vgck
+        threads_maxnum = 3
+        vg_groups = list_ops.list_split(cmd.vgUuids, threads_maxnum)
+
+        threads = []
+        for vg_group in vg_groups:
+            if len(vg_group) != 0:
+                threads.append(thread.ThreadFacade.run_in_thread(vgck, (vg_group,)))
+
+        for t in threads:
+            t.join()
+
+
+        if lvm.is_lvmlockd_socket_abnormal():
+            for vgUuid in cmd.vgUuids:
+                rsp.failedVgs.update({vgUuid: "lvmlockd socket is abnormal."})
+
         return jsonobject.dumps(rsp)
