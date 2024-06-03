@@ -440,7 +440,7 @@ def convert_disk_state_to_int(state):
     state = state.lower().strip()
     if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state \
             or "hot spare" in state or "raw" in state or "onln" == state or "ghs" == state or "dhs" == state \
-            or "ugood" == state:
+            or "ugood" == state or "cpybck" == state:
         return 0
     elif "rebuild" in state or "rbld" == state:
         return 5
