@@ -14,7 +14,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import bash
 from zstacklib.utils import lock
 from zstacklib.utils import log
-from zstacklib.utils import linux
+from zstacklib.utils import linux, sanlock
 from zstacklib.utils import qemu_img
 from zstacklib.utils import thread
 from distutils.version import LooseVersion
@@ -695,7 +695,7 @@ def stop_sanlock():
         bash.bash_r("timeout 30 systemctl stop sanlock.service")
 
 @bash.in_bash
-def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
+def start_vg_lock(vgUuid, hostId, retry_times_for_checking_vg_lockspace):
     @linux.retry(times=60, sleep_time=random.uniform(1, 10))
     def vg_lock_is_adding(vgUuid):
         # NOTE(weiw): this means vg locking is adding rather than complete
@@ -714,6 +714,13 @@ def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
         else:
             return True
 
+    def check_lockspace():
+        r = sanlock.dd_check_lockspace("/dev/mapper/%s-lvmlock" % vgUuid)
+        if r != 0:
+            bash.bash_roe("dmsetup remove %s-lvmlock" % vgUuid)
+            return
+        sanlock.vertify_delta_lease(vgUuid, hostId)
+
     @linux.retry(times=5, sleep_time=random.uniform(0.1, 10))
     def start_lock(vgUuid):
         modify_sanlock_config("use_zstack_vglock_timeout", 1)
@@ -722,13 +729,13 @@ def start_vg_lock(vgUuid, retry_times_for_checking_vg_lockspace):
         modify_sanlock_config("use_zstack_vglock_timeout", 0)
         modify_sanlock_config("use_zstack_vglock_large_delay", 0)
 
-        if r != 0:
-            if ("Device or resource busy" in o+e) :
-                bash.bash_roe("dmsetup remove %s-lvmlock" % vgUuid)
-            raise Exception("vgchange --lock-start failed: return code: %s, stdout: %s, stderr: %s" %
-                            (r, o, e))
-
-        vg_lock_exists(vgUuid)
+        try:
+            if r != 0:
+                raise Exception("vgchange --lock-start failed: return code: %s, stdout: %s, stderr: %s" % (r, o, e))
+            vg_lock_exists(vgUuid)
+        except Exception:
+            check_lockspace()
+            raise
 
     try:
         vg_lock_exists(vgUuid)
