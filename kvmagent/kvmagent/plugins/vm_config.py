@@ -220,7 +220,10 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             return ret, msg
 
         # exec qga command
-        if qga.os_version == '6':
+        if (qga.os == VmQga.VM_OS_LINUX_CENTOS or qga.os == VmQga.VM_OS_LINUX_REDHAT) and qga.os_version == '6':
+            cmd_file = self.VM_QGA_SET_HOSTNAME_EL6
+        elif (qga.os == VmQga.VM_OS_LINUX_SUSE_S or qga.os == VmQga.VM_OS_LINUX_SUSE_D
+              or qga.os == VmQga.VM_OS_LINUX_OPEN_SUSE) and qga.os_version == '11':
             cmd_file = self.VM_QGA_SET_HOSTNAME_EL6
         else:
             cmd_file = self.VM_QGA_SET_HOSTNAME
