@@ -41,6 +41,7 @@ IMAGE_TAG = COMMON_TAG + "::image"
 ENABLE_DUP_GLOBAL_CHECK = False
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
 LVMLOCKD_SOCKET = "/run/lvm/lvmlockd.socket"
+LVMLOCKD_VERSION = None
 
 
 class VolumeProvisioningStrategy(object):
