@@ -4387,7 +4387,7 @@ if [ x"$UPGRADE" = x'y' ]; then
     echo ""
     zstack_home=`eval echo ~zstack`
     echo_chrony_server_warning_if_need
-    check_ha_need_upgrade
+    # check_ha_need_upgrade
     #echo " Your old zstack was saved in $zstack_home/upgrade/`ls $zstack_home/upgrade/ -rt|tail -1`"
     echo_custom_pcidevice_xml_warning_if_need
     echo_star_line
@@ -4442,7 +4442,7 @@ if [ ! -z $ONLY_INSTALL_ZSTACK ]; then
     echo "${PRODUCT_NAME} ${VERSION}management node is installed to $ZSTACK_INSTALL_ROOT."
     echo "Mysql and are not installed. You can use ${PRODUCT_NAME,,}-ctl to install them and start ${PRODUCT_NAME} service later. "
     echo_chrony_server_warning_if_need
-    check_ha_need_upgrade
+    # check_ha_need_upgrade
     echo_star_line
     disable_zstack_tui
     kill_zstack_tui
@@ -4609,7 +4609,7 @@ fi
 [ ! -z $NEED_HTTP ] && echo -e "$(tput setaf 7) - http://$MANAGEMENT_IP/image is ready for storing images as an EXAMPLE.  After copy your_image_name to the folder $HTTP_FOLDER, your image local url is http://$MANAGEMENT_IP/image/your_image_name$(tput sgr0)"
 
 echo_chrony_server_warning_if_need
-check_ha_need_upgrade
+# check_ha_need_upgrade
 echo_star_line
 disable_zstack_tui
 kill_zstack_tui
