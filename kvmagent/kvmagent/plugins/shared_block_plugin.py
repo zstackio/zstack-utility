@@ -1374,7 +1374,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 return
 
             vgUuid = vg_group.pop(0)
-            r, o, e = lvm.vgck(vgUuid, 10)
+            r, o, e = lvm.vgck(vgUuid, 360)
             if o is not None and o != "":
                 for es in o.strip().splitlines():
                     if "lock start in progress" in es:
