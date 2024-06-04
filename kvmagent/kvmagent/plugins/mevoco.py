@@ -34,6 +34,640 @@ IPTABLES_CMD = iptables.get_iptables_cmd()
 IP6TABLES_CMD = iptables.get_ip6tables_cmd()
 HOST_ARCH = platform.machine()
 
+
+class NamespaceInfraEnv(object):
+    """
+        +------------------+
+        |       VM         |
+        |                  |                +--------------------------------------------------+
+        |      +---+       |                |                                                  |
+        +------|---|-------+                |                                                  |
+               |   |                        |                                                  |
+               +-|-+                        |                       HOST-NETWORK               |
+                 |                          |     +---------------------------------------+    |
+    +----------+-|-+--------------+         |     |                                       |    |
+    |                             |         |     |           169.254.64.1                |    |
+    |                             |         |     |                                       |    |
+    |        br_03b0306_2346      |         |     |           br_conn_all_ns              |    |
+    |        vm_bridge            |         |     |           host_bridge                 |    |
+    +--------+-------------+------+         |     +----+-------------+--------------------+    |
+             |near_vm_outer|                |          |near_host_outer|                       |
+             +------|------+                |          +------|--------+                       |
+                    |                       |                 |                                |
+                    |                       +-----------------|--------------------------------+
+                    |                                         |
+      +-----+-------------------+-------------------+---------------------+-------+
+      |     |  near_vm_inner    |                   |    near_host_inner  |       |
+      |     |                   |                   |                     |       |
+      |     |  169.254.169.254  |                   |    169.254.169.24   |       |
+      |     |                   |                   +---------------------+       |
+      |     |  192.168.1.3(dhcp)|                                                 |
+      |     +-------------------+                                                 |
+      |                             NAMESPACE                                     |
+      +---------------------------------------------------------------------------+
+    """
+    CONNECT_ALL_NETNS_BR_NAME = "br_conn_all_ns"
+    CONNECT_ALL_NETNS_BR_OUTER_IP = "169.254.64.1"
+    CONNECT_ALL_NETNS_BR_INNER_IP = "169.254.64.2"
+    IP_MASK_BIT = 18
+
+    def __init__(self, vm_bridge_name, namespace_name):
+        self.vm_bridge_name = vm_bridge_name
+        self.host_bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
+        self.namespace_name = namespace_name
+        self.namespace_id = ip.get_namespace_id(self.namespace_name)
+        self.near_vm_outer = "outer%s" % self.namespace_id
+        self.near_vm_inner = "inner%s" % self.namespace_id
+        self.near_host_outer = "ud_outer%s" % self.namespace_id
+        self.near_host_inner = "ud_inner%s" % self.namespace_id
+
+        self.ns_new_created = False
+
+
+    @lock.lock('namespace_infra_env')
+    @in_bash
+    def prepare_dev(self):
+        logger.debug('use id[%s] for the namespace[%s]' % (self.namespace_id, self.namespace_name))
+
+        self._create_namespace_if_not_exist()
+        self._create_host_bridge_if_not_exist()
+        self._add_host_bridge_ip_if_not_exist()
+        self._create_link_pair_to_br_and_ns(self.vm_bridge_name, self.near_vm_inner, self.near_vm_outer)
+        self._create_link_pair_to_br_and_ns(self.host_bridge_name, self.near_host_inner, self.near_host_outer)
+        self._add_near_host_inner_ip_if_not_exist()
+        self._add_near_vm_inner_ip_if_not_exist()
+        self._set_namespace_attribute()
+
+    @lock.lock('namespace_infra_env')
+    @in_bash
+    @lock.file_lock('/run/xtables.lock')
+    def add_ip_eb_tables(self, l3_network_uuid, ip_addr, netmask):
+        DEV = self.near_vm_inner
+        NS_NAME = self.namespace_name
+        CIDR = ip.IpAddress(ip_addr).toCidr(netmask)
+        self._add_vm_route_if_not_exist(CIDR)
+
+        # set ebtables
+        BR_NAME = self.vm_bridge_name
+        ETH_NAME = get_phy_dev_from_bridge_name(BR_NAME)
+
+        MAC = iproute.IpNetnsShell(NS_NAME).get_mac(DEV)
+        CHAIN_NAME = "USERDATA-%s" % BR_NAME
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, l3_network_uuid[0:8])
+        else:
+            EBCHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], l3_network_uuid[0:8])
+
+        ret = bash_r(EBTABLES_CMD + ' -t nat -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -N {{EBCHAIN_NAME}}')
+
+        if bash_r(EBTABLES_CMD + " -t nat -L PREROUTING | grep -- '--logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}'") != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}')
+
+        # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
+        macAddr = ip.removeZeroFromMacAddress(MAC)
+        RULE = "-p IPv4 --ip-src %s --ip-dst 169.254.169.254 -j dnat --to-dst %s --dnat-target ACCEPT" % (CIDR, macAddr)
+        ret = bash_r(EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '{{RULE}}' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}} {{RULE}}')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '--arp-ip-dst %s' > /dev/null" % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
+        if ret != 0:
+            bash_errorout(
+                EBTABLES_CMD + ' -t nat -I {{EBCHAIN_NAME}}  -p arp  --arp-ip-dst %s -j DROP' % self.CONNECT_ALL_NETNS_BR_OUTER_IP)
+
+        ret = bash_r(EBTABLES_CMD + " -t nat -L {{EBCHAIN_NAME}} | grep -- '-j RETURN' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -t nat -A {{EBCHAIN_NAME}} -j RETURN')
+
+        ret = bash_r(EBTABLES_CMD + ' -L {{EBCHAIN_NAME}} >/dev/null 2>&1')
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -N {{EBCHAIN_NAME}}')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -L FORWARD | grep -- '-p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -I FORWARD -p ARP --arp-ip-dst 169.254.169.254 -j {{EBCHAIN_NAME}}')
+
+        ret = bash_r(EBTABLES_CMD + " -L {{EBCHAIN_NAME}} | grep -- '-i {{ETH_NAME}} -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -i {{ETH_NAME}} -j DROP')
+
+        ret = bash_r(EBTABLES_CMD + " -L {{EBCHAIN_NAME}} | grep -- '-o {{ETH_NAME}} -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -I {{EBCHAIN_NAME}} -o {{ETH_NAME}} -j DROP')
+
+        ret = bash_r("ebtables-save | grep '\-A {{EBCHAIN_NAME}} -j RETURN'")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -A {{EBCHAIN_NAME}} -j RETURN')
+
+    @lock.lock('namespace_infra_env')
+    @lock.file_lock('/run/xtables.lock')
+    @in_bash
+    def del_ip_eb_tables(self, l3_network_uuid):
+        BR_NAME = self.vm_bridge_name
+        # max length of ebtables chain name is 31
+        if (len(BR_NAME) <= 12):
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME, l3_network_uuid[0:8])
+        else:
+            CHAIN_NAME = "USERDATA-%s-%s" % (BR_NAME[len(BR_NAME) - 12: len(BR_NAME)], l3_network_uuid[0:8])
+
+        cmds = []
+        o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
+        o = o.strip(" \t\r\n")
+        if o:
+            for l in o.split("\n"):
+                # we don't distinguish if the rule is in filter table or nat table
+                # but try both. The wrong table will silently fail
+                cmds.append(EBTABLES_CMD + " -t filter %s" % l.replace("-A", "-D"))
+                cmds.append(EBTABLES_CMD + " -t nat %s" % l.replace("-A", "-D"))
+
+        if bash_r("ebtables-save | grep :{{CHAIN_NAME}}") == 0:
+            cmds.append(EBTABLES_CMD + " -t filter -X %s" % CHAIN_NAME)
+            cmds.append(EBTABLES_CMD + " -t nat -X %s" % CHAIN_NAME)
+
+        if len(cmds) > 0:
+            bash_r("\n".join(cmds))
+
+    @lock.lock('namespace_infra_env')
+    @in_bash
+    def delete_dev(self):
+        if self.namespace_name not in iproute.IpNetnsShell.list_netns():
+            return
+        iproute.IpNetnsShell(self.namespace_name).del_link(self.near_vm_inner)
+        iproute.delete_link_no_error(self.near_vm_outer)
+        iproute.IpNetnsShell(self.namespace_name).del_link(self.near_host_inner)
+        iproute.delete_link_no_error(self.near_host_outer)
+        iproute.IpNetnsShell(self.namespace_name).del_netns()
+
+    def _create_namespace_if_not_exist(self):
+        netns = iproute.IpNetnsShell.list_netns()
+        if self.namespace_name not in netns:
+            iproute.IpNetnsShell(self.namespace_name).add_netns(self.namespace_id)
+            self.ns_new_created = True
+        else:
+            self.ns_new_created = False
+
+    def _create_link_pair_to_br_and_ns(self, bridge_name, inner_name, outer_name):
+        self._cleanup_orphan_link_if_exist(inner_name, outer_name)
+        self._create_link_pair(inner_name, outer_name)
+        if self._is_using_ovs(bridge_name):
+            self._add_link_to_ovs(bridge_name, outer_name)
+            self._set_link_attribute_for_ovs(inner_name)
+        else:
+            self._add_link_to_bridge(bridge_name, outer_name)
+        self._add_link_to_namespace(inner_name)
+        iproute.IpNetnsShell(self.namespace_name).set_link_up(inner_name)
+
+    def _create_host_bridge_if_not_exist(self):
+        bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
+        if not linux.is_network_device_existing(bridge_name):
+            shell.call("brctl addbr %s" % bridge_name)
+            shell.call("brctl stp %s off" % bridge_name)
+            shell.call("brctl setfd %s 0" % bridge_name)
+            iproute.set_link_up(bridge_name)
+
+    def _add_host_bridge_ip_if_not_exist(self):
+        bridge_name = self.CONNECT_ALL_NETNS_BR_NAME
+        ip = self.CONNECT_ALL_NETNS_BR_OUTER_IP
+        mask_bit = self.IP_MASK_BIT
+        addr = iproute.query_addresses(ifname=bridge_name, address=ip, prefixlen=mask_bit)
+        if not addr:
+            iproute.add_address(ip, mask_bit, 4, bridge_name)
+
+    def _set_namespace_attribute(self):
+        # dhcp namespace should not add ipv6 address based on router advertisement
+        NAMESPACE_NAME = self.namespace_name
+        LINK_NAME = self.near_vm_inner
+        bash_roe("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.all.accept_ra=0")
+        bash_roe("ip netns exec {{NAMESPACE_NAME}} sysctl -w net.ipv6.conf.{{LINK_NAME}}.accept_ra=0")
+
+    def _add_near_host_inner_ip_if_not_exist(self):
+        ns_id = self.namespace_id
+        ns = self.namespace_name
+        dev = self.near_host_inner
+        mask_bit = self.IP_MASK_BIT
+        if int(ns_id) > 16381:
+            # 169.254.64.1/18 The maximum available ip is only 16381 (exclude 169.254.64.1)
+            # It is impossible to configure tens of thousands of networks on host
+            raise Exception('add ip addr fail, namespace id exceeds limit')
+        ip2int = struct.unpack('!L', socket.inet_aton(self.CONNECT_ALL_NETNS_BR_INNER_IP))[0]
+        userdata_br_inner_dev_ip = socket.inet_ntoa(struct.pack('!L', ip2int + int(ns_id)))
+        addr = iproute.IpNetnsShell(ns).get_ip_address(4, dev)
+        if addr is None:
+            iproute.IpNetnsShell(ns).add_ip_address(userdata_br_inner_dev_ip, mask_bit, dev)
+
+    def _cleanup_orphan_link_if_exist(self, inner_name, outer_name):
+        mac = iproute.IpNetnsShell(self.namespace_name).get_mac(inner_name)
+        if mac is None:
+            iproute.delete_link_no_error(outer_name)
+
+    def _create_link_pair(self, inner_name, outer_name):
+        outer_exist = linux.is_network_device_existing(outer_name)
+        ret = bash_r('ip netns exec {} ip link show | grep {} > /dev/null'.format(self.namespace_name, inner_name))
+        inner_exist = (ret == 0)
+        if not outer_exist or not inner_exist:
+            if outer_exist:
+                iproute.delete_link_no_error(outer_name)
+            elif inner_exist:
+                iproute.IpNetnsShell(self.namespace_name).del_link(inner_name)
+            iproute.add_link(outer_name, 'veth', peer=inner_name)
+            iproute.set_link_attribute(inner_name, mtu=linux.MAX_MTU_OF_VNIC)
+            iproute.set_link_attribute(outer_name, mtu=linux.MAX_MTU_OF_VNIC)
+        iproute.set_link_up(outer_name)
+
+    @staticmethod
+    def _add_link_to_bridge(bridge_name, link_name):
+        BR_NAME = bridge_name
+        LINK_NAME = link_name
+        ret = bash_r('brctl show {{BR_NAME}} | grep -w {{LINK_NAME}} > /dev/null')
+        if ret != 0:
+            bash_errorout('brctl addif {{BR_NAME}} {{LINK_NAME}}')
+
+    @staticmethod
+    def _add_link_to_ovs(bridge_name, link_name):
+        try:
+            ovs_ctl = ovs.getOvsCtl(with_dpdk=True)
+            ovs_ctl.addOuterToBridge(bridge_name, link_name)
+        except OvsError as err:
+            logger.error("Get ovs ctl failed. {}".format(err))
+
+    def _set_link_attribute_for_ovs(self, link_name):
+        NAMESPACE_NAME = self.namespace_name
+        LINK_NAME = link_name
+        bash_errorout('ip netns exec {{NAMESPACE_NAME}} ethtool -K {{LINK_NAME}} tx off')
+
+    def _add_link_to_namespace(self, link_name):
+        mac = iproute.IpNetnsShell(self.namespace_name).get_mac(link_name)
+        if mac is None:
+            iproute.IpNetnsShell(self.namespace_name).add_link(link_name)
+
+    def _add_near_vm_inner_ip_if_not_exist(self):
+        ns = self.namespace_name
+        dev = self.near_vm_inner
+        addr = iproute.IpNetnsShell(ns).get_userdata_ip_address(dev)
+        if addr is None:
+            iproute.IpNetnsShell(ns).add_ip_address('169.254.169.254', 32, dev)
+
+    @staticmethod
+    def _is_using_ovs(bridge_name):
+        BR_NAME = bridge_name
+        ret = bash_r('brctl show | grep -w {{BR_NAME}} > /dev/null')
+        if ret == 0:
+            return False
+
+        try:
+            logger.debug("Network use ovs attach")
+            ovs_ctl = ovs.getOvsCtl(with_dpdk=True)
+            if BR_NAME in ovs_ctl.listBrs():
+                return True
+        except OvsError as err:
+            logger.error("Get ovs ctl failed. {}".format(err))
+
+    @in_bash
+    def _add_vm_route_if_not_exist(self, cidr):
+        NS_NAME = self.namespace_name
+        CIDR = cidr
+        DEV = self.near_vm_inner
+        _, o = bash_ro('ip netns exec {{NS_NAME}} ip r | wc -l')
+        if int(o) == 1:
+            bash_errorout('ip netns exec {{NS_NAME}} ip r add {{CIDR}} dev {{DEV}}')
+
+
+class UserNameSpaceEnv(object):
+
+    def __init__(self, bridge_name, namespace_name):
+        self.bridge_name = bridge_name
+        self.namespace_name = namespace_name
+        self.infra_env = NamespaceInfraEnv(bridge_name, namespace_name)
+
+    def prepare(self, l3_network_uuid, ip_addr, netmask):
+        self.infra_env.prepare_dev()
+        self.infra_env.add_ip_eb_tables(l3_network_uuid, ip_addr, netmask)
+
+    def delete(self, l3_network_uuid):
+        self.infra_env.del_ip_eb_tables(l3_network_uuid)
+        self.infra_env.delete_dev()
+
+
+class DhcpNameSpaceEnv(object):
+    DHCP6_STATEFUL = "Stateful-DHCP"
+    DHCP6_STATELESS = "Stateless-DHCP"
+
+    def __init__(self, bridge_name, namespace_name):
+        self.bridge_name = bridge_name
+        self.dhcp_server_ip = None
+        self.dhcp_server6_ip = None
+        self.dhcp_netmask = None
+        self.namespace_name = namespace_name
+        self.ipVersion = 0
+        self.prefixLen = 0
+        self.addressMode = self.DHCP6_STATEFUL
+        self.infra_env = NamespaceInfraEnv(self.bridge_name, self.namespace_name)
+
+    @lock.file_lock('/run/xtables.lock')
+    @in_bash
+    def prepare(self):
+        self.infra_env.prepare_dev()
+        self._prepare_ip_iptables_ebtables_fdb()
+
+    def delete(self):
+        # delete ip, iptables, ebtables, etc
+        self._del_bridge_fdb_entry_for_inner_dev()
+        self._del_dhcp4_tables()
+        self._del_dhcp6_tables()
+        self.infra_env.delete_dev()
+
+    def enable(self):
+        # add ip, iptables, ebtables, start dnsmasq, etc
+        self.infra_env.prepare_dev()
+        self._prepare_ip_iptables_ebtables_fdb()
+
+    def disable(self):
+        # delete ip, iptables, ebtables, stop dnsmasq, etc
+        self._del_bridge_fdb_entry_for_inner_dev()
+        self._del_dhcp4_tables()
+        self._del_dhcp6_tables()
+        self._del_dhcp_ip_if_exist()
+
+    def get_dhcp_ip(self):
+        dev = self.infra_env.near_vm_inner
+        return iproute.IpNetnsShell(self.namespace_name).get_ip_address(4, dev)
+
+    def get_dhcp6_ip(self):
+        dev = self.infra_env.near_vm_inner
+        dhcp6_ip = iproute.IpNetnsShell(self.namespace_name).get_ip_address(6, dev)
+        return dhcp6_ip
+
+    @lock.file_lock('/run/xtables.lock')
+    def clean_dhcp4_iptables(self):
+        self._del_dhcp4_tables()
+
+    @lock.file_lock('/run/xtables.lock')
+    def clean_dhcp6_iptables(self):
+        self._del_dhcp6_tables()
+
+    @in_bash
+    def _prepare_ip_iptables_ebtables_fdb(self):
+        NAMESPACE_NAME = self.namespace_name
+        BR_NAME = self.bridge_name
+        DHCP_IP = self.dhcp_server_ip
+        DHCP6_IP = self.dhcp_server6_ip
+        DHCP_NETMASK = self.dhcp_netmask
+        PREFIX_LEN = None
+        if DHCP_NETMASK is not None:
+            PREFIX_LEN = linux.netmask_to_cidr(DHCP_NETMASK)
+        PREFIX6_LEN = self.prefixLen
+        BR_PHY_DEV = get_phy_dev_from_bridge_name(self.bridge_name)
+        DHCP_DEV = self.infra_env.near_vm_inner
+        if DHCP_IP is not None:
+            CHAIN_NAME = getDhcpEbtableChainName(DHCP_IP)
+        elif DHCP6_IP is not None:
+            CHAIN_NAME = getDhcpEbtableChainName(DHCP6_IP)
+
+        if (DHCP_IP is None and DHCP6_IP is None) or (PREFIX_LEN is None and PREFIX6_LEN is None):
+            logger.debug(
+                "no dhcp ip[{{DHCP_IP}}] or netmask[{{DHCP_NETMASK}}] for {{DHCP_DEV}} in {{NAMESPACE_NAME}}, skip ebtables/iptables config")
+            return
+
+        self._add_dhcp_ip_if_not_exist(DHCP_IP, PREFIX_LEN, DHCP6_IP, PREFIX6_LEN, DHCP_DEV)
+
+        if DHCP_IP is not None:
+            self._prepare_dhcp4_iptables()
+            self._add_bridge_fdb_entry_for_inner_dev(DHCP_DEV)
+
+        if DHCP6_IP is not None:
+            is_dual_stack = DHCP_IP is not None
+            self._prepare_dhcp6_iptables(DHCP6_IP, is_dual_stack)
+
+    @staticmethod
+    @in_bash
+    def _prepare_dhcp4_iptables():
+        ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+
+        ret = bash_r(EBTABLES_CMD + " -L FORWARD | grep -- '-j {{CHAIN_NAME}}' > /dev/null")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -A FORWARD -j {{CHAIN_NAME}}')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(
+                EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -o {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(
+                EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -i {{BR_PHY_DEV}} --arp-ip-dst {{DHCP_IP}} -j DROP')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p ARP -o {{BR_PHY_DEV}} --arp-ip-src {{DHCP_IP}} -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(
+                EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -o {{BR_PHY_DEV}} --arp-ip-src {{DHCP_IP}} -j DROP')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p ARP -i {{BR_PHY_DEV}} --arp-ip-src {{DHCP_IP}} -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(
+                EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p ARP -i {{BR_PHY_DEV}} --arp-ip-src {{DHCP_IP}} -j DROP')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(
+                EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -o {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
+
+        ret = bash_r(
+            EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '-p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP' > /dev/null")
+        if ret != 0:
+            bash_errorout(
+                EBTABLES_CMD + ' -I {{CHAIN_NAME}} -p IPv4 -i {{BR_PHY_DEV}} --ip-proto udp --ip-sport 67:68 -j DROP')
+
+        ret = bash_r("ebtables-save | grep -- '-A {{CHAIN_NAME}} -j RETURN'")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
+
+        # Note(WeiW): fix dhcp checksum, see more at #982
+        if HOST_ARCH == 'mips64el':
+            return
+        ret = bash_r("iptables-save | grep -- '-p udp -m udp --dport 68 -j CHECKSUM --checksum-fill'")
+        if ret != 0:
+            bash_errorout(
+                '%s -t mangle -A POSTROUTING -p udp -m udp --dport 68 -j CHECKSUM --checksum-fill' % IPTABLES_CMD)
+
+    @staticmethod
+    @in_bash
+    def _prepare_dhcp6_iptables(dhcp6_ip, is_dual_stack=True):
+        def _add_ebtables_rule6(rule):
+            ret = bash_r(
+                EBTABLES_CMD + " -L {{CHAIN_NAME}} | grep -- '{{rule}}' > /dev/null")
+            if ret != 0:
+                bash_errorout(
+                    EBTABLES_CMD + ' -I {{CHAIN_NAME}} {{rule}}')
+
+        serverip = ip.Ipv6Address(dhcp6_ip)
+        ns_multicast_address = serverip.get_solicited_node_multicast_address() + "/ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff"
+
+        if not is_dual_stack:
+            ret = bash_r(EBTABLES_CMD + ' -L {{CHAIN_NAME}} > /dev/null 2>&1')
+            if ret != 0:
+                bash_errorout(EBTABLES_CMD + ' -N {{CHAIN_NAME}}')
+
+            ret = bash_r(EBTABLES_CMD + ' -F {{CHAIN_NAME}} > /dev/null 2>&1')
+            ret = bash_r(EBTABLES_CMD + " -L FORWARD | grep -- '-j {{CHAIN_NAME}}' > /dev/null")
+            if ret != 0:
+                bash_errorout(EBTABLES_CMD + ' -I FORWARD -j {{CHAIN_NAME}}')
+
+        ns_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-solicitation -j DROP"
+        _add_ebtables_rule6(ns_rule_o)
+
+        na_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-advertisement -j DROP"
+        _add_ebtables_rule6(na_rule_o)
+
+        ns_rule_i = "-p IPv6 -i {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-solicitation -j DROP"
+        _add_ebtables_rule6(ns_rule_i)
+
+        na_rule_i = "-p IPv6 -i {{BR_PHY_DEV}} --ip6-dst {{ns_multicast_address}} --ip6-proto ipv6-icmp --ip6-icmp-type neighbour-advertisement -j DROP"
+        _add_ebtables_rule6(na_rule_i)
+
+        # prevent ns for dhcp server from upstream network
+        dhcpv6_rule_o = "-p IPv6 -o {{BR_PHY_DEV}} --ip6-proto udp --ip6-sport 546:547 -j DROP"
+        _add_ebtables_rule6(dhcpv6_rule_o)
+
+        dhcpv6_rule_i = "-p IPv6 -i {{BR_PHY_DEV}} --ip6-proto udp --ip6-sport 546:547 -j DROP"
+        _add_ebtables_rule6(dhcpv6_rule_i)
+
+        ret = bash_r("ebtables-save | grep -- '-A {{CHAIN_NAME}} -j RETURN'")
+        if ret != 0:
+            bash_errorout(EBTABLES_CMD + ' -A {{CHAIN_NAME}} -j RETURN')
+
+            # Note(WeiW): fix dhcp checksum, see more at #982
+            ret = bash_r("ip6tables-save | grep -- '-p udp -m udp --dport 546 -j CHECKSUM --checksum-fill'")
+            if ret != 0:
+                bash_errorout(
+                    '%s -t mangle -A POSTROUTING -p udp -m udp --dport 546 -j CHECKSUM --checksum-fill' % IP6TABLES_CMD)
+
+    @in_bash
+    def _add_dhcp_ip_if_not_exist(self, dhcp_ip, prefix_len, dhcp6_ip, prefix6_len, dev):
+        ns = self.namespace_name
+        ip4 = iproute.IpNetnsShell(ns).get_ip_address(4, dev)
+        ip6 = iproute.IpNetnsShell(ns).get_ip_address(6, dev)
+        if ((ip4 is None or ip4 != dhcp_ip) and prefix_len is not None) \
+                or ((ip6 is None or ip6 != dhcp6_ip) and prefix6_len is not None):
+            iproute.IpNetnsShell(ns).flush_ip_address(dev)
+            if dhcp_ip is not None:
+                iproute.IpNetnsShell(ns).add_ip_address(dhcp_ip, prefix_len, dev)
+                iproute.IpNetnsShell(ns).add_ip_address("169.254.169.254", 32, dev)
+            if dhcp6_ip is not None:
+                iproute.IpNetnsShell(ns).add_ip_address(dhcp6_ip, prefix6_len, dev)
+
+        if dhcp6_ip is not None:
+            mac = iproute.IpNetnsShell(ns).get_mac(dev)
+            link_local = ip.get_link_local_address(mac)
+            old_link_local = iproute.IpNetnsShell(ns).get_link_local6_address(dev)
+            if old_link_local is None:
+                iproute.IpNetnsShell(ns).add_ip_address(link_local, 64, dev)
+
+        iproute.IpNetnsShell(ns).set_link_up(dev)
+
+    @in_bash
+    def _del_dhcp_ip_if_exist(self):
+        ns = self.namespace_name
+        dev = self.infra_env.near_vm_inner
+        ip4 = iproute.IpNetnsShell(ns).get_ip_address(4, dev)
+        ip6 = iproute.IpNetnsShell(ns).get_ip_address(6, dev)
+        if ip4:
+            iproute.IpNetnsShell(ns).del_ip_address(ip4, dev)
+        if ip6:
+            iproute.IpNetnsShell(ns).del_ip_address(ip6, dev)
+
+    @in_bash
+    def _add_bridge_fdb_entry_for_inner_dev(self, dev):
+        # to apply userdata service to vf nics, we need to add bridge fdb to allow vf <-> innerX
+        # get pf name for inner dev
+        r, PHY_DEV, e = bash_roe(
+            "brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
+        if r != 0:
+            logger.error("cannot get physical interface name from bridge " + self.bridge_name)
+            return
+        PHY_DEV = PHY_DEV.strip(' \t\n\r')
+
+        # get mac address of inner dev
+        DHCP_DEV_MAC = iproute.IpNetnsShell(self.namespace_name).get_mac(dev)
+
+        # add bridge fdb entry for inner dev
+        iproute.add_fdb_entry(PHY_DEV, DHCP_DEV_MAC)
+
+    @in_bash
+    def _del_dhcp4_tables(self):
+        ns = self.namespace_name
+        dev = self.infra_env.near_vm_inner
+        dhcp_ip = iproute.IpNetnsShell(ns).get_ip_address(4, dev)
+        if dhcp_ip is not None:
+            CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
+            o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
+            o = o.strip(" \t\r\n")
+            if o:
+                cmds = []
+                for l in o.split("\n"):
+                    cmds.append(EBTABLES_CMD + " %s" % l.replace("-A", "-D"))
+                bash_r("\n".join(cmds))
+
+            ret = bash_r("ebtables-save | grep '\-A {{CHAIN_NAME}} -j RETURN'")
+            if ret != 0:
+                bash_r(EBTABLES_CMD + ' -D {{CHAIN_NAME}} -j RETURN')
+
+            ret = bash_r("ebtables-save | grep '\-A FORWARD -j {{CHAIN_NAME}}'")
+            if ret != 0:
+                bash_r(EBTABLES_CMD + ' -D FORWARD -j {{CHAIN_NAME}}')
+                bash_r(EBTABLES_CMD + ' -X {{CHAIN_NAME}}')
+
+    @in_bash
+    def _del_dhcp6_tables(self):
+        items = self.namespace_name.split('_')
+        l3_uuid = items[-1]
+        DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]  # this case is for old version dhcp6 namespace
+
+        o = bash_o("ebtables-save | grep {{DHCP6_CHAIN_NAME}} | grep -- -A")
+        o = o.strip(" \t\r\n")
+        if o:
+            cmds = []
+            for l in o.split("\n"):
+                cmds.append(EBTABLES_CMD + " %s" % l.replace("-A", "-D"))
+            bash_r("\n".join(cmds))
+
+        ret = bash_r("ebtables-save | grep '\-A {{DHCP6_CHAIN_NAME}} -j RETURN'")
+        if ret != 0:
+            bash_r(EBTABLES_CMD + ' -D {{DHCP6_CHAIN_NAME}} -j RETURN')
+
+        ret = bash_r("ebtables-save | grep '\-A FORWARD -j {{DHCP6_CHAIN_NAME}}'")
+        if ret != 0:
+            bash_r(EBTABLES_CMD + ' -D FORWARD -j {{DHCP6_CHAIN_NAME}}')
+            bash_r(EBTABLES_CMD + ' -X {{DHCP6_CHAIN_NAME}}')
+
+    @in_bash
+    def _del_bridge_fdb_entry_for_inner_dev(self):
+        BR_NAME = self.bridge_name
+        NAMESPACE_NAME = self.namespace_name
+
+        # get pf name for inner dev
+        r, PHY_DEV, e = bash_roe(
+            "brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
+        if r != 0:
+            logger.error("cannot get physical interface name from bridge " + BR_NAME)
+            return
+        PHY_DEV = PHY_DEV.strip(' \t\n\r')
+        # get mac address of inner dev
+        DHCP_DEV_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(self.infra_env.near_vm_inner)
+        iproute.del_fdb_entry(PHY_DEV, DHCP_DEV_MAC)
+
 class ApplyDhcpRsp(kvmagent.AgentResponse):
     pass
 
@@ -57,6 +691,10 @@ class ResetGatewayRsp(kvmagent.AgentResponse):
 
 class DeleteNamespaceRsp(kvmagent.AgentResponse):
     pass
+
+class ArpingRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        self.result = {}
 
 class SetForwardDnsCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -387,6 +1025,7 @@ class DhcpEnv(object):
             iproute.IpNetnsShell(NAMESPACE_NAME).flush_ip_address(INNER_DEV)
             if DHCP_IP is not None:
                 iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(DHCP_IP, PREFIX_LEN, INNER_DEV)
+                iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address("169.254.169.254", 32, INNER_DEV)
             if DHCP6_IP is not None:
                 iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(DHCP6_IP, PREFIX6_LEN, INNER_DEV)
 
@@ -440,6 +1079,8 @@ class Mevoco(kvmagent.KvmAgent):
     RELEASE_USER_DATA = "/flatnetworkprovider/userdata/release"
     BATCH_APPLY_USER_DATA = "/flatnetworkprovider/userdata/batchapply"
     DHCP_DELETE_NAMESPACE_PATH = "/flatnetworkprovider/dhcp/deletenamespace"
+    DHCP_FLUSH_NAMESPACE_PATH = "/flatnetworkprovider/dhcp/flush"
+    ARPING_NAMESPACE_PATH = "/flatnetworkprovider/arping"
     CLEANUP_USER_DATA = "/flatnetworkprovider/userdata/cleanup"
     SET_DNS_FORWARD_PATH = '/dns/forward/set'
     REMOVE_DNS_FORWARD_PATH = '/dns/forward/remove'
@@ -476,6 +1117,8 @@ class Mevoco(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RELEASE_USER_DATA, self.release_userdata)
         http_server.register_async_uri(self.RESET_DEFAULT_GATEWAY_PATH, self.reset_default_gateway)
         http_server.register_async_uri(self.DHCP_DELETE_NAMESPACE_PATH, self.delete_dhcp_namespace)
+        http_server.register_async_uri(self.DHCP_FLUSH_NAMESPACE_PATH, self.flush_dhcp_namespace)
+        http_server.register_async_uri(self.ARPING_NAMESPACE_PATH, self.arping_dhcp_namespace)
         http_server.register_async_uri(self.CLEANUP_USER_DATA, self.cleanup_userdata)
         http_server.register_async_uri(self.SET_DNS_FORWARD_PATH, self.setup_dns_forward)
         http_server.register_async_uri(self.REMOVE_DNS_FORWARD_PATH, self.remove_dns_forward)
@@ -602,33 +1245,82 @@ tag:{{TAG}},option:dns-server,{{DNS}}
             CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
             self._delete_ebtables_chain_by_name(CHAIN_NAME)
 
+    @in_bash
+    def _del_bridge_fdb_entry_for_inner_dev(self, cmd):
+        BR_NAME = cmd.bridgeName
+        NAMESPACE_NAME = cmd.namespaceName
+        ns_id = iproute.IpNetnsShell.get_netns_id(NAMESPACE_NAME)
+        INNER_DEV = "inner" + ns_id
+
+        # get pf name for inner dev
+        r, PHY_DEV, e = bash_roe(
+            "brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
+        if r != 0:
+            logger.error("cannot get physical interface name from bridge " + BR_NAME)
+            return
+        PHY_DEV = PHY_DEV.strip(' \t\n\r')
+
+        # get mac address of inner dev
+        INNER_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
+
+        iproute.del_fdb_entry(PHY_DEV, INNER_MAC)
+
     @kvmagent.replyerror
     @in_bash
     def delete_dhcp_namespace(self, req):
-        def _del_bridge_fdb_entry_for_inner_dev():
-            BR_NAME = cmd.bridgeName
-            NAMESPACE_NAME = cmd.namespaceName
-            ns_id = iproute.IpNetnsShell.get_netns_id(NAMESPACE_NAME)
-            INNER_DEV = "inner" + ns_id
-
-            # get pf name for inner dev
-            r, PHY_DEV, e = bash_roe(
-                "brctl show {{BR_NAME}} | grep -w {{BR_NAME}} | head -n 1 | awk '{ print $NF }' | { read name; echo ${name%%.*}; }")
-            if r != 0:
-                logger.error("cannot get physical interface name from bridge " + BR_NAME)
-                return
-            PHY_DEV = PHY_DEV.strip(' \t\n\r')
-
-            # get mac address of inner dev
-            INNER_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
-
-            iproute.del_fdb_entry(PHY_DEV, INNER_MAC)
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        _del_bridge_fdb_entry_for_inner_dev()
+        self._del_bridge_fdb_entry_for_inner_dev(cmd)
         self._delete_dhcp(cmd.namespaceName)
 
         return jsonobject.dumps(DeleteNamespaceRsp())
+
+    @kvmagent.replyerror
+    @in_bash
+    def flush_dhcp_namespace(self, req):
+        # kill dnsmasq, but will not delete the namespace
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        ns = DhcpNameSpaceEnv(cmd.bridgeName, cmd.namespaceName)
+        ns.disable()
+
+        return jsonobject.dumps(DeleteNamespaceRsp())
+
+    #@thread.AsyncThread
+    def __do_arping_namepsace(self, ns, ip):
+        macs = []
+        r, o, e = bash_roe(
+            "ip netns exec %s arping -I %s -w 1 -c 3 -D %s | grep 'Unicast reply from'"
+            % (ns.namespace_name, ns.near_vm_inner, ip))
+        if r != 0:
+            return macs
+
+        # parse result
+        # example: Unicast reply from 172.25.19.33 [AC:1F:6B:EE:87:B2]  0.641ms
+        lines = o.split("\r\n")
+        for l in lines:
+            items = l.split(" ")
+            mac = items[4].strip('[').strip(']')
+            macs.append(mac)
+
+        return macs
+
+    @kvmagent.replyerror
+    @in_bash
+    def arping_dhcp_namespace(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        #get namespace
+        ns = NamespaceInfraEnv(cmd.bridgeName, cmd.namespaceName)
+        ns.prepare_dev()
+
+        #TODO: to be simple, current only 1 ip address is detected
+        macs = self.__do_arping_namepsace(ns, cmd.targetIps[0])
+
+        if ns.ns_new_created:
+            ns.delete_dev()
+
+        rsp = ArpingRsp()
+        rsp.result[cmd.targetIps[0]] = macs
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     @in_bash
