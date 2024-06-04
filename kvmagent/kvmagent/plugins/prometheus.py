@@ -1016,7 +1016,7 @@ def collect_equipment_state():
 def fetch_vm_qemu_processes():
     processes = []
     for process in psutil.process_iter():
-        if process.name() == QEMU_CMD: # /usr/libexec/qemu-kvm
+        if process.name() == QEMU_CMD or QEMU_CMD in process.cmdline(): # /usr/libexec/qemu-kvm
             processes.append(process)
     return processes
 
