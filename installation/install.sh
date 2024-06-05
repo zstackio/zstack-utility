@@ -37,7 +37,7 @@ OS=''
 IS_UBUNTU='n'
 REDHAT_OS="CENTOS6 CENTOS7 RHEL7 HELIX7 HELIX8 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8 OE2203 H2203SP1O"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
-KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3"
+KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3 ky10gfb"
 XINCHUANG_OS="$KYLIN10_OS uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
@@ -1645,7 +1645,7 @@ is_install_general_libs_rh(){
     if [ ! -z $ZSTACK_YUM_REPOS ]; then
         yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
         echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
-        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
+        yes | yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
     else
         yum clean metadata >/dev/null 2>&1
         echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
