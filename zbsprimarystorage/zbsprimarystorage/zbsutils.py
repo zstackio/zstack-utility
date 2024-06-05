@@ -30,6 +30,13 @@ def query_volume(logical_pool_name, lun_name):
     return shell.run("zbs query file --path %s/%s" % (logical_pool_name, lun_name))
 
 
+def query_children_volume(logical_pool_name, lun_name, snapshot_name, isSnapshot = False):
+    if not isSnapshot:
+        return shell.call("zbs children --path %s/%s --user %s --format json" % (logical_pool_name, lun_name, DEFAULT_ZBS_USER_NAME))
+    else:
+        return shell.call("zbs children --snappath %s/%s@%s --user %s --format json" % (logical_pool_name, lun_name, snapshot_name, DEFAULT_ZBS_USER_NAME))
+
+
 def query_snapshot_info(logical_pool_name, lun_name):
     return shell.call("zbs list snapshot --path %s/%s --format json" % ((logical_pool_name, lun_name)))
 
@@ -82,11 +89,16 @@ def protect_snapshot(logical_pool_name, lun_name, snapshot_name):
     return shell.call("zbs protect --snappath %s/%s@%s" % (logical_pool_name, lun_name, snapshot_name))
 
 
+def unprotect_snapshot(logical_pool_name, lun_name, snapshot_name):
+    return shell.call("zbs unprotect --snappath %s/%s@%s" % (logical_pool_name, lun_name, snapshot_name))
+
+
 def rollback_snapshot(logical_pool_name, lun_name, snapshot_name):
     return shell.call("zbs rollback --snappath %s/%s@%s --format json" % (logical_pool_name, lun_name, snapshot_name))
 
 
 def cbd_to_nbd(port, install_path):
+    logger.debug("cbd to nbd command: qemu-nbd -f raw -p %d --fork %s_%s_:%s" % (port, install_path, DEFAULT_ZBS_USER_NAME, DEFAULT_ZBS_CONF_PATH))
     os.system("qemu-nbd -f raw -p %d --fork %s_%s_:%s" % (port, install_path, DEFAULT_ZBS_USER_NAME, DEFAULT_ZBS_CONF_PATH))
 
 
