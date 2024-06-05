@@ -30,9 +30,10 @@ units_mapping = {
     'gb': 1024 * 1024 * 1024
 }
 
+
 def shell_cmd(cmd, exception=True, workdir=None):
     process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
-                                stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
+                               stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
 
     (stdout, stderr) = process.communicate()
     return_code = process.returncode
@@ -60,16 +61,16 @@ def get_ipmi_info():
                     addr = temp_addr
                 break
 
-    #cmd = 'ipmitool sol info 1'
-    #_, stdout, _ = shell_cmd(cmd)
-    #for line in stdout.split('\n'):
+    # cmd = 'ipmitool sol info 1'
+    # _, stdout, _ = shell_cmd(cmd)
+    # for line in stdout.split('\n'):
     #    if 'Payload Port' in line:
     #        port = int(line.split(':')[-1].strip())
 
     if not addr:
         raise Exception('Failed to find ipmi address')
 
-    #if not port:
+    # if not port:
     port = 623
 
     return {
@@ -146,7 +147,7 @@ def get_nic_info():
             speed = 'UNKNOWN'
         with open(os.path.join(abspath, 'address'), 'r') as f:
             mac_address = f.read().strip()
-        
+
         if len(mac_address) > 32:
             continue
         rc, _, _ = shell_cmd("""arping -c 5 -I {} {}""".format(net_dev, PROVISION_NET), False)
@@ -173,14 +174,15 @@ def get_disk_info():
     for line in stdout.split('\n')[1:]:
         if len(line.split()) != 5:
             continue
-        name, size, rotation, blk_type, wwn  = line.split()
+        name, size, rotation, blk_type, wwn = line.split()
 
         if blk_type.lower() != 'disk':
             continue
 
         disk_type = 'SSD' if rotation == '0' else 'HDD'
         # get longest wwn
-        _, output, _ = shell_cmd("ls -l /dev/disk/by-id | grep -e wwn -e nvme-eui | grep %s | awk 'NR==1 {print $9}'" % name)
+        _, output, _ = shell_cmd(
+            "ls -l /dev/disk/by-id | grep -e wwn -e nvme-eui | grep %s | awk 'NR==1 {print $9}'" % name)
         if output != '':
             wwn = output.split("-")[1]
         block_devs.append({
@@ -190,6 +192,168 @@ def get_disk_info():
         })
 
     return block_devs
+
+
+def get_pci_info():
+    pci_device_address = ""
+    vendor_id = ""
+    device_id = ""
+    vendor = ""
+    device = ""
+    sub_vendor_id = ""
+    sub_device_id = ""
+    iommu_group = ""
+    description = ""
+    gpu_type = ""
+    gpu_devs = []
+    r, o, e = shell_cmd("lspci -Dmmnnv", False)
+    if r != 0:
+        return
+    # parse lspci output
+    for part in o.split('\n\n'):
+        vendor_name = ""
+        device_name = ""
+        sub_vendor_name = ""
+        for line in part.split('\n'):
+            if len(line.split(':')) < 2: continue
+            title = line.split(':')[0].strip()
+            content = line.split(':')[1].strip()
+            if title == 'Slot':
+                content = line[5:].strip()
+                pci_device_address = content
+                group_path = os.path.join('/sys/bus/pci/devices/', pci_device_address, 'iommu_group')
+                iommu_group = os.path.realpath(group_path)
+            elif title == 'Class':
+                _class = content.split('[')[0].strip()
+                gpu_type = _class
+                description = _class + ": "
+            elif title == 'Vendor':
+                vendor_name = simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
+                vendor = vendor_name
+                vendor_id = content.split('[')[-1].strip(']')
+                description += vendor_name + " "
+            elif title == "Device":
+                device = content
+                device_name = simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
+                device_id = content.split('[')[-1].strip(']')
+                description += device_name
+            elif title == "SVendor":
+                sub_vendor_name = simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
+                sub_vendor_id = content.split('[')[-1].strip(']')
+            elif title == "SDevice":
+                sub_device_id = content.split('[')[-1].strip(']')
+        name = "%s_%s" % (sub_vendor_name if sub_vendor_name else vendor_name, device_name)
+
+        gpu_vendors = ["NVIDIA", "AMD", "Haiguang"]
+        if any(vendor in description for vendor in gpu_vendors) \
+                and ('VGA compatible controller' in gpu_type or 'Display controller' in gpu_type):
+            gpu_type = "GPU_Video_Controller"
+        elif any(vendor in description for vendor in gpu_vendors) \
+                and ('3D controller' in gpu_type):
+            gpu_type = "GPU_3D_Controller"
+        else:
+            gpu_type = "Generic"
+
+        addonInfo = collect_gpu_addoninfo(gpu_type, pci_device_address, vendor_name)
+
+        if vendor_id != '' and device_id != '' and gpu_type != 'Generic':
+            gpu_devs.append({
+                'name': name,
+                'description': description,
+                'vendorId': vendor_id,
+                'vendor': vendor,
+                'deviceId': device_id,
+                'device': device,
+                'subVendorId': sub_vendor_id,
+                'subDeviceId': sub_device_id,
+                'pciDeviceAddress': pci_device_address,
+                'iommuGroup': iommu_group,
+                'type': gpu_type,
+                'addonInfo': addonInfo
+            })
+    return gpu_devs
+
+
+def collect_gpu_addoninfo(gpu_type, pci_device_address, vendor_name):
+    addonInfo = {}
+    if gpu_type in ['GPU_3D_Controller', 'GPU_Video_Controller']:
+        if vendor_name == 'NVIDIA':
+            return collect_nvidia_gpu_info(pci_device_address, addonInfo)
+        if vendor_name == 'AMD':
+            return collect_amd_gpu_info(pci_device_address, addonInfo)
+        if vendor_name == 'Haiguang':
+            return collect_hygon_gpu_info(pci_device_address, addonInfo)
+    return addonInfo
+
+
+def collect_nvidia_gpu_info(pci_device_address, addon_info):
+    r, o, e = shell_cmd("which nvidia-smi", False)
+    if r != 0:
+        return
+
+    r, o, e = shell_cmd("nvidia-smi --query-gpu=gpu_bus_id,memory.total,power.limit,gpu_serial"
+                        " --format=csv,noheader", False)
+    if r != 0:
+        return
+
+    for part in o.split('\n'):
+        if len(part.strip()) == 0:
+            continue
+        gpuinfo = part.split(',')
+        if pci_device_address in gpuinfo[0].strip():
+            addon_info["memory"] = gpuinfo[1].strip()
+            addon_info["power"] = gpuinfo[2].strip()
+            addon_info["serialNumber"] = gpuinfo[3].strip()
+    return addon_info
+
+
+def collect_amd_gpu_info(pci_device_address, addon_info):
+    r, o, e = shell_cmd("which rocm-smi", False)
+    if r != 0:
+        return
+
+    r, o, e = shell_cmd("rocm-smi --showbus --showmeminfo vram --showpower --showserial --json",
+                        False)
+    if r != 0:
+        return
+
+    gpu_info_json = json.loads(o.strip())
+    for card_name, card_data in gpu_info_json.items():
+        if pci_device_address.lower() in card_data['PCI Bus'].lower():
+            addon_info["memory"] = card_data['VRAM Total Memory (B)']
+            addon_info["power"] = card_data['Average Graphics Package Power (W)']
+            addon_info["serialNumber"] = card_data['Serial Number']
+    return addon_info
+
+def collect_hygon_gpu_info(pci_device_address, addon_info):
+    r, o, e = shell_cmd("which hy-smi", False)
+    if r != 0:
+        return
+
+    r, o, e = shell_cmd("hy-smi --showbus --showmeminfo vram --showpower --showserial --json",
+                        False)
+    if r != 0:
+        return
+
+    gpu_info_json = json.loads(o.strip())
+    for card_name, card_data in gpu_info_json.items():
+        if pci_device_address.lower() in card_data['PCI Bus'].lower():
+            addon_info["memory"] = card_data['vram Total Memory (MiB)']
+            addon_info["power"] = card_data['Average Graphics Package Power (W)']
+            addon_info["serialNumber"] = card_data['Serial Number']
+    return addon_info
+
+def simplify_pci_device_name(name):
+    if 'Intel Corporation' in name:
+        return 'Intel'
+    elif 'Advanced Micro Devices' in name:
+        return 'AMD'
+    elif 'NVIDIA Corporation' in name:
+        return 'NVIDIA'
+    elif 'Haiguang' in name:
+        return 'Haiguang'
+    else:
+        return name.replace('Co., Ltd ', '')
 
 
 def main():
@@ -226,7 +390,23 @@ def main():
                         "nicSpeed": "1000Mb/s",
                         "isProvisionNic": true
                     }
-                ]
+                ],
+                "pciDevices": [
+                    {
+                      "vendorId": "1d94",
+                      "vendor": "Haiguang",
+                      "description": "Display controller: Haiguang ZIFANG",
+                      "subdeviceId": "55b7",
+                      "deviceId": "55b7",
+                      "pciDeviceAddress": "0000:09:00.0",
+                      "device": "ZIFANG [55b7]",
+                      "subvendorId": "1d94",
+                      "addonInfo": {},
+                      "name": "Haiguang_ZIFANG",
+                      "iommuGroup": "/sys/kernel/iommu_groups/20",
+                      "type": "GPU_Video_Controller"
+                    }
+                ],
             }'
         }
     }
@@ -238,12 +418,13 @@ def main():
     hardware_info.update(get_basic_info())
     hardware_info['nics'] = get_nic_info()
     hardware_info['disks'] = get_disk_info()
+    hardware_info['pciDevices'] = get_pci_info()
 
     result['hardwareInfo'] = json.dumps(hardware_info)
 
     cmd = ('curl -X POST -H "Content-Type:application/json" -d \'{data}\' '
            '--retry 5 {{ send_hardware_infos_uri }} ').format(
-               data=json.dumps({"params": result}))
+        data=json.dumps({"params": result}))
     shell_cmd(cmd)
 
     shell_cmd("poweroff")
@@ -253,9 +434,8 @@ try:
     main()
 except:
     # pass back the ks err to tftp server on gateway
-    err_file_name = '/root/ks.{}'.format(pxe_iface_mac.replace(':','-'))
-    traceback.print_exc(file=open(err_file_name,'w+'))
+    err_file_name = '/root/ks.{}'.format(pxe_iface_mac.replace(':', '-'))
+    traceback.print_exc(file=open(err_file_name, 'w+'))
     shell_cmd("curl -T {} tftp://{}/ks.errlogs/".format(err_file_name, PROVISION_NET))
-
 
 %end
