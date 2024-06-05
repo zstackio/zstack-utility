@@ -111,6 +111,18 @@ def replyerror(func):
     return wrap
 
 
+def get_logical_pool_name(install_path):
+    return install_path.split(":")[1].split("/")[1]
+
+
+def get_lun_name(install_path):
+    return install_path.split(":")[1].split("/")[2].split("@")[0]
+
+
+def get_snapshot_name(install_path):
+    return install_path.split(":")[1].split("/")[2].split("@")[1]
+
+
 class ZbsAgent(plugin.TaskManager):
     ECHO_PATH = "/zbs/primarystorage/echo"
     GET_FACTS_PATH = "/zbs/primarystorage/facts"
@@ -215,6 +227,22 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
+        isProtected = False
+        o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
+        ret = jsonobject.loads(o)
+        if not ret.result.fileInfo:
+            raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
+        for info in ret.result.fileInfo:
+            if cmd.snapshotName in info.fileName:
+                isProtected = info.isProtected
+                break
+
+        if isProtected:
+            o = zbsutils.unprotect_snapshot(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
+            if jsonobject.loads(o).error.code != 0:
+                raise Exception(
+                    'failed to unprotect snapshot[%s@%s], error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
+
         o = zbsutils.delete_snapshot(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
         ret = jsonobject.loads(o)
         if ret.error.code == 0:
@@ -296,7 +324,27 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CbdToNbdRsp()
 
-        zbsutils.cbd_to_nbd(10086, cmd.installPath)
+        logical_pool_name = get_logical_pool_name(cmd.installPath)
+        lun_name = get_lun_name(cmd.installPath)
+
+        if '@' in cmd.installPath:
+            snapshot_name = get_snapshot_name(cmd.installPath)
+
+            seq_num = ""
+            o = zbsutils.query_snapshot_info(logical_pool_name, lun_name)
+            ret = jsonobject.loads(o)
+            if not ret.result.fileInfo:
+                raise Exception('failed to found snapshot for lun[%s]' % lun_name)
+            for info in ret.result.fileInfo:
+                if snapshot_name in info.fileName:
+                    seq_num = info.seqNum
+                    break
+
+            install_path = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(logical_pool_name) + "/" + logical_pool_name + "/" + lun_name + "@" + str(seq_num)
+        else:
+            install_path = cmd.installPath
+
+        zbsutils.cbd_to_nbd(10086, install_path)
 
         rsp.ip = cmd.mdsAddr
         rsp.port = 10086
