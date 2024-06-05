@@ -1321,6 +1321,45 @@ def collect_nvidia_gpu_status():
     return metrics.values()
 
 
+def collect_hy_gpu_status():
+    metrics = {
+        "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None,
+                                            ['pci_device_address', 'gpu_serial']),
+        "gpu_temperature": GaugeMetricFamily('gpu_temperature', 'gpu temperature', None,
+                                             ['pci_device_address', 'gpu_serial']),
+        "gpu_fan_speed": GaugeMetricFamily('gpu_fan_speed', 'current percentage of gpu fan speed', None,
+                                           ['pci_device_address', 'gpu_serial']),
+        "gpu_utilization": GaugeMetricFamily('gpu_utilization', 'gpu utilization', None,
+                                             ['pci_device_address', 'gpu_serial']),
+        "gpu_memory_utilization": GaugeMetricFamily('gpu_memory_utilization', 'gpu memory utilization', None,
+                                                    ['pci_device_address', 'gpu_serial']),
+        "gpu_status": GaugeMetricFamily('gpu_status', 'gpu status, 0 is critical, 1 is nominal', None,
+                                        ['pci_device_address', 'gpuState', 'gpu_serial']),
+        "gpu_rxpci": GaugeMetricFamily('gpu_rxpci', 'gpu rxpci', None, ['pci_device_address']),
+        "gpu_txpci": GaugeMetricFamily('gpu_txpci', 'gpu txpci', None, ['pci_device_address'])
+    }
+
+    if has_hy_smi() is False:
+        return metrics.values()
+
+    r, gpu_info = bash_ro('hy-smi --showuse --showmemuse  --showpower --showtemp --showserial --showbus --json')
+    if r != 0:
+        return metrics.values()
+
+    gpu_info_json = json.loads(gpu_info)
+    for card_name, card_data in gpu_info_json.items():
+        gpu_serial = card_data['Serial Number']
+        pci_device_address = card_data["PCI Bus"]
+        metrics['gpu_power_draw'].add_metric([pci_device_address, gpu_serial], float(card_data["Average Graphics Package Power (W)"]))
+        metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(card_data["Temperature (Sensor junction) (C)"]))
+        #metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(gpu["Fan Speed (%)"]))
+        metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data["DCU use (%)"]))
+        metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data["DCU memory use (%)"]))
+        gpuState, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
+        metrics['gpu_status'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_status_int_value)
+
+    return metrics.values()
+
 def collect_amd_gpu_status():
     metrics = {
         "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address', 'gpu_serial']),
@@ -1371,6 +1410,9 @@ def convert_pci_status_to_int(pci_address):
     return "nominal", 1
 
 
+def has_hy_smi():
+    return shell.run("which hy-smi") == 0
+
 def has_nvidia_smi():
     return shell.run("which nvidia-smi") == 0
 
@@ -1405,6 +1447,7 @@ kvmagent.register_prometheus_collector(collect_raid_state)
 kvmagent.register_prometheus_collector(collect_ssd_state)
 kvmagent.register_prometheus_collector(collect_nvidia_gpu_status)
 kvmagent.register_prometheus_collector(collect_amd_gpu_status)
+kvmagent.register_prometheus_collector(collect_hy_gpu_status)
 
 class SetServiceTypeOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):
     def __init__(self):
