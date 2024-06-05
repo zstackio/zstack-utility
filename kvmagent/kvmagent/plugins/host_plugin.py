@@ -2457,6 +2457,30 @@ done
                 self._collect_nvidia_gpu_info(to)
             if vendor_name == 'AMD':
                 self._collect_amd_gpu_info(to)
+            if vendor_name == 'Haiguang':
+                self._collect_haiguang_gpu_info(to)
+
+    @in_bash
+    def _collect_haiguang_gpu_info(self, to):
+        if shell.run("which hy-smi") != 0:
+            logger.debug("no hy-smi")
+            return
+
+        r, o, e = bash_roe("hy-smi --showserial --showmaxpower --showmemavailable --showbus --json")
+        if r != 0:
+            logger.error("hy query gpu is error, %s " % e)
+            return
+
+        try:
+            gpu_info_json = json.loads(o)
+            for card_name, card_data in gpu_info_json.items():
+                if to.pciDeviceAddress.lower() in card_data["PCI Bus"].lower():
+                    to.addonInfo["memory"] = card_data["Available memory size (MiB)"] + " MiB"
+                    to.addonInfo["power"] = card_data["Max Graphics Package Power (W)"]
+                    to.addonInfo["serialNumber"] = card_data["Serial Number"]
+                    to.addonInfo["isDriverLoaded"] = True
+        except Exception as e:
+            logger.error("hy query gpu is error, %s " % e)
 
 
     @in_bash
@@ -2488,18 +2512,20 @@ done
             logger.debug("no rocm-smi")
             return
 
-        r, o, e = bash_roe("/opt/rocm/bin/rocm-smi --showbus --showmeminfo vram --showpower --showserial --json")
+        r, o, e = bash_roe("rocm-smi --showbus --showmeminfo vram --showpower --showserial --json")
         if r != 0:
             logger.error("amd query gpu is error, %s " % e)
             return
-
-        gpu_info_json = json.loads(o.strip())
-        for card_name, card_data in gpu_info_json.items():
-            if to.pciDeviceAddress.lower() in card_data['PCI Bus'].lower():
-                to.addonInfo["memory"] = card_data['VRAM Total Memory (B)']
-                to.addonInfo["power"] = card_data['Average Graphics Package Power (W)']
-                to.addonInfo["serialNumber"] = card_data['Serial Number']
-                to.addonInfo["isDriverLoaded"] = True
+        try:
+            gpu_info_json = json.loads(o.strip())
+            for card_name, card_data in gpu_info_json.items():
+                if to.pciDeviceAddress.lower() in card_data['PCI Bus'].lower():
+                    to.addonInfo["memory"] = card_data['VRAM Total Memory (B)']
+                    to.addonInfo["power"] = card_data['Average Graphics Package Power (W)']
+                    to.addonInfo["serialNumber"] = card_data['Serial Number']
+                    to.addonInfo["isDriverLoaded"] = True
+        except Exception as e:
+            logger.error("amd query gpu is error, %s " % e)
 
     # moved from vm_plugin to host_plugin
     @kvmagent.replyerror
