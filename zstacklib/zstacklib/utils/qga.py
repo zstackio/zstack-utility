@@ -99,9 +99,12 @@ class VmQga(object):
     VM_OS_LINUX_SUSE_D = "sled"
     VM_OS_LINUX_ORACLE = "ol"
     VM_OS_LINUX_REDHAT = "rhel"
+    VM_OS_LINUX_ANOLIS = "anolis"
     VM_OS_LINUX_DEBIAN = "debian"
     VM_OS_LINUX_FEDORA = "fedora"
     VM_OS_LINUX_OPENEULER = "openeuler"
+    VM_OS_LINUX_ROCKY = "rocky"
+    VM_OS_LINUX_ALMALINUX = "almalinux"
     VM_OS_WINDOWS = "mswindows"
 
     ZS_TOOLS_PATN_WIN = "C:\Program Files\GuestTools\zs-tools\zs-tools.exe"

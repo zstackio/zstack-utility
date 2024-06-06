@@ -144,19 +144,22 @@ class VmConfigPlugin(kvmagent.KvmAgent):
     VM_QGA_SET_HOSTNAME = "/usr/local/zstack/zs-tools/set_hostname_linux.py"
     VM_QGA_SET_HOSTNAME_EL6 = "/usr/local/zstack/zs-tools/set_hostname_linux_el6.py"
     VM_CONFIG_SYNC_OS_VERSION_SUPPORT = {
-        VmQga.VM_OS_LINUX_CENTOS: ("6", "7", "8"),
+        VmQga.VM_OS_LINUX_CENTOS: ("6", "7", "8", "9"),
         VmQga.VM_OS_LINUX_NEO_KYLIN: ("v7", "v7update6",),
         VmQga.VM_OS_LINUX_KYLIN: ("4", "v10",),
         VmQga.VM_OS_LINUX_UOS: ("20",),
-        VmQga.VM_OS_LINUX_OPEN_SUSE: ("12", "15",),
-        VmQga.VM_OS_LINUX_SUSE_S: ("12", "15",),
-        VmQga.VM_OS_LINUX_SUSE_D: ("12", "15",),
+        VmQga.VM_OS_LINUX_OPEN_SUSE: ("11", "12", "15",),
+        VmQga.VM_OS_LINUX_SUSE_S: ("11", "12", "15",),
+        VmQga.VM_OS_LINUX_SUSE_D: ("11", "12", "15",),
         VmQga.VM_OS_LINUX_ORACLE: ("7",),
-        VmQga.VM_OS_LINUX_REDHAT: ("7", "8",),
-        VmQga.VM_OS_LINUX_UBUNTU: ("14", "16", "18", "20", "22",),
-        VmQga.VM_OS_LINUX_DEBIAN: ("9", "10",),
+        VmQga.VM_OS_LINUX_REDHAT: ("7", "8", "9",),
+        VmQga.VM_OS_LINUX_ANOLIS: ("7", "8",),
+        VmQga.VM_OS_LINUX_UBUNTU: ("14", "16", "18", "20", "22", "24",),
+        VmQga.VM_OS_LINUX_DEBIAN: ("9", "10", "11", "12",),
         VmQga.VM_OS_LINUX_FEDORA: ("30", "31",),
         VmQga.VM_OS_LINUX_OPENEULER: ("20", "22",),
+        VmQga.VM_OS_LINUX_ROCKY: ("8", "9",),
+        VmQga.VM_OS_LINUX_ALMALINUX: ("9",),
         VmQga.VM_OS_WINDOWS: ("10", "10.0", "2012", "2012r2", "2016", "2019", "2022", "2008r2",)
     }
 
@@ -167,12 +170,6 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         qga = VmQga(domain)
         if qga.state != VmQga.QGA_STATE_RUNNING:
             return 1, "qga is not running for vm {}".format(vm_uuid)
-
-        if qga.os in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() and \
-                qga.os_version in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
-            cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
-        else:
-            return 1, "not support for os {}".format(qga.os)
 
         # configure windows by zs-tools
         if qga.os == VmQga.VM_OS_WINDOWS:
@@ -188,6 +185,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             return 1, "config vm {}, write parameters file {} failed".format(vm_uuid, self.VM_QGA_PARAM_FILE)
 
         # exec qga command
+        cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
         ret, msg = qga.guest_exec_python(cmd_file)
         if ret != 0:
             logger.debug("config vm {} by qga failed: {}".format(vm_uuid, msg))
@@ -203,10 +201,6 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         if qga.state != VmQga.QGA_STATE_RUNNING:
             return 1, "qga is not running for vm {}".format(vm_uuid)
 
-        if qga.os not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() or \
-                qga.os_version not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
-            return 1, "not support for os {} version {}".format(qga.os, qga.os_version)
-
         if default_ip is None:
             default_ip = ""
 
@@ -217,7 +211,10 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             return ret, msg
 
         # exec qga command
-        if qga.os_version == '6':
+        if (qga.os == VmQga.VM_OS_LINUX_CENTOS or qga.os == VmQga.VM_OS_LINUX_REDHAT) and qga.os_version == '6':
+            cmd_file = self.VM_QGA_SET_HOSTNAME_EL6
+        elif (qga.os == VmQga.VM_OS_LINUX_SUSE_S or qga.os == VmQga.VM_OS_LINUX_SUSE_D
+              or qga.os == VmQga.VM_OS_LINUX_OPEN_SUSE) and qga.os_version == '11':
             cmd_file = self.VM_QGA_SET_HOSTNAME_EL6
         else:
             cmd_file = self.VM_QGA_SET_HOSTNAME
