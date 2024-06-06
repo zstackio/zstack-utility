@@ -110,7 +110,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                         logger.debug('qga zwatch monitor reboot, crash due to [%s]' % str(e))
                         time.sleep(self.scan_interval_time)
             finally:
-                lock.release()
+                self.zwatch_qga_lock.release()
         else:
             pass
 
