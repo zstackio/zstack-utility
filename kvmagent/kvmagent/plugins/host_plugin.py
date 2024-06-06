@@ -1610,6 +1610,13 @@ if __name__ == "__main__":
         upgrade_os_cmd = "export YUM0={};yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{} {} update {} -y"
         yum_cmd = yum_cmd + upgrade_os_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
 
+        if "kernel" in updates or (cmd.releaseVersion != '' and "kernel" not in exclude):
+            dracut_conf_path = '/etc/dracut.conf.d/no_lvmconf.conf'
+            if not os.path.exists(dracut_conf_path):
+                linux.mkdir(os.path.dirname(dracut_conf_path))
+                with open(dracut_conf_path, 'w') as f:
+                    f.write('lvmconf=no')
+
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
             rsp.success = False
