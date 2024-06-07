@@ -1078,8 +1078,8 @@ def raw_create_template(src, dst, dst_format='qcow2', shell=shell, progress_outp
 
     shell.call('%s %s -f raw -O %s %s %s %s' % (qemu_img.subcmd('convert'), " ".join(ext_opts), dst_format, src, dst, redirect))
 
-def qcow2_convert_to_raw(src, dst):
-    shell.call('%s -f qcow2 -O raw %s %s' % (qemu_img.subcmd('convert'), src, dst))
+def qcow2_convert_to_raw(src, dst, *options):
+    shell.call('%s -f qcow2 -O raw %s %s %s' % (qemu_img.subcmd('convert'), " ".join(options), src, dst))
 
 def qcow2_commit(top, base):
     shell.call('%s -f qcow2 -b %s %s' % (qemu_img.subcmd('commit'), base, top))
