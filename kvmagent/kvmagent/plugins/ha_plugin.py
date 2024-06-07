@@ -353,9 +353,9 @@ class AbstractStorageFencer(AbstractHaFencer):
         self.failure = 0
 
 
-class SanlockHealthChecker(AbstractStorageFencer):
+class SblkHealthChecker(AbstractStorageFencer):
     def __init__(self, interval = 5, max_attempts = 5, ps_uuid = None, run_fencer_list = None):
-        super(SanlockHealthChecker, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
+        super(SblkHealthChecker, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
         self.vg_failures = {}   # type: dict[str, int]
         self.all_vgs = {}       # type: dict[str, object]
         self.fired_vgs = {}     # type: dict[str, float]
@@ -426,7 +426,7 @@ class SanlockHealthChecker(AbstractStorageFencer):
         return self.fencer_created_time.get(vg_uuid)
 
     def _do_health_check_vg(self, vg, lockspaces, r):
-        if not r:
+        if not r or r.get_lockspace() not in lockspaces:
             failure = "lockspace for vg %s not found" % vg
             logger.warn(failure)
             return self.inc_vg_failure_cnt(vg), failure
@@ -435,17 +435,13 @@ class SanlockHealthChecker(AbstractStorageFencer):
             logger.warn("lockspace for vg %s is adding, skip run fencer" % vg)
             return 0, None
 
-        if r.get_lockspace() not in lockspaces:
-            failure = "can not find lockspace of %s" % vg
-            logger.warn(failure)
-            return self.inc_vg_failure_cnt(vg), failure
-
+        renewal_failure_seconds = sanlock.calc_id_renewal_fail_seconds(r.get_io_timeout())
         if r.get_renewal_last_result() != 1:
             if (r.get_renewal_last_attempt() > r.get_renewal_last_success() and \
-                    r.get_renewal_last_attempt() - r.get_renewal_last_success() > 100) or \
-                    (r.get_renewal_last_attempt() < r.get_renewal_last_success() - 100 < r.get_renewal_last_success()):
-                failure = "sanlock last renewal failed with %s and last attempt is %s, last success is %s" % \
-                        (r.get_renewal_last_result(), r.get_renewal_last_attempt(), r.get_renewal_last_success())
+                    r.get_renewal_last_attempt() - r.get_renewal_last_success() > renewal_failure_seconds) or \
+                    (r.get_renewal_last_attempt() < r.get_renewal_last_success() - renewal_failure_seconds < r.get_renewal_last_success()):
+                failure = "sanlock last renewal failed with %s and last attempt is %s, last success is %s, renewal failed for more than %s second" % \
+                        (r.get_renewal_last_result(), r.get_renewal_last_attempt(), r.get_renewal_last_success(), renewal_failure_seconds)
                 logger.warn(failure)
                 return self.inc_vg_failure_cnt(vg), failure
 
@@ -482,6 +478,23 @@ class SanlockHealthChecker(AbstractStorageFencer):
     def get_record_vm_lun(self, vg_uuid, host_uuid):
         return '/dev/%s/host_%s' % (vg_uuid, host_uuid)
 
+    def check_host_is_alive_by_sanlock(self, ps_uuid, dst_host_uuid, dst_host_id):
+        hstatus = sanlock.get_hosts_state("lvm_%s" % ps_uuid)
+        alive = False
+        if hstatus is not None and str(dst_host_id) in hstatus.hosts and hstatus.is_host_live(dst_host_id):
+            parser = sanlock.SanlockHostStatusParser(bash.bash_errorout("timeout 10 sanlock client host_status -s lvm_%s -D" % ps_uuid))
+            if dst_host_uuid[:8] in parser.get_record(dst_host_id).get_owner_name():
+                alive = True
+            logger.debug("host[hostid=%s, hostUuid=%s, sanlock owner name:%s] is %s by sanlock." % (dst_host_id, dst_host_uuid,
+                parser.get_record(dst_host_id).get_owner_name(), alive))
+        return alive
+
+    def check_fencer_heartbeat(self, host_uuid, storage_check_timeout, interval, max_attempts, ps_uuid, hostId=None):
+        if self.check_host_is_alive_by_sanlock(ps_uuid, host_uuid, hostId):
+            _, vm_uuids = self.read_fencer_heartbeat(host_uuid, ps_uuid)
+            return True, vm_uuids
+        return AbstractStorageFencer.check_fencer_heartbeat(self, host_uuid, storage_check_timeout, interval, max_attempts, ps_uuid)
+
     def read_fencer_heartbeat(self, host_uuid, vg_uuid):
         current_read_heartbeat_time = [None]
         current_vm_uuids = [None]
@@ -504,9 +517,6 @@ class SanlockHealthChecker(AbstractStorageFencer):
 
                 logger.debug("read shareblock current_read_heartbeat_time:%s, current_vm_uuids: %s" %
                              (current_read_heartbeat_time[0], current_vm_uuids[0]))
-
-                if int(time.time()) - 4 * 60 < current_read_heartbeat_time[0]:
-                    current_read_heartbeat_time[0] += random.randint(1, 100)
 
                 return current_read_heartbeat_time[0], current_vm_uuids[0]
 
@@ -1353,7 +1363,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.global_storage_ha = []
         self.storage_status = {}  # type: dict[str, float]
         self.fencer_lock = threading.RLock()
-        self.sblk_health_checker = SanlockHealthChecker()
+        self.sblk_health_checker = SblkHealthChecker()
         self.sblk_fencer_running = False
         self.abstract_ha_fencer_checker = {}
         self.vpc_uuids = []
@@ -2093,7 +2103,7 @@ class HaPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         heartbeat_success, vm_uuids = self.sblk_health_checker.check_fencer_heartbeat(
-            cmd.hostUuid, cmd.storageCheckerTimeout, cmd.interval, cmd.times, cmd.psUuid)
+            cmd.hostUuid, cmd.storageCheckerTimeout, cmd.interval, cmd.times, cmd.psUuid, cmd.hostId)
         rsp.result[cmd.psUuid] = heartbeat_success
         rsp.vmUuids = vm_uuids
         return jsonobject.dumps(rsp)
