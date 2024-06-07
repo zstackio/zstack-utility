@@ -1611,11 +1611,13 @@ if __name__ == "__main__":
         yum_cmd = yum_cmd + upgrade_os_cmd.format(releasever, ',zstack-experimental-mn' if cmd.enableExpRepo else '', exclude, updates)
 
         if "kernel" in updates or (cmd.releaseVersion != '' and "kernel" not in exclude):
-            dracut_conf_path = '/etc/dracut.conf.d/no_lvmconf.conf'
-            if not os.path.exists(dracut_conf_path):
-                linux.mkdir(os.path.dirname(dracut_conf_path))
-                with open(dracut_conf_path, 'w') as f:
-                    f.write('lvmconf=no')
+            dracut_conf_map = {
+                '/etc/dracut.conf.d/no_lvmconf.conf': 'lvmconf=no',
+                '/etc/dracut.conf.d/no_hostonly.conf': 'hostonly=no'}
+            for conf_path, conf_content in dracut_conf_map.items():
+                linux.mkdir(os.path.dirname(conf_path))
+                with open(conf_path, 'w') as f:
+                    f.write(conf_content)
 
         rsp = UpdateHostOSRsp()
         if shell.run("which yum") != 0:
