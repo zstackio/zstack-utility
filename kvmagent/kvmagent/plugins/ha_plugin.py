@@ -22,9 +22,6 @@ import rbd
 import json
 from datetime import datetime, timedelta
 from distutils.version import LooseVersion
-import abc
-import functools
-import pprint
 import inspect
 import random
 from zstacklib.utils import iproute
@@ -347,7 +344,7 @@ class AbstractStorageFencer(AbstractHaFencer):
     def write_fencer_heartbeat(self):
         raise NotImplementedError
 
-    def read_fencer_hearbeat(self, host_uuid, ps_uuid):
+    def read_fencer_heartbeat(self, host_uuid, ps_uuid):
         raise NotImplementedError
 
     def exec_fencer(self):
@@ -360,7 +357,7 @@ class AbstractStorageFencer(AbstractHaFencer):
         current_vm_uuids = [None]
         vm_uuids = []
 
-        logger.debug("check if %s is still alive" % host_uuid)
+        logger.debug("check if host %s is still alive" % host_uuid)
         wait_heartbeat_count_failure = 0
         remain_timeout = storage_check_timeout
         while wait_heartbeat_count_failure < int(max_attempts) + 1:
@@ -368,8 +365,7 @@ class AbstractStorageFencer(AbstractHaFencer):
                 time.sleep(interval + remain_timeout)
             remain_timeout = storage_check_timeout
 
-            failure_count = 0
-            current_heartbeat_count[0], current_vm_uuids[0] = self.read_fencer_hearbeat(host_uuid, ps_uuid)
+            current_heartbeat_count[0], current_vm_uuids[0] = self.read_fencer_heartbeat(host_uuid, ps_uuid)
             logger.debug("host last heartbeat is %s, host current heartbeat count is %s, vm running : %s" %
                          (lastest_heartbeat_count[0], current_heartbeat_count[0], current_vm_uuids[0]))
 
@@ -397,6 +393,9 @@ class AbstractStorageFencer(AbstractHaFencer):
 
     def update_ha_fencer(self, cmd, ha_fencer):
         pass
+
+    def reset_failure_count(self):
+        self.failure = 0
 
 
 class SanlockHealthChecker(AbstractStorageFencer):
@@ -528,7 +527,7 @@ class SanlockHealthChecker(AbstractStorageFencer):
     def get_record_vm_lun(self, vg_uuid, host_uuid):
         return '/dev/%s/host_%s' % (vg_uuid, host_uuid)
 
-    def read_fencer_hearbeat(self, host_uuid, vg_uuid):
+    def read_fencer_heartbeat(self, host_uuid, vg_uuid):
         current_read_heartbeat_time = [None]
         current_vm_uuids = [None]
         volume_abs_path = self.get_record_vm_lun(vg_uuid, host_uuid)
@@ -702,7 +701,7 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
             success_heartbeat = False
         return success_heartbeat
 
-    def read_fencer_hearbeat(self, host_uuid, ps_uuid):
+    def read_fencer_heartbeat(self, host_uuid, ps_uuid):
         current_read_heartbeat_time = [None]
         current_vm_uuids = [None]
         record_vm_running_path = self.get_heartbeat_file_path()
@@ -845,9 +844,6 @@ class CephHeartbeatController(AbstractStorageFencer):
             # reset the failure count
             self.reset_failure_count()
 
-    def reset_failure_count(self):
-        self.failure = 0
-
     def update_heartbeat_timestamp(self, ioctx, heartbeat_object_name, heartbeat_count, write_timeout=5):
         vm_in_ps_uuid_list = find_ps_running_vm(self.pool_name)
         content = {"heartbeat_count": str(heartbeat_count), "vm_uuids": None if len(vm_in_ps_uuid_list) == 0 else ','.join(str(x) for x in vm_in_ps_uuid_list)}
@@ -895,7 +891,7 @@ class CephHeartbeatController(AbstractStorageFencer):
 
         return length, used_time, err
 
-    def read_fencer_hearbeat(self, host_uuid, ps_uuid):
+    def read_fencer_heartbeat(self, host_uuid, ps_uuid):
         current_heartbeat_count = [None]
         current_vm_uuids = [None]
         read_complete = threading.Event()
