@@ -1255,6 +1255,13 @@ def parse_nvidia_smi_output_to_list(data):
     return vgpu_list
 
 
+def handle_gpu_status(gpu_status, pci_device_address):
+    if gpu_status == 'critical':
+        send_physical_gpu_status_alarm_to_mn(gpuStatus, pci_device_address)
+    else:
+        gpu_status_abnormal_list_record.discard(pci_device_address)
+
+
 def collect_nvidia_gpu_status():
     metrics = {
         "gpu_power_draw": GaugeMetricFamily('gpu_power_draw', 'gpu power draw', None, ['pci_device_address', 'gpu_serial']),
@@ -1294,10 +1301,7 @@ def collect_nvidia_gpu_status():
         metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
         gpu_index_mapping_pciaddress[info[5].strip()] = pci_device_address
 
-        if gpuStatus == 'critical':
-            send_physical_gpu_status_alarm_to_mn(gpuStatus, pci_device_address)
-        else:
-            gpu_status_abnormal_list_record.discard(pci_device_address)
+        handle_gpu_status(gpuStatus, pci_device_address)
 
     r, gpu_pci_rx_tx = bash_ro("nvidia-smi dmon -c 1 -s t")
     if r != 0:
@@ -1360,8 +1364,9 @@ def collect_hy_gpu_status():
         #metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(gpu["Fan Speed (%)"]))
         metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data["DCU use (%)"]))
         metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data["DCU memory use (%)"]))
-        gpuState, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
-        metrics['gpu_status'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_status_int_value)
+        gpuStatus, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
+        metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
+        handle_gpu_status(gpuStatus, pci_device_address)
 
     return metrics.values()
 
@@ -1395,14 +1400,11 @@ def collect_amd_gpu_status():
         metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(card_data['Temperature (Sensor edge) (C)']))
         metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(card_data['Fan Speed (%)']))
         metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU use (%)']))
-        gpuState , gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
-        metrics['gpu_status'].add_metric([pci_device_address, gpuState, gpu_serial], gpu_status_int_value)
+        gpuStatus , gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
+        metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
         metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU memory use (%)']))
 
-        if gpuState == 'critical':
-            send_physical_gpu_status_alarm_to_mn(gpuState, pci_device_address)
-        else:
-            gpu_status_abnormal_list_record.discard(pci_device_address)
+        handle_gpu_status(gpuStatus, pci_device_address)
 
     return metrics.values()
 
