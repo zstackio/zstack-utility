@@ -355,6 +355,8 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def discover_lun(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
+
+        return jsonobject.dumps(rsp)
         logger.debug("start to discover target:" + cmd.target)
         self.discovery_iscsi(cmd)
         iscsi_already_login = self.find_iscsi_session(cmd)
@@ -466,10 +468,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        self.imagestore_client.image_info(cmd.hostname, cmd.backupStorageInstallPath)
-        self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
-                                                        cmd.primaryStorageInstallPath, cmd.concurrency)
-        bash.bash_o("sync")
+        linux.qcow2_convert_to_raw(cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, "-n")
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 
