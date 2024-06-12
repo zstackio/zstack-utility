@@ -238,7 +238,6 @@ tftp-root={TFTPBOOT_PATH}
 log-facility={DNSMASQ_LOG_PATH}
 dhcp-range={DHCP_RANGE}
 dhcp-option=1,{DHCP_NETMASK}
-dhcp-option=6,223.5.5.5,8.8.8.8
 dhcp-hostsdir={DHCP_HOSTS_DIR}
 """.format(DHCP_INTERFACE=cmd.dhcpInterface,
            DHCP_RANGE="%s,%s,%s" % (cmd.dhcpRangeBegin, cmd.dhcpRangeEnd, cmd.dhcpRangeNetmask),
