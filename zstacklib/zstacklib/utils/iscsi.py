@@ -1,5 +1,6 @@
 import glob
 import os
+import re
 import urlparse
 
 import linux
@@ -9,6 +10,49 @@ import device
 
 
 # only support single ip
+def get_device_path_by_wwn(disk_id):
+    fnames = os.listdir('/dev/disk/by-id/')
+    for fname in fnames:
+        if not fname.startswith('wwn-') or not fname.endswith(disk_id):
+            continue
+        link_path = os.path.join('/dev/disk/by-id/', fname)
+        wwid = device.get_device_wwid(os.path.basename(os.readlink(link_path)))
+        if id in wwid:
+            return link_path
+
+
+def get_iscsi_device_serial(disk_path):
+    cmd = shell.ShellCmd("sg_inq %s | grep 'serial number'" % disk_path)
+    cmd(False)
+    if cmd.return_code != 0:
+        return None
+
+    splits = cmd.stdout.split(":")
+    if len(splits) != 2:
+        return ""
+
+    return splits[1].strip()
+
+
+def get_device_path_by_serial(id):
+    cmd = shell.ShellCmd("iscsiadm -m session -P 3 | grep -E 'Attached scsi disk'")
+    cmd(False)
+    if cmd.return_code != 0:
+        return None
+    disk_regex = re.compile(r'Attached scsi disk (\w+)\s+State: running')
+
+    for line in cmd.stdout.splitlines():
+        matches = disk_regex.search(line)
+        if not matches:
+            continue
+
+        disk_path = "/dev/%s" % matches.group(1)
+        if get_iscsi_device_serial(disk_path) == id:
+            return disk_path
+
+    return ""
+
+
 class IscsiLogin(object):
     def __init__(self, url=None):
         if url:
@@ -75,20 +119,21 @@ class IscsiLogin(object):
         shell.run("udevadm trigger --subsystem-match=block")
 
     def get_device_path(self):
-        fnames = os.listdir('/dev/disk/by-id/')
-        for fname in fnames:
-            if not fname.startswith('wwn-') or not fname.endswith(self.disk_id):
-                continue
-            link_path = os.path.join('/dev/disk/by-id/', fname)
-            wwid = device.get_device_wwid(os.path.basename(os.readlink(link_path)))
-            if self.disk_id in wwid:
-                return link_path
+        splits = self.disk_id.split("_", 1)
+        disk_type, id = splits[0], splits[1]
+        if disk_type == 'wwn':
+            return get_device_path_by_wwn(id)
+        elif disk_type == 'serial':
+            return get_device_path_by_serial(id)
+
+        return None
 
     def retry_get_device_path(self):
         def _get_device_path(_):
             return self.get_device_path()
 
-        path = linux.wait_callback_success(_get_device_path, timeout=30, interval=0.5)
+        self.rescan()
+        path = linux.wait_callback_success(_get_device_path, timeout=60, interval=0.5)
         if not path:
             raise Exception('unable to find device path for disk id[%s]' % self.disk_id)
         return path
@@ -139,5 +184,4 @@ def connect_iscsi_target(url, connect_all=False):
     if len(errs) == len(server_hostnames):
         raise Exception('failed to login iscsi target[%s], errors: %s' % (url, ' '.join(errs)))
 
-    login.rescan()
     return login.retry_get_device_path()
