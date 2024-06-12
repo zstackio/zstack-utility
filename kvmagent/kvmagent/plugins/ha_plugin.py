@@ -401,7 +401,7 @@ class SanlockHealthChecker(AbstractStorageFencer):
         vg_uuid = fencer_cmd.vgUuid
         self.all_vgs[vg_uuid] = fencer_cmd
         self.fencer_created_time[vg_uuid] = created_time
-        self.update_vm_ha_params(list(self.all_vgs.keys()))
+        self.update_vm_ha_params(list(self.all_vgs.keys()), fencer_cmd)
 
     def delvg(self, vg_uuid):
         self.all_vgs.pop(vg_uuid, None)
@@ -411,10 +411,10 @@ class SanlockHealthChecker(AbstractStorageFencer):
         self.fired_vgs.pop(vg_uuid, None)
         self.update_vm_ha_params(list(self.all_vgs.keys()))
 
-    def update_vm_ha_params(self, vg_uuids):
+    def update_vm_ha_params(self, vg_uuids, fencer_cmd=None):
         if len(vg_uuids) == 0:
             return
-        update_shareblock_vm_ha_params(vg_uuids)
+        update_shareblock_vm_ha_params(vg_uuids, fencer_cmd)
 
     def firevg(self, vg_uuid):
         self.fired_vgs[vg_uuid] = time.time()
@@ -993,7 +993,7 @@ def create_shareblock_vm_ha_params(cmd):
             f.write(jsonobject.dumps(cmd))
 
 
-def update_shareblock_vm_ha_params(vg_uuids):
+def update_shareblock_vm_ha_params(vg_uuids, fencer_cmd=None):
     with WRITE_SHAREBLOCKVMHAPARAMS_LOCK:
         if not os.path.exists(SHAREBLOCK_VM_HA_PARAMS_PATH):
             return
@@ -1003,6 +1003,8 @@ def update_shareblock_vm_ha_params(vg_uuids):
                 return
 
             cmd_json = json.loads(cmd)
+            if fencer_cmd:
+                cmd_json.update(fencer_cmd.__dict__)
             cmd_json["vgUuids"] = vg_uuids
             f.seek(0)
             f.truncate(0)
