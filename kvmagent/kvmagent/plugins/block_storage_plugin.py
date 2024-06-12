@@ -271,6 +271,9 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         rsp = CreateHeartbeatRsp()
         rsp.success = True
 
+        # FIXME: support rbd heartbeat
+        return jsonobject.dumps(rsp)
+
         # enable iscsid service
         ret, out, err = bash.bash_roe("systemctl is-enabled iscsid || systemctl enable iscsid")
         if ret != 0:
@@ -490,6 +493,9 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = NoFailurePingRsp()
         rsp.success = True
+
+        # FIXME: support rbd heartbeat
+        return jsonobject.dumps(rsp)
 
         for heartbeat_install_path in cmd.psHeartbeatLunInstallPath:
             heartbeat_lun_path = translate_absolute_path_from_install_paht(heartbeat_install_path)
