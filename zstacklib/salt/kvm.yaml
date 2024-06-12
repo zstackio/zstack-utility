@@ -25,6 +25,6 @@ pydev:
 
 {{ utils.ecmd('virtualenv_install', "pip install virtualenv", unless='pip freeze | grep "virtualenv" > /dev/nul') }}
 
-{{ utils.ecmd('virtualenv_create', "virtualenv --system-site-packages %s" % virtualenv_kvm, unless='ls %s > /dev/null' % virtualenv_kvm) }}
+{{ utils.ecmd('virtualenv_create', "virtualenv-2.7 --system-site-packages %s" % virtualenv_kvm, unless='ls %s > /dev/null' % virtualenv_kvm) }}
 
 {{ utils.pip_install('zstacklib', file=egg, pkg_name='zstacklib', activate=virtualenv_kvm_activate) }}

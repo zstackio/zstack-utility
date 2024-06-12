@@ -9,6 +9,29 @@ import device
 
 
 # only support single ip
+def get_device_path_by_wwn(disk_id):
+    fnames = os.listdir('/dev/disk/by-id/')
+    for fname in fnames:
+        if not fname.startswith('wwn-') or not fname.endswith(disk_id):
+            continue
+        link_path = os.path.join('/dev/disk/by-id/', fname)
+        wwid = device.get_device_wwid(os.path.basename(os.readlink(link_path)))
+        if id in wwid:
+            return link_path
+
+
+def get_device_path_by_serial(disk_id):
+    cmd = shell.ShellCmd("/bin/lsblk -l -o serial,name --path| /bin/grep %s" % disk_id)
+    cmd(False)
+    if cmd.return_code != 0:
+        return None
+    for line in cmd.stdout.splitlines():
+        if line.split()[0] == id:
+            return line.split()[1]
+        
+    return None
+
+
 class IscsiLogin(object):
     def __init__(self, url=None):
         if url:
@@ -75,14 +98,14 @@ class IscsiLogin(object):
         shell.run("udevadm trigger --subsystem-match=block")
 
     def get_device_path(self):
-        fnames = os.listdir('/dev/disk/by-id/')
-        for fname in fnames:
-            if not fname.startswith('wwn-') or not fname.endswith(self.disk_id):
-                continue
-            link_path = os.path.join('/dev/disk/by-id/', fname)
-            wwid = device.get_device_wwid(os.path.basename(os.readlink(link_path)))
-            if self.disk_id in wwid:
-                return link_path
+        splits = self.disk_id.split("_", 1)
+        disk_type, id = splits[0], splits[1]
+        if disk_type == 'wwn':
+            return get_device_path_by_wwn(id)
+        elif disk_type == 'serial':
+            return get_device_path_by_serial(id)
+
+        return None
 
     def retry_get_device_path(self):
         def _get_device_path(_):
