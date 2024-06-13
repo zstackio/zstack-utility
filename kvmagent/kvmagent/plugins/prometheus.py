@@ -32,13 +32,16 @@ QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
 ALARM_CONFIG = None
 PAGE_SIZE = None
 disk_list_record = None
-cpu_status_abnormal_list_record = set()
-memory_status_abnormal_list_record = set()
-fan_status_abnormal_list_record = set()
-power_supply_status_abnormal_list_record = set()
-gpu_status_abnormal_list_record = set()
-disk_status_abnormal_list_record = set()
-raid_status_abnormal_list_record = set()
+
+hw_status_abnormal_list_record = {
+    'cpu': set(),
+    'memory': set(),
+    'fan': set(),
+    'powerSupply': set(),
+    'gpu': set(),
+    'disk': set(),
+    'raid': set()
+}
 
 # collect domain max memory
 domain_max_memory = {}
@@ -73,9 +76,8 @@ def send_alarm_to_mn(alarm_type, unique_id, **kwargs):
                     .format(alarm_type=alarm_type))
         return
 
-    global_vars = globals()
-    record_list_name = "{alarm_type}_status_abnormal_list_record".format(alarm_type=alarm_type) 
-    record_list = global_vars.get(record_list_name, set())
+    global hw_status_abnormal_list_record
+    record_list = hw_status_abnormal_list_record.get(alarm_type, set())
     if unique_id not in record_list:
         alarm = PhysicalStatusAlarm(
             host=ALARM_CONFIG.get(kvmagent.HOST_UUID),
@@ -84,7 +86,61 @@ def send_alarm_to_mn(alarm_type, unique_id, **kwargs):
         )
         http.json_dump_post(url, alarm.to_dict(), {'commandpath': '/host/physical/hardware/status/alarm'})
         record_list.add(unique_id)
-        global_vars[record_list_name] = record_list
+        hw_status_abnormal_list_record[alarm_type] = record_list
+
+def remove_abnormal_status(alarm_type, unique_id):
+    global hw_status_abnormal_list_record
+    record_list = hw_status_abnormal_list_record.get(alarm_type)
+    if record_list is not None:
+        record_list.discard(unique_id)
+        hw_status_abnormal_list_record[alarm_type] = record_list
+
+
+def is_abnormal_status(alarm_type, unique_id):
+    global hw_status_abnormal_list_record
+    record_list = hw_status_abnormal_list_record.get(alarm_type, set())
+    return unique_id in record_list
+
+def is_cpu_status_abnormal(unique_id):
+    return is_abnormal_status('cpu', unique_id)
+
+def remove_cpu_status_abnormal(unique_id):
+    remove_abnormal_status('cpu', unique_id)
+
+def is_memory_status_abnormal(unique_id):
+    return is_abnormal_status('memory', unique_id)
+
+def remove_memory_status_abnormal(unique_id):
+    remove_abnormal_status('memory', unique_id)
+
+def is_fan_status_abnormal(unique_id):
+    return is_abnormal_status('fan', unique_id)
+def remove_fan_status_abnormal(unique_id):
+    remove_abnormal_status('fan', unique_id)
+
+def is_power_supply_status_abnormal(unique_id):
+    return is_abnormal_status('powerSupply', unique_id)
+
+def remove_power_supply_status_abnormal(unique_id):
+    remove_abnormal_status('powerSupply', unique_id)
+
+def is_gpu_status_abnormal(unique_id):
+    return is_abnormal_status('gpu', unique_id)
+
+def remove_gpu_status_abnormal(unique_id):
+    remove_abnormal_status('gpu', unique_id)
+
+def is_disk_status_abnormal(unique_id):
+    return is_abnormal_status('disk', unique_id)
+
+def remove_disk_status_abnormal(unique_id):
+    remove_abnormal_status('disk', unique_id)
+
+def is_raid_status_abnormal(unique_id):
+    return is_abnormal_status('raid', unique_id)
+
+def remove_raid_status_abnormal(unique_id):
+    remove_abnormal_status('raid', unique_id)
 
 
 @thread.AsyncThread
@@ -480,7 +536,7 @@ def handle_raid_state(target_id, state_int):
     if state_int == 100:
         send_raid_state_alarm_to_mn(target_id, state_int)
         return
-    raid_status_abnormal_list_record.discard(target_id)
+    remove_raid_status_abnormal(target_id)
 
 def collect_arcconf_raid_state(metrics, infos):
     disk_list = {}
@@ -536,8 +592,8 @@ def collect_arcconf_raid_state(metrics, infos):
             disk_status = convert_disk_state_to_int(drive_state)
             metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], disk_status)
             disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-            if disk_status == 0 and serial_number in disk_status_abnormal_list_record:
-                disk_status_abnormal_list_record.discard(serial_number)
+            if is_disk_status_abnormal(serial_number):
+                remove_disk_status_abnormal(serial_number)
             elif disk_status != 0:
                 send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, drive_state)
 
@@ -581,8 +637,8 @@ def collect_sas_raid_state(metrics, infos):
                 metrics['physical_disk_state'].add_metric([slot_number, enclosure_device_id], drive_status)
                 if drive_status != 20:
                     disk_list[serial_number] = "%s-%s" % (enclosure_device_id, slot_number)
-                if drive_status == 0 and serial_number in disk_status_abnormal_list_record:
-                    disk_status_abnormal_list_record.discard(serial_number)
+                if drive_status == 0 and is_disk_status_abnormal(serial_number):
+                    remove_disk_status_abnormal(serial_number)
                 elif drive_status != 0:
                     send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_device_id, state)
 
@@ -591,7 +647,6 @@ def collect_sas_raid_state(metrics, infos):
 
 
 def collect_mega_raid_state(metrics, infos):
-    global disk_status_abnormal_list_record
     disk_list = {}
     vd_infos = jsonobject.loads(infos.strip())
 
@@ -628,8 +683,8 @@ def collect_mega_raid_state(metrics, infos):
             pd_attributes = data["Drive %s - Detailed Information" % pd_path]["Drive %s Device attributes" % pd_path]
             serial_number = pd_attributes["SN"].replace(" ", "")
             disk_list[serial_number] = "%s-%s" % (enclosure_id, slot_id)
-            if converted_pd_status == 0 and serial_number in disk_status_abnormal_list_record:
-                disk_status_abnormal_list_record.discard(serial_number)
+            if converted_pd_status == 0 and is_disk_status_abnormal(serial_number):
+                remove_disk_status_abnormal(serial_number)
             elif converted_pd_status != 0:
                 send_physical_disk_status_alarm_to_mn(serial_number, slot_id, enclosure_id, converted_pd_status)
 
@@ -745,9 +800,6 @@ def collect_ipmi_state():
 
     global collect_equipment_state_last_time
     global collect_equipment_state_last_result
-    global cpu_status_abnormal_list_record
-    global memory_status_abnormal_list_record
-    global fan_status_abnormal_list_record
 
     if collect_equipment_state_last_time is None or (time.time() - collect_equipment_state_last_time) >= 25:
         collect_equipment_state_last_time = time.time()
@@ -784,12 +836,12 @@ def collect_ipmi_state():
             cpu_id = "CPU" + info.Processor
             if "populated" in info.Status.lower() and "enabled" in info.Status.lower():
                 metrics['cpu_status'].add_metric([cpu_id], 0)
-                if cpu_id in cpu_status_abnormal_list_record:
-                    cpu_status_abnormal_list_record.remove(cpu_id)
+                if is_cpu_status_abnormal(cpu_id):
+                    remove_cpu_status_abnormal(cpu_id)
             elif "" == info.Status:
                 metrics['cpu_status'].add_metric([cpu_id], 20)
-                if cpu_id in cpu_status_abnormal_list_record:
-                    cpu_status_abnormal_list_record.remove(cpu_id)
+                if is_cpu_status_abnormal(cpu_id):
+                    remove_cpu_status_abnormal(cpu_id)
             else:
                 metrics['cpu_status'].add_metric([cpu_id], 10)
                 send_cpu_status_alarm_to_mn(cpu_id, info.Status)
@@ -805,12 +857,12 @@ def collect_ipmi_state():
                 memory_locator_list.remove(slot_number)
             if "ok" == info.State.lower():
                 metrics['physical_memory_status'].add_metric([slot_number], 0)
-                if slot_number in memory_status_abnormal_list_record:
-                    memory_status_abnormal_list_record.remove(slot_number)
+                if is_memory_status_abnormal(slot_number):
+                    remove_memory_status_abnormal(slot_number)
             elif "" == info.State:
                 metrics['physical_memory_status'].add_metric([slot_number], 20)
-                if slot_number in memory_status_abnormal_list_record:
-                    memory_status_abnormal_list_record.remove(slot_number)
+                if is_memory_status_abnormal(slot_number):
+                    remove_memory_status_abnormal(slot_number)
             else:
                 metrics['physical_memory_status'].add_metric([slot_number], 10)
                 send_physical_memory_status_alarm_to_mn(slot_number, info.State)
@@ -839,12 +891,12 @@ def collect_ipmi_state():
             
             if "ok" == info.Status.lower():
                 metrics['fan_speed_state'].add_metric([fan_name], 0)
-                if fan_name in fan_status_abnormal_list_record:
-                    fan_status_abnormal_list_record.remove(fan_name)
+                if is_fan_status_abnormal(fan_name):
+                    remove_fan_status_abnormal(fan_name)
             elif "" == info.Status:
                 metrics['fan_speed_state'].add_metric([fan_name], 20)
-                if fan_name in fan_status_abnormal_list_record:
-                    fan_status_abnormal_list_record.remove(fan_name)
+                if is_fan_status_abnormal(fan_name):
+                    remove_fan_status_abnormal(fan_name)
             else:
                 metrics['fan_speed_state'].add_metric([fan_name], 10)
                 send_physical_fan_status_alarm_to_mn(fan_name, info.Status)
@@ -887,8 +939,8 @@ def collect_ipmi_state():
                 fan_rpm = float(filter(str.isdigit, fan_rpm)) if bool(re.search(r'\d', fan_rpm)) else float(0)
                 metrics['fan_speed_state'].add_metric([fan_name], fan_state)
                 metrics['fan_speed_rpm'].add_metric([fan_name], fan_rpm)
-                if fan_state == 0 and fan_name in fan_status_abnormal_list_record:
-                    fan_status_abnormal_list_record.remove(fan_name)
+                if fan_state == 0 and is_fan_status_abnormal(fan_name):
+                    remove_fan_status_abnormal(fan_name)
                 elif fan_state == 10:
                     send_physical_fan_status_alarm_to_mn(fan_name, info.split("|")[2].strip())
 
@@ -919,9 +971,9 @@ def check_equipment_state_from_ipmitool(metrics):
             if sensor_state.lower() == "critical" and sensor_type in sensor_handlers:
                 sensor_handlers[sensor_type](sensor_name, sensor_state)
             else:
-                fan_status_abnormal_list_record.discard(sensor_name)
-                power_supply_status_abnormal_list_record.discard(sensor_name)
-                memory_status_abnormal_list_record.discard(sensor_name)
+                remove_fan_status_abnormal(sensor_name)
+                remove_power_supply_status_abnormal(sensor_name)
+                remove_memory_status_abnormal(sensor_name)
 
 def collect_equipment_state_from_ipmi():
     metrics = {
@@ -976,7 +1028,7 @@ def collect_equipment_state_from_ipmi():
             if cpu_status == 10:
                 send_cpu_status_alarm_to_mn(cpu_id, info.Status)
             else:
-                cpu_status_abnormal_list_record.discard(cpu_id)
+                remove_cpu_status_abnormal(cpu_id)
 
     return metrics.values()
 
@@ -1259,7 +1311,7 @@ def handle_gpu_status(gpu_status, pci_device_address):
     if gpu_status == 'critical':
         send_physical_gpu_status_alarm_to_mn(gpuStatus, pci_device_address)
     else:
-        gpu_status_abnormal_list_record.discard(pci_device_address)
+        remove_gpu_status_abnormal(pci_device_address)
 
 
 def collect_nvidia_gpu_status():
