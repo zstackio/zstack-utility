@@ -2468,7 +2468,7 @@ done
             gpu_info_json = json.loads(o)
             for card_name, card_data in gpu_info_json.items():
                 if to.pciDeviceAddress.lower() in card_data["PCI Bus"].lower():
-                    to.addonInfo["memory"] = card_data["Available memory size (MiB)"]
+                    to.addonInfo["memory"] = card_data["Available memory size (MiB)"] + " MiB"
                     to.addonInfo["power"] = card_data["Max Graphics Package Power (W)"]
                     to.addonInfo["serialNumber"] = card_data["Serial Number"]
                     to.addonInfo["isDriverLoaded"] = True
