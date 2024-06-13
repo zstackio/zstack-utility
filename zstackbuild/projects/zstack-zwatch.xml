@@ -14,6 +14,7 @@
         <checkFile file="${zstackzwatch.source}" />
 
         <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
+            <env key="GOROOT" value="${zstackzwatch.goroot}" />
             <arg value="clean" />
         </exec>
 
