@@ -796,15 +796,24 @@ def start_lock_service(io_timeout=40):
         running_lockd_version = get_running_lvmlockd_version()
         return running_lockd_version is not None and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version())
 
-    def is_sanlock_upgraded():
+    def need_restart_sanlock():
         running_patch_version = get_running_sanlock_patch_version()
         local_patch_version = get_sanlock_patch_version()
-        ## patch version N  ->  patch version >N or non-patch version  ->  patch version N
-        return running_patch_version and local_patch_version.isdigit() and \
-            (not running_patch_version.isdigit() or int(local_patch_version) > int(running_patch_version))
+        if not running_patch_version:
+            # sanlock not running
+            return False
+        elif not local_patch_version.isdigit():
+            return False
+        elif not running_patch_version.isdigit() or int(local_patch_version) > int(running_patch_version):
+            # patch version N  ->  patch version >N or other version  ->  patch version N
+            return True
+        if sanlock.SanlockClientStatusParser().get_config("max_sectors_kb_ignore") == "0":
+            logger.debug("need restarting sanlock to reload config")
+            return True
+        return False
 
 
-    restart_sanlock = is_sanlock_upgraded()
+    restart_sanlock = need_restart_sanlock()
     restart_lvmlockd = restart_sanlock or is_lvmlockd_upgraded() \
                        or (LooseVersion(get_lvmlockd_version()) >= LooseVersion("2.03") and is_lvmlockd_socket_abnormal())
     if restart_sanlock:
