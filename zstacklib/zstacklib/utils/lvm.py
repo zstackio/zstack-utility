@@ -431,7 +431,7 @@ def get_multipath_dmname(dev_name):
     r = bash.bash_r("multipath /dev/%s -l | grep policy" % dev_name)
     if r != 0:
         return None
-    return bash.bash_o("multipath -l /dev/%s | head -n1 | grep -Eo 'dm-[[:digits:]]+'" % dev_name).strip()
+    return bash.bash_o("multipath -l /dev/%s | head -n1 | grep -Eo 'dm-[[:digit:]]+'" % dev_name).strip()
 
 
 def get_multipath_name(dev_name):
