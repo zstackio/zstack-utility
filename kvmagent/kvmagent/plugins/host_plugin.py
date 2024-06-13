@@ -424,6 +424,7 @@ class HostNetworkInterfaceInventory(object):
         self.deviceId = None
         self.subvendorId = None
         self.subdeviceId = None
+        self.rev = None
 
         bonds = ovs.getAllBondFromFile()
 
@@ -534,6 +535,8 @@ class HostNetworkInterfaceInventory(object):
                     self.subvendorId = content.split('[')[-1].strip(']')
                 elif title == "SDevice":
                     self.subdeviceId = content.split('[')[-1].strip(']')
+                elif title == "Rev":
+                    self.rev = content.split('[')[-1].strip(']')
             self.interfaceModel = "%s_%s" % (subvendor_name if subvendor_name and "Unknown" not in subvendor_name else vendor_name, device_name)
 
     def _simplify_device_name(self, name):
@@ -753,6 +756,7 @@ class PciDeviceTO(object):
         self.maxPartNum = "0"
         self.ramSize = ""
         self.mdevSpecifications = []
+        self.rev = ""
 
 class MttyDeviceTO(object):
     def __init__(self):
@@ -2377,6 +2381,9 @@ done
                     to.subvendorId = content.split('[')[-1].strip(']')
                 elif title == "SDevice":
                     to.subdeviceId = content.split('[')[-1].strip(']')
+                elif title == "Rev":
+                    to.rev = content.split('[')[-1].strip(']')
+
             to.name = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
 
             def _set_pci_to_type():
