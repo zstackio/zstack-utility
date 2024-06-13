@@ -640,6 +640,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.modify_sanlock_config("use_watchdog", 0)
             lvm.modify_sanlock_config("watchdog_fire_timeout", 1)
             lvm.modify_sanlock_config("kill_grace_seconds", 40)
+            lvm.modify_sanlock_config("max_sectors_kb", "ignore")
             lvm.modify_sanlock_config("zstack_vglock_timeout", 0)
             lvm.modify_sanlock_config("use_zstack_vglock_timeout", 0)
             lvm.modify_sanlock_config("zstack_vglock_large_delay", 8)

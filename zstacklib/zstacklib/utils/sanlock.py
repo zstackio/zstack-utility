@@ -114,7 +114,7 @@ class SanlockClientStatus(object):
 
 
 class SanlockClientStatusParser(object):
-    def __init__(self, status):
+    def __init__(self, status=None):
         self.status = status
         self.lockspace_records = None  # type: list[SanlockClientStatus]
 
@@ -128,6 +128,10 @@ class SanlockClientStatusParser(object):
             if needle in r.get_lockspace():
                 return r
         return None
+
+    @linux.retry(3, 1)
+    def _get_sanlock_status(self):
+        return bash.bash_errorout("sanlock client status -D")
 
     def _do_get_lockspace_records(self):
         records = []
@@ -153,6 +157,14 @@ class SanlockClientStatusParser(object):
             records.append(SanlockClientStatus(current_lines))
 
         return records
+
+    def get_config(self, config_key):
+        if self.status is None:
+            self.status = self._get_sanlock_status()
+        for line in self.status.splitlines():
+            if config_key in line:
+                return line.strip().split("=")[-1]
+
 
 @bash.in_bash
 def direct_init_resource(resource):
