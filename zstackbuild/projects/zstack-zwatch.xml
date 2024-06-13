@@ -18,8 +18,9 @@
         </exec>
 
         <exec executable="make" dir="${zstackzwatch.source}" failonerror="true">
+            <env key="GOROOT" value="${zstackzwatch.goroot}" />
             <arg value="all" />
-            <arg value="ARCH=amd64 arm64 freebsd_amd64 loong64" />
+            <arg value="ARCH=${zstackzwatch.arch}" />
         </exec>
         <copy todir="${zsw.bdir}">
             <fileset dir="${zstackzwatch.source}/target/zwatch_bin">
