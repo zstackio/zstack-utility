@@ -768,7 +768,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         shell.call('systemctl restart lldpd.service')
 
     def _init_lldpd(self, config_file):
-        r, lspci_output = bash_ro("lspci | grep -i -E 'eth.*X710|eth.*X722'")
+        r, lspci_output = bash_ro("lspci | grep -i -E 'eth.*X710|eth.*X722|eth.*XL710'")
         lldp_stop_command = "lldp stop\n"
 
         if r == 0:
