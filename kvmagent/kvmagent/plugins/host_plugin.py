@@ -2505,7 +2505,7 @@ done
             logger.debug("no rocm-smi")
             return
 
-        r, o, e = bash_roe("/opt/rocm/bin/rocm-smi --showbus --showmeminfo vram --showpower --showserial --json")
+        r, o, e = bash_roe("rocm-smi --showbus --showmeminfo vram --showpower --showserial --json")
         if r != 0:
             logger.error("amd query gpu is error, %s " % e)
             return

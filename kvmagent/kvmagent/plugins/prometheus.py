@@ -1344,11 +1344,11 @@ def collect_nvidia_gpu_status():
         if len(pci_device_address.split(':')[0]) == 8:
             pci_device_address = pci_device_address[4:]
 
-        metrics['gpu_power_draw'].add_metric([pci_device_address, gpu_serial], float(info[0].replace('W', '').strip()))
-        metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(info[1].strip()))
-        metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(info[2].replace('%', '').strip()))
-        metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(info[3].replace('%', '').strip()))
-        metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(info[4].replace('%', '').strip()))
+        add_metrics('gpu_power_draw', info[0].replace('W', '').strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_temperature', info[1].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_fan_speed', info[2].replace('%', '').strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_utilization', info[3].replace('%', '').strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_memory_utilization', info[4].replace('%', '').strip(), [pci_device_address, gpu_serial], metrics)
         gpuStatus, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
         metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
         gpu_index_mapping_pciaddress[info[5].strip()] = pci_device_address
@@ -1376,9 +1376,8 @@ def collect_nvidia_gpu_status():
     for vgpu in parse_nvidia_smi_output_to_list(vgpu_info):
         vm_uuid = vgpu["VM Name"]
         mdev_uuid = vgpu["MDEV UUID"].replace('-', '')
-        metrics['vgpu_utilization'].add_metric([vm_uuid, mdev_uuid], float(vgpu['Gpu'].replace('%', '').strip()))
-        metrics['vgpu_memory_utilization'].add_metric([vm_uuid, mdev_uuid],
-                                                      float(vgpu['Memory'].replace('%', '').strip()))
+        add_metrics('vgpu_utilization', vgpu['Gpu'].replace('%', '').strip(), [vm_uuid, mdev_uuid], metrics)
+        add_metrics('vgpu_memory_utilization', vgpu['Memory'].replace('%', '').strip(), [vm_uuid, mdev_uuid], metrics)
     return metrics.values()
 
 
@@ -1411,11 +1410,11 @@ def collect_hy_gpu_status():
     for card_name, card_data in gpu_info_json.items():
         gpu_serial = card_data['Serial Number']
         pci_device_address = card_data["PCI Bus"]
-        metrics['gpu_power_draw'].add_metric([pci_device_address, gpu_serial], float(card_data["Average Graphics Package Power (W)"]))
-        metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(card_data["Temperature (Sensor junction) (C)"]))
-        #metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(gpu["Fan Speed (%)"]))
-        metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data["DCU use (%)"]))
-        metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data["DCU memory use (%)"]))
+        add_metrics('gpu_power_draw', card_data["Average Graphics Package Power (W)"], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_temperature', card_data["Temperature (Sensor junction) (C)"], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_fan_speed', card_data["Fan speed (%)"], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_utilization', card_data["DCU use (%)"], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_memory_utilization', card_data["DCU memory use (%)"], [pci_device_address, gpu_serial], metrics)
         gpuStatus, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
         metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
         handle_gpu_status(gpuStatus, pci_device_address)
@@ -1447,18 +1446,28 @@ def collect_amd_gpu_status():
     for card_name, card_data in gpu_info_json.items():
         gpu_serial = card_data['Serial Number']
         pci_device_address = card_data['PCI Bus']
-        metrics['gpu_power_draw'].add_metric([pci_device_address, gpu_serial],
-                                             float(card_data['Average Graphics Package Power (W)']))
-        metrics['gpu_temperature'].add_metric([pci_device_address, gpu_serial], float(card_data['Temperature (Sensor edge) (C)']))
-        metrics['gpu_fan_speed'].add_metric([pci_device_address, gpu_serial], float(card_data['Fan Speed (%)']))
-        metrics['gpu_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU use (%)']))
+        add_metrics('gpu_power_draw', card_data['Average Graphics Package Power (W)'], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_temperature', card_data['Temperature (Sensor edge) (C)'], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_fan_speed', card_data['Fan speed (%)'], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_utilization', card_data['GPU use (%)'], [pci_device_address, gpu_serial], metrics)
         gpuStatus , gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
         metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
-        metrics['gpu_memory_utilization'].add_metric([pci_device_address, gpu_serial], float(card_data['GPU memory use (%)']))
+        add_metrics('gpu_memory_utilization', card_data['GPU Memory Allocated (VRAM%)'], [pci_device_address, gpu_serial], metrics)
 
         handle_gpu_status(gpuStatus, pci_device_address)
 
     return metrics.values()
+
+def add_metrics(metric_name, value, labels, metrics):
+    if isinstance(value, (int, float)):
+        metrics[metric_name].add_metric(labels, float(value))
+        return
+
+    if isinstance(value, str) and value.replace('.', '', 1).isdigit():
+        metrics[metric_name].add_metric(labels, float(value))
+        return
+
+    logger.info("value %s for metric %s labels:%s is not a valid number" % (value, metric_name, ",".join(labels)))
 
 @in_bash
 def convert_pci_status_to_int(pci_address):
