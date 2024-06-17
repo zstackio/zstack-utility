@@ -177,18 +177,15 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CopySnapshotRsp()
 
-        found = False
         seq_num = ""
         o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
         ret = jsonobject.loads(o)
-        if ret.result.fileInfo is not None:
-            for info in ret.result.fileInfo:
-                if cmd.snapshotName in info.fileName:
-                    found = True
-                    seq_num = info.seqNum
-                    break
-        if not found or seq_num is None:
-            raise Exception('cannot found snapshot info on lun[%s/%s]' % (cmd.logicalPoolName, cmd.lunName))
+        if not ret.result.hasattr('fileInfo'):
+            raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
+        for info in ret.result.fileInfo:
+            if cmd.snapshotName in info.fileName:
+                seq_num = info.seqNum
+                break
 
         path_prefix = PROTOCOL_CBD_PREFIX + cmd.physicalPoolName + "/" + cmd.logicalPoolName
         src_snapshot_path = path_prefix + "/" + cmd.lunName + "@" + str(seq_num)
@@ -230,7 +227,7 @@ class ZbsAgent(plugin.TaskManager):
         isProtected = False
         o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
         ret = jsonobject.loads(o)
-        if not ret.result.fileInfo:
+        if not ret.result.hasattr('fileInfo'):
             raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
         for info in ret.result.fileInfo:
             if cmd.snapshotName in info.fileName:
@@ -271,13 +268,12 @@ class ZbsAgent(plugin.TaskManager):
         isProtected = False
         o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
         ret = jsonobject.loads(o)
-        if ret.result.fileInfo:
-            for info in ret.result.fileInfo:
-                if cmd.snapshotName in info.fileName:
-                    isProtected = info.isProtected
-                    break
-        else:
+        if not ret.result.hasattr('fileInfo'):
             raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
+        for info in ret.result.fileInfo:
+            if cmd.snapshotName in info.fileName:
+                isProtected = info.isProtected
+                break
 
         if not isProtected:
             zbsutils.protect_snapshot(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
@@ -298,12 +294,16 @@ class ZbsAgent(plugin.TaskManager):
         rsp = CreateSnapshotRsp()
 
         found = False
+        install_path = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(cmd.logicalPoolName) + "/" + cmd.logicalPoolName + "/" + cmd.lunName + "@" + cmd.snapshotName
+
         o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
         ret = jsonobject.loads(o)
-        if ret.result.fileInfo is not None:
+        if ret.result.hasattr('fileInfo'):
             for info in ret.result.fileInfo:
                 if cmd.snapshotName in info.fileName:
                     found = True
+                    rsp.size = ret.result.snapShotFileInfo.length
+                    rsp.installPath = install_path
                     break
 
         if cmd.skipOnExisting and found:
@@ -313,11 +313,10 @@ class ZbsAgent(plugin.TaskManager):
         ret = jsonobject.loads(o)
         if ret.error is None:
             rsp.size = ret.result.snapShotFileInfo.length
-            rsp.installPath = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(cmd.logicalPoolName) + "/" + cmd.logicalPoolName + "/" + cmd.lunName + "@" + cmd.snapshotName
+            rsp.installPath = install_path
+            return jsonobject.dumps(rsp)
         else:
-            raise Exception('failed to create snapshot[%s@%s] on zbs, error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
-
-        return jsonobject.dumps(rsp)
+            raise Exception('failed to create snapshot[%s@%s], error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
 
     @replyerror
     def cbd_to_nbd(self, req):
@@ -333,7 +332,7 @@ class ZbsAgent(plugin.TaskManager):
             seq_num = ""
             o = zbsutils.query_snapshot_info(logical_pool_name, lun_name)
             ret = jsonobject.loads(o)
-            if not ret.result.fileInfo:
+            if not ret.result.hasattr('fileInfo'):
                 raise Exception('failed to found snapshot for lun[%s]' % lun_name)
             for info in ret.result.fileInfo:
                 if snapshot_name in info.fileName:
