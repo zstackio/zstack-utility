@@ -1027,11 +1027,14 @@ def fetch_vm_qemu_processes():
 def find_vm_uuid_from_vm_qemu_process(process):
     prefix = 'guest='
     suffix = ',debug-threads=on'
-    for word in process.cmdline():
-        # word like 'guest=707e9d31751e499eb6110cce557b4168,debug-threads=on'
-        if word.startswith(prefix) and word.endswith(suffix):
-            return word[len(prefix) : len(word) - len(suffix)]
-    return None
+    try:
+        for word in process.cmdline():
+            # word like 'guest=707e9d31751e499eb6110cce557b4168,debug-threads=on'
+            if word.startswith(prefix) and word.endswith(suffix):
+                return word[len(prefix) : len(word) - len(suffix)]
+        return None
+    except psutil.NoSuchProcess:
+        return None
 
 
 def collect_vm_statistics():
