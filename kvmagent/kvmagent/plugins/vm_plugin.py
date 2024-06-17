@@ -126,6 +126,7 @@ class DomainVolume(object):
         self.driver_type = ''
         self.dvbs = None
         self.deviceType = ''
+        self.disk_device = ''
 
         self._origin_xml_obj = None
 
@@ -163,7 +164,7 @@ class DomainVolume(object):
 
     @property
     def is_cdrom(self):
-        return self.disk_device is 'cdrom'
+        return self.disk_device == 'cdrom'
 
     def over_incorrect_driver(self):
         return block_device_use_block_type() \
@@ -245,9 +246,9 @@ class DomainVolumeBackingStore(object):
         return block_volume_over_incorrect_driver(self)
 
     def update_backing_store_type_to_block(self):
-        if self.backing_store is None:
-            return
-        self.backing_store.update_backing_store_type_to_block()
+        if self.backing_store is not None:
+            self.backing_store.update_backing_store_type_to_block()
+
         if self._over_incorrect_driver():
             self._update_backing_store_type_to_block()
 
@@ -7799,10 +7800,10 @@ class VmPlugin(kvmagent.KvmAgent):
             if not volume.over_incorrect_driver():
                 return old_disk  # no change
 
-            # vm created by ISO image or storage migrated may not have backing store info
-            if volume.dvbs is not None:
-                volume.dvbs.update_backing_store_type_to_block()
-                block_backing_store = volume.dvbs._origin_xml_obj
+        # vm created by ISO image or storage migrated may not have backing store info
+        if volume.dvbs is not None:
+            volume.dvbs.update_backing_store_type_to_block()
+            block_backing_store = volume.dvbs._origin_xml_obj
 
         driver_type = volume.format if volume.format else 'qcow2'
         volume = file_volume_check(volume)
