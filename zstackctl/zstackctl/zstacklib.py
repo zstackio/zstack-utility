@@ -28,7 +28,7 @@ pkg_zstacklib = ""
 yum_server = ""
 trusted_host = ""
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "uos1021a", "rocky"]
+RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "uos1021a", "rocky", "linxos-el"]
 DEB_BASED_OS = ["ubuntu", "kylin4.0.2", "uos", "debian", "uniontech"]
 DISTRO_WITH_RPM_DEB = ["kylin"]
 
