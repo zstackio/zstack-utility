@@ -280,8 +280,11 @@ def camel_obj_to_snake(camel):
 
 def process_is_running(process_name):
     for process in psutil.process_iter():
-        if process_name in process.name():
-            return True
+        try:
+            if process_name in process.name():
+                return True
+        except psutil.NoSuchProcess:
+            return False
     return False
 
 
