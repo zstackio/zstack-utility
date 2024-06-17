@@ -1410,11 +1410,11 @@ def collect_hy_gpu_status():
     for card_name, card_data in gpu_info_json.items():
         gpu_serial = card_data['Serial Number']
         pci_device_address = card_data["PCI Bus"]
-        add_metrics('gpu_power_draw', card_data["Average Graphics Package Power (W)"], [pci_device_address, gpu_serial], metrics)
-        add_metrics('gpu_temperature', card_data["Temperature (Sensor junction) (C)"], [pci_device_address, gpu_serial], metrics)
-        add_metrics('gpu_fan_speed', card_data["Fan speed (%)"], [pci_device_address, gpu_serial], metrics)
-        add_metrics('gpu_utilization', card_data["DCU use (%)"], [pci_device_address, gpu_serial], metrics)
-        add_metrics('gpu_memory_utilization', card_data["DCU memory use (%)"], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_power_draw', card_data.get["Average Graphics Package Power (W)"], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_temperature', card_data.get["Temperature (Sensor junction) (C)"],  [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_fan_speed', card_data.get["Fan speed (%)"], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_utilization', card_data.get["DCU use (%)"], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_memory_utilization', card_data.get["DCU memory use (%)"], [pci_device_address, gpu_serial], metrics)
         gpuStatus, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
         metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
         handle_gpu_status(gpuStatus, pci_device_address)
@@ -1446,24 +1446,27 @@ def collect_amd_gpu_status():
     for card_name, card_data in gpu_info_json.items():
         gpu_serial = card_data['Serial Number']
         pci_device_address = card_data['PCI Bus']
-        add_metrics('gpu_power_draw', card_data['Average Graphics Package Power (W)'], [pci_device_address, gpu_serial], metrics)
-        add_metrics('gpu_temperature', card_data['Temperature (Sensor edge) (C)'], [pci_device_address, gpu_serial], metrics)
-        add_metrics('gpu_fan_speed', card_data['Fan speed (%)'], [pci_device_address, gpu_serial], metrics)
-        add_metrics('gpu_utilization', card_data['GPU use (%)'], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_power_draw', card_data.get['Average Graphics Package Power (W)'], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_temperature', card_data.get['Temperature (Sensor edge) (C)'], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_fan_speed', card_data.get['Fan speed (%)'], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_utilization', card_data.get['GPU use (%)'], [pci_device_address, gpu_serial], metrics)
         gpuStatus , gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
         metrics['gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
-        add_metrics('gpu_memory_utilization', card_data['GPU Memory Allocated (VRAM%)'], [pci_device_address, gpu_serial], metrics)
+        add_metrics('gpu_memory_utilization', card_data.get['GPU Memory Allocated (VRAM%)'], [pci_device_address, gpu_serial], metrics)
 
         handle_gpu_status(gpuStatus, pci_device_address)
 
     return metrics.values()
 
 def add_metrics(metric_name, value, labels, metrics):
+    if value is None or value == "":
+        return
+
     if isinstance(value, (int, float)):
         metrics[metric_name].add_metric(labels, float(value))
         return
 
-    if isinstance(value, str) and value.replace('.', '', 1).isdigit():
+    if isinstance(value, (str, unicode)) and value.replace('.', '', 1).isdigit():
         metrics[metric_name].add_metric(labels, float(value))
         return
 
