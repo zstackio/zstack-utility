@@ -1434,46 +1434,34 @@ class HaPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         created_time = time.time()
         self.setup_fencer(cmd.uuid, created_time)
-        install_path = cmd.installPath;
-        heart_beat_wwn_path = install_path.replace("block://", "/dev/disk/by-id/wwn-0x")
-        rsp = AgentRsp()
+        pool_name = cmd.installPath.replace("rbd:", "").split('/')[0]
 
-        if os.path.exists(heart_beat_wwn_path) is not True:
-            try:
-                bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
-            except Exception as e:
-                pass
+        # recheck rbd path exist
+        try:
+            shell.call("timeout 5 qemu-img info %s" % cmd.installPath)
+        except Exception as e:
+            err_msg = "fail to find heartbeat image, please make sure host is connected with ps. " + e.message
+            e.message = err_msg
+            raise e
 
-        # recheck wwn path
-        if os.path.exists(heart_beat_wwn_path) is not True:
-            err_msg = "fail to find heartbeat lun, please make sure host is connected with ps";
-            logger.debug(err_msg)
-            rsp.success = False
-            rsp.error = err_msg
-            return jsonobject.dumps(rsp)
-
-        def heartbeat_io_check(path):
-            heartbeat_check = shell.ShellCmd('sg_inq %s' % path)
-            heartbeat_check(False)
-            if heartbeat_check.return_code != 0:
-                return False
-
-            return True
+        def heartbeat_io_check():
+            # TODO use py sdk
+            ret = shell.run("timeout 5 qemu-img bench -c 10 -d 1 -w -t none -f raw -n %s" % cmd.installPath)
+            return ret == 0
 
         @thread.AsyncThread
         def heartbeat_on_block():
             failure = 0
-
             while self.run_fencer(cmd.uuid, created_time):
                 try:
                     time.sleep(cmd.interval)
 
-                    successfully_check_heartbeat = heartbeat_io_check(heart_beat_wwn_path)
+                    successfully_check_heartbeat = heartbeat_io_check()
                     if successfully_check_heartbeat is not True:
-                        logger.debug('heartbeat path %s is not accessible' % heart_beat_wwn_path)
+                        logger.debug('heartbeat path %s is not accessible' % cmd.installPath)
                         failure += 1
                     else:
-                        logger.debug('heartbeat path %s is accessible' % heart_beat_wwn_path)
+                        logger.debug('heartbeat path %s is accessible' % cmd.installPath)
                         failure = 0
                         continue
 
@@ -1482,14 +1470,11 @@ class HaPlugin(kvmagent.KvmAgent):
 
                     try:
                         logger.warn("block storage %s fencer fired!" % cmd.uuid)
-
-                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy, cmd.uuid, True).keys()
+                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy, ['%s/' % pool_name], False)
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
                             clean_network_config(vm_uuids)
-                            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -r >/dev/null")
-                            bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
 
                         # reset the failure count
                         failure = 0
