@@ -1422,10 +1422,10 @@ def collect_nvidia_gpu_status():
     gpu_index_mapping_pciaddress = {}
     for info in gpu_info.splitlines():
         info = info.strip().split(',')
-        pci_device_address = info[-2].strip()
+        pci_device_address = info[-2].strip().lower()
         gpu_serial = info[-1].strip()
         if len(pci_device_address.split(':')[0]) == 8:
-            pci_device_address = pci_device_address[4:]
+            pci_device_address = pci_device_address[4:].lower()
 
         add_metrics('host_gpu_power_draw', info[0].replace('W', '').strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_temperature', info[1].strip(), [pci_device_address, gpu_serial], metrics)
@@ -1478,7 +1478,7 @@ def collect_hy_gpu_status():
     gpu_info_json = json.loads(gpu_info)
     for card_name, card_data in gpu_info_json.items():
         gpu_serial = card_data['Serial Number']
-        pci_device_address = card_data["PCI Bus"]
+        pci_device_address = card_data["PCI Bus"].lower()
         add_metrics('host_gpu_power_draw', card_data.get("Average Graphics Package Power (W)"), [pci_device_address, gpu_serial],
                     metrics)
         add_metrics('host_gpu_temperature', card_data.get("Temperature (Sensor junction) (C)"), [pci_device_address, gpu_serial],
@@ -1508,7 +1508,7 @@ def collect_amd_gpu_status():
     gpu_info_json = json.loads(gpu_info.strip())
     for card_name, card_data in gpu_info_json.items():
         gpu_serial = card_data['Serial Number']
-        pci_device_address = card_data['PCI Bus']
+        pci_device_address = card_data['PCI Bus'].lower()
         add_metrics('host_gpu_power_draw', card_data.get('Average Graphics Package Power (W)'), [pci_device_address, gpu_serial],
                     metrics)
         add_metrics('host_gpu_temperature', card_data.get('Temperature (Sensor edge) (C)'), [pci_device_address, gpu_serial],
