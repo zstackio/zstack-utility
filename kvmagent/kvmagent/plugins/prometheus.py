@@ -1093,8 +1093,12 @@ def collect_vm_pvpanic_enable_in_domain_xml():
     # if not, collect '0'
     for process in processes:
         vm_uuid = find_vm_uuid_from_vm_qemu_process(process)
+        r = ""
+        try:
+            r = filter(lambda word: word == 'pvpanic,ioport=1285', process.cmdline())
+        except psutil.NoSuchProcess:
+            pass
 
-        r = filter(lambda word: word == 'pvpanic,ioport=1285', process.cmdline())
         enable = 1 if len(r) > 0 else 0
         metrics[KEY].add_metric([vm_uuid], enable)
 
