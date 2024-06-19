@@ -6110,6 +6110,7 @@ class Vm(object):
             if not cpuFlags and cmd.nestedVirtualization == 'none':
                 cpuFlags = "qemu64"
 
+
             if cpuFlags:
                 qcmd = e(root, 'qemu:commandline')
                 e(qcmd, "qemu:arg", attrib={"value": "-cpu"})
@@ -6153,6 +6154,10 @@ class Vm(object):
             add_cpu_vendor_id_to_cpu_flags()    
 
         root = elements['root']
+        qcmd = e(root, 'qemu:commandline')
+        e(qcmd, "qemu:arg", attrib={"value": "-fw_cfg"})
+        e(qcmd, "qemu:arg", attrib={"value": "opt/ovmf/X-PciMmio64Mb,string=98304"})
+
         xml = etree.tostring(root)
 
         vm = Vm()
