@@ -116,8 +116,10 @@ class Ipv6Address(object):
         ip = "ff02::1:ff"
         if len(self.ips[6]) >= 2:
             ip += self.ips[6][-2:]
+        elif len(self.ips[6]) == 1:
+            ip += "0" + self.ips[6][-1:]
         else:
-            ip += self.ips[6]
+            ip += "00"
         return ip + ":" + self.ips[7]
 
     def get_prefix(self, prefixlen):
