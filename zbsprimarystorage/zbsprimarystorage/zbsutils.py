@@ -12,6 +12,8 @@ logger = log.get_logger(__name__)
 
 DEFAULT_ZBS_CONF_PATH = "/etc/zbs/client.conf"
 DEFAULT_ZBS_USER_NAME = "zbs"
+DEFAULT_STRIPE_VOLUME_COUNT = 64
+DEFAULT_STRIPE_VOLUME_UINT = "64KiB"
 
 
 def query_mds_status_info():
@@ -59,7 +61,7 @@ def get_physical_pool_name(logical_pool_name):
 
 
 def create_volume(logical_pool_name, lun_name, lun_size):
-    return shell.call("zbs create file --path %s/%s --size %s --user %s --format json" % (logical_pool_name, lun_name, lun_size, DEFAULT_ZBS_USER_NAME))
+    return shell.call("zbs create file --path %s/%s --size %s --stripecount %d --stripeunit %s --user %s --format json" % (logical_pool_name, lun_name, lun_size, DEFAULT_STRIPE_VOLUME_COUNT, DEFAULT_STRIPE_VOLUME_UINT, DEFAULT_ZBS_USER_NAME))
 
 
 @linux.retry(times=30, sleep_time=5)
