@@ -45,7 +45,7 @@ skipIpv6 = 'false'
 bridgeDisableIptables = 'false'
 isBareMetal2Gateway='false'
 releasever = ''
-unsupported_iproute_list = ["nfs4"]
+unsupported_iproute_list = ["nfs4", "l2003sp3o"]
 unittest_flag = 'false'
 mn_ip = None
 isInstallHostShutdownHook = 'false'
@@ -224,6 +224,7 @@ def install_kvm_pkg():
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'oe2203sp1': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'h2203sp1o': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
+            'l2003sp3o': 'vconfig open-iscsi qemu-kvm python2-pyudev collectd-disk',
             'nfs4': 'vconfig iscsi-initiator-utils OpenIPMI nettle libselinux-devel iptables iptables-services qemu-kvm python2-pyudev collectd-disk'
         }
 
