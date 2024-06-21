@@ -2219,7 +2219,7 @@ def install_release_on_host(is_rpm, host_info, host_post_info):
             'h79c': 'h7',
             'h84r': 'h8',
             'h2203sp1o': 'h2203sp1',
-            'l2203sp3o': 'l2003sp3'}
+            'l2003sp3o': 'l2003sp3'}
         release_name = release_name_mapping.get(releasever, 'el7')
         pkg_name = 'zstack-release-{0}-1.{1}.zstack.noarch.rpm'.format(releasever, release_name)
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/{2}'.format(host_info.host_arch, releasever, pkg_name)
@@ -2302,7 +2302,7 @@ class ZstackLib(object):
                 if 'zstack-mn' in self.zstack_repo:
                     self.generate_mn_yum_repo()
                 if 'qemu-kvm-ev-mn' in self.zstack_repo and (
-                        self.distro == 'nfs' or self.distro_version >= 7):
+                        self.distro == 'nfs' or self.distro == 'linxos-el' or self.distro_version >= 7):
                     self.generate_qemu_kvm_ev_yum_repo()
                 if 'mlnx-ofed' in self.zstack_repo:
                     self.generate_mlnx_yum_repo()
