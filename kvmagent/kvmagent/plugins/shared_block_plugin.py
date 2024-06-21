@@ -15,7 +15,7 @@ from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import lock
-from zstacklib.utils import lvm
+from zstacklib.utils import lvm, sanlock
 from zstacklib.utils import list_ops
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img
@@ -1369,44 +1369,29 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         if cmd.vgUuids is None or len(cmd.vgUuids) == 0:
             return jsonobject.dumps(rsp)
 
+        def _check(cur_vg):
+            if lvmlockd_status.failed:
+                return "Cannot access lvmlockd"
+
+            if lvmlockd_status.ls_status.get(cur_vg) is None or lvmlockd_status.ls_status.get(cur_vg).killed or \
+                    lvmlockd_status.ls_status.get(cur_vg).dropped:
+                return "no working lockspace for vg %s on lvmlockd" % cur_vg
+
+            if sanlock_ls.get_lockspace_record(cur_vg) is None or sanlock_ls.get_lockspace_record(cur_vg).is_space_dead():
+                return "no working lockspace for vg %s on sanlock" % cur_vg
+
+            invalid_pv_uuid, err = lvm.get_invalid_pv_uuids(cur_vg, checkIo=False, timeout=60)
+            if err:
+                return err
+            elif len(invalid_pv_uuid) != 0:
+                return "vg %s is missing pv: %s" % (cur_vg, invalid_pv_uuid)
+
+        sanlock_ls = sanlock.SanlockClientStatusParser()
+        lvmlockd_status = lvm.LvmlockdStatus()
         rsp.failedVgs = {}
-
-        def vgck(vg_group):
-            if len(vg_group) == 0:
-                return
-
-            vgUuid = vg_group.pop(0)
-            r, o, e = lvm.vgck(vgUuid, 360)
-            if o is not None and o != "":
-                for es in o.strip().splitlines():
-                    if "lock start in progress" in es:
-                        break
-                    elif "held by other host" in es:
-                        break
-                    elif "Reading VG %s without a lock" % vgUuid in es:
-                        rsp.failedVgs.update({vgUuid : o})
-                        break
-                    elif 'Volume group "%s" not found' % vgUuid in es or re.search(r"volume group is missing \d physical volumes", es):
-                        rsp.failedVgs.update({vgUuid : o})
-                        break
-
-            vgck(vg_group)
-
-        # up to three worker threads executing vgck
-        threads_maxnum = 3
-        vg_groups = list_ops.list_split(cmd.vgUuids, threads_maxnum)
-
-        threads = []
-        for vg_group in vg_groups:
-            if len(vg_group) != 0:
-                threads.append(thread.ThreadFacade.run_in_thread(vgck, (vg_group,)))
-
-        for t in threads:
-            t.join()
-
-
-        if lvm.is_lvmlockd_socket_abnormal():
-            for vgUuid in cmd.vgUuids:
-                rsp.failedVgs.update({vgUuid: "lvmlockd socket is abnormal."})
+        for vg_uuid in set(cmd.vgUuids):
+            error = _check(vg_uuid)
+            if error:
+                rsp.failedVgs.update({vg_uuid: error})
 
         return jsonobject.dumps(rsp)

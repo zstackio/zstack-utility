@@ -611,8 +611,8 @@ def start_lock_service(io_timeout=40):
 
 
     restart_sanlock = need_restart_sanlock()
-    restart_lvmlockd = restart_sanlock or is_lvmlockd_upgraded() \
-                       or (LooseVersion(get_lvmlockd_version()) >= LooseVersion("2.03") and is_lvmlockd_socket_abnormal())
+    restart_lvmlockd = restart_sanlock or is_lvmlockd_upgraded() or \
+                       (LooseVersion(get_lvmlockd_version()) >= LooseVersion("2.03") and LvmlockdStatus().failed)
     if restart_sanlock:
         stop_sanlock()
     if restart_lvmlockd:
@@ -1823,12 +1823,12 @@ def check_lv_on_pv_valid(vgUuid, pvUuid, lv_path=None):
 
 
 @bash.in_bash
-def get_invalid_pv_uuids(vgUuid, checkIo = False):
+def get_invalid_pv_uuids(vgUuid, checkIo = False, timeout=10):
     invalid_pv_uuids = []
     pvs_outs = bash.bash_o(
-        "timeout -s SIGKILL 10 pvs --noheading --nolocking -t -Svg_name=%s -ouuid,name,missing" % vgUuid).strip().split("\n")
+        "timeout -s SIGKILL %s pvs --noheading --nolocking -t -Svg_name=%s -ouuid,name,missing" % (timeout, vgUuid)).strip().splitlines()
     if len(pvs_outs) == 0:
-        return
+        return invalid_pv_uuids, "vg %s not found" % vgUuid
     for pvs_out in pvs_outs:
         pv_uuid = pvs_out.strip().split(" ")[0]
         if "unknown" in pvs_out:
@@ -1838,7 +1838,7 @@ def get_invalid_pv_uuids(vgUuid, checkIo = False):
         elif checkIo is True and check_lv_on_pv_valid(vgUuid, pv_uuid) is False:
             invalid_pv_uuids.append(pv_uuid)
 
-    return invalid_pv_uuids
+    return invalid_pv_uuids, None
 
 
 @bash.in_bash
@@ -1985,3 +1985,53 @@ def find_qemu_for_lv_in_use(lv_path):
     dm_path = bash.bash_o("readlink -e %s" % lv_path)
     pids = [x.strip() for x in bash.bash_o("lsof -b -c qemu-kvm -c qemu-system| grep -w %s | awk '{print $2}'" % dm_path).splitlines()]
     return [QemuStruct(pid) for pid in pids]
+
+class LvmlockdStatus(object):
+    def __init__(self):
+        self.failed = False
+        self.ls_status = {}
+        self._init()
+
+    '''
+    info=ls ls_name=lvm_3ae7fd0635404f048429a0418752a738 vg_name=3ae7fd0635404f048429a0418752a738
+    vg_uuid=G5vV72-Yjwy-7VrR-nVyQ-qAfL-EzFl-NKGkuk vg_sysid=. vg_args=1.0.0:lvmlock lm_type=sanlock
+    host_id=1 create_fail=0 create_done=1 thread_work=0 thread_stop=0 thread_done=0 kill_vg=0 drop_vg=0 sanlock_gl_enabled=1
+    '''
+    class LockspaceStatus(object):
+        def __init__(self, line):
+            ls = {kv.split('=')[0]: kv.split('=')[1] for kv in line.strip().split()}
+            self.killed = bool(int(ls.get("kill_vg")))
+            self.dropped = bool(int(ls.get("drop_vg")))
+            self.vg_name = ls.get("vg_name")
+
+    def _init(self):
+        @linux.retry(3, 1)
+        def _update():
+            r, status_line, e = bash.bash_roe("timeout 10 lvmlockctl -i -d")
+            if r != 0:
+                raise Exception("dump lvmlockd info failed: retcode %s, error %s" % (r, e))
+            for line in filter(lambda l: 'ls_name=lvm_' in l, status_line.splitlines()):
+                ls = self.LockspaceStatus(line)
+                self.ls_status.update({ls.vg_name: ls})
+
+        try:
+            _update()
+        except Exception as e:
+            logger.warn(str(e))
+            self._check()
+
+    def _check(self):
+        @linux.retry(3, 1)
+        def check_lvmlockd_log():
+            # check if lvmlockd can receive the lvm command
+            fake_vg = 'fake_vg_%s' % linux.get_current_timestamp()
+            start_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            vgck(fake_vg, 10)
+            end_time = (datetime.datetime.now() + datetime.timedelta(seconds=2)).strftime("%Y-%m-%d %H:%M:%S")
+            if not lvmlockd_log_search('vgck', start_time, end_time):
+                raise RetryException("lvmlockd socket exceptions!")
+        try:
+            check_lvmlockd_log()
+        except Exception as e:
+            logger.warn(str(e))
+            self.failed = True

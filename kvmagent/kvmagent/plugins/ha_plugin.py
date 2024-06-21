@@ -381,7 +381,7 @@ class HaPlugin(kvmagent.KvmAgent):
                             continue
 
                         # we will check one qcow2 per pv to determine volumes on pv should be kill
-                        invalid_pv_uuids = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
+                        invalid_pv_uuids, _ = lvm.get_invalid_pv_uuids(cmd.vgUuid, cmd.checkIo)
                         vms = lvm.get_running_vm_root_volume_on_pv(cmd.vgUuid, invalid_pv_uuids, True)
                         killed_vm_uuids = []
                         for vm in vms:
