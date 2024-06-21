@@ -2,12 +2,15 @@ __author__ = 'Xingwei Yu'
 
 import traceback
 import pprint
+import socket
+import threading
 
 import zbsutils
 import zstacklib.utils.jsonobject as jsonobject
 
 from zstacklib.utils import plugin
 from zstacklib.utils import daemon
+from zstacklib.utils import linux
 from zstacklib.utils.report import *
 from zstacklib.utils.bash import *
 
@@ -18,6 +21,7 @@ logger = log.get_logger(__name__)
 
 PROTOCOL_CBD_PREFIX = "cbd:"
 PROTOCOL_NBD_PREFIX = "nbd://"
+port_lock = threading.Lock()
 
 
 class AgentResponse(object):
@@ -123,6 +127,16 @@ def get_snapshot_name(install_path):
     return install_path.split(":")[1].split("/")[2].split("@")[1]
 
 
+def get_free_port_in_range(start_port, end_port):
+    for port in range(start_port, end_port):
+        s = socket.socket()
+        s.bind(('', port))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+    raise Exception("no free port found in the specified range[%d, %d]" % (start_port, end_port))
+
+
 class ZbsAgent(plugin.TaskManager):
     ECHO_PATH = "/zbs/primarystorage/echo"
     GET_FACTS_PATH = "/zbs/primarystorage/facts"
@@ -132,6 +146,7 @@ class ZbsAgent(plugin.TaskManager):
     QUERY_VOLUME_PATH = "/zbs/primarystorage/volume/query"
     CLONE_VOLUME_PATH = "/zbs/primarystorage/volume/clone"
     CBD_TO_NBD_PATH = "/zbs/primarystorage/volume/cbdtonbd"
+    CLEAN_NBD_PATH = "/zbs/primarystorage/volume/cleannbd"
     CREATE_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/create"
     DELETE_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/delete"
     ROLLBACK_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/rollback"
@@ -152,6 +167,7 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CLONE_VOLUME_PATH, self.clone_volume)
         self.http_server.register_async_uri(self.EXPAND_VOLUME_PATH, self.expand_volume)
         self.http_server.register_async_uri(self.CBD_TO_NBD_PATH, self.cbd_to_nbd)
+        self.http_server.register_async_uri(self.CLEAN_NBD_PATH, self.clean_nbd)
         self.http_server.register_async_uri(self.CREATE_SNAPSHOT_PATH, self.create_snapshot)
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
         self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
@@ -319,6 +335,16 @@ class ZbsAgent(plugin.TaskManager):
             raise Exception('failed to create snapshot[%s@%s], error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
 
     @replyerror
+    def clean_nbd(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        fullname = "qemu-nbd -D cbd2nbd.%d -f raw -p %d" % (cmd.port, cmd.port)
+        linux.kill_process_by_fullname(fullname, 9)
+
+        return jsonobject.dumps(rsp)
+
+    @replyerror
     def cbd_to_nbd(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CbdToNbdRsp()
@@ -343,12 +369,13 @@ class ZbsAgent(plugin.TaskManager):
         else:
             install_path = cmd.installPath
 
-        zbsutils.cbd_to_nbd(10086, install_path)
-
-        rsp.ip = cmd.mdsAddr
-        rsp.port = 10086
-
-        return jsonobject.dumps(rsp)
+        with port_lock:
+            port = get_free_port_in_range(10600, 10800)
+            desc = "cbd2nbd.%d" % port
+            zbsutils.cbd_to_nbd(desc, port, install_path)
+            rsp.ip = cmd.mdsAddr
+            rsp.port = port
+            return jsonobject.dumps(rsp)
 
     @replyerror
     def delete_volume(self, req):
