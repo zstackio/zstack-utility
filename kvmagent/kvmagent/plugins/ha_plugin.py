@@ -1438,11 +1438,9 @@ class HaPlugin(kvmagent.KvmAgent):
 
         # recheck rbd path exist
         try:
-            shell.call("timeout 5 qemu-img info %s" % cmd.installPath)
+            shell.call("timeout 15 qemu-img info %s" % cmd.installPath)
         except Exception as e:
-            err_msg = "fail to find heartbeat image, please make sure host is connected with ps. " + e.message
-            e.message = err_msg
-            raise e
+            logger.warn("fail to find heartbeat image, please make sure host is connected with ps. " + e.message)
 
         def heartbeat_io_check():
             # TODO use py sdk
