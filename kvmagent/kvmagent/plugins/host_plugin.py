@@ -293,10 +293,11 @@ class UsedIpTO(object):
 
 
 class HostKernelInterfaceTO(object):
-    def __init__(self, interfaceName=None, vlanId=None):
+    def __init__(self, interface_name=None, vlan_id=None, bridge_name=None):
         super(HostKernelInterfaceTO, self).__init__()
-        self.interfaceName = interfaceName
-        self.vlanId = vlanId
+        self.interfaceName = interface_name
+        self.vlanId = vlan_id
+        self.bridgeName = bridge_name
         self.ips = []   # type: list[UsedIpTO]
 
 class GetHostNetworkBongdingCmd(kvmagent.AgentCommand):
@@ -2024,13 +2025,14 @@ done
 
         return jsonobject.dumps(rsp)
 
-    def _make_host_kernel_interface(self, interfaceName=None, vlanId=None):
-        if not interfaceName or vlanId is None:
+    def _make_host_kernel_interface(self, interface_name=None, vlan_id=None, bridge_name=None):
+        if not interface_name or vlan_id is None:
             logger.debug("interface name or vlan id is None")
             return None
         to = HostKernelInterfaceTO()
-        to.interfaceName = interfaceName
-        to.vlanId = vlanId
+        to.interfaceName = interface_name
+        to.vlanId = vlan_id
+        to.bridgeName = bridge_name
         return to
 
     @kvmagent.replyerror
@@ -2056,28 +2058,20 @@ done
             for slave in all_slaves:
                 if not slave:
                     continue
-                if linux.is_bond(slave):
-                    interface = self._make_host_kernel_interface(slave, 0)
-                    break
-                if linux.is_physical_nic(slave):
-                    interface = self._make_host_kernel_interface(slave, 0)
+                if linux.is_bond(slave) or linux.is_physical_nic(slave):
+                    interface = self._make_host_kernel_interface(slave, 0, link_name)
                     break
                 if linux.is_vlan(slave):
                     vlan_parent = linux.get_vlan_parent(slave)
-                    if linux.is_bond(vlan_parent):
-                        interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(slave))
+                    if linux.is_bond(vlan_parent) or linux.is_physical_nic(vlan_parent):
+                        interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(slave), link_name)
                         break
-                    if linux.is_physical_nic(vlan_parent):
-                        interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(slave))
-                        break
-        elif linux.is_bond(link_name):   # ip on bond
+        elif linux.is_bond(link_name) or linux.is_physical_nic(link_name):
             interface = self._make_host_kernel_interface(link_name, 0)
-        elif linux.is_vlan(link_name):   # ip on vlan
+        elif linux.is_vlan(link_name):
             vlan_parent = linux.get_vlan_parent(link_name)
-            if linux.is_bond(vlan_parent):
+            if linux.is_bond(vlan_parent) or linux.is_physical_nic(vlan_parent):
                 interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(link_name))
-        elif linux.is_physical_nic(link_name):  # ip on physical nic
-            interface = self._make_host_kernel_interface(link_name, 0)
         else:
             rsp.error = "cannot parse interface[%s] by ip[%s]" % (link_name, cmd.targetIp)
             rsp.success = False
@@ -2108,19 +2102,22 @@ done
             if not iface.interfaceName or not linux.is_bond(iface.interfaceName):
                 raise Exception('cannot find bond[%s]' % iface.interfaceName)
 
-            pyhsical_dev = iface.interfaceName if iface.vlanId == 0 else '%s.%s' % (iface.interfaceName, iface.vlanId)
-            if not linux.is_device_exists(pyhsical_dev):
-                raise Exception('cannot find device[%s]' % pyhsical_dev)
+            physical_dev = iface.interfaceName if iface.vlanId == 0 else '%s.%s' % (iface.interfaceName, iface.vlanId)
+            if not linux.is_device_exists(physical_dev):
+                raise Exception('cannot find device[%s]' % physical_dev)
 
-            bridge_dev = linux.get_master_device(pyhsical_dev)
-            target_dev = bridge_dev if bridge_dev else pyhsical_dev
+            bridge_dev = linux.get_master_device(physical_dev)
+            target_dev = bridge_dev if bridge_dev else physical_dev
             logger.debug('host kernel interface is %s' % target_dev)
 
-            ifcfg = None
             if bridge_dev:
                 ifcfg = netconfig.NetBridgeConfig(bridge_dev)
+            elif iface.vlanId != 0:
+                ifcfg = netconfig.NetVlanConfig(physical_dev)
+            elif linux.is_bond(physical_dev):
+                ifcfg = netconfig.NetBondConfig(physical_dev)
             else:
-                ifcfg = netconfig.NetVlanConfig(pyhsical_dev) if iface.vlanId != 0 else netconfig.NetBondConfig(pyhsical_dev)
+                ifcfg = netconfig.NetEtherConfig(physical_dev)
 
             ip_list = linux.get_ip_list_by_nic_name(target_dev)
             if cmd.actionCode == 'deleteAction':
