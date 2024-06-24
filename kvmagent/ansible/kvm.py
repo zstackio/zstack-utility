@@ -198,13 +198,13 @@ run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm
 
 def install_kvm_pkg():
     def rpm_based_install():
-        os_base_dep = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool freeipmi iproute ipset \
+        os_base_dep = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils libvirt libvirt-client libvirt-python lighttpd lsof net-tools nfs-utils nmap openssh-clients \
                         smartmontools sshpass usbutils wget audit collectd-virt storcli nvme-cli pv rsync sed pciutils tar"
 
         distro_mapping = {
             'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel libicu edac-utils',
-            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu edac-utils lldpd',
+            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu edac-utils lldpd freeipmi',
             'uniontech': 'vconfig iscsi-initiator-utils OpenIPMI nettle qemu-kvm python-pyudev collectd-disk',
             'rocky': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel collectd-disk edac-utils',
         }
@@ -214,14 +214,14 @@ def install_kvm_pkg():
                            'edac-utils')
 
         releasever_mapping = {
-            'c74': 'qemu-kvm ',
-            'c76': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
-            'c79': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel',
-            'h76c': ('%s qemu-kvm libvirt-admin seabios-bin nping '
+            'c74': 'qemu-kvm',
+            'c76': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel freeipmi',
+            'c79': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel freeipmi',
+            'h76c': ('%s qemu-kvm libvirt-admin seabios-bin nping freeipmi '
                      'elfutils-libelf-devel vconfig OVMF libicu') % helix_rhel_rpms,
-            'h79c': ('%s qemu-kvm libvirt-admin seabios-bin nping '
+            'h79c': ('%s qemu-kvm libvirt-admin seabios-bin nping freeipmi '
                      'elfutils-libelf-devel vconfig OVMF libicu') % helix_rhel_rpms,
-            'h84r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm '
+            'h84r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
                      'seabios-bin elfutils-libelf-devel collectd-disk lldpd') % helix_rhel_rpms,
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel lldpd',
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
