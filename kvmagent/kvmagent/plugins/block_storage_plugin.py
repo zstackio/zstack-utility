@@ -53,6 +53,7 @@ class CreateHeartbeatCmd(AgentCmd):
         self.iscsiServerPort = None
         self.iscsiChapUserName = None
         self.iscsiChapUserPassword = None
+        self.heartbeatInstallPath = None
         self.target = None
 
 
@@ -111,6 +112,8 @@ class NoFailurePingRsp(AgentRsp):
 def translate_absolute_path_from_install_paht(path):
     if path is None:
         raise Exception("install path can not be null")
+    if path.startswith("rbd:"):
+        return path
     return path.replace("block://", "/dev/disk/by-id/wwn-0x")
 
 
@@ -121,7 +124,11 @@ def translate_absolute_path_from_wwn(wwn):
 
 
 def heartbeat_io_check(path):
-    heartbeat_check = shell.ShellCmd('sg_inq %s' % path)
+    cmd = 'sg_inq %s' % path
+    if path.startswith("rbd:"):
+        cmd = "timeout 15 qemu-img bench -c 10 -d 1 -w -t none -f raw -n %s" % path
+
+    heartbeat_check = shell.ShellCmd(cmd)
     heartbeat_check(False)
     if heartbeat_check.return_code != 0:
         return False
@@ -271,8 +278,10 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         rsp = CreateHeartbeatRsp()
         rsp.success = True
 
-        # FIXME: support rbd heartbeat
-        return jsonobject.dumps(rsp)
+        link_cmd = "ln -sf /usr/lib64/librbd.so /usr/lib64/librbd.so.1 && ln -sf /usr/lib64/librados.so /usr/lib64/librados.so.2"
+        if cmd.heartbeatInstallPath.startswith("rbd:"):
+            bash.bash_roe(link_cmd)
+            return jsonobject.dumps(rsp)
 
         # enable iscsid service
         ret, out, err = bash.bash_roe("systemctl is-enabled iscsid || systemctl enable iscsid")
@@ -494,21 +503,17 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         rsp = NoFailurePingRsp()
         rsp.success = True
 
-        # FIXME: support rbd heartbeat
-        return jsonobject.dumps(rsp)
-
         for heartbeat_install_path in cmd.psHeartbeatLunInstallPath:
             heartbeat_lun_path = translate_absolute_path_from_install_paht(heartbeat_install_path)
             successfully_create_heartbeat = heartbeat_io_check(heartbeat_lun_path)
-            if successfully_create_heartbeat is False:
+            if not successfully_create_heartbeat and not heartbeat_install_path.startswith("rbd:"):
                 bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
                 successfully_create_heartbeat = heartbeat_io_check(heartbeat_lun_path)
-                if successfully_create_heartbeat is False:
-                    rsp.success = False
-                    rsp.disconnectedPSInstallPath.append(heartbeat_install_path)
-                    error_msg = "fail to write heartbeat for ping, please check host connection with ps, heartbeat " \
-                                "path: " + heartbeat_lun_path
-                    rsp.error = error_msg
-                    logger.debug('heartbeat io check failed, cause: %s' % error_msg)
+
+            if successfully_create_heartbeat is False:
+                rsp.disconnectedPSInstallPath.append(heartbeat_install_path)
+                error_msg = "fail to write heartbeat for ping, please check host connection with ps, heartbeat " \
+                            "path: " + heartbeat_lun_path
+                logger.debug('heartbeat io check failed, cause: %s' % error_msg)
 
         return jsonobject.dumps(rsp)
