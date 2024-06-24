@@ -45,17 +45,20 @@ def query_snapshot_info(logical_pool_name, lun_name):
 
 def get_physical_pool_name(logical_pool_name):
     o = query_logical_pool_info()
+    r = jsonobject.loads(o)
+
+    if r.error.code != 0:
+        raise Exception('failed to get logical pool[%s] info, error[%s]' % (logical_pool_name, r.error.message))
 
     physical_pool_name = ""
-    for ret in jsonobject.loads(o).result:
+    for ret in r.result:
         for lp in ret.logicalPoolInfos:
             if logical_pool_name in lp.logicalPoolName:
                 physical_pool_name = lp.physicalPoolName
                 break
 
     if physical_pool_name is None:
-        raise Exception(
-            'cannot find logical pool[%s] in the zbs storage, you must create it manually' % logical_pool_name)
+        raise Exception('cannot found logical pool[%s], you must create it manually' % logical_pool_name)
 
     return physical_pool_name
 
