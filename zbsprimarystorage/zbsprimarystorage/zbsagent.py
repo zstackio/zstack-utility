@@ -11,6 +11,7 @@ import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import plugin
 from zstacklib.utils import daemon
 from zstacklib.utils import linux
+from zstacklib.utils import traceable_shell
 from zstacklib.utils.report import *
 from zstacklib.utils.bash import *
 
@@ -47,9 +48,9 @@ class ExpandVolumeRsp(AgentResponse):
         self.size = 0
 
 
-class CopySnapshotRsp(AgentResponse):
+class CopyRsp(AgentResponse):
     def __init__(self):
-        super(CopySnapshotRsp, self).__init__()
+        super(CopyRsp, self).__init__()
         self.installPath = None
         self.size = 0
 
@@ -141,6 +142,7 @@ class ZbsAgent(plugin.TaskManager):
     ECHO_PATH = "/zbs/primarystorage/echo"
     GET_FACTS_PATH = "/zbs/primarystorage/facts"
     GET_CAPACITY_PATH = "/zbs/primarystorage/capacity"
+    COPY_PATH = "/zbs/primarystorage/copy"
     CREATE_VOLUME_PATH = "/zbs/primarystorage/volume/create"
     DELETE_VOLUME_PATH = "/zbs/primarystorage/volume/delete"
     QUERY_VOLUME_PATH = "/zbs/primarystorage/volume/query"
@@ -150,7 +152,6 @@ class ZbsAgent(plugin.TaskManager):
     CREATE_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/create"
     DELETE_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/delete"
     ROLLBACK_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/rollback"
-    COPY_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/copy"
     EXPAND_VOLUME_PATH = "/zbs/primarystorage/volume/expand"
 
     http_server = http.HttpServer(port=7763)
@@ -161,6 +162,7 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         self.http_server.register_async_uri(self.GET_FACTS_PATH, self.get_facts)
         self.http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
+        self.http_server.register_async_uri(self.COPY_PATH, self.copy)
         self.http_server.register_async_uri(self.CREATE_VOLUME_PATH, self.create_volume)
         self.http_server.register_async_uri(self.DELETE_VOLUME_PATH, self.delete_volume)
         self.http_server.register_async_uri(self.QUERY_VOLUME_PATH, self.query_volume)
@@ -171,7 +173,6 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CREATE_SNAPSHOT_PATH, self.create_snapshot)
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
         self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
-        self.http_server.register_async_uri(self.COPY_SNAPSHOT_PATH, self.copy_snapshot)
 
     @replyerror
     def expand_volume(self, req):
@@ -189,40 +190,39 @@ class ZbsAgent(plugin.TaskManager):
         return jsonobject.dumps(rsp)
 
     @replyerror
-    def copy_snapshot(self, req):
+    def copy(self, req):
+        class CopyDaemon(plugin.TaskDaemon):
+            def __init__(self, task_spec):
+                super(CopyDaemon, self).__init__(task_spec, "copy")
+                self.task_spec = task_spec
+
+            def _cancel(self):
+                traceable_shell.cancel_job_by_api(self.api_id)
+                zbsutils.delete_volume(self.task_spec.logicalPoolName, self.task_spec.dstLunName)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = CopySnapshotRsp()
+        rsp = CopyRsp()
 
-        seq_num = ""
-        o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
-        ret = jsonobject.loads(o)
-        if not ret.result.hasattr('fileInfo'):
-            raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
-        for info in ret.result.fileInfo:
-            if cmd.snapshotName in info.fileName:
-                seq_num = info.seqNum
-                break
+        snapshot_path = cmd.logicalPoolName + "/" + cmd.lunName + "@" + cmd.snapshotName
+        dst_lun_path = cmd.logicalPoolName + "/" + cmd.dstLunName
 
-        path_prefix = PROTOCOL_CBD_PREFIX + cmd.physicalPoolName + "/" + cmd.logicalPoolName
-        src_snapshot_path = path_prefix + "/" + cmd.lunName + "@" + str(seq_num)
-        dst_lun_path = path_prefix + "/" + cmd.dstLunName
+        with CopyDaemon(task_spec=cmd):
+            o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
+            ret = jsonobject.loads(o)
+            if not ret.result.hasattr('fileInfo'):
+                raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
 
-        o = zbsutils.create_volume(cmd.logicalPoolName, cmd.dstLunName, cmd.dstLunSize)
-        ret = jsonobject.loads(o)
-        if ret.error.code != 0:
-            raise Exception('failed to create lun[%s], error[%s]' % (dst_lun_path, ret.error.message))
+            o = zbsutils.copy(snapshot_path, dst_lun_path, True)
+            ret = jsonobject.loads(o)
+            if ret.error.code != 0:
+                raise Exception('failed to copy snapshot[%s] to lun[%s], error[%s]' % (snapshot_path, dst_lun_path, ret.error.message))
+            elif ret.result.hasattr('fileStatus') and ret.result.fileStatus != 0:
+                zbsutils.delete_volume(cmd.logicalPoolName, cmd.dstLunName)
+                raise Exception('target lun[%s] exception[fileStatus:%d], deleted' % (dst_lun_path, ret.result.fileStatus))
+            rsp.size = ret.result.fileLength
+            rsp.installPath = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(cmd.logicalPoolName) + "/" + dst_lun_path
 
-        if zbsutils.copy_snapshot(src_snapshot_path, dst_lun_path) != 0:
-            raise Exception('failed to copy snapshot[%s] to lun[%s]' % (src_snapshot_path, dst_lun_path))
-        rsp.installPath = dst_lun_path
-
-        o = zbsutils.query_volume_info(cmd.logicalPoolName, cmd.dstLunName)
-        ret = jsonobject.loads(o)
-        if ret.error.code != 0:
-            raise Exception('failed to get lun[%s] info, error[%s]' % (dst_lun_path, ret.error.message))
-        rsp.size = ret.result.info.fileInfo.length
-
-        return jsonobject.dumps(rsp)
+            return jsonobject.dumps(rsp)
 
     @replyerror
     def rollback_snapshot(self, req):
