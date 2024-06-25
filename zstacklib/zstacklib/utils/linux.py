@@ -1534,6 +1534,30 @@ def delete_bridge(bridge_name):
     shell.run("ip link set %s down" % bridge_name)
     shell.run("brctl delbr %s" % bridge_name)
 
+
+def check_bridge_with_interface(vlan_interface, expected_bridge_name):
+    bridge_name = find_bridge_having_physical_interface(vlan_interface)
+    if bridge_name and bridge_name != expected_bridge_name:
+        raise Exception('failed to check vlan interface[%s], it has been occupied by bridge[%s]'
+                        % (vlan_interface, bridge_name))
+
+
+def detach_interface_from_bridge(interface, bridge_name):
+    check_bridge_with_interface(interface, bridge_name)
+    ip_link_set_net_device_nomaster(interface)
+
+
+def attach_interface_to_bridge(interface, bridge_name, l2_network_uuid):
+    ip_link_set_net_device_master(interface, bridge_name)
+    set_bridge_alias_using_phy_nic_name(bridge_name, interface)
+    set_device_uuid_alias(interface, l2_network_uuid)
+
+
+def update_bridge_interface_configuration(old_interface, new_interface, bridge_name, l2_network_uuid):
+    detach_interface_from_bridge(old_interface, bridge_name)
+    attach_interface_to_bridge(new_interface, bridge_name, l2_network_uuid)
+
+
 def find_bridge_having_physical_interface(ifname):
     if is_bridge_slave(ifname):
         br_name = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % ifname)
@@ -1577,6 +1601,14 @@ def ip_link_set_net_device_master(net_device, master):
     actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % net_device).strip('\n')
     if not actual_result or actual_result != master:
         raise Exception("set net device[%s] master to [%s] failed, try again now" % (net_device, master))
+
+@retry(times=2, sleep_time=1)
+def ip_link_set_net_device_nomaster(net_device):
+    shell.call("ip link set %s nomaster" % net_device)
+    # Double check, because sometimes the master might not be removed successfully
+    actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE'" % net_device, exception=False).strip('\n')
+    if actual_result:
+        raise Exception("set net device[%s] nomaster failed, try again now" % net_device)
 
 def delete_novlan_bridge(bridge_name, interface, move_route=True):
     if not is_network_device_existing(bridge_name):
@@ -1639,9 +1671,6 @@ def create_bridge(bridge_name, interface, move_route=True):
     shell.call("brctl setfd %s 0" % bridge_name)
     shell.call("ip link set %s up" % bridge_name)
 
-    def modify_device_state_in_networkmanager(device_name, state):
-        shell.call("nmcli device set %s managed %s" % (device_name, state), exception=False)
-
     if br_name == bridge_name:
         logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (bridge_name, interface))
     else:
@@ -1652,32 +1681,10 @@ def create_bridge(bridge_name, interface, move_route=True):
     # MAC address.
     shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
 
-    out = shell.call('ip addr show dev %s | grep "inet "' % interface, exception=False)
+    if move_route:
+        move_dev_route(interface, bridge_name)
 
-    if move_route and out:
-        #record old routes
-        routes = []
-        r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % interface)
-        for line in r_out.split('\n'):
-            if line != "":
-                routes.append(line)
-                shell.call('ip route del %s' % line)
-
-        #mv ip on interface to bridge
-        ip = out.strip().split()[1]
-        shell.call('ip addr del %s dev %s' % (ip, interface))
-        r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (bridge_name, ip), exception=False)
-        if not r_out:
-            shell.call('ip addr add %s dev %s' % (ip, bridge_name))
-
-        #restore routes on bridge
-        for r in routes:
-            shell.call('ip route add %s' % r)
-    else:
-        logger.debug("Interface %s doesn't set ip address yet or move route flag is False. No need to move route. " % interface)
-    
     # restore bridge and interface ifcfg file
-    ifcfg_slave = None
     if is_vlan(interface):
         ifcfg_slave = netconfig.NetVlanConfig(interface)
         ifcfg_slave.bridge = bridge_name
@@ -1701,9 +1708,43 @@ def create_bridge(bridge_name, interface, move_route=True):
     for slave_ip in slave_ips:
         ifcfg_bridge.add_ip_config(slave_ip.ip, slave_ip.netmask, slave_ip.gateway, slave_ip.is_default)
 
-    ifcfgs.extend([ifcfg_bridge, ifcfg_slave]) 
+    ifcfgs.extend([ifcfg_bridge, ifcfg_slave])
 
     return ifcfgs
+
+
+def move_dev_route(src_dev, dest_dev):
+    """
+    Move IP address and routes from one network device (src_dev) to another (dest_dev).
+
+    Args:
+    - src_dev: The source device from which the IP and routes will be moved.
+    - dest_dev: The destination device to which the IP and routes will be moved.
+    """
+    # Check if the source device has an IP address set
+    out = shell.call('ip addr show dev %s | grep "inet "' % src_dev, exception=False)
+    if not out:
+        logger.debug("Source device %s doesn't have an IP address set. No need to move routes." % src_dev)
+        return
+
+    # Record old routes associated with the source device
+    routes = []
+    r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % src_dev)
+    for line in r_out.split('\n'):
+        if line != "":
+            routes.append(line)
+            shell.call('ip route del %s' % line)
+
+        # Move IP address from the source device to the destination device
+        ip = out.strip().split()[1]
+        shell.call('ip addr del %s dev %s' % (ip, src_dev))
+        r_out = shell.call('ip addr show dev %s | grep "inet %s"' % (dest_dev, ip), exception=False)
+        if not r_out:
+            shell.call('ip addr add %s dev %s' % (ip, dest_dev))
+
+        # Restore routes on the destination device
+        for r in routes:
+            shell.call('ip route add %s' % r)
 
 def pretty_xml(xmlstr):
     # dom cannot handle namespace tag like <qemu:commandline>
