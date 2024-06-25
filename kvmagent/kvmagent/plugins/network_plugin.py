@@ -637,7 +637,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 if self._has_vlan_or_bridge(interface.interfaceName):
                     raise Exception(interface.interfaceName + ' has a sub-interface or a bridge port')
             for interface in cmd.slaves:
-                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface))
+                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface.interfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to attach nic to bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -652,7 +652,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for interface in cmd.slaves:
-                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
+                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface.interfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to detach nic from bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -909,7 +909,7 @@ configure lldp status rx-only \n
                 attach_cmd = AttachNicToBondCmd()
                 attach_cmd.bondName = create_cmd.bondName
                 attach_cmd.slaves = create_cmd.slaves
-                create_cmd.slaves = None
+                create_cmd.slaves = []
                 for param in cmd.bridgeParams:
                     bridge_name = param.bridgeName
                     vlan_id = param.vlanId
@@ -936,6 +936,9 @@ configure lldp status rx-only \n
                     rsp.error = create_rsp.error
                     return jsonobject.dumps(rsp)
 
+                for vlan_eth in vlan_eth_list:
+                    linux.delete_vlan_eth(vlan_eth)
+
                 for param in cmd.bridgeParams:
                     bridge_name = param.bridgeName
                     vlan_id = param.vlanId
@@ -951,7 +954,7 @@ configure lldp status rx-only \n
                 if not attach_rsp.success:
                     rsp.success = attach_rsp.success
                     rsp.error = attach_rsp.error
-                    return attach_rsp
+                    return jsonobject.dumps(rsp)
 
             else:
                 for param in cmd.bridgeParams:
@@ -969,8 +972,8 @@ configure lldp status rx-only \n
                     linux.update_bridge_interface_configuration(old_vlan_interface, new_vlan_interface,
                                                                 bridge_name, l2_network_uuid)
 
-            for vlan_eth in vlan_eth_list:
-                linux.delete_vlan_eth(vlan_eth)
+                for vlan_eth in vlan_eth_list:
+                    linux.delete_vlan_eth(vlan_eth)
 
             if cmd.oldBondingName:
                 del_cmd = DeleteBondingCmd()
