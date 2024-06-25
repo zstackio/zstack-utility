@@ -32,11 +32,11 @@ def query_volume(logical_pool_name, lun_name):
     return shell.run("zbs query file --path %s/%s" % (logical_pool_name, lun_name))
 
 
-def query_children_volume(logical_pool_name, lun_name, snapshot_name, isSnapshot = False):
-    if not isSnapshot:
-        return shell.call("zbs children --path %s/%s --user %s --format json" % (logical_pool_name, lun_name, DEFAULT_ZBS_USER_NAME))
-    else:
+def query_children_volume(logical_pool_name, lun_name, snapshot_name, is_snapshot=False):
+    if is_snapshot:
         return shell.call("zbs children --snappath %s/%s@%s --user %s --format json" % (logical_pool_name, lun_name, snapshot_name, DEFAULT_ZBS_USER_NAME))
+    else:
+        return shell.call("zbs children --path %s/%s --user %s --format json" % (logical_pool_name, lun_name, DEFAULT_ZBS_USER_NAME))
 
 
 def query_snapshot_info(logical_pool_name, lun_name):
@@ -107,5 +107,7 @@ def cbd_to_nbd(desc, port, install_path):
     os.system("qemu-nbd -D %s -f raw -p %d --fork %s_%s_:%s" % (desc, port, install_path, DEFAULT_ZBS_USER_NAME, DEFAULT_ZBS_CONF_PATH))
 
 
-def copy_snapshot(src_path, dst_path):
-    return shell.run("qemu-img convert -n -p %s_%s_:%s %s_%s_:%s" % (src_path, DEFAULT_ZBS_USER_NAME, DEFAULT_ZBS_CONF_PATH, dst_path, DEFAULT_ZBS_USER_NAME, DEFAULT_ZBS_CONF_PATH))
+def copy(src_path, dst_path, is_snapshot=False):
+    if is_snapshot:
+        return shell.call("zbs copy --snappath %s --dstpath %s --user %s --format json" % (src_path, dst_path, DEFAULT_ZBS_USER_NAME))
+    return shell.call("zbs copy --path %s --dstpath %s --user %s --format json" % (src_path, dst_path, DEFAULT_ZBS_USER_NAME))
