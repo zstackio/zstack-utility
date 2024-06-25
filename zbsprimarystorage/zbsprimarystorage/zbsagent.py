@@ -214,8 +214,13 @@ class ZbsAgent(plugin.TaskManager):
 
         if zbsutils.copy_snapshot(src_snapshot_path, dst_lun_path) != 0:
             raise Exception('failed to copy snapshot[%s] to lun[%s]' % (src_snapshot_path, dst_lun_path))
-        rsp.size = cmd.dstLunSize
         rsp.installPath = dst_lun_path
+
+        o = zbsutils.query_volume_info(cmd.logicalPoolName, cmd.dstLunName)
+        ret = jsonobject.loads(o)
+        if ret.error.code != 0:
+            raise Exception('failed to get lun[%s] info, error[%s]' % (dst_lun_path, ret.error.message))
+        rsp.size = ret.result.info.fileInfo.length
 
         return jsonobject.dumps(rsp)
 
