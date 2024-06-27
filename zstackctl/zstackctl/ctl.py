@@ -1615,7 +1615,7 @@ def find_process_by_cmdline(keyword):
 
 class Zsha2Utils(object):
     def __init__(self):
-        r, _, e = shell_return_stdout_stderr("sudo -i /usr/local/bin/zsha2 status")
+        r, out, e = shell_return_stdout_stderr("sudo -i /usr/local/bin/zsha2 status -json")
         if r != 0:
             error('cannot get zsha2 status, %s' % e)
 
@@ -1624,15 +1624,17 @@ class Zsha2Utils(object):
             error('cannot get zsha2 config, maybe need upgrade zsha2 first: %s' % e)
 
         self.config = simplejson.loads(o)
+        self.statusConfig = simplejson.loads(out)
         self.ssh_exec_user = self.config.get('execUser', getpass.getuser())
         self.master = shell_return("ip addr show %s | grep -q '[^0-9]%s[^0-9]'"
                                    % (self.config['nic'], self.config['dbvip'])) == 0
         try:
-            self.excute_on_peer("echo 1 > /dev/null")
+            if self.statusConfig['peerReachable']:
+                self.execute_on_peer("echo 1 > /dev/null")
         except:
             error('cannot ssh peer node with sshkey')
 
-    def excute_on_peer(self, cmd, useSudo=False):
+    def execute_on_peer(self, cmd, useSudo=False):
         remote_path = '/tmp/%s.sh' % uuid.uuid4()
         script = script_text % (remote_path, cmd, remote_path, ' '.join([]), remote_path)
         scmd = ShellCmd(
@@ -1647,7 +1649,7 @@ class Zsha2Utils(object):
     def scp_to_peer(self, src_path, dst_path):
         shell("sudo -u %s scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s %s:%s" % (
             self.ssh_exec_user, src_path, self.config['peerip'], "/tmp/dst_path"))
-        self.excute_on_peer("mv %s %s" % ("/tmp/dst_path", dst_path), True)
+        self.execute_on_peer("mv %s %s" % ("/tmp/dst_path", dst_path), True)
 
 
 
@@ -5443,7 +5445,8 @@ class MysqlRestrictConnection(Command):
 
             if is_ha:
                 remote_grant_views_access_cmd = self.grant_views_definer_privilege(root_password_, zsha2_utils.config['peerip'])
-                zsha2_utils.excute_on_peer('''`mysql -u root -p%s -e "%s %s"` \n echo %s > %s''' % (root_password_, remote_grant_views_access_cmd, grant_access_cmd, restrict_flags, self.file))
+                zsha2_utils.execute_on_peer('''`mysql -u root -p%s -e "%s %s"` \n echo %s > %s''' % (
+                root_password_, remote_grant_views_access_cmd, grant_access_cmd, restrict_flags, self.file))
 
             info("Successfully set mysql restrict connection")
             return
@@ -5456,7 +5459,8 @@ class MysqlRestrictConnection(Command):
             linux.rm_file_force(self.file)
 
             if is_ha:
-                zsha2_utils.excute_on_peer('''`mysql -u root -p%s -e "%s"`\n rm -f %s''' % (root_password_, grant_access_cmd, self.file))
+                zsha2_utils.execute_on_peer(
+                    '''`mysql -u root -p%s -e "%s"`\n rm -f %s''' % (root_password_, grant_access_cmd, self.file))
 
             info("Successfully restore mysql restrict connection")
             return
@@ -6007,14 +6011,14 @@ class MultiMysqlRestorer(MysqlRestorer):
             info("Starting self node...")
             shell("/usr/local/bin/zsha2 start-node")
             info("Starting peer node...")
-            self.utils.excute_on_peer("/usr/local/bin/zsha2 start-node")
+            self.utils.execute_on_peer("/usr/local/bin/zsha2 start-node")
 
     def stop_node(self, args):
         if not args.only_restore_self:
             info("Stopping self node...")
             shell("/usr/local/bin/zsha2 stop-node -keepui")
             info("Stopping peer node...")
-            self.utils.excute_on_peer("/usr/local/bin/zsha2 stop-node -keepui")
+            self.utils.execute_on_peer("/usr/local/bin/zsha2 stop-node -keepui")
         else:
             cmd = create_check_mgmt_node_command()
             cmd(False)
@@ -6028,7 +6032,7 @@ class MultiMysqlRestorer(MysqlRestorer):
             info("Restoring peer node database...")
             slave_file_path = "/var/lib/zstack/tmp-db-backup.gz"
             self.utils.scp_to_peer(args.from_file, slave_file_path)
-            self.utils.excute_on_peer(
+            self.utils.execute_on_peer(
                 "zstack-ctl restore_mysql --mysql-root-password '%s' --skip-ui --skip-check -f %s --only-restore-self && rm -f %s"
                 % (args.mysql_root_password, slave_file_path, slave_file_path))
             info("Succeed to restore zstack peer node data")
@@ -6168,7 +6172,7 @@ class ZBoxBackupRestoreCmd(Command):
 
         if recover_succ[0] and zsha2:
             info("Starting peer management node...")
-            Zsha2Utils().excute_on_peer("/usr/local/bin/zsha2 start-node")
+            Zsha2Utils().execute_on_peer("/usr/local/bin/zsha2 start-node")
         elif not recover_succ[0]:
             sys.exit(1)
 
