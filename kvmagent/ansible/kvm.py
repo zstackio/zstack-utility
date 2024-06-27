@@ -739,7 +739,7 @@ def install_virtualenv():
     # name: make sure virtualenv has been setup
     virtenv_flag = "--system-site-packages"
     # virtenv_flag = "" if unittest_flag == 'true' else "--system-site-packages"
-    command = "[ -f %s/bin/python ] || virtualenv %s %s " % (virtenv_path, virtenv_flag, virtenv_path)
+    command = "[ -f %s/bin/python ] || virtualenv-2.7 %s %s " % (virtenv_path, virtenv_flag, virtenv_path)
     host_post_info.post_label = "ansible.shell.check.virtualenv"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
