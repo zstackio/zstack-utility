@@ -480,7 +480,8 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def download_from_imagestore(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
-        linux.qcow2_convert_to_raw(cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, "-n")
+        fmt = linux.get_img_fmt(cmd.backupStorageInstallPath)
+        linux.qcow2_convert_to_raw(cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, "-f", fmt, "-n")
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 
