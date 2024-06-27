@@ -582,7 +582,7 @@ def collect_raid_state():
 
 
 def handle_raid_state(target_id, state_int):
-    if state_int == 100:
+    if state_int != 0:
         send_raid_state_alarm_to_mn(target_id, state_int)
         return
     remove_raid_status_abnormal(target_id)
