@@ -921,7 +921,7 @@ def do_kvm_host_config():
         return
 
     banner("restart iptables on x86 zyj")
-    command = "systemctl is-active iptables; if [ $? -ne 0 ];then  systemctl restart iptables;fi"
+    command = "systemctl is-active iptables || systemctl restart iptables"
     host_post_info.post_label = "ansible.shell.do.zyj.host.config"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info, False, False, isZYJ)
