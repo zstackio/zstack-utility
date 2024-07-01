@@ -2189,6 +2189,17 @@ def get_all_vm_states():
 def get_all_vm_sync_states():
     return get_active_vm_uuids_states()
 
+vm_state_cache = {}
+def get_vm_states_from_cache():
+    return vm_state_cache
+
+def put_vm_state_to_cache(uuid, state):
+    vm_state_cache[uuid] = state
+
+def remove_vm_state_from_cache(uuid):
+    if uuid in vm_state_cache:
+        del vm_state_cache[uuid]
+
 def get_all_vm_states_with_process():
     states = {}
 
@@ -2200,7 +2211,6 @@ def get_all_vm_states_with_process():
         if guest.lower() == "ZStack Management Node VM".lower()\
                 or guest.startswith("guestfs-"):
             continue
-        logger.warn('guest [%s] not found in virsh list' % guest)
         states[guest] = Vm.VM_STATE_RUNNING
 
     return states
@@ -7189,11 +7199,28 @@ class VmPlugin(kvmagent.KvmAgent):
         states_from_qemu_process = get_all_vm_states_with_process()
         for guest, state in states_from_qemu_process.items():
             if guest not in rsp.states:
+                logger.warn('guest [%s] not found in virsh list' % guest)
+                rsp.states[guest] = state
+
+        states_from_cache = get_vm_states_from_cache()
+        for guest, state in states_from_cache.items():
+            if guest not in rsp.states:
+                logger.warn('guest [%s] not found in virsh list and qemu process, load from cache' % guest)
                 rsp.states[guest] = state
 
         libvirt_running_vms = rsp.states.keys()
         no_qemu_process_running_vms = list(set(libvirt_running_vms).difference(set(states_from_qemu_process.keys())))
+        state_cached_vms = states_from_cache.keys()
+        # if vm cached means kvmagent manually control the sync result, should be used 
+        # as filter.
+        # if vm not have qemu process means libvirt and qemu is inconsistent use filter
+        # to make sure the vm state is correct.
+        # vm meet both the above conditions should be shutdown
         for vm in no_qemu_process_running_vms:
+            if vm in state_cached_vms:
+                logger.warn('guest [%s] not found in qemu process, but in cache, keep the state' % vm)
+                continue
+
             rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
 
         return jsonobject.dumps(rsp)
@@ -10681,6 +10708,9 @@ host side snapshot files chian:
             else:
                 return
 
+            # use vm cache to avoid vmsync get empty vm state
+            # because we known vm will be started after destroy
+            put_vm_state_to_cache(vm_uuid, Vm.VM_STATE_RUNNING)
             try:
                 dom.destroy()
             except:
@@ -10694,6 +10724,8 @@ host side snapshot files chian:
         except:
             content = traceback.format_exc()
             logger.warn(content)
+        finally:
+            remove_vm_state_from_cache(vm_uuid)
 
     # update the boot order of the root volume to 1, rely on the make_volumes() function
     def update_root_volume_boot_order(self, domain_xml):
