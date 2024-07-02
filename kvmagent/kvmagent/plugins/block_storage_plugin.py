@@ -203,7 +203,6 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         umounted = linux.umount(cmd.path)
         rsp = AgentRsp()
-        rsp.success
         if umounted is not True:
             rsp.success = False
             rsp.error = "fail to umount path: " + cmd.path
@@ -481,7 +480,10 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         fmt = linux.get_img_fmt(cmd.backupStorageInstallPath)
-        linux.qcow2_convert_to_raw(cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, "-f", fmt, "-n")
+        if not cmd.concurrency or cmd.concurrency <= 0:
+            cmd.concurrency = 4
+        linux.qcow2_convert_to_raw(cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath,
+                                   "-f", fmt, "-n", "-Wm", str(cmd.concurrency))
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 
