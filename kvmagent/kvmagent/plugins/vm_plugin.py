@@ -3160,7 +3160,7 @@ class Vm(object):
 
 
     def detach_data_volume(self, volume):
-        self._wait_vm_run_until_seconds(10)
+        self._wait_vm_run_until_seconds(60)
         self.timeout_object.wait_until_object_timeout('attach-volume-%s' % self.uuid)
         self._detach_data_volume(volume)
         self.timeout_object.put('detach-volume-%s' % self.uuid, timeout=10)
@@ -4095,9 +4095,9 @@ class Vm(object):
         def wait(_):
             return linux.get_process_up_time_in_second(vm_pid) > sec
 
-        if up_time < sec and not linux.wait_callback_success(wait, timeout=60):
+        if up_time < sec and not linux.wait_callback_success(wait, timeout=max(60, sec+5)):
             raise Exception("vm[uuid:%s] seems hang, its process[pid:%s] up-time is not increasing after %s seconds" %
-                            (self.uuid, vm_pid, 60))
+                            (self.uuid, vm_pid, max(60, sec+5)))
 
     def attach_iso(self, cmd):
         iso = cmd.iso
