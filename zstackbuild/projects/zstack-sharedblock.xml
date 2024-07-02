@@ -15,8 +15,9 @@
         </exec>
 
         <exec executable="make" dir="${zstacksharedblock.source}" failonerror="true">
+            <env key="GOROOT" value="${zstacksharedblock.goroot}" />
             <arg value="package" />
-            <arg value="ARCH= amd64 arm64 mips64le loong64" />
+            <arg value="ARCH=${zstacksharedblock.arch}" />
         </exec>
 
         <copy todir="${zsblk.bdir}/">

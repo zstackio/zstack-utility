@@ -17,8 +17,9 @@
         </exec>
 
         <exec executable="make" dir="${imagestore.source}" failonerror="true">
+            <env key="GOROOT" value="${imagestore.goroot}" />
             <arg value="package" />
-            <arg value="ARCH=amd64 arm64 mips64le loong64" />
+            <arg value="ARCH=${imagestore.arch}" />
         </exec>
 
         <copy todir="${imagestore.bdir}/">

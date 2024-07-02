@@ -11,6 +11,7 @@
         <checkFile file="${zstacknetwork.source}" />
 
         <exec executable="make" dir="${zstacknetwork.source}" failonerror="true">
+            <env key="GOROOT" value="${zstacknetwork.goroot}" />
             <arg value="clean" />
         </exec>
 
@@ -20,8 +21,7 @@
 
         <copy todir="${zsn.bdir}/">
             <fileset dir="${zstacknetwork.source}/target/package/zsn-agent">
-                <include name="zsn-agent.bin" />
-                <include name="zsn-agent.aarch64.bin" />
+                <include name="*.bin" />
             </fileset>
         </copy>
     </target>
