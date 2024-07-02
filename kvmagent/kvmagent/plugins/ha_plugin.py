@@ -897,7 +897,7 @@ class CephHeartbeatController(AbstractStorageFencer):
 
         return length, used_time, err
 
-    def read_fencer_hearbeat(self, host_uuid, ps_uuid):
+    def read_fencer_heartbeat(self, host_uuid, ps_uuid):
         current_heartbeat_count = [None]
         current_vm_uuids = [None]
         read_complete = threading.Event()
