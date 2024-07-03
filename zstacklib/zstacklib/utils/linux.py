@@ -121,6 +121,25 @@ def retry(times=3, sleep_time=3):
         return inner
     return wrap
 
+
+def ignore_error_retry(times=3, sleep_time=3, return_after_exception=None):
+    def wrap(f):
+        @functools.wraps(f)
+        def inner(*args, **kwargs):
+            orig_except = None
+            for i in range(0, times):
+                try:
+                    return f(*args, **kwargs)
+                except Exception as e:
+                    orig_except = e
+                    time.sleep(sleep_time)
+            logger.warn(str(orig_except))
+            return return_after_exception
+
+        return inner
+    return wrap
+
+
 def retry_with_check(handler=None):
     def wrap(f):
         @functools.wraps(f)
