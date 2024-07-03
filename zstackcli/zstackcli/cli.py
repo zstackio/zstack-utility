@@ -99,6 +99,7 @@ class Cli(object):
 
     LOGIN_MESSAGE_NAME = 'APILogInByAccountMsg'
     LOGIN_BY_LDAP_MESSAGE_NAME = 'APILogInByLdapMsg'
+    LOGIN_NAME = 'APILogInMsg'
     LOGOUT_MESSAGE_NAME = 'APILogOutMsg'
     LOGIN_BY_USER_NAME = 'APILogInByUserMsg'
     LOGIN_BY_USER_IAM2 = 'APILoginIAM2VirtualIDMsg'
@@ -118,7 +119,7 @@ class Cli(object):
     LOGIN_BY_CAS_MESSAGE_NAME = 'APILogInByCasMsg'
     GET_LOGIN_CAPTCHA = 'APIGetLoginCaptchaMsg'
     GET_LOGIN_PROCEDURES_MESSAGE_NAME = 'APIGetLoginProceduresMsg'
-    no_session_message = [LOGIN_MESSAGE_NAME, LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME,
+    no_session_message = [LOGIN_MESSAGE_NAME, LOGIN_BY_USER_NAME, LOGIN_BY_LDAP_MESSAGE_NAME, LOGIN_NAME,
                           GET_TWO_FACTOR_AUTHENTICATION_SECRET, GET_TWO_FACTOR_AUTHENTICATION_STATE, LOGIN_BY_USER_IAM2,
                           GET_LICENSE_INFO, LOGIN_BY_LDAP_IAM2_NAME, LOGIN_BY_CAS_MESSAGE_NAME, GET_LOGIN_CAPTCHA,
                           GET_LOGIN_PROCEDURES_MESSAGE_NAME]
@@ -586,6 +587,9 @@ Parse command parameters error:
                     raise CliError('"password" must be specified')
                 msg.password = hashlib.sha512(msg.password).hexdigest()
 
+            if apiname == self.LOGIN_NAME and msg.loginType == "account":
+                msg.password = hashlib.sha512(msg.password).hexdigest()
+
             if apiname == self.POWER_OFF_HOST:
                 msg.adminPassword = hashlib.sha512(msg.adminPassword).hexdigest()
 
@@ -602,7 +606,7 @@ Parse command parameters error:
             (name, event) = self.api.async_call_wait_for_complete(msg, apievent=event, fail_soon=True)
             end_time = time.time()
 
-            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME,
+            if apiname in [self.LOGIN_MESSAGE_NAME, self.LOGIN_BY_USER_NAME, self.LOGIN_BY_LDAP_MESSAGE_NAME, self.LOGIN_NAME,
                            self.LOGIN_BY_LDAP_IAM2_NAME, self.LOGIN_BY_IAM2_PROJECT_NAME, self.LOGIN_BY_USER_IAM2, self.LOGIN_BY_CAS_MESSAGE_NAME]:
                 self.session_uuid = event.inventory.uuid
                 self.account_name = None
@@ -644,6 +648,12 @@ Parse command parameters error:
                             self.account_name = 'no project selected'
                         else:
                             self.account_name = 'admin'
+                        session_file_writer.write("\n" + self.account_name)
+                    elif apiname == self.LOGIN_NAME:
+                        if msg.loginType == 'ldap':
+                            self.account_name = 'ldap[%s]' % msg.username
+                        else:
+                            self.account_name = msg.username
                         session_file_writer.write("\n" + self.account_name)
 
             if apiname == self.LOGOUT_MESSAGE_NAME:
