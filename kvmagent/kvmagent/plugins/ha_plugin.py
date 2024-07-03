@@ -511,8 +511,10 @@ class SblkHealthChecker(AbstractStorageFencer):
         return 0, None
 
     def _do_health_check(self, storage_timeout, max_failure):
+        # sanlock client command may fail to execute and succeed after retry
+        @linux.ignore_error_retry(5, 0.5, return_after_exception=[])
         def _do_get_lockspaces():
-            lines = bash.bash_o("sanlock client gets").splitlines()
+            lines = bash.bash_errorout("sanlock client gets").splitlines()
             return [ s.split()[1] for s in lines if s.startswith('s ') ]
 
         lockspaces = _do_get_lockspaces()

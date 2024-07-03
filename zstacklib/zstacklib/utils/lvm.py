@@ -1054,6 +1054,7 @@ def get_vg_lvm_uuid(vgUuid):
     return bash.bash_o("%s --noheading -ouuid %s" % (subcmd("vgs"), vgUuid)).strip()
 
 
+@linux.retry(5, 0.5)
 def get_running_host_id(vgUuid):
     cmd = shell.ShellCmd("sanlock client gets | awk -F':' '/%s/{ print $2 }'" % vgUuid)
     cmd(is_exception=False)
