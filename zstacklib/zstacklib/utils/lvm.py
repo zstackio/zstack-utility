@@ -813,6 +813,10 @@ def start_lock_service(io_timeout=40):
         stop_lvmlockd()
         write_lvmlockd_adopt_file()
         linux.rm_file_force(LVMLOCKD_SOCKET)
+
+    r = bash.bash_r("systemctl status sanlock | grep '(running)'")
+    if r != 0 and not linux.find_process_by_command("sanlock"):
+        bash.bash_r("timeout 30 systemctl stop sanlock")
     for service in ["sanlock", get_lvmlockd_service_name()]:
         cmd = shell.ShellCmd("timeout 30 systemctl start %s" % service)
         cmd(is_exception=True)
