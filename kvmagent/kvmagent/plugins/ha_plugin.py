@@ -775,6 +775,106 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
         self.check_storage_heartbeat()
 
 
+class RbdHeartbeatController(AbstractStorageFencer):
+    def __init__(self, interval, max_attempts, ps_uuid, run_fencer_list):
+        super(RbdHeartbeatController, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
+        self.failure = 0
+        self.storage_failure = False
+        self.report_storage_status = False
+        self.max_attempts = None
+        self.host_uuid = None
+        self.pool_name = None
+        self.primary_storage_uuid = None
+        self.strategy = None
+        self.storage_check_timeout = None
+        self.heartbeat_path = None
+        self.fencer_triggered_callback = None
+        self.interval = 0
+        self.report_storage_status_callback = None
+
+    def handle_heartbeat_failure(self):
+        self.failure += 1
+        logger.debug("heartbeat on rbd storage:%s pool:%s failure(%d/%d)" %
+                    (self.primary_storage_uuid, self.pool_name, self.failure, self.max_attempts))
+
+        if self.failure >= self.max_attempts:
+            logger.debug("heartbeat failure reached max attempts %s, check storage state" % self.max_attempts)
+            # c.f. We discovered that, Ceph could behave the following:
+            #  1. Create heart-beat file, failed with 'File exists'
+            #  2. Query the hb file in step 1, and failed again with 'No such file or directory'
+            logger.debug('rbd is in error state, check ha strategy next')
+
+            # for example, pool name is aaa
+            # add slash to confirm kill_vm matches vm with volume aaa/volume_path
+            # but not aaa_suffix/volume_path
+            vm_uuid_pid_dict, _ = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False)
+            if self.strategy == 'Permissive':
+                self.reset_failure_count()
+
+            if vm_uuid_pid_dict:
+                try:
+                    self.fencer_triggered_callback([self.primary_storage_uuid], ','.join(vm_uuid_pid_dict.keys()))
+                except Exception as e:
+                    logger.debug('failed to report fencer triggered result to management node')
+                    content = traceback.format_exc()
+                    logger.warn(content)
+                clean_network_config(vm_uuid_pid_dict.keys())
+
+            self.storage_failure = True
+            self.report_storage_status = True
+
+            # reset the failure count
+            self.reset_failure_count()
+
+    def reset_failure_count(self):
+        self.failure = 0
+
+
+    def get_ha_fencer_name(self):
+        return "rbdFencer"
+
+    def write_fencer_heartbeat(self):
+        # TODO use py sdk
+        ret = shell.run("timeout 5 qemu-img bench -c 10 -d 1 -w -t none -f raw -n %s:do_lunmap=false" % self.heartbeat_path)
+        return ret == 0
+
+    def read_fencer_hearbeat(self, host_uuid, ps_uuid):
+        logger.debug('ignore read fencer heartbeat on rbd storage')
+        pass
+
+    def check_rbd_fencer(self):
+        heartbeat_success = self.write_fencer_heartbeat()
+
+        logger.debug('flags: [heartbeat_success: %s, storage_failure: %s, report_storage: %s]'
+                     % (heartbeat_success,
+                        self.storage_failure,
+                        self.report_storage_status))
+
+        if heartbeat_success and self.storage_failure and not self.report_storage_status:
+            # if heartbeat recovered and storage failure has occured before
+            # set report_storage_status to False to report fencer recoverd to management node
+            self.report_storage_status = True
+            self.storage_failure = False
+
+        if self.report_storage_status:
+            if self.storage_failure:
+                self.report_storage_status_callback([self.primary_storage_uuid], 'Disconnected')
+            else:
+                self.report_storage_status_callback([self.primary_storage_uuid], 'Connected')
+            # after fencer state reported, set fencer_state_reported to False
+            self.report_storage_status = False
+
+        if heartbeat_success:
+            logger.debug(
+                "heartbeat on rbd storage:%s pool:%s success" % (self.primary_storage_uuid, self.pool_name))
+            # reset failure count after heartbeat succeed
+            self.reset_failure_count()
+        else:
+            self.handle_heartbeat_failure()
+
+    def exec_fencer(self):
+        self.check_rbd_fencer()
+
 class CephHeartbeatController(AbstractStorageFencer):
     def __init__(self, interval, max_attempts, ps_uuid, run_fencer_list):
         super(CephHeartbeatController, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
@@ -826,7 +926,7 @@ class CephHeartbeatController(AbstractStorageFencer):
                 # for example, pool name is aaa
                 # add slash to confirm kill_vm matches vm with volume aaa/volume_path
                 # but not aaa_suffix/volume_path
-                vm_uuids, _ = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False).keys()
+                vm_uuids, _ = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False)
                 if self.strategy == 'Permissive':
                     self.reset_failure_count()
 
@@ -1404,7 +1504,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
 
-                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy).keys()
+                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy)
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
@@ -1436,61 +1536,49 @@ class HaPlugin(kvmagent.KvmAgent):
         self.setup_fencer(cmd.uuid, created_time)
         pool_name = cmd.installPath.replace("rbd:", "").split('/')[0]
 
-        # recheck rbd path exist
-        try:
-            shell.call("timeout 15 qemu-img info %s" % cmd.installPath)
-        except Exception as e:
-            logger.warn("fail to find heartbeat image, please make sure host is connected with ps. " + e.message)
-
-        def heartbeat_io_check():
-            # TODO use py sdk
-            ret = shell.run("timeout 5 qemu-img bench -c 10 -d 1 -w -t none -f raw -n %s" % cmd.installPath)
-            return ret == 0
-
         @thread.AsyncThread
-        def heartbeat_on_block():
-            failure = 0
-            while self.run_fencer(cmd.uuid, created_time):
-                try:
+        def heartbeat_on_rbd(ps_uuid, pool_name):
+            rbd_controller = RbdHeartbeatController(cmd.interval, cmd.maxAttempts, ps_uuid, None)
+            rbd_controller.pool_name = pool_name
+            rbd_controller.primary_storage_uuid = ps_uuid
+            rbd_controller.max_attempts = cmd.maxAttempts
+            rbd_controller.report_storage_status = False
+            rbd_controller.storage_failure = False
+            rbd_controller.failure = 0
+            rbd_controller.strategy = cmd.strategy
+            rbd_controller.storage_check_timeout = cmd.storageCheckerTimeout
+            rbd_controller.fencer_triggered_callback = self.report_self_fencer_triggered
+            rbd_controller.report_storage_status_callback = self.report_storage_status
+            rbd_controller.heartbeat_path = cmd.installPath
+            fencer_list = []
+            if cmd.fencers is not None:
+                fencer_list = cmd.fencers
+
+            if host_storage_name in fencer_list:
+                fencer_list.append(rbd_controller.get_ha_fencer_name())
+
+            self.setup_fencer(ps_uuid, created_time)
+
+            ha_fencer = AbstractHaFencer(cmd.interval, cmd.maxAttempts, cmd.vgUuid, fencer_list)
+            update_fencer = True
+            try:
+                fencer_init = {}
+
+                fencer_init[rbd_controller.get_ha_fencer_name()] = rbd_controller
+                logger.debug("rbd start run fencer list :%s" % ",".join(fencer_list))
+                while self.run_fencer(ps_uuid, created_time):
                     time.sleep(cmd.interval)
+                    ha_fencer.exec_fencer_list(fencer_init, update_fencer)
+                    update_fencer = False
 
-                    successfully_check_heartbeat = heartbeat_io_check()
-                    if successfully_check_heartbeat is not True:
-                        logger.debug('heartbeat path %s is not accessible' % cmd.installPath)
-                        failure += 1
-                    else:
-                        logger.debug('heartbeat path %s is accessible' % cmd.installPath)
-                        failure = 0
-                        continue
+                logger.debug('stop self-fencer on pool %s of rbd storage' % pool_name)
+            except Exception as e:
+                logger.debug('self-fencer on pool %s rbd primary storage stopped abnormally, %s' % (pool_name, e))
+                content = traceback.format_exc()
+                logger.warn(content)
+                self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
 
-                    if failure < cmd.maxAttempts:
-                        continue
-
-                    try:
-                        logger.warn("block storage %s fencer fired!" % cmd.uuid)
-                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy, ['%s/' % pool_name], False)
-
-                        if vm_uuids:
-                            self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
-                            clean_network_config(vm_uuids)
-
-                        # reset the failure count
-                        failure = 0
-                    except Exception as e:
-                        logger.warn("kill vm failed, %s" % e)
-                        content = traceback.format_exc()
-                        logger.warn("traceback: %s" % content)
-                    finally:
-                        self.report_storage_status([cmd.uuid], 'Disconnected')
-
-                except Exception as e:
-                    logger.debug('self-fencer on block primary storage %s stopped abnormally' % cmd.uuid)
-                    content = traceback.format_exc()
-                    logger.warn(content)
-
-            logger.debug('stop self-fencer on block primary storage %s' % cmd.uuid)
-
-        heartbeat_on_block()
+        heartbeat_on_rbd(cmd.uuid, pool_name)
         return jsonobject.dumps(AgentRsp())
 
 
