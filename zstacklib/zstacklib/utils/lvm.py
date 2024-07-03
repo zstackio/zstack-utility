@@ -55,6 +55,13 @@ thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
 PV_DISCARD_MIN_SIZE_IN_BYTES = 1*1024**3
 ONE_HOUR_IN_SEC = 60 * 60
 LV_UUID_REFRESH_INTERVAL_IN_SEC = 60 * 30
+LVM_CONFIG_CHANGED_FILE = "/var/run/zstack/lvmConfigChanged"
+'''
+If the lvm command with locking is hung, it will always occupy the lock and cannot be released.
+And in scenarios where storage IO is slow and lock contention occurs, it may take longer to execute, 
+so we need to set a timeout that can tolerate this scenario.
+'''
+lvm_cmd_timeout_with_locking = 210
 
 lv_offset = TTLCache(maxsize=100, ttl=ONE_HOUR_IN_SEC)
 continue_lockspace_track = {}  # type: dict[str, bool]
@@ -1203,12 +1210,12 @@ def has_one_lv_tag_sub_string(path, tags):
 
 def clean_lv_tag(path, tag):
     if has_lv_tag(path, tag):
-        shell.run('lvchange --deltag %s %s' % (tag, path))
+        shell.run('%s --deltag %s %s' % (subcmd("lvchange"), tag, path))
 
 
 def add_lv_tag(path, tag):
     if not has_lv_tag(path, tag):
-        shell.run('lvchange --addtag %s %s' % (tag, path))
+        shell.run('%s --addtag %s %s' % (subcmd("lvchange"), tag, path))
 
 
 def get_meta_lv_path(path):
@@ -1220,7 +1227,7 @@ def delete_image(path, tag, deactive=True):
         if deactive:
             _active_lv(f, shared=False)
         backing = linux.qcow2_get_backing_file(f)
-        shell.check_run("lvremove -y -Stags={%s} %s" % (tag, f))
+        shell.check_run("%s -y -Stags={%s} %s" % (subcmd("lvremove"), tag, f))
         return backing
 
     fpath = path
@@ -1261,8 +1268,8 @@ def create_lv_from_absolute_path(path, size, tag="zs::sharedblock::volume", lock
 
     exact_size |= tag == IMAGE_TAG
     size = round_to(size, 512) if exact_size else round_to(calcLvReservedSize(size), 512)
-    r, o, e = bash.bash_roe("lvcreate -ay --wipesignatures y -y --addtag %s --size %sb --name %s %s %s" %
-                         (tag, size, lvName, vgName, pe_range))
+    r, o, e = bash.bash_roe("%s -ay --wipesignatures y -y --addtag %s --size %sb --name %s %s %s" %
+                         (subcmd("lvcreate"), tag, size, lvName, vgName, pe_range))
 
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return: %s, %s, %s" % (path, r, o, e))
@@ -1308,8 +1315,8 @@ def create_thin_lv_from_absolute_path(path, size, tag, lock=False):
     thin_pool = get_thin_pool_from_vg(vgName)
     assert thin_pool != ""
 
-    r, o, e = bash.bash_roe("lvcreate --wipesignatures y -y --addtag %s -n %s -V %sb --thinpool %s %s" %
-                  (tag, lvName, round_to(calcLvReservedSize(size), 512), thin_pool, vgName))
+    r, o, e = bash.bash_roe("%s --wipesignatures y -y --addtag %s -n %s -V %sb --thinpool %s %s" %
+                  (subcmd("lvcreate"), tag, lvName, round_to(calcLvReservedSize(size), 512), thin_pool, vgName))
     if not lv_exists(path):
         raise Exception("can not find lv %s after create, lvcreate return : %s, %s, %s" %
                         (path, r, o, e))
@@ -1380,7 +1387,7 @@ def is_thin_lv(path):
 @bash.in_bash
 def resize_lv(path, size, force=False):
     _force = "" if force is False else " --force "
-    r, o, e = bash.bash_roe("lvresize %s --size %sb %s" % (_force, calcLvReservedSize(size), path))
+    r, o, e = bash.bash_roe("%s %s --size %sb %s" % (subcmd("lvresize"), _force, calcLvReservedSize(size), path))
     if r == 0:
         logger.debug("successfully resize lv %s size to %s" % (path, size))
         return
@@ -1399,7 +1406,7 @@ def extend_lv(path, extend_size, skip_if_sufficient=False):
     if skip_if_sufficient and int(get_lv_size(path)) >= final_size:
         return
 
-    r, o, e = bash.bash_roe("lvextend --size %sb %s" % (final_size, path))
+    r, o, e = bash.bash_roe("%s --size %sb %s" % (subcmd("lvextend"), final_size, path))
     if r == 0:
         logger.debug("successfully extend lv %s size to %s" % (path, extend_size))
         return
@@ -1512,7 +1519,7 @@ def deactive_lv(path, raise_exception=True):
 def _active_lv(path, shared=False):
     @linux.retry(times=10, sleep_time=random.uniform(0.1, 3))
     def active():
-        bash.bash_errorout("lvchange %s %s" % (flag, path))
+        bash.bash_errorout("%s %s %s" % (subcmd("lvchange"), flag, path))
         if lv_is_active(path) is False:
             raise Exception("active lv %s with %s failed" % (path, flag))
 
@@ -1525,7 +1532,7 @@ def _active_lv(path, shared=False):
 
     # if lv does not have a lock, we will try to reactivate it
     if os.path.exists(path) and lv_lock_not_exists():
-        bash.bash_r("lvchange -an %s" % path)
+        bash.bash_r("%s -an %s" % (subcmd("lvchange"), path))
 
     active()
 
@@ -1542,9 +1549,9 @@ def _deactive_lv(path, raise_exception=True):
         r = 0
         e = None
         if raise_exception:
-            o = bash.bash_errorout("lvchange -an %s" % path)
+            o = bash.bash_errorout("%s -an %s" % (subcmd("lvchange"), path))
         else:
-            r, o, e = bash.bash_roe("lvchange -an %s" % path)
+            r, o, e = bash.bash_roe("%s -an %s" % (subcmd("lvchange"), path))
         if lv_is_active(path):
             raise RetryException("lv %s is still active after lvchange -an, returns code: %s, stdout: %s, stderr: %s"
                                  % (path, r, o, e))
@@ -1567,13 +1574,13 @@ def delete_lv(path, raise_exception=True, deactive=True):
         _deactive_lv(path, False)
     # remove meta-lv if any
     if lv_exists(get_meta_lv_path(path)):
-        shell.run("lvremove -y %s" % get_meta_lv_path(path))
+        shell.run("%s -y %s" % (subcmd("lvremove"), get_meta_lv_path(path)))
     if not lv_exists(path):
         return
     if raise_exception:
-        o = bash.bash_errorout("lvremove -y %s" % path)
+        o = bash.bash_errorout("%s -y %s" % (subcmd("lvremove"), path))
     else:
-        o = bash.bash_o("lvremove -y %s" % path)
+        o = bash.bash_o("%s -y %s" % (subcmd("lvremove"), path))
     return o
 
 
@@ -1584,9 +1591,9 @@ def delete_lv_meta(path, raise_exception=True):
     if not lv_exists(meta_path):
         return
     if raise_exception:
-        o = bash.bash_errorout("lvremove -y %s" % meta_path)
+        o = bash.bash_errorout("%s -y %s" % (subcmd("lvremove"), meta_path))
     else:
-        o = bash.bash_o("lvremove -y %s" % meta_path)
+        o = bash.bash_o("%s -y %s" % (subcmd("lvremove"), meta_path))
     return o
 
 
@@ -1656,7 +1663,7 @@ def get_lv_attr(lv_path, *attr):
 @bash.in_bash
 def lv_rename(old_abs_path, new_abs_path, overwrite=False):
     if not lv_exists(new_abs_path):
-        return bash.bash_roe("lvrename %s %s" % (old_abs_path, new_abs_path))
+        return bash.bash_roe("%s %s %s" % (subcmd("lvrename"), old_abs_path, new_abs_path))
 
     if overwrite is False:
         raise Exception("lv with name %s is already exists, can not rename lv %s to it" %
@@ -1670,7 +1677,7 @@ def lv_rename(old_abs_path, new_abs_path, overwrite=False):
 
     r, o, e = lv_rename(old_abs_path, new_abs_path)
     if r != 0:
-        bash.bash_errorout("lvrename %s %s" % (tmp_path, new_abs_path))
+        bash.bash_errorout("%s %s %s" % (subcmd("lvrename"), tmp_path, new_abs_path))
         raise Exception("rename lv %s to tmp name %s failed: stdout: %s, stderr: %s" %
                         (old_abs_path, new_abs_path, o, e))
 
@@ -1748,7 +1755,7 @@ def create_lvm_snapshot(absolutePath, remove_oldest=True, snapName=None, size_pe
     bash.bash_errorout("blockdev --flushbufs %s; lvcreate --snapshot -n %s %s %s" % (absolutePath, snapName, absolutePath, size_command))
     path = "/".join(absolutePath.split("/")[:-1]) + "/" + snapName
     if size_command == "":
-        bash.bash_r("lvchange -ay -K %s" % path)
+        bash.bash_r("%s -ay -K %s" % (subcmd("lvchange"), path))
     return path
 
 
@@ -2632,3 +2639,15 @@ class LvmRemoteStorage(remoteStorage.RemoteStorage):
         if len(device_and_mount_path) != 0:
             shell.call('umount -f %s' % self.mount_path)
         deactive_lv(self.normalize_install_path)
+
+
+def report_config_changed():
+    shell.run("touch %s" % LVM_CONFIG_CHANGED_FILE)
+
+
+def subcmd(cmd, timeout=lvm_cmd_timeout_with_locking):
+    if cmd in ["lvs", "pvs", "vgs"]:
+        return "%s --nolocking -t" % cmd
+    elif cmd in ["lvchange", "lvcreate", "lvrename", "lvresize", "lvextend", "lvremove"]:
+        return "timeout -s SIGKILL %s %s"% (timeout, cmd)
+    return cmd
