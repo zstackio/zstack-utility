@@ -56,6 +56,10 @@ def decode_with_fallback(encoded_bytes):
             continue
     raise UnicodeDecodeError("Unable to decode bytes using provided encodings")
 
+def merge_cmd(cmd_str, args):
+    for sub_key in args:
+        cmd_str = cmd_str + "" + sub_key
+    return cmd_str
 
 def get_qga_channel_state(vm_dom):
     xml_tree = ET.fromstring(vm_dom.XMLDesc())
@@ -187,7 +191,7 @@ class VmQga(object):
         return self.call_qga_command("guest-exec", args=args)
 
     def guest_exec_bash_no_exitcode(self, cmd, exception=True, output=True):
-        exitcode, ret_data = self.guest_exec_bash(cmd, output)
+        exitcode, ret_data, _ = self.guest_exec_bash(cmd, output)
         if exitcode != 0:
             # logger.debug("qga exec command: {}, exitcode {}, ret {}".format(cmd, exitcode, ret_data))
             if exception:
@@ -221,13 +225,80 @@ class VmQga(object):
             raise Exception('qga exec cmd {} timeout for vm {}'.format(cmd, self.vm_uuid))
 
         exit_code = ret.get('exitcode')
-        ret_data = None
+        s_ret_data = None
+        e_ret_data = None
         if 'out-data' in ret:
-            ret_data = decode_with_fallback(ret['out-data'])
+            s_ret_data = decode_with_fallback(ret['out-data'])
         elif 'err-data' in ret:
-            ret_data = decode_with_fallback(ret['err-data'])
+            e_ret_data = decode_with_fallback(ret['err-data'])
 
-        return exit_code, ret_data
+        return exit_code, s_ret_data, e_ret_data
+
+    def guest_exec_cmd(self, args, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+
+        ret = self.guest_exec(
+            {"path": "cmd", "arg": args, "capture-output": output})
+        if ret and "pid" in ret:
+            pid = ret["pid"]
+        else:
+            raise Exception('qga exec cmd {} failed for vm {}'.format(merge_cmd("cmd", args), self.vm_uuid))
+
+        if not output:
+            logger.debug("run qga cmd: {} failed, no output".format(merge_cmd("cmd", args)))
+            return 0, None
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec cmd {} timeout for vm {}'.format(merge_cmd("cmd", args), self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        s_ret_data = None
+        e_ret_data = None
+        if 'out-data' in ret:
+            s_ret_data = decode_with_fallback(ret['out-data'])
+        if 'err-data' in ret:
+            e_ret_data = decode_with_fallback(ret['err-data'])
+
+        return exit_code, s_ret_data, e_ret_data
+
+    def guest_exec_powershell_script(self, file, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+
+        ret = self.guest_exec(
+            {"path": "powershell", "arg": ["-File", file], "capture-output": output})
+        if ret and "pid" in ret:
+            pid = ret["pid"]
+        else:
+            raise Exception('qga exec File {} failed for vm {}'.format(file, self.vm_uuid))
+
+        if not output:
+            logger.debug("run qga powershell file {} failed, no output".format(file))
+            return 0, None
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec powershell file {} timeout for vm {}'.format(file, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        s_ret_data = None
+        e_ret_data = None
+        if 'out-data' in ret:
+            s_ret_data = decode_with_fallback(ret['out-data'])
+        if 'err-data' in ret:
+            e_ret_data = decode_with_fallback(ret['err-data'])
+
+        return exit_code, s_ret_data, e_ret_data
 
     # not a good function, just for hurry push
     def guest_exec_python(self, file, params=None, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
@@ -236,7 +307,7 @@ class VmQga(object):
             path = self.guest_exec_bash_no_exitcode("which python3", exception=False)
 
         if not path:
-            raise Exception('python not installed in vm {}'.format(file, self.vm_uuid))
+            raise Exception('python not installed in vm {}'.format(self.vm_uuid))
 
         args = [file]
         if params is not None:
@@ -248,7 +319,7 @@ class VmQga(object):
         if ret and "pid" in ret:
             pid = ret["pid"]
         else:
-            raise Exception('qga exec cmd {} failed for vm {}'.format(file, self.vm_uuid))
+            raise Exception('qga exec python file {} failed for vm {}'.format(file, self.vm_uuid))
 
         if not output:
             logger.warn("run qga python: {} failed, no output".format(file))
@@ -266,13 +337,15 @@ class VmQga(object):
             raise Exception('qga exec cmd {} timeout for vm {}'.format(file, self.vm_uuid))
 
         exit_code = ret.get('exitcode')
-        ret_data = None
+        logger.warning("This is python ret %s" % ret)
+        s_ret_data = None
+        e_ret_data = None
         if 'out-data' in ret:
-            ret_data = decode_with_fallback(ret['out-data'])
+            s_ret_data = decode_with_fallback(ret['out-data'])
         elif 'err-data' in ret:
-            ret_data = decode_with_fallback(ret['err-data'])
+            e_ret_data = decode_with_fallback(ret['err-data'])
 
-        return exit_code, ret_data
+        return exit_code, s_ret_data, e_ret_data
 
     def guest_exec_zs_tools(self, operate, config, output=True, wait=qga_exec_wait_interval, retry=zs_tools_wait_retry):
         if operate == 'net':
