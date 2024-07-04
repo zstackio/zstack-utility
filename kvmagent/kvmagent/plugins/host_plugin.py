@@ -248,6 +248,15 @@ class HostPhysicalMemoryStruct(object):
         self.voltage = ""
         self.type = ""
 
+class HostPhysicalCpuStruct(object):
+    def __init__(self):
+        self.designation = ""
+        self.version = ""
+        self.serialNumber = ""
+        self.currentSpeed = ""
+        self.coreCount = ""
+        self.threadCount = ""
+
 
 class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
     physicalMemoryFacts = None  # type: list[HostPhysicalMemoryStruct]
@@ -255,6 +264,14 @@ class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(GetHostPhysicalMemoryFactsResponse, self).__init__()
         self.physicalMemoryFacts = []
+
+
+class GetHostPhysicalCpuFactsResponse(kvmagent.AgentResponse):
+    physicalCpuFacts = None  # type: list[HostPhysicalCpuStruct]
+
+    def __init__(self):
+        super(GetHostPhysicalCpuFactsResponse, self).__init__()
+        self.physicalCpuFacts = []
 
 
 class SetHostKernelInterfaceCmd(kvmagent.AgentCommand):
@@ -964,6 +981,7 @@ class HostPlugin(kvmagent.KvmAgent):
     IDENTIFY_HOST = "/host/identify"
     LOCATE_HOST_NETWORK_INTERFACE = "/host/locate/networkinterface";
     GET_HOST_PHYSICAL_MEMORY_FACTS = "/host/physicalmemoryfacts";
+    GET_HOST_PHYSICAL_CPU_FACTS = "/host/physicalcpufacts";
     UPDATE_HOST_OVS_CPU_PINNING = "/host/ovs/cpu-pin/update"
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
@@ -2022,6 +2040,47 @@ done
                         m.voltage = v
                         results.append(m)
         rsp.physicalMemoryFacts = results
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_host_physical_cpu_facts(self, req):
+        rsp = GetHostPhysicalCpuFactsResponse()
+        r, o, e = bash_roe("dmidecode -q -t processor")
+        if r != 0:
+            rsp.success = False
+            rsp.error = e
+            return jsonobject.dumps(rsp)
+
+        results = []
+        cpu_arr = o.split("Processor Information")
+        for infos in cpu_arr[1:]:
+            designation = version = current_speed = core_count = None
+            for line in infos.splitlines():
+                if line.strip() == "" or ":" not in line:
+                    continue
+                k = line.split(":")[0].lower().strip()
+                v = ":".join(line.split(":")[1:]).strip()
+
+                if "socket designation" == k:
+                    designation = v
+                elif "version" == k:
+                    version = v
+                elif "serial number" == k:
+                    serial_number = v
+                elif "current speed" == k:
+                    current_speed = v
+                elif "core count" == k:
+                    core_count = v
+                elif "thread count" == k:
+                    m = HostPhysicalCpuStruct()
+                    m.designation = designation
+                    m.version = version
+                    m.serialNumber = serial_number
+                    m.currentSpeed = current_speed
+                    m.coreCount = core_count
+                    m.threadCount = v
+                    results.append(m)
+        rsp.physicalCpuFacts = results
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -3600,8 +3659,9 @@ done
         http_server.register_async_uri(self.HOST_STOP_USB_REDIRECT_PATH, self.stop_usb_redirect_server)
         http_server.register_async_uri(self.CHECK_USB_REDIRECT_PORT, self.check_usb_server_port)
         http_server.register_async_uri(self.IDENTIFY_HOST, self.identify_host)
-        http_server.register_async_uri(self.LOCATE_HOST_NETWORK_INTERFACE,self.locate_host_network_interface)
-        http_server.register_async_uri(self.GET_HOST_PHYSICAL_MEMORY_FACTS,self.get_host_physical_memory_facts)
+        http_server.register_async_uri(self.LOCATE_HOST_NETWORK_INTERFACE, self.locate_host_network_interface)
+        http_server.register_async_uri(self.GET_HOST_PHYSICAL_MEMORY_FACTS, self.get_host_physical_memory_facts)
+        http_server.register_async_uri(self.GET_HOST_PHYSICAL_CPU_FACTS, self.get_host_physical_cpu_facts)
         http_server.register_async_uri(self.UPDATE_HOST_OVS_CPU_PINNING, self.update_ovs_cpu_pinning)
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
