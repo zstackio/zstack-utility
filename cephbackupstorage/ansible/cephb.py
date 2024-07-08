@@ -136,6 +136,8 @@ if host_info.distro in RPM_BASED_OS:
         # qemu-kvm-ev
         if releasever == 'c74' and get_mn_release() in ['c76', 'c79', 'h76c', 'h79c']:
             install_rpm_list += " qemu-kvm"
+        if IS_AARCH64:
+            install_rpm_list += " qemu-block-rbd"
 
     if zstack_repo != 'false':
         command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
