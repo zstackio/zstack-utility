@@ -126,7 +126,7 @@ def translate_absolute_path_from_wwn(wwn):
 def heartbeat_io_check(path):
     cmd = 'sg_inq %s' % path
     if path.startswith("rbd:"):
-        cmd = "timeout 15 qemu-img bench -c 10 -d 1 -w -t none -f raw -n %s" % path
+        cmd = "timeout 15 qemu-img bench -c 10 -d 1 -w -t none -f raw -n %s:do_lunmap=false" % path
 
     heartbeat_check = shell.ShellCmd(cmd)
     heartbeat_check(False)
