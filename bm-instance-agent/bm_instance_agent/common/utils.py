@@ -1,6 +1,8 @@
 import os
 import re
 import socket
+import subprocess
+import sys
 
 import cpuinfo
 import distro
@@ -16,6 +18,7 @@ from bm_instance_agent import exception
 
 LOG = logging.getLogger(__name__)
 DEFAULT_SSH_PORT = 22
+
 
 class transcantion(object):
     """ A tool class for retry
@@ -384,3 +387,20 @@ def get_ssh_port():
     except Exception:
         LOG.warning("get ssh port failed ,return default ssh port 22")
         return DEFAULT_SSH_PORT
+
+
+def shell_cmd(cmd, exception=True, workdir=None):
+    process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stdin=subprocess.PIPE,
+                               stderr=subprocess.PIPE, close_fds=True, executable='/bin/bash', cwd=workdir)
+
+    (stdout, stderr) = process.communicate()
+    return_code = process.returncode
+    if exception and return_code != 0:
+        raise Exception("Failed to exec: [{}]".format(cmd))
+
+    # the type of results is bytes in python3
+    if sys.version_info.major == 3:
+        stdout = stdout.decode()
+        stderr = stderr.decode()
+
+    return return_code, stdout.strip(), stderr.strip()
