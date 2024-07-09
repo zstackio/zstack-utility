@@ -28,10 +28,6 @@ def query_volume_info(logical_pool_name, lun_name):
     return shell.call("zbs query file --path %s/%s --format json" % (logical_pool_name, lun_name))
 
 
-def query_volume(logical_pool_name, lun_name):
-    return shell.run("zbs query file --path %s/%s" % (logical_pool_name, lun_name))
-
-
 def query_children_volume(logical_pool_name, lun_name, snapshot_name, is_snapshot=False):
     if is_snapshot:
         return shell.call("zbs children --snappath %s/%s@%s --user %s --format json" % (logical_pool_name, lun_name, snapshot_name, DEFAULT_ZBS_USER_NAME))
@@ -69,8 +65,10 @@ def create_volume(logical_pool_name, lun_name, lun_size):
 
 @linux.retry(times=30, sleep_time=5)
 def delete_volume(logical_pool_name, lun_name):
-    if query_volume(logical_pool_name, lun_name) != 0:
-        raise Exception('cannot found lun[%s/%s]' % (logical_pool_name, lun_name))
+    o = query_volume_info(logical_pool_name, lun_name)
+    r = jsonobject.loads(o)
+    if r.error.code != 0:
+        raise Exception('cannot found lun[%s/%s], error[%s]' % (logical_pool_name, lun_name, r.error.message))
     shell.call("zbs delete file --path %s/%s" % (logical_pool_name, lun_name))
 
 
