@@ -6553,7 +6553,6 @@ class VmPlugin(kvmagent.KvmAgent):
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     VM_PRIORITY_PATH = "/vm/priority"
-    GET_FILE_HANDLE_PATH = "/vm/guesttools/handle"
     UPLOAD_FILE_GUEST_TOOLS_FOR_VM_PATH = "/vm/guesttools/upload_file"
     EXEC_CMD_IN_VM_PATH = "/vm/guesttools/exec"
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
@@ -7047,54 +7046,6 @@ class VmPlugin(kvmagent.KvmAgent):
             read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
             shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, read_bytes_sec, cmd.writeBandwidth))
 
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    def get_file_handle(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = QgaOpenFileRsp()
-
-        @LibvirtAutoReconnect
-        def call_libvirt(conn):
-            return conn.lookupByName(cmd.vmUuid)
-
-        def create_path(qga, file):
-            logger.info("enter create_path qga=%s, file=%s" % (qga, file))
-            exit_code = 0
-            path = os.path.dirname(file)
-            if qga.os == "mswindows":
-                noExist, _, _ = qga.guest_exec_cmd(["/c", "dir", "/ad", path.replace("/", "\\")])
-                if noExist:
-                    exit_code, _, _ = qga.guest_exec_cmd(["/c", "md", path.replace("/", "\\")])
-            else:
-                noExist, _, _ = qga.guest_exec_bash("test -d {}".format(path))
-                if noExist:
-                    exit_code, _, _ = qga.guest_exec_bash("mkdir -p {}".format(path))
-            return not exit_code
-
-        script_type_dict = {
-            "Python": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".py"),
-            "Perl": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".pl"),
-            "Shell": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".sh"),
-            "Bat": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + ".bat"),
-            "Powershell": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + ".ps1"),
-        }
-
-        qga = VmQga(call_libvirt())
-        fw = 0
-        if cmd.fileType == "Script":
-            dst = script_type_dict.get(cmd.scriptType)
-            if create_path(qga, dst):
-                fw = qga.guest_file_open(dst, True)
-        else:
-            if create_path(qga, cmd.dstPath):
-                fw = qga.call_qga_command("guest-file-open", {"path": cmd.dstPath, "mode": "wb"})
-
-        if fw != 0:
-            rsp.fileHandle = fw
-        else:
-            rsp.success = False
-            rsp.error = "do not get handle"
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -10947,7 +10898,6 @@ host side snapshot files chian:
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
-        http_server.register_async_uri(self.GET_FILE_HANDLE_PATH, self.get_file_handle)
         http_server.register_async_uri(self.UPLOAD_FILE_GUEST_TOOLS_FOR_VM_PATH, self.upload_vm_file)
         http_server.register_async_uri(self.EXEC_CMD_IN_VM_PATH, self.script_exec_on_vm)
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
