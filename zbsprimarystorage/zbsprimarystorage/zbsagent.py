@@ -4,6 +4,7 @@ import traceback
 import pprint
 import socket
 import threading
+import os
 
 import zbsutils
 import zstacklib.utils.jsonobject as jsonobject
@@ -22,7 +23,7 @@ logger = log.get_logger(__name__)
 
 PROTOCOL_CBD_PREFIX = "cbd"
 port_lock = threading.Lock()
-
+ZBS_CLIENT_CONF = "/etc/zbs/client.conf"
 
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
@@ -256,7 +257,8 @@ class ZbsAgent(plugin.TaskManager):
 
         if isProtected:
             o = zbsutils.unprotect_snapshot(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
-            if jsonobject.loads(o).error.code != 0:
+            ret = jsonobject.loads(o)
+            if ret.error.code != 0:
                 raise Exception(
                     'failed to unprotect snapshot[%s@%s], error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
 
@@ -300,11 +302,11 @@ class ZbsAgent(plugin.TaskManager):
 
         o = zbsutils.clone_volume(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName, cmd.dstLunName)
         ret = jsonobject.loads(o)
-        if ret.error.code == 0:
-            rsp.installPath = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(cmd.logicalPoolName) + "/" + cmd.logicalPoolName + "/" + cmd.dstLunName
-            rsp.size = ret.result.fileInfo.length
-        else:
+        if ret.error.code != 0:
             raise Exception('failed to clone lun[%s] to lun[%s], error[%s]' % (cmd.srcPath, cmd.destPath, ret.error.message))
+
+        rsp.installPath = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(cmd.logicalPoolName) + "/" + cmd.logicalPoolName + "/" + cmd.dstLunName
+        rsp.size = ret.result.fileInfo.length
 
         return jsonobject.dumps(rsp)
 
@@ -408,7 +410,12 @@ class ZbsAgent(plugin.TaskManager):
         ret = jsonobject.loads(o)
         if ret.error.code != 0:
             raise Exception('failed to create lun[%s], error[%s]' % (cmd.lunName, ret.error.message))
-        rsp.size = jsonobject.loads(o).result.info.fileInfo.length
+
+        o = zbsutils.query_volume_info(cmd.logicalPoolName, cmd.lunName)
+        ret = jsonobject.loads(o)
+        if ret.error.code != 0:
+            raise Exception('cannot found lun[%s/%s] info, error[%s]' % (cmd.logicalPoolName, cmd.lunName, ret.error.message))
+        rsp.size = ret.result.info.fileInfo.length
         rsp.installPath = install_path
 
         return jsonobject.dumps(rsp)
@@ -419,6 +426,9 @@ class ZbsAgent(plugin.TaskManager):
         rsp = GetCapacityRsp()
 
         o = zbsutils.query_logical_pool_info()
+        ret = jsonobject.loads(o)
+        if ret.error.code != 0:
+            raise Exception('cannot found logical pool info, error[%s]' % ret.error.message)
 
         found = False
         for lp in jsonobject.loads(o).result[0].logicalPoolInfos:
@@ -438,10 +448,18 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetFactsRsp()
 
+        if not os.path.exists(ZBS_CLIENT_CONF):
+            raise Exception('missing directory %s, please check the environment libcbd installation' % ZBS_CLIENT_CONF)
+
+        shell.call('sed -i "s/^mds\.listen\.addr=.*/mds.listen.addr=%s/" %s' % (cmd.mdsListenAddr, ZBS_CLIENT_CONF))
+
         o = zbsutils.query_mds_status_info()
+        ret = jsonobject.loads(o)
+        if ret.error.code != 0:
+            raise Exception('cannot found mds info, error[%s]' % ret.error.message)
 
         found = False
-        for mds in jsonobject.loads(o).result:
+        for mds in ret.result:
             if cmd.mdsAddr in mds.addr:
                 rsp.version = mds.version
                 found = True

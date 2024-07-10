@@ -26,6 +26,7 @@ remote_user = "root"
 remote_pass = None
 remote_port = None
 host_uuid = None
+qemu_installed = False
 
 
 # get parameter from shell
@@ -62,6 +63,9 @@ host_info = get_remote_host_info_obj(host_post_info)
 host_info = upgrade_to_helix(host_info, host_post_info)
 releasever = get_host_releasever(host_info)
 host_post_info.releasever = releasever
+if host_info.distro not in RPM_BASED_OS:
+    error("Unsupported OS!")
+
 
 zstacklib_args = ZstackLibArgs()
 zstacklib_args.distro = host_info.distro
@@ -73,11 +77,7 @@ zstacklib_args.host_post_info = host_post_info
 zstacklib_args.pip_url = pip_url
 zstacklib_args.trusted_host = trusted_host
 zstacklib_args.zstack_releasever = releasever
-if host_info.distro in DEB_BASED_OS:
-    zstacklib_args.apt_server = yum_server
-    zstacklib_args.zstack_apt_source = zstack_repo
-else :
-    zstacklib_args.yum_server = yum_server
+zstacklib_args.yum_server = yum_server
 zstacklib = ZstackLib(zstacklib_args)
 
 
@@ -92,38 +92,27 @@ else:
 
 
 # name: install dependencies
-if host_info.distro in RPM_BASED_OS:
-    common_rpm_list = "wget nmap"
-    ky10_rpm_list = "nettle qemu-block-rbd"
+install_rpm_list = ""
+qemu_installed = yum_check_package("qemu-kvm", host_post_info)
+if not qemu_installed:
+    install_rpm_list += " %s" % qemu_alias.get(releasever, 'qemu-kvm')
 
-    if zstack_repo != 'false':
-        command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
-                """ in $pkg_list; do yum --disablerepo=* --enablerepo={} install -y $pkg; done;"""\
-                .format(common_rpm_list, zstack_repo)
-        run_remote_command(command, host_post_info)
-
-        if releasever in kylin:
-            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
-                ky10_rpm_list, zstack_repo)
-            run_remote_command(command, host_post_info)
-
-        if host_info.major_version >= 7:
-            command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
-            run_remote_command(command, host_post_info)
-    else:
-        for pkg in common_rpm_list.split():
-            yum_install_package(pkg, host_post_info)
-        if host_info.major_version >= 7:
-            command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
-            run_remote_command(command, host_post_info)
-    set_selinux("state=disabled", host_post_info)
-elif host_info.major_version in DEB_BASED_OS:
-    install_pkg_list = ["wget", "qemu-utils","libvirt-bin", "libguestfs-tools"]
-    apt_install_packages(install_pkg_list, host_post_info)
-    command = "(chmod 0644 /boot/vmlinuz*) || true"
+if zstack_repo != 'false':
+    command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
+            """ in $pkg_list; do yum --disablerepo=* --enablerepo={} install -y $pkg; done;"""\
+            .format(install_rpm_list, zstack_repo)
     run_remote_command(command, host_post_info)
+
+    if host_info.major_version >= 7:
+        command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
+        run_remote_command(command, host_post_info)
 else:
-    error("Unsupported OS!")
+    for pkg in install_rpm_list.split():
+        yum_install_package(pkg, host_post_info)
+    if host_info.major_version >= 7:
+        command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
+        run_remote_command(command, host_post_info)
+set_selinux("state=disabled", host_post_info)
 
 
 # name: install virtualenv
@@ -184,14 +173,12 @@ copy(copy_arg, host_post_info)
 
 
 # name: restart zbspagent
-if host_info.distro in RPM_BASED_OS:
-    command = "service zstack-zbs-primarystorage stop && service zstack-zbs-primarystorage start" \
-              " && chkconfig zstack-zbs-primarystorage on"
-elif host_info.distro in DEB_BASED_OS:
-    command = "update-rc.d zstack-zbs-primarystorage start 97 3 4 5 . stop 3 0 1 2 6 . && service zstack-zbs-primarystorage stop && service zstack-zbs-primarystorage start"
+command = "service zstack-zbs-primarystorage stop && service zstack-zbs-primarystorage start && chkconfig zstack-zbs-primarystorage on"
 run_remote_command(command, host_post_info)
+
 
 host_post_info.start_time = start_time
 handle_ansible_info("SUCC: Deploy zbs primary agent successful", host_post_info, "INFO")
+
 
 sys.exit(0)
