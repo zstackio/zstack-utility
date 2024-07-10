@@ -133,7 +133,7 @@ class IscsiLogin(object):
             return self.get_device_path()
 
         self.rescan()
-        path = linux.wait_callback_success(_get_device_path, timeout=30, interval=0.5)
+        path = linux.wait_callback_success(_get_device_path, timeout=60, interval=0.5)
         if not path:
             raise Exception('unable to find device path for disk id[%s]' % self.disk_id)
         return path
