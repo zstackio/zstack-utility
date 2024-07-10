@@ -952,6 +952,9 @@ configure lldp status rx-only \n
 
                 attach_rsp = self.do_attach_nic_to_bonding(attach_cmd)
                 if not attach_rsp.success:
+                    del_cmd = DeleteBondingCmd()
+                    del_cmd.bondName = attach_cmd.bondName
+                    self.do_delete_bonding(del_cmd)
                     rsp.success = attach_rsp.success
                     rsp.error = attach_rsp.error
                     return jsonobject.dumps(rsp)
