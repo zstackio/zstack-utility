@@ -232,6 +232,14 @@ def load_nbd():
 
 load_nbd()
 
+def load_fuse():
+    command = "/sbin/modprobe fuse"
+    status = run_remote_command(command, host_post_info, True, False)
+    if status is False:
+        warn("failed to load fuse kernel module")
+
+load_fuse()
+
 if client == "false" and new_add == "false":
     exp_dir = os.path.join(fs_rootpath, "export")
     reg_dir = os.path.join(fs_rootpath, "registry")
