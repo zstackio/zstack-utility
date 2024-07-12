@@ -59,7 +59,7 @@
       when: virtualenv_ret.rc != 0
 
     - name: create virtualenv
-      shell: "rm -rf {{virtenv_path}} && rm -rf {{appbuild_root}}/{{pkg_zstacklib}} && rm -f {{appbuild_root}}/{{pkg_appbuildsystem}} && virtualenv --system-site-packages {{virtenv_path}}"
+      shell: "rm -rf {{virtenv_path}} && rm -rf {{appbuild_root}}/{{pkg_zstacklib}} && rm -f {{appbuild_root}}/{{pkg_appbuildsystem}} && virtualenv-2.7 --system-site-packages {{virtenv_path}}"
 
     - name: copy zstacklib
       copy: src="files/zstacklib/{{pkg_zstacklib}}" dest="{{appbuild_root}}/{{pkg_zstacklib}}"
