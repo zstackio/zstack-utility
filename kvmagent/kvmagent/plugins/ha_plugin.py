@@ -155,7 +155,7 @@ class AbstractHaFencer(object):
         threads = []
         for fencer in self.run_fencer_list:
             if fencer in self.ha_fencer:
-                thread = threading.Thread(target=self.ha_fencer[fencer].exec_fencer())
+                thread = threading.Thread(target=self.ha_fencer[fencer].exec_fencer)
                 thread.start()
                 threads.append(thread)
 
@@ -841,7 +841,7 @@ class CephHeartbeatController(AbstractStorageFencer):
                 # for example, pool name is aaa
                 # add slash to confirm kill_vm matches vm with volume aaa/volume_path
                 # but not aaa_suffix/volume_path
-                vm_uuids, _ = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False).keys()
+                vm_uuids, _ = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False)
                 if self.strategy == 'Permissive':
                     self.reset_failure_count()
 
@@ -1660,7 +1660,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
 
-                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy).keys()
+                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy)
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
@@ -1739,7 +1739,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("block storage %s fencer fired!" % cmd.uuid)
 
-                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy, cmd.uuid, True).keys()
+                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy, cmd.uuid, True)
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
