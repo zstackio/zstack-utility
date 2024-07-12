@@ -143,7 +143,7 @@ if host_info.distro in RPM_BASED_OS:
         run_remote_command(command, host_post_info)
 
         if releasever in kylin:
-            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; || true; done;") % (
+            command = ("for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg || true; done;") % (
             ky10_update_list, zstack_repo)
             run_remote_command(command, host_post_info)
 
