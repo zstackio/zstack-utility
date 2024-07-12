@@ -891,7 +891,7 @@ class RbdHeartbeatController(AbstractStorageFencer):
         if r != 0:
             logger.warn("failed to use rbd_rw.py read heartbeat [path:%s, hostId:%d] timestamp\n"
                         " return code:%s\n stdout:%s\n stderr: %s\n" %
-                        (self.heartbeat_path, host_id, r, o[0, min(128, len(o))], e))
+                        (self.heartbeat_path, host_id, r, o[0:min(128, len(o))], e))
             return None, None
 
         hb_content = o.split(EOF)[0]
