@@ -264,10 +264,10 @@ class ZbsAgent(plugin.TaskManager):
 
         o = zbsutils.delete_snapshot(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
         ret = jsonobject.loads(o)
-        if ret.error.code == 0:
-            return jsonobject.dumps(rsp)
-        else:
+        if ret.error.code != 0:
             raise Exception('failed to delete snapshot[%s@%s], error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
+
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def query_volume(self, req):
@@ -333,12 +333,13 @@ class ZbsAgent(plugin.TaskManager):
 
         o = zbsutils.create_snapshot(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
         ret = jsonobject.loads(o)
-        if ret.error is None:
-            rsp.size = ret.result.snapShotFileInfo.length
-            rsp.installPath = install_path
-            return jsonobject.dumps(rsp)
-        else:
+        if ret.error.code != 0:
             raise Exception('failed to create snapshot[%s@%s], error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
+
+        rsp.size = ret.result.snapShotFileInfo.length
+        rsp.installPath = install_path
+
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def clean_nbd(self, req):
