@@ -1705,7 +1705,7 @@ class IsoCeph(object):
 
     def to_xmlobject(self, target_dev, target_bus_type, bus=None, unit=None, bootOrder=None):
         disk = etree.Element('disk', {'type': 'network', 'device': 'cdrom'})
-        source = e(disk, 'source', None, {'name': self.iso.path.lstrip('ceph:').lstrip('//').split("@")[0], 'protocol': 'rbd'})
+        source = e(disk, 'source', None, {'name': self.iso.path.replace('ceph://', '').split("@")[0], 'protocol': 'rbd'})
         if self.iso.secretUuid:
             auth = e(disk, 'auth', attrib={'username': 'zstack'})
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.iso.secretUuid})
@@ -1731,7 +1731,7 @@ class BlkCeph(object):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
         e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
         source = e(disk, 'source', None,
-                   {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
+                   {'name': self.volume.installPath.replace('ceph://', ''), 'protocol': 'rbd'})
         if self.volume.secretUuid:
             auth = e(disk, 'auth', attrib={'username': 'zstack'})
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
@@ -1760,7 +1760,7 @@ class VirtioCeph(object):
 
         e(disk, 'driver', None, driver_elements)
         source = e(disk, 'source', None,
-                   {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
+                   {'name': self.volume.installPath.replace('ceph://', ''), 'protocol': 'rbd'})
         if self.volume.secretUuid:
             auth = e(disk, 'auth', attrib={'username': 'zstack'})
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
@@ -1781,7 +1781,7 @@ class VirtioSCSICeph(object):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
         e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
         source = e(disk, 'source', None,
-                   {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
+                   {'name': self.volume.installPath.replace('ceph://', ''), 'protocol': 'rbd'})
         if self.volume.secretUuid:
             auth = e(disk, 'auth', attrib={'username': 'zstack'})
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})

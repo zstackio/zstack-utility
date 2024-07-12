@@ -869,19 +869,32 @@ class RbdHeartbeatController(AbstractStorageFencer):
         hb_content = HeartbeatStruct(vm_in_ps_uuid_list)
         offset = self.host_id * self.hb_chunk_size
 
+        logger.debug("use rbd_rw.py to update heartbeat [path:%s, hostId:%d] timestamp with content: %s"
+                     % (self.heartbeat_path, self.host_id, hb_content))
         cmd = "source /var/lib/zstack/virtualenv/kvm/bin/activate && timeout 10 python %s write %s %d '%s'" % (
             self.rbd_rw_path, self.heartbeat_path, offset, str(hb_content) + EOF)
-        shell.call(cmd)
+        r, o, e = bash.bash_roe(cmd)
+        if r != 0:
+            logger.warn("failed to use rbd_pw update heartbeat [path:%s, hostId:%d] timestamp. \n"
+                        " return code: %s\n stdout: %s\n stderr: %s" % (self.heartbeat_path, self.host_id, r, o, e))
+            return False
 
         return True
 
     def read_fencer_hearbeat(self, host_id, ps_uuid):
         offset = host_id * self.hb_chunk_size
 
+        logger.debug("use rbd_rw.py to read heartbeat [path:%s, hostId:%d] timestamp" % (self.heartbeat_path, host_id))
         cmd = "source /var/lib/zstack/virtualenv/kvm/bin/activate && timeout 10 python %s read %s %d %d" % (
             self.rbd_rw_path, self.heartbeat_path, offset, self.hb_chunk_size)
-        ret = shell.call(cmd)
-        hb_content = ret.split(EOF)[0]
+        r, o, e = bash.bash_roe(cmd)
+        if r != 0:
+            logger.warn("failed to use rbd_rw.py read heartbeat [path:%s, hostId:%d] timestamp\n"
+                        " return code:%s\n stdout:%s\n stderr: %s\n" %
+                        (self.heartbeat_path, host_id, r, o[0, min(128, len(o))], e))
+            return None, None
+
+        hb_content = o.split(EOF)[0]
         hb = jsonobject.loads(hb_content)
         return hb.heartbeat_time, hb.vm_uuids
 
@@ -900,12 +913,17 @@ class RbdHeartbeatController(AbstractStorageFencer):
             self.storage_failure = False
 
         if self.report_storage_status:
-            if self.storage_failure:
-                self.report_storage_status_callback([self.ps_uuid], 'Disconnected')
-            else:
-                self.report_storage_status_callback([self.ps_uuid], 'Connected')
-            # after fencer state reported, set fencer_state_reported to False
-            self.report_storage_status = False
+            try:
+                if self.storage_failure:
+                    self.report_storage_status_callback([self.ps_uuid], 'Disconnected')
+                else:
+                    self.report_storage_status_callback([self.ps_uuid], 'Connected')
+                # after fencer state reported, set fencer_state_reported to False
+                self.report_storage_status = False
+            except Exception as e:
+                logger.warn('failed to report storage status to management node, %s' % str(e))
+                content = traceback.format_exc()
+                logger.warn(content)
 
         if heartbeat_success:
             logger.debug(
@@ -916,7 +934,12 @@ class RbdHeartbeatController(AbstractStorageFencer):
             self.handle_heartbeat_failure()
 
     def exec_fencer(self):
-        self.check_rbd_fencer()
+        try:
+            self.check_rbd_fencer()
+        except Exception as e:
+            logger.warn('check rbd fencer failed, %s' % str(e))
+            content = traceback.format_exc()
+            logger.warn(content)
 
 
 class CephHeartbeatController(AbstractStorageFencer):

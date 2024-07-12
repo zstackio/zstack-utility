@@ -48,7 +48,7 @@ if __name__ == '__main__':
 
     op = sys.argv[1]
     path = sys.argv[2]
-    path.replace('rbd:', '')
+    path = path.replace('rbd:', '')
     pool_name = path.split('/')[0]
     image_name = path.split('/')[1]
     if op == 'read':
