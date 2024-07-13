@@ -1432,6 +1432,13 @@ def check_gpu_status_and_save_gpu_status(type, metrics):
         handle_gpu_status(gpuStatus, pci_device_address)
 
 
+def calculate_percentage(part, total):
+    if total == 0:
+        return "0.0"
+    percentage = (float(part) / float(total)) * 100
+    return round(percentage, 1)
+
+
 def collect_nvidia_gpu_status():
     metrics = get_gpu_metrics()
 
@@ -1439,7 +1446,8 @@ def collect_nvidia_gpu_status():
         return metrics.values()
 
     r, gpu_info = bash_ro(
-        "nvidia-smi --query-gpu=power.draw,temperature.gpu,fan.speed,utilization.gpu,utilization.memory,index,gpu_bus_id,gpu_serial --format=csv,noheader")
+        "nvidia-smi --query-gpu=power.draw,temperature.gpu,fan.speed,utilization.gpu,utilization.memory,index,"
+        "gpu_bus_id,gpu_serial,memory.used,memory.total --format=csv,noheader")
     if r != 0:
         check_gpu_status_and_save_gpu_status("NIVIDIA", metrics)
         return metrics.values()
@@ -1447,8 +1455,8 @@ def collect_nvidia_gpu_status():
     gpu_index_mapping_pciaddress = {}
     for info in gpu_info.splitlines():
         info = info.strip().split(',')
-        pci_device_address = info[-2].strip().lower()
-        gpu_serial = info[-1].strip()
+        pci_device_address = info[6].strip().lower()
+        gpu_serial = info[7].strip()
         if len(pci_device_address.split(':')[0]) == 8:
             pci_device_address = pci_device_address[4:].lower()
 
@@ -1458,8 +1466,8 @@ def collect_nvidia_gpu_status():
         add_metrics('host_gpu_temperature', info[1].strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_fan_speed', info[2].replace('%', '').strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_utilization', info[3].replace('%', '').strip(), [pci_device_address, gpu_serial], metrics)
-        add_metrics('host_gpu_memory_utilization', info[4].replace('%', '').strip(), [pci_device_address, gpu_serial],
-                    metrics)
+        add_metrics('host_gpu_memory_utilization', calculate_percentage(info[8].replace('MiB', '').strip(), info[9].replace('MiB', '').strip()),
+                    [pci_device_address, gpu_serial], metrics)
         gpu_index_mapping_pciaddress[info[5].strip()] = pci_device_address
 
     check_gpu_status_and_save_gpu_status("NIVIDIA", metrics)
