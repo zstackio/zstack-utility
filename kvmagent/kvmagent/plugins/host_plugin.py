@@ -21,7 +21,7 @@ import subprocess
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http, lvm, ceph
+from zstacklib.utils import http, lvm, ceph, pci
 from zstacklib.utils import qemu
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
@@ -2234,7 +2234,7 @@ done
             # for NVIDIA A-Series, after driver successfully installed, virtfn files will be created
             # set deviceId and vendorId null
             virtfn = os.path.join(dev, os.readlink(physfn), 'virtfn0')
-            if to.type in ('GPU_3D_Controller', 'GPU_Video_Controller') and self.NVIDIA_SMI_INSTALLED and os.path.exists(virtfn):
+            if pci.is_gpu(to.type) and self.NVIDIA_SMI_INSTALLED and os.path.exists(virtfn):
                 to.deviceId = ""
                 to.vendorId = ""
             else:
@@ -2455,8 +2455,10 @@ done
             if to.vendorId != '' and to.deviceId != '':
                 rsp.pciDevicesInfo.append(to)
 
+        pci.calculate_max_addressable_memory(rsp.pciDevicesInfo)
+
     def _collect_gpu_addoninfo(self, to, vendor_name):
-        if to.type in ['GPU_3D_Controller', 'GPU_Video_Controller']:
+        if pci.is_gpu(to.type):
             if vendor_name == 'NVIDIA':
                 self._collect_nvidia_gpu_info(to)
             if vendor_name == 'AMD':
@@ -2678,7 +2680,7 @@ done
             logger.debug("no need to re-splite pci device[addr:%s] into sriov pci devices" % addr)
             return jsonobject.dumps(rsp)
 
-        if cmd.pciDeviceType == 'GPU_Video_Controller' or cmd.pciDeviceType == 'GPU_3D_Controller':
+        if pci.is_gpu(cmd.pciDeviceType):
             self._generate_sriov_gpu_devices(cmd, rsp)
         elif cmd.pciDeviceType == 'Ethernet_Controller':
             self._generate_sriov_net_devices(cmd, rsp)
@@ -2752,7 +2754,7 @@ done
 
         addr = cmd.pciDeviceAddress
 
-        if cmd.pciDeviceType == 'GPU_Video_Controller' or cmd.pciDeviceType == 'GPU_3D_Controller':
+        if pci.is_gpu(cmd.pciDeviceType):
             self._ungenerate_sriov_gpu_devices(cmd, rsp)
         elif cmd.pciDeviceType == 'Ethernet_Controller':
             self._ungenerate_sriov_net_devices(cmd, rsp)
