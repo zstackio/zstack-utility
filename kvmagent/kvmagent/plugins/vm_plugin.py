@@ -1553,6 +1553,7 @@ class BlkIscsi(object):
         self.server_port = None
         self.target = None
         self.lun = None
+        self.cache_mode = None
 
     def _login_portal(self):
         login = IscsiLogin()
@@ -1568,14 +1569,14 @@ class BlkIscsi(object):
         device_path = self._login_portal()
         if self.is_cdrom:
             root = etree.Element('disk', {'type': 'block', 'device': 'cdrom'})
-            e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+            e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': self.cache_mode})
             e(root, 'source', attrib={'dev': device_path})
             e(root, 'target', attrib={'dev': self.device_letter})
             if self.addressBus and self.addressUnit:
                 e(root, 'address', None,{'type' : 'drive', 'bus' : self.addressBus, 'unit' : self.addressUnit})
         else:
             root = etree.Element('disk', {'type': 'block', 'device': 'lun'})
-            e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard':'unmap'})
+            e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': self.cache_mode, 'discard':'unmap'})
             e(root, 'source', attrib={'dev': device_path})
             e(root, 'target', attrib={'dev': 'sd%s' % self.device_letter})
         return root
@@ -1629,7 +1630,7 @@ class BlkCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': self.volume.cacheMode})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -1652,7 +1653,7 @@ class VirtioCeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none'}
+        driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': self.volume.cacheMode}
         if self.volume.hasattr("multiQueues") and self.volume.multiQueues:
             driver_elements["queues"] = self.volume.multiQueues
         if self.volume.hasattr("ioThreadId") and self.volume.ioThreadId:
@@ -1679,7 +1680,7 @@ class VirtioSCSICeph(object):
 
     def to_xmlobject(self):
         disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': self.volume.cacheMode})
         source = e(disk, 'source', None,
                    {'name': self.volume.installPath.lstrip('ceph:').lstrip('//'), 'protocol': 'rbd'})
         if self.volume.secretUuid:
@@ -1705,10 +1706,11 @@ class VirtioIscsi(object):
         self.server_port = None
         self.target = None
         self.lun = None
+        self.cache_mode = None
 
     def to_xmlobject(self):
         root = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-        e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard':'unmap'})
+        e(root, 'driver', attrib={'name': 'qemu', 'type': 'raw', 'cache': self.cache_mode, 'discard':'unmap'})
 
         if self.chap_username and self.chap_password:
             auth = e(root, 'auth', attrib={'username': self.chap_username})
@@ -2800,7 +2802,7 @@ class Vm(object):
     def _attach_data_volume(self, volume, addons):
         Vm.check_device_exceed_limit(volume.deviceId)
 
-        def volume_native_aio(volume_xml_obj):
+        def volume_native_aio(vol_uuid, volume_xml_obj):
             if not addons:
                 return
 
@@ -2810,6 +2812,9 @@ class Vm(object):
 
             drivers = volume_xml_obj.getiterator("driver")
             if drivers is None or len(drivers) == 0:
+                return
+            
+            if not vol_aio[vol_uuid]:
                 return
 
             drivers[0].set("io", "native")
@@ -2843,7 +2848,7 @@ class Vm(object):
             # default value of sgio is 'filtered'
             #NOTE(weiw): scsi lun not support aio or qos
             disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': volume.cacheMode})
             e(disk, 'source', None, {'dev': volume.installPath})
             e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
             return disk
@@ -2858,6 +2863,7 @@ class Vm(object):
                 vi.volume_uuid = volume.volumeUuid
                 vi.chap_username = volume.chapUsername
                 vi.chap_password = volume.chapPassword
+                vi.cache_mode = volume.cacheMode
                 return vi.to_xmlobject()
 
             def blk_iscsi():
@@ -2868,6 +2874,7 @@ class Vm(object):
                 bi.volume_uuid = volume.volumeUuid
                 bi.chap_username = volume.chapUsername
                 bi.chap_password = volume.chapPassword
+                bi.cache_mode = volume.cacheMode
                 return bi.to_xmlobject()
 
             if volume.useVirtio:
@@ -2908,7 +2915,7 @@ class Vm(object):
             # type: () -> etree.Element
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
-                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'}
+                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': volume.cacheMode}
                 if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
                     driver_elements["queues"] = volume.multiQueues
                 if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
@@ -2938,7 +2945,7 @@ class Vm(object):
                 imgfmt = linux.get_img_fmt(volume.installPath)
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
                 e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                  {'name': 'qemu', 'type': 'raw', 'cache': volume.cacheMode})
                 e(disk, 'source', None,
                   {'protocol': 'spool', 'name': make_spool_conf(imgfmt, dev_letter, volume)})
                 e(disk, 'target', None, {'dev': 'vd%s' % dev_letter, 'bus': 'virtio'})
@@ -2974,7 +2981,7 @@ class Vm(object):
         Vm.set_device_address(disk_element, volume, get_vm_by_uuid(self.uuid))
         Vm.set_volume_qos(addons, volume.volumeUuid, disk_element)
         Vm.set_volume_serial_id(volume.volumeUuid, disk_element)
-        volume_native_aio(disk_element)
+        volume_native_aio(volume.volumeUuid, disk_element)
         xml = etree.tostring(disk_element)
         logger.debug('attaching volume[%s] to vm[uuid:%s]:\n%s' % (volume.installPath, self.uuid, xml))
         try:
@@ -5256,6 +5263,7 @@ class Vm(object):
                     bi.volume_uuid = _v.volumeUuid
                     bi.chap_username = _v.chapUsername
                     bi.chap_password = _v.chapPassword
+                    bi.cache_mode = _v.cacheMode
 
                     return bi.to_xmlobject()
 
@@ -5267,6 +5275,7 @@ class Vm(object):
                     vi.volume_uuid = _v.volumeUuid
                     vi.chap_username = _v.chapUsername
                     vi.chap_password = _v.chapPassword
+                    vi.cache_mode = _v.cacheMode
 
                     return vi.to_xmlobject()
 
@@ -5287,7 +5296,7 @@ class Vm(object):
                     raise Exception('unexpected recover path: %s' % _v.installPath)
 
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
-                driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none'}
+                driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': _v.cacheMode}
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
                 e(disk, 'driver', None, driver_elements)
@@ -5354,7 +5363,7 @@ class Vm(object):
                 imgfmt = linux.get_img_fmt(_v.installPath)
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
                 e(disk, 'driver', None,
-                  {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'io': 'native'})
+                  {'name': 'qemu', 'type': 'raw', 'cache': _v.cacheMode})
                 e(disk, 'source', None,
                   {'protocol': 'spool', 'name': make_spool_conf(imgfmt, _dev_letter, _v)})
                 e(disk, 'target', None, {'dev': 'vd%s' % _dev_letter, 'bus': 'virtio'})
@@ -5362,7 +5371,7 @@ class Vm(object):
 
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
-                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'}
+                driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode}
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
                 if (not _v.useVirtioSCSI) and _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
@@ -5412,7 +5421,7 @@ class Vm(object):
                     # e(iotune, 'write_iops_sec_max', str(qos.totalIops))
                     # e(iotune, 'total_iops_sec_max', str(qos.totalIops))
 
-            def volume_native_aio(volume_xml_obj):
+            def volume_native_aio(vol_uuid, volume_xml_obj):
                 if not cmd.addons:
                     return
 
@@ -5422,6 +5431,9 @@ class Vm(object):
 
                 drivers = volume_xml_obj.getiterator("driver")
                 if drivers is None or len(drivers) == 0:
+                    return
+                
+                if not vol_aio[vol_uuid]:
                     return
 
                 drivers[0].set("io", "native")
@@ -5471,7 +5483,7 @@ class Vm(object):
                     e(vol, 'boot', None, {'order': str(v.bootOrder)})
                 Vm.set_volume_qos(cmd.addons, v.volumeUuid, vol)
                 Vm.set_volume_serial_id(v.volumeUuid, vol)
-                volume_native_aio(vol)
+                volume_native_aio(v.volumeUuid, vol)
                 return vol
 
             all_ide = default_bus_type == "ide" and cmd.imagePlatform.lower() == "other"
