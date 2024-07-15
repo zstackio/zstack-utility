@@ -2056,28 +2056,20 @@ done
             for slave in all_slaves:
                 if not slave:
                     continue
-                if linux.is_bond(slave):
-                    interface = self._make_host_kernel_interface(slave, 0)
-                    break
-                if linux.is_physical_nic(slave):
+                if linux.is_bond(slave) or linux.is_physical_nic(slave):
                     interface = self._make_host_kernel_interface(slave, 0)
                     break
                 if linux.is_vlan(slave):
                     vlan_parent = linux.get_vlan_parent(slave)
-                    if linux.is_bond(vlan_parent):
+                    if linux.is_bond(vlan_parent) or linux.is_physical_nic(vlan_parent):
                         interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(slave))
                         break
-                    if linux.is_physical_nic(vlan_parent):
-                        interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(slave))
-                        break
-        elif linux.is_bond(link_name):   # ip on bond
+        elif linux.is_bond(link_name) or linux.is_physical_nic(link_name):
             interface = self._make_host_kernel_interface(link_name, 0)
-        elif linux.is_vlan(link_name):   # ip on vlan
+        elif linux.is_vlan(link_name):
             vlan_parent = linux.get_vlan_parent(link_name)
-            if linux.is_bond(vlan_parent):
+            if linux.is_bond(vlan_parent) or linux.is_physical_nic(vlan_parent):
                 interface = self._make_host_kernel_interface(vlan_parent, linux.get_vlan_id(link_name))
-        elif linux.is_physical_nic(link_name):  # ip on physical nic
-            interface = self._make_host_kernel_interface(link_name, 0)
         else:
             rsp.error = "cannot parse interface[%s] by ip[%s]" % (link_name, cmd.targetIp)
             rsp.success = False
