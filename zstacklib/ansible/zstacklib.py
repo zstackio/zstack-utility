@@ -2353,7 +2353,7 @@ class ZstackLib(object):
             "vim-minimal",
         }
 
-        if self.distro in KYLIN_DISTRO:
+        if self.distro in KYLIN_DISTRO or self.distro == "linxos-el":
             basic.add("chrony")
             basic.add("iptables")
             basic.add("python2-libselinux")
