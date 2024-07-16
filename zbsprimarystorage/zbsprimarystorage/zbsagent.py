@@ -21,9 +21,12 @@ log.configure_log('/var/log/zstack/zbs-primarystorage.log')
 logger = log.get_logger(__name__)
 
 
-PROTOCOL_CBD_PREFIX = "cbd"
-port_lock = threading.Lock()
+FORMAT_CBD_LUN_PATH = "cbd:{}/{}/{}"
+FORMAT_CBD_SNAPSHOT_PATH = FORMAT_CBD_LUN_PATH + "@{}"
 ZBS_CLIENT_CONF = "/etc/zbs/client.conf"
+
+port_lock = threading.Lock()
+
 
 class AgentResponse(object):
     def __init__(self, success=True, error=None):
@@ -220,7 +223,7 @@ class ZbsAgent(plugin.TaskManager):
                 zbsutils.delete_volume(cmd.logicalPoolName, cmd.dstLunName)
                 raise Exception('target lun[%s] exception[fileStatus:%d], deleted' % (dst_lun_path, ret.result.fileStatus))
             rsp.size = ret.result.fileLength
-            rsp.installPath = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(cmd.logicalPoolName) + "/" + dst_lun_path
+            rsp.installPath = FORMAT_CBD_LUN_PATH.format(zbsutils.get_physical_pool_name(cmd.logicalPoolName), cmd.logicalPoolName, cmd.dstLunName)
 
             return jsonobject.dumps(rsp)
 
@@ -236,7 +239,7 @@ class ZbsAgent(plugin.TaskManager):
 
         o = zbsutils.query_volume_info(cmd.logicalPoolName, cmd.lunName)
         rsp.size = jsonobject.loads(o).result.info.fileInfo.length
-        rsp.installPath = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(cmd.logicalPoolName) + "/" + cmd.logicalPoolName + "/" + cmd.lunName
+        rsp.installPath = FORMAT_CBD_LUN_PATH.format(zbsutils.get_physical_pool_name(cmd.logicalPoolName), cmd.logicalPoolName, cmd.lunName)
 
         return jsonobject.dumps(rsp)
 
@@ -305,7 +308,7 @@ class ZbsAgent(plugin.TaskManager):
         if ret.error.code != 0:
             raise Exception('failed to clone lun[%s] to lun[%s], error[%s]' % (cmd.srcPath, cmd.destPath, ret.error.message))
 
-        rsp.installPath = PROTOCOL_CBD_PREFIX + zbsutils.get_physical_pool_name(cmd.logicalPoolName) + "/" + cmd.logicalPoolName + "/" + cmd.dstLunName
+        rsp.installPath = FORMAT_CBD_LUN_PATH.format(zbsutils.get_physical_pool_name(cmd.logicalPoolName), cmd.logicalPoolName, cmd.dstLunName)
         rsp.size = ret.result.fileInfo.length
 
         return jsonobject.dumps(rsp)
@@ -316,7 +319,7 @@ class ZbsAgent(plugin.TaskManager):
         rsp = CreateSnapshotRsp()
 
         found = False
-        install_path = "{}:{}/{}/{}@{}".format(PROTOCOL_CBD_PREFIX, zbsutils.get_physical_pool_name(cmd.logicalPoolName), cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
+        install_path = FORMAT_CBD_SNAPSHOT_PATH.format(zbsutils.get_physical_pool_name(cmd.logicalPoolName), cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
 
         o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
         ret = jsonobject.loads(o)
@@ -324,7 +327,7 @@ class ZbsAgent(plugin.TaskManager):
             for info in ret.result.fileInfo:
                 if cmd.snapshotName in info.fileName:
                     found = True
-                    rsp.size = ret.result.snapShotFileInfo.length
+                    rsp.size = info.length
                     rsp.installPath = install_path
                     break
 
@@ -372,7 +375,7 @@ class ZbsAgent(plugin.TaskManager):
                     seq_num = info.seqNum
                     break
 
-            install_path = "{}:{}/{}/{}@{}".format(PROTOCOL_CBD_PREFIX, zbsutils.get_physical_pool_name(logical_pool_name), logical_pool_name, lun_name, str(seq_num))
+            install_path = FORMAT_CBD_SNAPSHOT_PATH.format(zbsutils.get_physical_pool_name(logical_pool_name), logical_pool_name, lun_name, str(seq_num))
         else:
             install_path = cmd.installPath
 
@@ -398,7 +401,7 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVolumeRsp()
 
-        install_path = "{}:{}/{}/{}".format(PROTOCOL_CBD_PREFIX, zbsutils.get_physical_pool_name(cmd.logicalPoolName), cmd.logicalPoolName, cmd.lunName)
+        install_path = FORMAT_CBD_LUN_PATH.format(zbsutils.get_physical_pool_name(cmd.logicalPoolName), cmd.logicalPoolName, cmd.lunName)
 
         o = zbsutils.query_volume_info(cmd.logicalPoolName, cmd.lunName)
         ret = jsonobject.loads(o)

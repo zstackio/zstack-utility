@@ -42,7 +42,6 @@ def query_snapshot_info(logical_pool_name, lun_name):
 def get_physical_pool_name(logical_pool_name):
     o = query_logical_pool_info()
     r = jsonobject.loads(o)
-
     if r.error.code != 0:
         raise Exception('failed to get logical pool[%s] info, error[%s]' % (logical_pool_name, r.error.message))
 
