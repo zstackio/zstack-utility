@@ -617,11 +617,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         def config_lvm(host_id, enableLvmetad=False):
             lvm.backup_lvm_config()
             config = lvm.get_lvm_default_config()
+            lvmlockd_lock_retries = 6
             config.modify({
                 "use_lvmlockd": 1,
                 "host_id": host_id,
                 "sanlock_lv_extend": DEFAULT_SANLOCK_LV_SIZE,
-                "lvmlockd_lock_retries": 6,
+                "lvmlockd_lock_retries": lvmlockd_lock_retries,
                 "issue_discards": 0,
                 "reserved_stack": 256,
                 "reserved_memory": 131072,
@@ -641,7 +642,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 linux.write_file(lvm.LVM_CONFIG_FILE, new_config, create_if_not_exist=True)
                 linux.write_file(lvm.LVM_LOCAL_CONFIG_FILE, new_config, create_if_not_exist=True)
                 logger.debug("lvm config has changed:\n %s" % '\n'.join(diff))
+                lvm.report_config_changed()
 
+            # max lock retries times = (external lvmlockd_lock_retries + 1) * (internal lock_retries + 1 after a lock conflict)
+            lvm.lvm_cmd_timeout_with_locking = ((lvmlockd_lock_retries + 1) * 6) * 5
             lvm.modify_sanlock_config("sh_retries", 20)
             lvm.modify_sanlock_config("logfile_priority", 7)
             lvm.modify_sanlock_config("renewal_read_extend_sec", 24)
