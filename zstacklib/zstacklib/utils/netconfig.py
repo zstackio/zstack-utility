@@ -532,7 +532,7 @@ def find_bridge_files(file_path, bridge_name, exclude_dev=None):
             continue
         with open(file, 'r') as fd:
             for line in fd:
-                if line.startswith('BRIDGE={}'.format(bridge_name)):
+                if re.match(r'^BRIDGE={}$'.format(bridge_name), line.strip()):
                     bridge_files.append(file)
                     break
     return bridge_files
