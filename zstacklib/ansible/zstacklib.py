@@ -525,7 +525,7 @@ def get_host_releasever(host_info):
         "kylin_sword sword 10": "ky10sp2",
         "kylin_zstack zstack 10": "ky10sp2",
         "kylin_lance lance 10": "ky10sp3",
-        "kylin_gfb gfb 10.0.0": "ky10gfb",
+        "kylin_gfb gfb 10": "ky10gfb",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ky10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.9.2009": "c79",
