@@ -110,7 +110,7 @@ if host_info.distro in RPM_BASED_OS:
     releasever_mapping = {
         'h84r': ' collectd-disk pyparted',
         'h2203sp1o': ' collectd-disk python2-pyparted',
-        'l2003sp3o': ' collectd-disk',
+        'l2003sp3o': ' collectd-disk python2-pyparted',
     }
 
     for k in kylin:
