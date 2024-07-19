@@ -1963,6 +1963,7 @@ def find_process_by_cmdline(cmdlines):
     return None
 
 def find_all_process_by_cmdline(cmdlines):
+    # type: (list[str]) -> list[str]
     ret = []
     pids = [pid for pid in os.listdir('/proc') if pid.isdigit()]
     for pid in pids:
