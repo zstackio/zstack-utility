@@ -2917,7 +2917,12 @@ class Vm(object):
                 raise Exception("vhostuser disk %s does not exist" % volume.installPath)
 
             disk = etree.Element('disk', {'type': 'vhostuser', 'device': 'disk', 'snapshot': 'no'})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': volume.format})
+
+            driver_elements = {'name': 'qemu', 'type': volume.format}
+            if volume.hasattr("multiQueues") and volume.multiQueues:
+                driver_elements["queues"] = volume.multiQueues
+            e(disk, 'driver', None, driver_elements)
+
             source = e(disk, 'source', None, {'type': 'unix', 'path': volume.installPath})
             e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
 
@@ -5519,7 +5524,12 @@ class Vm(object):
                     raise Exception("vhostuser disk %s does not exist" % _v.installPath)
             
                 disk = etree.Element('disk', {'type': 'vhostuser', 'device': 'disk', 'snapshot': 'no'})
-                e(disk, 'driver', None, {'name': 'qemu', 'type': _v.format})
+
+                driver_elements = {'name': 'qemu', 'type': _v.format}
+                if _v.hasattr("multiQueues") and _v.multiQueues:
+                    driver_elements["queues"] = _v.multiQueues
+                e(disk, 'driver', None, driver_elements)
+
                 source = e(disk, 'source', None, {'type': 'unix', 'path': _v.installPath})
                 e(source, 'reconnect', None, {'enabled': 'yes', 'timeout': '10'})
 
