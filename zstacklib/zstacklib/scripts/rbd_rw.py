@@ -119,9 +119,10 @@ def listen_pipe():
         operation = raw_input()
         if not operation:
             break
+
         ### operation: read rbd:pool/image 0 100
         ### operation: write rbd:pool/image 0 content
-        splits = operation.split(None, 4)
+        splits = operation.split(None, 3)
         if len(splits) < 4:
             sys.stdout.write("Invalid operation: {}\n".format(operation))
             sys.stdout.flush()
@@ -159,7 +160,7 @@ def exit(sig, stack):
     global cluster
     global ioctx
     global images
-    sys.stderr.write("Received signal {}, exited\n".format(sig))
+    _log("Received signal {}, exiting".format(sig))
     for image in images.values():
         image.close()
     for ctx in ioctx.values():
@@ -170,17 +171,15 @@ def exit(sig, stack):
 
 
 def dump_thread(sig, stack):
-    sys.stderr.write("Received SIGUSR2, dumping threads")
-    sys.stderr.flush()
+    _log("Received signal {}, dumping thread".format(sig))
     import threading
     import traceback
     id2name = dict([(th.ident, th.name) for th in threading.enumerate()])
     for threadId, stack in sys._current_frames().items():
-        print >> sys.stderr, "Thread: %s(%d)\n" % (id2name.get(threadId, ""), threadId)
+        _log("# ThreadID: %s(%d)" % (id2name.get(threadId, ""), threadId))
         traceback.print_stack(f=stack)
 
-    sys.stderr.write('\n')
-    sys.stderr.flush()
+    _log("")
 
 def listen_signal():
     import signal
@@ -188,6 +187,9 @@ def listen_signal():
     signal.signal(signal.SIGINT, exit)
     signal.signal(signal.SIGUSR2, dump_thread)
 
+def _log(content):
+    sys.stderr.write(content + "\n")
+    sys.stderr.flush()
 
 listen_signal()
 if __name__ == '__main__':

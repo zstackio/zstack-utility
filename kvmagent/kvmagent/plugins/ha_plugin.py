@@ -842,7 +842,7 @@ class RbdHeartbeatController(AbstractStorageFencer):
                     if line == "":  # EOF
                         logger.debug("rbd_rw_process stderr pipe is closed")
                         break
-                    logger.warn("rbd_rw_process stderr: %s" % line)
+                    logger.warn("rbd_rw_process: %s" % line)
             except Exception as e:
                 logger.warn("failed to read rbd_rw_process stderr: %s" % e)
                 content = traceback.format_exc()
