@@ -813,7 +813,7 @@ class RbdHeartbeatController(AbstractStorageFencer):
         self.fencer_triggered_callback = None
         self.interval = 0
         self.report_storage_status_callback = None
-        self.rbd_rw_path = "/var/lib/zstack/virtualenv/kvm/lib/python2.7/site-packages/zstacklib/scripts/xbd_rw.py"
+        self.rbd_rw_path = "/var/lib/zstack/virtualenv/kvm/lib/python2.7/site-packages/zstacklib/scripts/rbd_rw.py"
         self.hb_chunk_size = 1024 * 1024
         self.rbd_rw_process = None
 
@@ -825,7 +825,7 @@ class RbdHeartbeatController(AbstractStorageFencer):
         """
         pids = linux.find_all_process_by_cmdline([self.rbd_rw_path])
         if pids:
-            logger.debug("find last xbd_rw.py process %s" % pids)
+            logger.debug("find last rbd_rw.py process %s" % pids)
             for pid in pids:
                 linux.kill_process(pid, is_exception=False)
 
@@ -839,10 +839,15 @@ class RbdHeartbeatController(AbstractStorageFencer):
             try:
                 while True:
                     line = self.rbd_rw_process.stderr.readline()
+                    if line == "":  # EOF
+                        logger.debug("rbd_rw_process stderr pipe is closed")
+                        break
                     logger.warn("rbd_rw_process stderr: %s" % line)
-            except IOError as e:
-                if e.errno == errno.EPIPE:
-                    logger.debug("rbd_rw_process stderr pipe is broken")
+            except Exception as e:
+                logger.warn("failed to read rbd_rw_process stderr: %s" % e)
+                content = traceback.format_exc()
+                logger.warn(content)
+
         dump_stderr()
 
     def handle_heartbeat_failure(self):
@@ -910,7 +915,7 @@ class RbdHeartbeatController(AbstractStorageFencer):
                 return False
 
             logger.warn("failed to use rbd_rw.py update heartbeat [path:%s, hostId:%d] timestamp. \n"
-                        " reason: %s" % (self.heartbeat_path, self.host_id, str(e)))
+                        " IOError: %s" % (self.heartbeat_path, self.host_id, str(e)))
             return False
         ret = jsonobject.loads(ret_str)
         if not ret.success:

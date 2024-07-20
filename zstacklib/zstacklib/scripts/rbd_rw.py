@@ -1,6 +1,5 @@
 import base64
 import ctypes
-import threading
 import traceback
 
 ctypes.CDLL('/lib64/librados.so', ctypes.RTLD_GLOBAL)
@@ -19,7 +18,7 @@ ioctx = dict()
 images = dict()
 
 
-class HeartbeartIOResult(object):
+class HeartbeatIOResult(object):
     def __init__(self, success, execute_time, reason=None, data=None):
         self.data = data
         self.execute_time = execute_time
@@ -141,17 +140,17 @@ def listen_pipe():
                 size = int(splits[3])
                 content = read_rbd_image(pool_name, image_name, offset, size, stream=None)
                 hbcontent = content.split('EOF')[0]
-                result = HeartbeartIOResult(True, (time.time() - start_time) * 1000, data=hbcontent)
+                result = HeartbeatIOResult(True, (time.time() - start_time) * 1000, data=hbcontent)
             elif op == 'writehb':
                 offset = int(splits[2])
                 content = splits[3]
                 write_rbd_image(pool_name, image_name, offset, content)
-                result = HeartbeartIOResult(True, (time.time() - start_time) * 1000)
+                result = HeartbeatIOResult(True, (time.time() - start_time) * 1000)
             else:
                 raise Exception("Invalid operation: {}".format(op))
         except Exception as e:
             trace = traceback.format_exc()
-            result = HeartbeartIOResult(False, (time.time() - start_time) * 1000, reason=str(e) + "; trace: " + trace)
+            result = HeartbeatIOResult(False, (time.time() - start_time) * 1000, reason=str(e) + "; trace: " + trace)
 
         sys.stdout.write(str(result) + '\n')
         sys.stdout.flush()
@@ -160,6 +159,7 @@ def exit(sig, stack):
     global cluster
     global ioctx
     global images
+    sys.stderr.write("Received signal {}, exited\n".format(sig))
     for image in images.values():
         image.close()
     for ctx in ioctx.values():
