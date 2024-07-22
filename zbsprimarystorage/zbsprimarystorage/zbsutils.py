@@ -92,7 +92,7 @@ def protect_snapshot(logical_pool_name, lun_name, snapshot_name):
 
 
 def unprotect_snapshot(logical_pool_name, lun_name, snapshot_name):
-    return shell.call("zbs unprotect --snappath %s/%s@%s" % (logical_pool_name, lun_name, snapshot_name))
+    return shell.call("zbs unprotect --snappath %s/%s@%s --format json" % (logical_pool_name, lun_name, snapshot_name))
 
 
 def rollback_snapshot(logical_pool_name, lun_name, snapshot_name):
