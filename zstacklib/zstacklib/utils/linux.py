@@ -980,6 +980,9 @@ def get_img_fmt(src):
         with open(src, 'rb') as f:
             return get_fmt_from_magic(f.read(4))
 
+    if src.startswith("nbd://"):
+        return "nbd"
+
     fmt = shell.call(
         "set -o pipefail; %s %s | grep -w '^file format' | awk '{print $3}'" % (qemu_img.subcmd('info'), src))
     fmt = fmt.strip(' \t\r\n')
