@@ -63,12 +63,14 @@ class RollbackSnapshotRsp(AgentResponse):
         super(RollbackSnapshotRsp, self).__init__()
         self.installPath = None
         self.size = 0
+        self.actualSize = 0
 
 
 class QueryVolumeRsp(AgentResponse):
     def __init__(self):
         super(QueryVolumeRsp, self).__init__()
         self.size = 0
+        self.actualSize = 0
 
 
 class CloneVolumeRsp(AgentResponse):
@@ -76,18 +78,21 @@ class CloneVolumeRsp(AgentResponse):
         super(CloneVolumeRsp, self).__init__()
         self.installPath = None
         self.size = 0
+        self.actualSize = 0
 
 
 class CreateSnapshotRsp(AgentResponse):
     def __init__(self):
         super(CreateSnapshotRsp, self).__init__()
         self.size = 0
+        self.actualSize = 0
 
 
 class CreateVolumeRsp(AgentResponse):
     def __init__(self):
         super(CreateVolumeRsp, self).__init__()
         self.size = 0
+        self.actualSize = 0
 
 
 class GetCapacityRsp(AgentResponse):
@@ -281,7 +286,8 @@ class ZbsAgent(plugin.TaskManager):
         ret = jsonobject.loads(o)
         if ret.error.code != 0:
             raise Exception('cannot found lun[%s/%s] info, error[%s]' % (cmd.logicalPoolName, cmd.lunName, ret.error.message))
-        rsp.size = jsonobject.loads(o).result.info.fileInfo.length
+        rsp.size = ret.result.info.fileInfo.length
+        rsp.actualSize = ret.result.info.fileInfo.usedSize
 
         return jsonobject.dumps(rsp)
 
@@ -406,7 +412,8 @@ class ZbsAgent(plugin.TaskManager):
         o = zbsutils.query_volume_info(cmd.logicalPoolName, cmd.lunName)
         ret = jsonobject.loads(o)
         if ret.error.code == 0 and cmd.skipIfExisting:
-            rsp.size = jsonobject.loads(o).result.info.fileInfo.length
+            rsp.size = ret.result.info.fileInfo.length
+            rsp.actualSize = ret.result.info.fileInfo.usedSize
             rsp.installPath = install_path
             return jsonobject.dumps(rsp)
 
