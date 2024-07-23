@@ -1535,6 +1535,12 @@ def delete_bridge(bridge_name):
     shell.run("brctl delbr %s" % bridge_name)
 
 
+def delete_bridge_and_ifcfg(bridge_name):
+    delete_bridge(bridge_name)
+    ifcfg = netconfig.NetBridgeConfig(bridge_name)
+    ifcfg.delete_config()
+
+
 def check_bridge_with_interface(vlan_interface, expected_bridge_name):
     bridge_name = find_bridge_having_physical_interface(vlan_interface)
     if bridge_name and bridge_name != expected_bridge_name:
@@ -1630,7 +1636,7 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
             if line != "":
                 routes.append(line)
 
-        delete_bridge(bridge_name)
+        delete_bridge_and_ifcfg(bridge_name)
         
         #mv ip on bridge to interface
         shell.call("ip link set %s up" % interface)
@@ -1645,10 +1651,8 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
   
     else:
         logger.debug("bridge %s do not have interface %s. only delete bridge. " % (bridge_name,interface))
-        delete_bridge(bridge_name)
+        delete_bridge_and_ifcfg(bridge_name)
 
-    ifcfg_bridge = netconfig.NetConfig(bridge_name)
-    ifcfg_bridge.delete_config()
     ifcfg_nic = netconfig.NetConfig(interface)
     ifcfg_nic.flush_config()    # do not delete ifcfg file for interface or bond
 
@@ -2038,6 +2042,13 @@ def delete_vlan_eth(vlan_dev_name):
     shell.call('ip link set dev %s down' % vlan_dev_name)
     iproute.delete_link_no_error(vlan_dev_name)
 
+
+def delete_vlan_eth_and_ifcfg(vlan_dev_name):
+    delete_vlan_eth(vlan_dev_name)
+    ifcfg = netconfig.NetVlanConfig(vlan_dev_name)
+    ifcfg.delete_config()
+
+
 def make_vlan_eth_name(ethname, vlan):
     return '%s.%s' % (ethname, vlan)
 
@@ -2062,6 +2073,14 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
     return vlan_dev_name
 
 
+def create_vlan_eth_with_bridge(ethname, vlan, bridge_name, ip=None, netmask=None):
+    vlan_dev_name = create_vlan_eth(ethname, vlan, ip, netmask)
+    ifcfg = netconfig.NetVlanConfig(vlan_dev_name)
+    ifcfg.bridge = bridge_name
+    ifcfg.restore_config()
+    return vlan_dev_name
+
+
 def delete_vlan_bridge(bridge_name, vlan_interface):
     if not is_network_device_existing(bridge_name):
         logger.debug("can not find bridge %s" % bridge_name)
@@ -2072,17 +2091,12 @@ def delete_vlan_bridge(bridge_name, vlan_interface):
         return
 
     if is_vif_on_bridge(bridge_name, vlan_interface):
-        delete_bridge(bridge_name)
-        delete_vlan_eth(vlan_interface)
+        delete_bridge_and_ifcfg(bridge_name)
+        delete_vlan_eth_and_ifcfg(vlan_interface)
 
     else:
         logger.debug("bridge %s do not have interface %s. only delete bridge. " % (bridge_name, vlan_interface))
-        delete_bridge(bridge_name)
-
-    ifcfg_bridge = netconfig.NetConfig(bridge_name)
-    ifcfg_bridge.delete_config()
-    ifcfg_vlan = netconfig.NetConfig(vlan_interface)
-    ifcfg_vlan.delete_config()
+        delete_bridge_and_ifcfg(bridge_name)
 
 
 def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None):
