@@ -38,6 +38,12 @@ class AgentResponse(object):
         self.error = error
 
 
+class SnapshotFileInfo(object):
+    def __init__(self, file_name, is_protected):
+        self.fileName = file_name
+        self.isProtected = is_protected
+
+
 class CbdToNbdRsp(AgentResponse):
     def __init__(self):
         super(CbdToNbdRsp, self).__init__()
@@ -248,27 +254,25 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        isProtected = False
         o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
-        ret = jsonobject.loads(o)
-        if not ret.result.hasattr('fileInfo'):
-            raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
-        for info in ret.result.fileInfo:
-            if cmd.snapshotName in info.fileName:
-                isProtected = info.isProtected
+        r = jsonobject.loads(o)
+        if r.error.code != 0:
+            raise Exception('cannot found snapshot for lun[%s/%s], error[%s]' % (cmd.logicalPoolName, cmd.lunName, r.error.message))
+        if not r.result.hasattr('fileInfo'):
+            return jsonobject.dumps(rsp)
+
+        snapshot_file_infos = []
+        for file_info in r.result.fileInfo:
+            if file_info.fileName == cmd.snapshotName:
+                protect_status = file_info.isProtected if file_info.hasattr('isProtected') else False
+                snapshot_file_info = SnapshotFileInfo(file_info.fileName, protect_status)
+                snapshot_file_infos.append(snapshot_file_info)
                 break
 
-        if isProtected:
-            o = zbsutils.unprotect_snapshot(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
-            ret = jsonobject.loads(o)
-            if ret.error.code != 0:
-                raise Exception(
-                    'failed to unprotect snapshot[%s@%s], error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
-
-        o = zbsutils.delete_snapshot(cmd.logicalPoolName, cmd.lunName, cmd.snapshotName)
-        ret = jsonobject.loads(o)
-        if ret.error.code != 0:
-            raise Exception('failed to delete snapshot[%s@%s], error[%s]' % (cmd.lunName, cmd.snapshotName, ret.error.message))
+        o = zbsutils.delete_snapshot(cmd.logicalPoolName, cmd.lunName, snapshot_file_infos)
+        r = jsonobject.loads(o)
+        if r.error.code != 0:
+            raise Exception('failed to delete snapshot[%s/%s@%s], error[%s]' % (cmd.logicalPoolName, cmd.lunName, cmd.snapshotName, r.error.message))
 
         return jsonobject.dumps(rsp)
 

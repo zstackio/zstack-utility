@@ -67,7 +67,15 @@ def delete_volume(logical_pool_name, lun_name):
     o = query_volume_info(logical_pool_name, lun_name)
     r = jsonobject.loads(o)
     if r.error.code != 0:
-        raise Exception('cannot found lun[%s/%s], error[%s]' % (logical_pool_name, lun_name, r.error.message))
+        return
+
+    o = query_snapshot_info(logical_pool_name, lun_name)
+    r = jsonobject.loads(o)
+    if r.error.code != 0:
+        return
+    if r.result and r.result.hasattr('fileInfo'):
+        delete_snapshot(logical_pool_name, lun_name, r.result.fileInfo)
+
     shell.call("zbs delete file --path %s/%s" % (logical_pool_name, lun_name))
 
 
@@ -83,8 +91,23 @@ def create_snapshot(logical_pool_name, lun_name, snapshot_name):
     return shell.call("zbs create snapshot --snappath %s/%s@%s --user %s --format json" % (logical_pool_name, lun_name, snapshot_name, DEFAULT_ZBS_USER_NAME))
 
 
-def delete_snapshot(logical_pool_name, lun_name, snapshot_name):
-    return shell.call("zbs delete snapshot --snappath %s/%s@%s --format json" % (logical_pool_name, lun_name, snapshot_name))
+def delete_snapshot(logical_pool_name, lun_name, file_infos):
+    for file_info in file_infos:
+        o = query_children_volume(logical_pool_name, lun_name, file_info.fileName, True)
+        r = jsonobject.loads(o)
+        if r.error.code != 0:
+            raise Exception('failed to list children of [%s/%s@%s], error[%s]' % (logical_pool_name, lun_name, file_info.fileName, r.error.message))
+        if r.result.hasattr('fileNames'):
+            raise Exception('the snapshot[%s/%s@%s] is still in used' % (logical_pool_name, lun_name, file_info.fileName))
+
+        is_protected = file_info.isProtected if file_info.hasattr('isProtected') else False
+        if is_protected:
+            o = unprotect_snapshot(logical_pool_name, lun_name, file_info.fileName)
+            r = jsonobject.loads(o)
+            if r.error.code != 0:
+                raise Exception('failed to unprotect snapshot[%s/%s@%s], error[%s]' % (logical_pool_name, lun_name, file_info.fileName, r.error.message))
+
+        return shell.call("zbs delete snapshot --snappath %s/%s@%s --format json" % (logical_pool_name, lun_name, file_info.fileName))
 
 
 def protect_snapshot(logical_pool_name, lun_name, snapshot_name):
