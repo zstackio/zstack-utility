@@ -2102,19 +2102,22 @@ done
             if not iface.interfaceName or not linux.is_bond(iface.interfaceName):
                 raise Exception('cannot find bond[%s]' % iface.interfaceName)
 
-            pyhsical_dev = iface.interfaceName if iface.vlanId == 0 else '%s.%s' % (iface.interfaceName, iface.vlanId)
-            if not linux.is_device_exists(pyhsical_dev):
-                raise Exception('cannot find device[%s]' % pyhsical_dev)
+            physical_dev = iface.interfaceName if iface.vlanId == 0 else '%s.%s' % (iface.interfaceName, iface.vlanId)
+            if not linux.is_device_exists(physical_dev):
+                raise Exception('cannot find device[%s]' % physical_dev)
 
-            bridge_dev = linux.get_master_device(pyhsical_dev)
-            target_dev = bridge_dev if bridge_dev else pyhsical_dev
+            bridge_dev = linux.get_master_device(physical_dev)
+            target_dev = bridge_dev if bridge_dev else physical_dev
             logger.debug('host kernel interface is %s' % target_dev)
 
-            ifcfg = None
             if bridge_dev:
                 ifcfg = netconfig.NetBridgeConfig(bridge_dev)
+            elif iface.vlanId != 0:
+                ifcfg = netconfig.NetVlanConfig(physical_dev)
+            elif linux.is_bond(physical_dev):
+                ifcfg = netconfig.NetBondConfig(physical_dev)
             else:
-                ifcfg = netconfig.NetVlanConfig(pyhsical_dev) if iface.vlanId != 0 else netconfig.NetBondConfig(pyhsical_dev)
+                ifcfg = netconfig.NetEtherConfig(physical_dev)
 
             ip_list = linux.get_ip_list_by_nic_name(target_dev)
             if cmd.actionCode == 'deleteAction':

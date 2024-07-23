@@ -937,14 +937,14 @@ configure lldp status rx-only \n
                     return jsonobject.dumps(rsp)
 
                 for vlan_eth in vlan_eth_list:
-                    linux.delete_vlan_eth(vlan_eth)
+                    linux.delete_vlan_eth_and_ifcfg(vlan_eth)
 
                 for param in cmd.bridgeParams:
                     bridge_name = param.bridgeName
                     vlan_id = param.vlanId
                     l2_network_uuid = param.l2NetworkUuid
                     if vlan_id:
-                        new_vlan_interface = linux.create_vlan_eth(new_interface, vlan_id)
+                        new_vlan_interface = linux.create_vlan_eth_with_bridge(new_interface, vlan_id, bridge_name)
                     else:
                         new_vlan_interface = new_interface
 
@@ -966,7 +966,7 @@ configure lldp status rx-only \n
                     l2_network_uuid = param.l2NetworkUuid
                     if vlan_id:
                         old_vlan_interface = linux.make_vlan_eth_name(old_interface, vlan_id)
-                        new_vlan_interface = linux.create_vlan_eth(new_interface, vlan_id)
+                        new_vlan_interface = linux.create_vlan_eth_with_bridge(new_interface, vlan_id, bridge_name)
                         vlan_eth_list.append(old_vlan_interface)
                     else:
                         old_vlan_interface = old_interface
@@ -976,7 +976,7 @@ configure lldp status rx-only \n
                                                                 bridge_name, l2_network_uuid)
 
                 for vlan_eth in vlan_eth_list:
-                    linux.delete_vlan_eth(vlan_eth)
+                    linux.delete_vlan_eth_and_ifcfg(vlan_eth)
 
             if cmd.oldBondingName:
                 del_cmd = DeleteBondingCmd()

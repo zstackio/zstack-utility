@@ -291,7 +291,7 @@ class NetConfig(object):
         '''netconfig: parse ifcfg file'''
         ifcfg_file_path = os.path.join(self.config_path, 'ifcfg-%s' % self.name)
         if not os.path.exists(ifcfg_file_path):
-            cmd = shell.ShellCmd('grep -r "DEVICE=%s" %s' % (self.name, self.config_path))
+            cmd = shell.ShellCmd('grep -rw "DEVICE=%s" %s' % (self.name, self.config_path))
             cmd(is_exception=False)
             if cmd.return_code != 0:
                 return None
@@ -532,7 +532,7 @@ def find_bridge_files(file_path, bridge_name, exclude_dev=None):
             continue
         with open(file, 'r') as fd:
             for line in fd:
-                if line.startswith('BRIDGE={}'.format(bridge_name)):
+                if re.match(r'^BRIDGE={}$'.format(bridge_name), line.strip()):
                     bridge_files.append(file)
                     break
     return bridge_files
