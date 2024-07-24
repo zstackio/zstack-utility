@@ -1764,12 +1764,17 @@ LoadPlugin virt
                     return "node_exporter"
                 elif "pushgateway" in path:
                     return "pushgateway"
+                elif "ipmi_exporter" in path:
+                    return "ipmi_exporter"
 
             def reload_and_restart_service(service_name):
                 bash_errorout("systemctl daemon-reload && systemctl restart %s.service" % service_name)
 
             service_name = get_systemd_name(binPath)
             service_path = '/etc/systemd/system/%s.service' % service_name
+            memory_limit_config = ""
+            if service_name == "ipmi_exporter":
+                memory_limit_config = "MemoryLimit=64M"
 
             service_conf = '''
 [Unit]
@@ -1780,11 +1785,12 @@ After=network.target
 ExecStart=/bin/sh -c '%s %s > %s 2>&1'
 ExecStop=/bin/sh -c 'pkill -TERM -f %s'
 
+%s
 Restart=always
 RestartSec=30s
 [Install]
 WantedBy=multi-user.target
-''' % (service_name, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log, binPath)
+''' % (service_name, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log, binPath, memory_limit_config)
 
             if not os.path.exists(service_path):
                 linux.write_file(service_path, service_conf, True)
@@ -1844,6 +1850,8 @@ modules:
                     fd.write(conf)
 
             os.chmod(EXPORTER_PATH, 0o755)
+            if shell.run("pgrep %s" % EXPORTER_PATH) == 0:
+                bash_errorout("pkill -TERM -f %s" % EXPORTER_PATH)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
         para = jsonobject.loads(req[http.REQUEST_BODY])
