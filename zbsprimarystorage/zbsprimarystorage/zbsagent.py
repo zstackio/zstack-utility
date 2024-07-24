@@ -38,12 +38,6 @@ class AgentResponse(object):
         self.error = error
 
 
-class SnapshotFileInfo(object):
-    def __init__(self, file_name, is_protected):
-        self.fileName = file_name
-        self.isProtected = is_protected
-
-
 class CbdToNbdRsp(AgentResponse):
     def __init__(self):
         super(CbdToNbdRsp, self).__init__()
@@ -266,15 +260,15 @@ class ZbsAgent(plugin.TaskManager):
         if not r.result.hasattr('fileInfo'):
             return jsonobject.dumps(rsp)
 
-        snapshot_file_infos = []
+        file_infos = []
         for file_info in r.result.fileInfo:
             if file_info.fileName == cmd.snapshotName:
-                protect_status = file_info.isProtected if file_info.hasattr('isProtected') else False
-                snapshot_file_info = SnapshotFileInfo(file_info.fileName, protect_status)
-                snapshot_file_infos.append(snapshot_file_info)
+                file_infos.append(file_info)
                 break
+        if not file_infos:
+            return jsonobject.dumps(rsp)
 
-        o = zbsutils.delete_snapshot(cmd.logicalPoolName, cmd.lunName, snapshot_file_infos)
+        o = zbsutils.delete_snapshot(cmd.logicalPoolName, cmd.lunName, file_infos)
         r = jsonobject.loads(o)
         if r.error.code != 0:
             raise Exception('failed to delete snapshot[%s/%s@%s], error[%s]' % (cmd.logicalPoolName, cmd.lunName, cmd.snapshotName, r.error.message))

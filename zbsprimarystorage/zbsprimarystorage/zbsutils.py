@@ -107,7 +107,7 @@ def delete_snapshot(logical_pool_name, lun_name, file_infos):
             if r.error.code != 0:
                 raise Exception('failed to unprotect snapshot[%s/%s@%s], error[%s]' % (logical_pool_name, lun_name, file_info.fileName, r.error.message))
 
-        return shell.call("zbs delete snapshot --snappath %s/%s@%s --format json" % (logical_pool_name, lun_name, file_info.fileName))
+        shell.call("zbs delete snapshot --snappath %s/%s@%s --format json" % (logical_pool_name, lun_name, file_info.fileName))
 
 
 def protect_snapshot(logical_pool_name, lun_name, snapshot_name):
