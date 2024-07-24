@@ -50,21 +50,20 @@ class AgentVersionBuilder(object):
 
     def _read_version_from_source(self):
         version_line = ''
-        path = os.path.join(self.sourcepath, 'src', 'zwatch-vm-agent', 'utils', 'config.go')
+        ## file content of data/conf/guesttools: version=5.2.0
+        path = os.path.join(self.sourcepath, 'data', 'conf', 'guesttools')
         with open(path, 'r') as f:
             for l in f.readlines():
-                index = l.find('VERSION')
-                if index == -1 or l.find('=', index + len('VERSION')) == -1:
+                index = l.find('version=')
+                if index == -1:
                     continue
                 version_line = l
                 break
 
         if version_line == '':
             raise Exception('failed to find version in file %s' % path)
-        text = version_line.split()[-1]
-        if text.startswith('"'):
-            text = text[1:-1]
-        return text
+        text = version_line.split("=")[-1]
+        return text.strip()
 
     def write(self):
         lines_for_compatible = ''
