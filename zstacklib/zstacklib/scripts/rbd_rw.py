@@ -101,7 +101,7 @@ def _do_read_image(image, offset, size):
 
 
 def _do_write_image(image, offset, content):
-    completion = image.aio_write(content, offset, None)
+    completion = image.aio_write(content, offset, lambda _: None)
     for i in xrange(100):
         if completion.is_complete():
             break
