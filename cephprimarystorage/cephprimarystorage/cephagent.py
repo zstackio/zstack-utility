@@ -495,10 +495,8 @@ class CephAgent(plugin.TaskManager):
 
     @in_bash
     def _get_file_actual_size(self, path):
-        fast_diff_enabled = shell.run("rbd --format json info %s | grep fast-diff | grep -qv 'fast diff invalid'" % path) == 0
-
         # if no fast-diff supported and not xsky ceph skip actual size check
-        if not fast_diff_enabled and not ceph.is_xsky():
+        if not self._fast_diff_enabled(path) and not ceph.is_xsky():
             return None
 
         # use json format result first
@@ -520,6 +518,38 @@ class CephAgent(plugin.TaskManager):
             return None
 
         return sizeunit.get_size(size)
+
+    def _fast_diff_enabled(self, path):
+        return shell.run("rbd --format json info %s | grep fast-diff | grep -qv 'fast diff invalid'" % path) == 0
+
+    #TODO: check that ceph supports json versions
+    @in_bash
+    def _get_snapshot_actual_size(self, path):
+        # if no fast-diff supported and not xsky ceph skip actual size check
+        if not self._fast_diff_enabled(path) and not ceph.is_xsky():
+            return None
+
+        r, jstr = bash.bash_ro("rbd du %s --format json" % path)
+        if r != 0 or bool(jstr) is False:
+            return None
+
+        result = jsonobject.loads(jstr)
+        if result.images is None:
+            return None
+
+        snapshot_size = None
+        snapshot = path.split('@')[-1]
+
+        if ceph.is_xsky():
+            for item in result.images:
+                if item.name.contains(snapshot):
+                    snapshot_size = int(item.used_size)
+            return snapshot_size
+
+        for item in result.images:
+            if item.snapshot == snapshot:
+                snapshot_size = int(item.used_size)
+        return snapshot_size
 
     def _get_file_size(self, path):
         o = shell.call('rbd --format json info %s' % path)
@@ -729,7 +759,7 @@ class CephAgent(plugin.TaskManager):
         path = self._normalize_install_path(cmd.installPath)
         rsp = GetVolumeSnapshotSizeRsp()
         rsp.size = self._get_file_size(path)
-        rsp.actualSize = self._get_file_actual_size(path)
+        rsp.actualSize = self._get_snapshot_actual_size(path)
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -857,7 +887,7 @@ class CephAgent(plugin.TaskManager):
         if do_create:
             driver = self.get_driver(cmd)
             rsp = driver.create_snapshot(cmd, rsp)
-            rsp.actualSize = self._get_file_actual_size(spath)
+            rsp.actualSize = self._get_snapshot_actual_size(spath)
 
         self._set_capacity_to_response(rsp)
         return jsonobject.dumps(rsp)
