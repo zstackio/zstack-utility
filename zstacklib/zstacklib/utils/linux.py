@@ -357,7 +357,7 @@ def get_ethernet_info():
         devices[ethname] = eth
         mac = None
         for i in range(0, len(tokens)):
-            if tokens[i].endswith('/ether'):
+            if tokens[i].endswith('/ether') or tokens[i].endswith('/infiniband'):
                 mac = tokens[i+1]
                 break
 
