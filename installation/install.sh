@@ -3463,7 +3463,7 @@ get_zstack_repo(){
 install_sync_repo_dependences() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     pkg_list="createrepo curl rsync"
-    if [ x"$OS" != x"KYLIN10" -a x"$OS" != x"EULER20" -a x"$OS" != x"OE2203" -a x"$OS" != x"H2203SP1O" -a x"$OS" != x"L2003SP3O"]; then
+    if [ x"$OS" != x"KYLIN10" -a x"$OS" != x"EULER20" -a x"$OS" != x"OE2203" -a x"$OS" != x"H2203SP1O" -a x"$OS" != x"L2003SP3O" ]; then
         pkg_list="$pkg_list yum-utils"
     fi
     missing_list=`LANG=en_US.UTF-8 && rpm -q $pkg_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
