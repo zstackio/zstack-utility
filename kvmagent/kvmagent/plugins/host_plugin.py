@@ -2340,6 +2340,10 @@ done
             return 'NVIDIA'
         elif 'Haiguang' in name:
             return 'Haiguang'
+        elif 'Huawei' in name:
+            return 'Huawei'
+        elif '1e3e' in name:
+            return 'TianShu'
         else:
             return name.replace('Co., Ltd ', '')
 
@@ -2378,7 +2382,7 @@ done
                     to.type = _class
                     to.description = _class + ": "
                 elif title == 'Vendor':
-                    vendor_name = self._simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
+                    vendor_name = self._simplify_pci_device_name(content.strip())
                     to.vendor = vendor_name
                     to.vendorId = content.split('[')[-1].strip(']')
                     to.description += vendor_name + " "
@@ -2442,6 +2446,9 @@ done
                 elif 'PCI bridge' in to.type or (pci_device_mapper.get('PCI bridge') is not None
                                                  and pci_device_mapper.get('PCI bridge') in to.type):
                     to.type = "PCI_Bridge"
+                elif "Processing accelerators" in to.type or (
+                        pci_device_mapper.get('Processing accelerators') is not None):
+                    to.type = "GPU_Processing_Accelerators"
                 else:
                     to.type = "Generic"
 
@@ -2459,13 +2466,88 @@ done
 
     def _collect_gpu_addoninfo(self, to, vendor_name):
         if pci.is_gpu(to.type):
-            if vendor_name == 'NVIDIA':
-                self._collect_nvidia_gpu_info(to)
-            if vendor_name == 'AMD':
-                self._collect_amd_gpu_info(to)
-            if vendor_name == 'Haiguang':
-                self._collect_haiguang_gpu_info(to)
+            collect_vendor_nvidia_gpu_infos = {
+                'NVIDIA': self._collect_nvidia_gpu_info,
+                'AMD': self._collect_amd_gpu_info,
+                'Haiguang': self._collect_haiguang_gpu_info,
+                'Huawei': self._collect_huawei_gpu_info,
+                'TianShu': self._collect_tianshu_gpu_info
+            }
+            handler = collect_vendor_nvidia_gpu_infos.get(vendor_name)
+            if handler:
+                handler(to)
 
+    @in_bash
+    def _collect_tianshu_gpu_info(self, to):
+        if shell.run("which ixsmi") != 0:
+            logger.debug("no ixsmi")
+            return
+        r, o, e = bash_roe("ixsmi --query-gpu=gpu_bus_id,memory.total,gpu.power.limit,gpu_serial --format=csv,noheader")
+        if r != 0:
+            logger.error("ixsmi query gpu is error, %s " % e)
+            return
+
+        for part in o.split('\n'):
+            if len(part.strip()) == 0:
+                continue
+            gpuinfo = part.split(',')
+            if to.pciDeviceAddress in gpuinfo[0].strip():
+                to.addonInfo["memory"] = gpuinfo[1].strip()
+                to.addonInfo["power"] = gpuinfo[2].strip()
+                to.addonInfo["serialNumber"] = gpuinfo[3].strip()
+                to.addonInfo["isDriverLoaded"] = True
+
+    @in_bash
+    def _collect_huawei_gpu_info(self, to):
+        if shell.run("which npu-smi") != 0:
+            logger.debug("no npu-smi")
+            return
+
+        r, npu_ids_out = bash_ro("npu-smi info -l")
+        if r != 0:
+            logger.error("npu query gpu is error, %s " % npu_ids_out)
+            return
+
+        for line in npu_ids_out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if "NPU ID" in line:
+                npu_id = line.split(":")[1].strip()
+                break
+
+        if npu_id:
+            r, o, e = bash_roe("npu-smi info -t board -i %s" % npu_id)
+            if r != 0:
+                logger.error("npu query gpu board is error, %s " % e)
+                return
+
+            if to.pciDeviceAddress.lower() not in o.lower():
+                return
+
+            for line in o.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if "Serial Number" in line:
+                    to.addonInfo["serialNumber"] = line.split(":")[1].strip()
+                    break
+
+            r, o, e = bash_roe("npu-smi info -i %s -t memory;npu-smi info -i %s -t power" % (npu_id, npu_id))
+            if r != 0:
+                logger.error("npu query gpu memory and power is error, %s " % e)
+                return
+
+            for line in o.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if "DDR Capacity(MB)" in line:
+                    to.addonInfo["memory"] = line.split(":")[1].strip() + "MB"
+                    continue
+                if "Power Dissipation(W)" in line:
+                    to.addonInfo["power"] = line.split(":")[1].strip()
+            to.addonInfo["isDriverLoaded"] = True
     @in_bash
     def _collect_haiguang_gpu_info(self, to):
         if shell.run("which hy-smi") != 0:
