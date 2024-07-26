@@ -7195,6 +7195,11 @@ class VmPlugin(kvmagent.KvmAgent):
         for vm in no_qemu_process_running_vms:
             rsp.states[vm] = Vm.VM_STATE_SHUTDOWN
 
+        # do not return shutdown vm in states
+        for guest, state in rsp.states.items():
+            if rsp.states[guest] == Vm.VM_STATE_SHUTDOWN:
+                del rsp.states[guest]
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
