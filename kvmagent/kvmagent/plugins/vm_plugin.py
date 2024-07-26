@@ -661,6 +661,12 @@ class QueryVolumeMirrorResponse(kvmagent.AgentResponse):
         self.extraMirrorVolumes = [] # type:list[str]
 
 
+class GetVolumeMirrorModeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVolumeMirrorModeResponse, self).__init__()
+        self.mode = None
+
+
 class QueryBlockJobStatusResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(QueryBlockJobStatusResponse, self).__init__()
@@ -6493,6 +6499,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_CHECK_VOLUME_SNAPSHOT_PATH = "/vm/volume/checksnapshot"
     KVM_TAKE_VOLUME_BACKUP_PATH = "/vm/volume/takebackup"
     KVM_TAKE_VOLUME_MIRROR_PATH = "/vm/volume/takemirror"
+    KVM_GET_VOLUME_MIRROR_MODE_PATH = "/vm/volume/getmirrormode"
     KVM_CANCEL_VOLUME_MIRROR_PATH = "/vm/volume/cancelmirror"
     KVM_QUERY_VOLUME_MIRROR_PATH = "/vm/volume/querymirror"
     KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH = "/vm/volume/querylatencyboundary"
@@ -8576,6 +8583,30 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def get_volume_mirror_mode(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVolumeMirrorModeResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        target_disk, _ = vm._get_target_disk(cmd.volume)
+        node_name = self.get_disk_device_name(target_disk)
+        installPath = cmd.volume.installPath
+        lastVolume, currVolume, volumeType = "", "", "raw"
+
+        if not installPath.startswith("ceph://"):
+            lastVolume = cmd.lastMirrorVolume
+            currVolume = installPath.split(":/")[-1]
+            volumeType = "qcow2"
+
+        isc = ImageStoreClient()
+        mode = isc.get_mirror_mode(cmd.vmUuid, node_name, lastVolume, currVolume, volumeType)
+        rsp.mode = mode
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def query_volume_mirror(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = QueryVolumeMirrorResponse()
@@ -10390,6 +10421,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_CHECK_VOLUME_SNAPSHOT_PATH, self.check_volume_snapshot)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_BACKUP_PATH, self.take_volume_backup, cmd=TakeVolumeBackupCommand())
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
+        http_server.register_async_uri(self.KVM_GET_VOLUME_MIRROR_MODE_PATH, self.get_volume_mirror_mode)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_MIRROR_PATH, self.cancel_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_VOLUME_MIRROR_PATH, self.query_volume_mirror)
         http_server.register_async_uri(self.KVM_QUERY_MIRROR_LATENCY_BOUNDARY_PATH, self.query_vm_mirror_latencies_boundary)

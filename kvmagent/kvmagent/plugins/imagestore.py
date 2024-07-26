@@ -111,6 +111,12 @@ class ImageStoreClient(object):
                 return None
             return jobj.__dict__ if hasattr(jobj, "__dict__") else jobj.mirrorVolumes
 
+    def get_mirror_mode(self, vm, node, lastvolume, currvolume, volumetype):
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s getmirrormode -domain %s -drive "%s" -lastMirrorVolume "%s" -mirrorVolume "%s" -volumeType %s' % \
+                     (self.ZSTORE_CLI_PATH,vm, node, lastvolume, currvolume, volumetype)
+            return shell.call(cmdstr).strip()
+
     def mirror_volume(self, vm, node, dest, lastvolume, currvolume, volumetype, mode, speed, reporter):
         PFILE = linux.create_temp_file()
 
