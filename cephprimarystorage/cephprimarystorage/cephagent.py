@@ -542,7 +542,7 @@ class CephAgent(plugin.TaskManager):
 
         if ceph.is_xsky():
             for item in result.images:
-                if item.name.contains(snapshot):
+                if item.name is not None and snapshot in item.name:
                     snapshot_size = int(item.used_size)
             return snapshot_size
 
