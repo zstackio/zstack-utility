@@ -487,28 +487,47 @@ def collect_physical_cpu_state():
         "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
     }
 
+    r, cpu_info = bash_ro("ipmitool sdr elist | grep -i cpu")  # type: (int, str)
+    if r != 0:
+        return metrics.values()
+
     '''
-        PowerLeader
-        CPU1 Temp      | 01h | ok  | 3.1 | 66 degrees C
+        ================
+        CPU TEMPERATURE
+        ================
+        CPU1_Temp        | 39h | ok  |  7.18 | 34 degrees C
+        CPU1_Core_Temp   | 39h | ok  |  7.18 | 34 degrees C
+        CPU_Temp_01      | 39h | ok  |  7.18 | 34 degrees C
+        CPU1 Temp        | 39h | ok  |  7.18 | 34 degrees C
+        CPU1 Core Rem    | 04h | ok  |  3.96 | 41 degrees C
+
+        ================
+        CPU STATUS
+        ================
+        CPU_STATUS_01    | 52h | ok  |  3.0 | Presence detected
+        CPU1 Status      | 3Ch | ok  |  3.96 | Presence detected
+        CPU1_Status      | 7Eh | ok  |  3.0 | Presence detected
     '''
-    r, cpu_temp_info = bash_ro(
-        "ipmitool sdr type 'Temperature' | grep -E -i '^CPU[0-9]*(\ |_)Temp'")  # type: (int, str)
-    if r == 0:
-        cpu_list = cpu_temp_info.splitlines()
-        for i in range(len(cpu_list)):
-            info = cpu_list[i].strip()
-            cpu_id = "CPU" + str(i)
-            # cpu_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            # # the cut string has the same length as the original string which means cut symbol is not we want
-            # if len(cpu_id) == len(info.split("|")[0].strip().split(" ")[0]):
-            #     cpu_id = info.split("|")[0].strip().split(" ")[0].split(" ")[0]
-            cpu_state = 0 if info.split("|")[2].strip().lower() == "ok" else 10
-            cpu_temp = 0 if cpu_state != 0 else info.split("|")[4].strip().split(" ")[0]
-            metrics['cpu_temperature'].add_metric([cpu_id], float(cpu_temp))
-            metrics['cpu_status'].add_metric([cpu_id], float(cpu_state))
-    
-    collect_equipment_state_last_result = metrics.values()
-    return collect_equipment_state_last_result
+
+    cpu_temperature_pattern = r'^(cpu\d+_temp|cpu\d+_core_temp|cpu_temp_\d+|cpu\d+ temp|cpu\d+ core rem)$'
+    cpu_status_pattern = r'^(cpu_status_\d+|cpu\d+ status|cpu\d+_status)$'
+
+    for line in cpu_info.lower().splitlines():
+        sensor = line.split("|")
+        if len(sensor) != 5:
+            continue
+        sensor_id = sensor[0].strip()
+        sensor_value = sensor[4].strip()
+        if re.match(cpu_temperature_pattern, sensor_id):
+            cpu_id = int(re.sub(r'\D', '', sensor_id))
+            cpu_temperature = filter(str.isdigit, sensor_value) if bool(re.search(r'\d', sensor_value)) else 0
+            metrics['cpu_temperature'].add_metric(["CPU%d" % cpu_id], float(cpu_temperature))
+        if re.match(cpu_status_pattern, sensor_id):
+            cpu_id = int(re.sub(r'\D', '', sensor_id))
+            cpu_status = 0 if "presence detected" == sensor_value else 10
+            metrics['cpu_status'].add_metric(["CPU%d" % cpu_id], float(cpu_status))
+
+    return metrics.values()
 
 
 def collect_equipment_state():
