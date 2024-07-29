@@ -66,6 +66,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     BM_GET_VOLUME_LUN_ID_PATH = \
         '/baremetal_gateway_agent/v2/instance/volume/lunId'
     BM_GET_ACCESS_PATH_INFO_PATH = '/baremetal_gateway_agent/v2/instance/volume/access/path/info/get'
+    BM_CHECK_PROVISION_IP_PATH = \
+        '/baremetal_gateway_agent/v2/instance/provision_ip/check'
 
     BAREMETAL_LIB_DIR = '/var/lib/zstack/baremetalv2/'
     BAREMETAL_LOG_DIR = '/var/log/zstack/baremetalv2/'
@@ -387,6 +389,9 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     def _append_dnsmasq_configuration(self, instance_obj):
         """ Create dnsmasq configuration
         """
+        if instance_obj.provision_mac is None:
+            return
+
         host = '{mac_addr},{ip_addr},set:instance,set:{uuid}\n'.format(
             mac_addr=instance_obj.provision_mac,
             ip_addr=instance_obj.provision_ip,
@@ -1626,6 +1631,19 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def check_provision_ip(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        self._ping_provision_ip(cmd.provisionIp)
+
+        rsp = kvmagent.AgentResponse()
+        return jsonobject.dumps(rsp)
+
+    def _ping_provision_ip(self, provision_ip):
+        cmd = shell.ShellCmd("ping -c 3 %s" % provision_ip)
+        cmd(is_exception=False)
+        if cmd.return_code != 0 and '100% packet loss' in cmd.stdout:
+            raise Exception("provision ip %s is unavailable, fail to ping on the gateway")
 
     def start(self):
         self.host_uuid = None
@@ -1652,6 +1670,8 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.BM_GET_VOLUME_LUN_ID_PATH,
                                        self.get_lun_id)
         http_server.register_async_uri(self.BM_GET_ACCESS_PATH_INFO_PATH, self.get_access_path_info)
+        http_server.register_async_uri(self.BM_CHECK_PROVISION_IP_PATH,
+                                       self.check_provision_ip)
 
     def stop(self):
         pass
