@@ -168,11 +168,13 @@ class ImageStoreClient(object):
                             break
             return vm, maxInfoMap, minInfoMap
 
-    def backup_volume(self, vm, node, bitmap, mode, dest, point_in_time, speed, reporter, stage):
+    # extra_args: (-point-in-time, -oob, -speed 1024)
+    def backup_volume(self, vm, node, bitmap, mode, dest, task_spec, extra_args=()):
         self.check_capacity(os.path.dirname(dest))
 
         PFILE = linux.create_temp_file()
-
+        reporter = Report.from_spec(task_spec, "VolumeBackup")
+        stage = get_task_stage(task_spec)
         def _get_progress(synced):
             last = linux.tail_1(PFILE).strip()
             if not last or not last.isdigit():
@@ -182,12 +184,8 @@ class ImageStoreClient(object):
             return synced
 
         with linux.ShowLibvirtErrorOnException(vm):
-            p_option = ""
-            if point_in_time is not None:
-                p_option = "-point-in-time=%s" % str(point_in_time).lower()
-
-            cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive "%s" -mode %s %s -speed %s' % \
-                     (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, p_option, speed)
+            cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive "%s" -mode %s %s' % \
+                     (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, " ".join(extra_args))
             _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
@@ -195,12 +193,15 @@ class ImageStoreClient(object):
                 raise Exception('fail to backup vm %s, because %s' % (vm, str(err)))
             return mode.strip()
 
-    # args -> (bitmap, mode, drive)
+    # args -> (bitmap, mode, drive, speed)
+    # extra_args -> ("-point-in-time", "-oob")
     # {'drive-virtio-disk0': { "backupFile": "foo", "mode":"full" },
     #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
-    def backup_volumes(self, vm, args, dstdir, point_in_time, reporter, stage):
+    def backup_volumes(self, vm, args, dstdir, task_spec, extra_args=()):
         self.check_capacity(dstdir)
         PFILE = linux.create_temp_file()
+        reporter = Report.from_spec(task_spec, "VmBackup")
+        stage = get_task_stage(task_spec)
 
         def _get_progress(synced):
             last = linux.tail_1(PFILE).strip()
@@ -211,12 +212,8 @@ class ImageStoreClient(object):
             return synced
 
         with linux.ShowLibvirtErrorOnException(vm):
-            p_option = ""
-            if point_in_time is not None:
-                p_option = "-point-in-time=%s" % str(point_in_time).lower()
-
             cmdstr = '%s -progress %s batbak -domain %s -destdir %s %s -args %s' % \
-                     (self.ZSTORE_CLI_PATH, PFILE, vm, dstdir, p_option, ':'.join(["%s,%s,%s,%s" % x for x in args]))
+                     (self.ZSTORE_CLI_PATH, PFILE, vm, dstdir, " ".join(extra_args), ':'.join(["%s,%s,%s,%s" % x for x in args]))
             _, mode, err = bash_progress_1(cmdstr, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
