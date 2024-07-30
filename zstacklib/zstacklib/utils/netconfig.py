@@ -229,6 +229,10 @@ class NetConfig(object):
 
         if self.service_type == NET_CONFIG_SERVICE_TYPE_NMCLI:
             shell.call('nmcli c load %s' % ifcfg_file_path)
+            # TODO: Fixes ZSV-6451
+            #   work around to disable vlan autoconnect
+            if self.link_type == NET_CONFIG_VLAN_TYPE:
+                shell.call('nmcli c modify %s autoconnect no' % self.name)
 
         self.post_restore_config()
 

@@ -24,6 +24,7 @@ import json
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
 ADD_INTERFACE_TO_BRIDGE_PATH = '/network/bridge/addif'
+BATCH_UPDATE_BRIDGE_PATH = "/network/bridge/batchupdate"
 CREATE_BONDING_PATH = '/network/bonding/create'
 UPDATE_BONDING_PATH = '/network/bonding/update'
 DELETE_BONDING_PATH = '/network/bonding/delete'
@@ -91,6 +92,17 @@ class CreateVlanBridgeCmd(kvmagent.AgentCommand):
         self.vlan = None
 
 
+class BatchUpdateBridgeCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(BatchUpdateBridgeCmd, self).__init__()
+        self.oldPhysicalInterface = None
+        self.oldBondingName = None
+        self.newPhysicalInterface = None
+        self.newBonding = None  # type: CreateBondingCmd
+        self.bridgeParams = None  # type: list[BridgeParam]
+
+
+
 class CheckVxlanCidrCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(CheckVxlanCidrCmd, self).__init__()
@@ -141,6 +153,11 @@ class CheckVlanBridgeResponse(kvmagent.AgentResponse):
 class CreateVlanBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CreateVlanBridgeResponse, self).__init__()
+
+
+class BatchUpdateBridgeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(BatchUpdateBridgeResponse, self).__init__()
 
 
 class CheckVxlanCidrResponse(kvmagent.AgentResponse):
@@ -334,6 +351,13 @@ class HostNetworkInterfaceStruct(object):
         self.offloadStatus = None
 
 
+class BridgeParam(object):
+    def __init__(self):
+        self.bridgeName = None
+        self.vlanId = None
+        self.l2NetworkUuid = None
+
+
 def del_novlan_bridge(cmd):
     linux.delete_novlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
     logger.debug('successfully delete bridge[%s] with physical interface[%s]' % (
@@ -506,8 +530,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def create_bonding(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = CreateBondingResponse()
+        return jsonobject.dumps(self.do_create_bonding(cmd))
 
+    def do_create_bonding(self, cmd):
+        rsp = CreateBondingResponse()
         try:
             try:
                 for slave in cmd.slaves:
@@ -516,7 +542,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             except Exception as e:
                 rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
                 rsp.success = False
-                return jsonobject.dumps(rsp)
+                return rsp
 
             # zs-bond -c bond1 mode 802.ad xmitHashPolicy layer2+3
             if cmd.xmitHashPolicy is not None:
@@ -551,7 +577,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
             rsp.success = False
 
-        return jsonobject.dumps(rsp)
+        return rsp
 
     @lock.lock('bonding')
     @kvmagent.replyerror
@@ -601,6 +627,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def attach_nic_to_bonding(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        return jsonobject.dumps(self.do_attach_nic_to_bonding(cmd))
+
+    def do_attach_nic_to_bonding(self, cmd):
         rsp = AttachNicToBondResponse()
 
         try:
@@ -608,13 +637,13 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 if self._has_vlan_or_bridge(interface.interfaceName):
                     raise Exception(interface.interfaceName + ' has a sub-interface or a bridge port')
             for interface in cmd.slaves:
-                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface))
+                shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface.interfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to attach nic to bonding[%s], because %s' % (cmd.bondName, str(e))
             rsp.success = False
 
-        return jsonobject.dumps(rsp)
+        return rsp
 
     @in_bash
     def detach_nic_from_bonding(self, req):
@@ -623,7 +652,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         try:
             for interface in cmd.slaves:
-                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface))
+                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.bondName, interface.interfaceName))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to detach nic from bonding[%s], because %s' % (cmd.bondName, str(e))
@@ -636,8 +665,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def delete_bonding(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = DeleteBondingResponse()
+        return jsonobject.dumps(self.do_delete_bonding(cmd))
 
+    def do_delete_bonding(self, cmd):
+        rsp = DeleteBondingResponse()
         try:
             if self._has_vlan_or_bridge(cmd.bondName):
                 raise Exception(cmd.bondName + ' has a sub-interface or a bridge port')
@@ -654,7 +685,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             rsp.error = 'unable to delete bonding[%s], because %s' % (cmd.bondName, str(e))
             rsp.success = False
 
-        return jsonobject.dumps(rsp)
+        return rsp
 
     @linux.retry(times=3, sleep_time=5)
     def _restart_lldpd(self):
@@ -836,6 +867,135 @@ configure lldp status rx-only \n
             rsp.error = 'unable to apply lldp config, because %s', str(e)
             rsp.success = False
 
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
+    def batch_update_bridge(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: BatchUpdateBridgeCmd
+        rsp = BatchUpdateBridgeResponse()
+
+        # only support LinuxBonding
+        if cmd.newBonding and cmd.newBonding.type != "LinuxBonding":
+            rsp.error = 'invalid bonding type[%s]' % cmd.newBonding.type
+            rsp.success = False
+            return rsp
+
+        # physical interface to bond
+        if cmd.newBonding:
+            old_interface = cmd.oldPhysicalInterface
+            new_interface = cmd.newBonding.bondName
+        # bond to physical interface
+        elif cmd.oldBondingName:
+            old_interface = cmd.oldBondingName
+            new_interface = cmd.newPhysicalInterface
+        # physical interface to physical interface
+        else:
+            old_interface = cmd.oldPhysicalInterface
+            new_interface = cmd.newPhysicalInterface
+
+        if not cmd.newBonding:
+            self._ifup_device_if_down(new_interface)
+
+        try:
+            vlan_eth_list = []
+            if cmd.oldBondingName:
+                shell.call('/usr/local/bin/zs-nic-to-bond -d %s %s' % (cmd.oldBondingName, new_interface),
+                           exception=False)
+
+            if cmd.newBonding:
+                create_cmd = cmd.newBonding  # type: CreateBondingCmd
+                # attach slaves later
+                attach_cmd = AttachNicToBondCmd()
+                attach_cmd.bondName = create_cmd.bondName
+                attach_cmd.slaves = create_cmd.slaves
+                create_cmd.slaves = []
+                for param in cmd.bridgeParams:
+                    bridge_name = param.bridgeName
+                    vlan_id = param.vlanId
+                    if vlan_id:
+                        old_vlan_interface = linux.make_vlan_eth_name(old_interface, vlan_id)
+                        vlan_eth_list.append(old_vlan_interface)
+                    else:
+                        old_vlan_interface = old_interface
+
+                    linux.detach_interface_from_bridge(old_vlan_interface, bridge_name)
+
+                create_rsp = self.do_create_bonding(create_cmd)
+                if not create_rsp.success:
+                    for param in cmd.bridgeParams:
+                        bridge_name = param.bridgeName
+                        vlan_id = param.vlanId
+                        if vlan_id:
+                            old_vlan_interface = linux.make_vlan_eth_name(old_interface, vlan_id)
+                        else:
+                            old_vlan_interface = old_interface
+
+                        linux.ip_link_set_net_device_master(old_vlan_interface, bridge_name)
+                    rsp.success = create_rsp.success
+                    rsp.error = create_rsp.error
+                    return jsonobject.dumps(rsp)
+
+                for vlan_eth in vlan_eth_list:
+                    linux.delete_vlan_eth_and_ifcfg(vlan_eth)
+                vlan_eth_list = []
+
+                for param in cmd.bridgeParams:
+                    bridge_name = param.bridgeName
+                    vlan_id = param.vlanId
+                    l2_network_uuid = param.l2NetworkUuid
+                    if vlan_id:
+                        new_vlan_interface = linux.create_vlan_eth_with_bridge(new_interface, vlan_id, bridge_name)
+                        vlan_eth_list.append(new_vlan_interface)
+                    else:
+                        new_vlan_interface = new_interface
+
+                    linux.attach_interface_to_bridge(new_vlan_interface, bridge_name, l2_network_uuid)
+
+                attach_rsp = self.do_attach_nic_to_bonding(attach_cmd)
+                if not attach_rsp.success:
+                    for vlan_eth in vlan_eth_list:
+                        linux.delete_vlan_eth_and_ifcfg(vlan_eth)
+                    del_cmd = DeleteBondingCmd()
+                    del_cmd.bondName = attach_cmd.bondName
+                    self.do_delete_bonding(del_cmd)
+                    rsp.success = attach_rsp.success
+                    rsp.error = attach_rsp.error
+                    return jsonobject.dumps(rsp)
+
+            else:
+                for param in cmd.bridgeParams:
+                    bridge_name = param.bridgeName
+                    vlan_id = param.vlanId
+                    l2_network_uuid = param.l2NetworkUuid
+                    if vlan_id:
+                        old_vlan_interface = linux.make_vlan_eth_name(old_interface, vlan_id)
+                        new_vlan_interface = linux.create_vlan_eth_with_bridge(new_interface, vlan_id, bridge_name)
+                        vlan_eth_list.append(old_vlan_interface)
+                    else:
+                        old_vlan_interface = old_interface
+                        new_vlan_interface = new_interface
+
+                    linux.update_bridge_interface_configuration(old_vlan_interface, new_vlan_interface,
+                                                                bridge_name, l2_network_uuid)
+
+                for vlan_eth in vlan_eth_list:
+                    linux.delete_vlan_eth_and_ifcfg(vlan_eth)
+
+            if cmd.oldBondingName:
+                del_cmd = DeleteBondingCmd()
+                del_cmd.bondName = old_interface
+                del_rsp = self.do_delete_bonding(del_cmd)
+                if not del_rsp.success:
+                    logger.warning(del_rsp.error)
+
+            logger.debug('successfully update vlan bridge to change interface from device[%s] to device[%s]' % (
+                old_interface, new_interface))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = 'unable to update vlan bridge to change interface from device[%s] to device[%s], because %s' % (
+                old_interface, new_interface, str(e))
+            rsp.success = False
         return jsonobject.dumps(rsp)
 
     @lock.lock('bridge')
@@ -1305,6 +1465,7 @@ configure lldp status rx-only \n
         http_server = kvmagent.get_http_server()
         http_server.register_sync_uri(CHECK_PHYSICAL_NETWORK_INTERFACE_PATH, self.check_physical_network_interface)
         http_server.register_async_uri(ADD_INTERFACE_TO_BRIDGE_PATH, self.add_interface_to_bridge)
+        http_server.register_async_uri(BATCH_UPDATE_BRIDGE_PATH, self.batch_update_bridge)
         http_server.register_async_uri(CREATE_BONDING_PATH, self.create_bonding)
         http_server.register_async_uri(UPDATE_BONDING_PATH, self.update_bonding)
         http_server.register_async_uri(DELETE_BONDING_PATH, self.delete_bonding)
