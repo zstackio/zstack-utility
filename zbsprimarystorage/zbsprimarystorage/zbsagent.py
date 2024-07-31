@@ -98,8 +98,8 @@ class CreateVolumeRsp(AgentResponse):
 class GetCapacityRsp(AgentResponse):
     def __init__(self):
         super(GetCapacityRsp, self).__init__()
-        self.capacity = None
-        self.storedSize = None
+        self.capacity = 0
+        self.usedSize = 0
 
 
 class GetFactsRsp(AgentResponse):
@@ -443,7 +443,7 @@ class ZbsAgent(plugin.TaskManager):
         for lp in jsonobject.loads(o).result[0].logicalPoolInfos:
             if cmd.logicalPoolName in lp.logicalPoolName:
                 rsp.capacity = lp.capacity
-                rsp.storedSize = lp.storedSize
+                rsp.usedSize = lp.usedSize
                 found = True
                 break
 
