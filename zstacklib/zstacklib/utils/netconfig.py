@@ -22,6 +22,7 @@ NET_CONFIG_VLAN_TYPE = 'VLAN'
 NET_CONFIG_BRIDGE_TYPE = 'BRIDGE'
 NET_CONFIG_BOND_TYPE = 'BOND'
 NET_CONFIG_ETHER_TYPE = 'ETHER'
+NET_CONFIG_VXLAN_TYPE = 'VXLAN'
 
 NET_CONFIG_BOOTPROTO_STATIC = 'static'
 NET_CONFIG_BOOTPROTO_DHCP = 'dhcp'
@@ -75,9 +76,7 @@ class NetConfig(object):
 
     def _get_service_type(self):
         '''netconfig: get network service type(network or NetworkManager)'''
-        cmd = shell.ShellCmd('nmcli general status')
-        cmd(is_exception=False)
-        if cmd.return_code == 0:
+        if use_network_manager():
             return NET_CONFIG_SERVICE_TYPE_NMCLI
 
         return NET_CONFIG_SERVICE_TYPE_NORMAL
@@ -229,10 +228,6 @@ class NetConfig(object):
 
         if self.service_type == NET_CONFIG_SERVICE_TYPE_NMCLI:
             shell.call('nmcli c load %s' % ifcfg_file_path)
-            # TODO: Fixes ZSV-6451
-            #   work around to disable vlan autoconnect
-            if self.link_type == NET_CONFIG_VLAN_TYPE:
-                shell.call('nmcli c modify %s autoconnect no' % self.name)
 
         self.post_restore_config()
 
@@ -347,7 +342,6 @@ class NetVlanConfig(NetConfig):
 
     def __init__(self, name):
         super(NetVlanConfig, self).__init__(name, NET_CONFIG_VLAN_TYPE)
-        self.link_type = NET_CONFIG_VLAN_TYPE
         self.vlan_id = None
         self.bridge = None
         self.bond = None
@@ -399,7 +393,6 @@ class NetBridgeConfig(NetConfig):
 
     def __init__(self, name):
         super(NetBridgeConfig, self).__init__(name, NET_CONFIG_BRIDGE_TYPE)
-        self.link_type = NET_CONFIG_BRIDGE_TYPE
         self.stp = NET_CONFIG_STP_NO
         self.delay = 5
         self.phys_dev = None
@@ -437,7 +430,6 @@ class NetBondConfig(NetConfig):
 
     def __init__(self, name):
         super(NetBondConfig, self).__init__(name, NET_CONFIG_BOND_TYPE)
-        self.link_type = NET_CONFIG_BOND_TYPE
         self.bond_options = None
         self.bridge = None
 
@@ -482,7 +474,6 @@ class NetEtherConfig(NetConfig):
 
     def __init__(self, name):
         super(NetEtherConfig, self).__init__(name, NET_CONFIG_ETHER_TYPE)
-        self.link_type = NET_CONFIG_ETHER_TYPE
         self.bridge = None
         self.bond = None
 
@@ -523,6 +514,15 @@ class NetEtherConfig(NetConfig):
             os.remove(file)
 
 
+class NetVxlanConfig(NetConfig):
+    '''TODO netconfig: net vxlan config'''
+
+    def __init__(self, name):
+        super(NetVxlanConfig, self).__init__(name, NET_CONFIG_VXLAN_TYPE)
+        self.bridge = None
+        self.vni = None
+
+
 def find_bridge_files(file_path, bridge_name, exclude_dev=None):
     '''find bridge files'''
     if not os.path.exists(file_path) or not bridge_name:
@@ -558,6 +558,11 @@ def prefix_to_netmask(prefix):
             str((0x00ff0000 & netmask) >> 16) + '.' +
             str((0x0000ff00 & netmask) >> 8) + '.' +
             str((0x000000ff & netmask)))
+
+
+def use_network_manager():
+    return shell.run('nmcli general status') == 0
+
 
 if __name__ == '__main__':
     logger.debug('start test netconfig')
