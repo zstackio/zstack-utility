@@ -2,8 +2,6 @@ __author__ = 'Xingwei Yu'
 
 import traceback
 import pprint
-import socket
-import threading
 import os
 
 import zbsutils
@@ -24,8 +22,6 @@ logger = log.get_logger(__name__)
 FORMAT_CBD_LUN_PATH = "cbd:{}/{}/{}"
 FORMAT_CBD_SNAPSHOT_PATH = FORMAT_CBD_LUN_PATH + "@{}"
 ZBS_CLIENT_CONF = "/etc/zbs/client.conf"
-
-port_lock = threading.Lock()
 
 
 class AgentResponse(object):
@@ -134,16 +130,6 @@ def get_lun_name(install_path):
 
 def get_snapshot_name(install_path):
     return install_path.split(":")[1].split("/")[2].split("@")[1]
-
-
-def get_free_port_in_range(start_port, end_port):
-    for port in range(start_port, end_port):
-        s = socket.socket()
-        s.bind(('', port))
-        port = s.getsockname()[1]
-        s.close()
-        return port
-    raise Exception("no free port found in the specified range[%d, %d]" % (start_port, end_port))
 
 
 class ZbsAgent(plugin.TaskManager):
@@ -383,13 +369,12 @@ class ZbsAgent(plugin.TaskManager):
         else:
             install_path = cmd.installPath
 
-        with port_lock:
-            port = get_free_port_in_range(10600, 10800)
-            desc = "cbd2nbd.%d" % port
-            zbsutils.cbd_to_nbd(desc, port, install_path)
-            rsp.ip = cmd.mdsAddr
-            rsp.port = port
-            return jsonobject.dumps(rsp)
+        port = linux.get_free_port_in_range(10600, 10800)
+        desc = "cbd2nbd.%d" % port
+        zbsutils.cbd_to_nbd(desc, port, install_path)
+        rsp.ip = cmd.mdsAddr
+        rsp.port = port
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def delete_volume(self, req):
