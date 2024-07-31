@@ -36,7 +36,9 @@ disk_list_record = None
 gpu_devices = {
     'NVIDIA': set(),
     'AMD': set(),
-    'HY': set()
+    'HY': set(),
+    'HUAWEI': set(),
+    'TIANSHU': set()
 }
 
 hw_status_abnormal_list_record = {
@@ -1439,6 +1441,38 @@ def calculate_percentage(part, total):
     return round(percentage, 1)
 
 
+def collect_tianshu_gpu_status():
+    metrics = get_gpu_metrics()
+
+    if has_ix_smi() is False:
+        return metrics.values()
+    r, gpu_info = bash_ro(
+        "ixsmi --query-gpu=gpu.power.draw,temperature.gpu,fan.speed,utilization.gpu,utilization.memory,index,gpu_bus_id,gpu_serial "
+        "--format=csv,noheader,nounits")
+
+    if r != 0:
+        check_gpu_status_and_save_gpu_status("TIANSHU", metrics)
+        return metrics.values()
+
+    for info in gpu_info.splitlines():
+        info = info.strip().split(',')
+        pci_device_address = info[6].strip().lower()
+        gpu_serial = info[7].strip()
+        if len(pci_device_address.split(':')[0]) == 8:
+            pci_device_address = pci_device_address[4:].lower()
+
+        add_gpu_pci_device_address("TIANSHU", pci_device_address, gpu_serial)
+
+        add_metrics('host_gpu_power_draw', info[0].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_temperature', info[1].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_fan_speed', info[2].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_utilization', info[3].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_memory_utilization', info[4].strip(),
+                    [pci_device_address, gpu_serial], metrics)
+        check_gpu_status_and_save_gpu_status("TIANSHU", metrics)
+    return metrics.values()
+
+
 def collect_nvidia_gpu_status():
     metrics = get_gpu_metrics()
 
@@ -1496,6 +1530,56 @@ def collect_nvidia_gpu_status():
         add_metrics('vgpu_memory_utilization', vgpu['Memory'].replace('%', '').strip(), [vm_uuid, mdev_uuid], metrics)
     return metrics.values()
 
+
+def collect_huawei_gpu_status():
+    metrics = get_gpu_metrics()
+    if has_npu_smi() is False:
+        return metrics.values()
+
+    r, gpu_info_out = bash_ro("stdbuf -oL timeout 2 npu-smi info watch -d 2 -s ptam")
+    if r != 0 and r != 124:
+        check_gpu_status_and_save_gpu_status("HUAWEI", metrics)
+        return metrics.values()
+    npu_ids = set()
+    pci_device_address = None
+    gpu_serial = None
+    for info in gpu_info_out.splitlines():
+        if 'NpuID' in info:
+            continue
+        gpu_info = [s for s in info.split() if s]
+
+        npu_id = gpu_info[0].strip()
+        if npu_id in npu_ids:
+            continue
+        npu_ids.add(npu_id)
+
+        r, info_out = bash_ro("npu-smi info -t board -i %s" % npu_id)
+        if r != 0:
+            logger.error("npu query gpu board is error, %s " % info_out)
+            break
+
+        for line in info_out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if "PCIe Bus Info" in line:
+                pci_device_address = line.split(":", 1)[1].strip().lower()
+                continue
+            if "Serial Number" in line:
+                gpu_serial = line.split(":")[1].strip()
+                continue
+
+            if pci_device_address is not None and gpu_serial is not None:
+                break
+
+        add_gpu_pci_device_address("HUAWEI", pci_device_address, gpu_serial)
+        add_metrics('host_gpu_power_draw', gpu_info[2].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_temperature', gpu_info[3].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_utilization', gpu_info[4].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_memory_utilization', gpu_info[5].strip(), [pci_device_address, gpu_serial], metrics)
+
+    check_gpu_status_and_save_gpu_status("HUAWEI", metrics)
+    return metrics.values()
 
 def collect_hy_gpu_status():
     metrics = get_gpu_metrics()
@@ -1582,19 +1666,23 @@ def convert_pci_status_to_int(pci_address):
 
 
 def has_hy_smi():
-    return shell.run("which hy-smi") == 0
+    return shell.run_without_log("which hy-smi") == 0
 
+def has_ix_smi():
+    return shell.run_without_log("which ixsmi") == 0
 
 def has_nvidia_smi():
-    return shell.run("which nvidia-smi") == 0
+    return shell.run_without_log("which nvidia-smi") == 0
 
 
 def has_rocm_smi():
     if bash_r("lsmod | grep -q amdgpu") != 0:
         if bash_r("modprobe amdgpu") != 0:
             return False
-    return shell.run("which rocm-smi") == 0
+    return shell.run_without_log("which rocm-smi") == 0
 
+def has_npu_smi():
+    return shell.run_without_log("which npu-smi") == 0
 
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
@@ -1620,6 +1708,8 @@ kvmagent.register_prometheus_collector(collect_ssd_state)
 kvmagent.register_prometheus_collector(collect_nvidia_gpu_status)
 kvmagent.register_prometheus_collector(collect_amd_gpu_status)
 kvmagent.register_prometheus_collector(collect_hy_gpu_status)
+kvmagent.register_prometheus_collector(collect_huawei_gpu_status)
+kvmagent.register_prometheus_collector(collect_tianshu_gpu_status)
 
 
 class SetServiceTypeOnHostNetworkInterfaceRsp(kvmagent.AgentResponse):

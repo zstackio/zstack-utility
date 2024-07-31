@@ -6,7 +6,7 @@ logger = log.get_logger(__name__)
 
 
 def is_gpu(type):
-    return type in ['GPU_3D_Controller', 'GPU_Video_Controller']
+    return type in ['GPU_3D_Controller', 'GPU_Video_Controller', 'GPU_Processing_Accelerators']
 
 
 def fmt_pci_address(pci_device):
