@@ -19,8 +19,7 @@ def create_template_with_task_daemon(src, dst, task_spec, dst_format='qcow2', op
             self.dst_path = dst_path
             self.__dict__.update(daemonargs)
 
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            super(ConvertTaskDaemon, self).__exit__(exc_type, exc_val, exc_tb)
+        def _exit(self, exc_type, exc_val, exc_tb):
             linux.rm_file_force(p_file)
 
         def _cancel(self):
