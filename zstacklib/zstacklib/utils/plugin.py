@@ -67,6 +67,8 @@ class TaskDaemon(object):
     '''
 
     def __init__(self, task_spec, task_name, timeout=0, report_progress=True):
+        if self.__class__.__name__ != TaskDaemon.__name__ and self.__class__.__dict__.has_key("__exit__"):
+            raise Exception("method __exit__ cannot be overridden")
         self.api_id = get_api_id(task_spec)
         self.task_name = task_name
         self.timeout = get_timeout(task_spec) if timeout == 0 else timeout
@@ -90,6 +92,13 @@ class TaskDaemon(object):
             self.close()
         except:
             pass
+
+        try:
+            return self._exit(exc_type, exc_val, exc_tb)
+        except Exception:
+            if exc_type is not None:
+                raise
+            logger.warning("ignoring an exception when exiting the task daemon:\n%s" % traceback.format_exc())
 
     def start(self):
         if self.api_id:
@@ -125,6 +134,11 @@ class TaskDaemon(object):
     def cancel(self):
         logger.debug('It is going to cancel %s.' % self.task_name)
         self._cancel()
+
+    @abc.abstractmethod
+    def _exit(self, exc_type, exc_val, exc_tb):
+        # returning true means ignoring exception
+        pass
 
     @abc.abstractmethod
     def _cancel(self):
