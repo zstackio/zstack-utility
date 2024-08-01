@@ -169,11 +169,12 @@ def set_bridge_router_port(enable=False, nicNames=None):
     )
 
 @checkParamNotNone
-def delete_novlan_bridge(bridgeName=None, physicalInterfaceName=None):
-    return NETWORK_PLUGIN.delete_novlan_bridge(
+def delete_vlan_bridge(bridgeName=None, physicalInterfaceName=None, vlan=0):
+    return NETWORK_PLUGIN.delete_vlan_bridge(
         misc.make_a_request({
             "bridgeName": bridgeName,
-            "physicalInterfaceName": physicalInterfaceName
+            "physicalInterfaceName": physicalInterfaceName,
+            "vlan": vlan
         })
     )
 

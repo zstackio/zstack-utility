@@ -203,7 +203,7 @@ class DeleteBridgeResponse(kvmagent.AgentResponse):
         super(DeleteBridgeResponse, self).__init__()
 
 
-class DeleteVlanBridgeCmd(kvmagent.AgentCommand):
+class DeleteVlanBridgeCmd(DeleteBridgeCmd):
     def __init__(self):
         super(DeleteVlanBridgeCmd, self).__init__()
         self.vlan = None
@@ -1435,7 +1435,7 @@ configure lldp status rx-only \n
         vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
 
         try:
-            linux.delete_vlan_eth(vlanInterfName)
+            linux.delete_eth(vlanInterfName)
             logger.debug('successfully delete vlan eth[name:%s, vlan:%s] from device[%s]' % (
             vlanInterfName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
