@@ -128,6 +128,23 @@ class RawUriStreamHandler(object):
     index._cp_config = {'response.stream': True}
 
 
+def get_memory_rss():
+    import resource
+    def get_page_size():
+        return resource.getpagesize()
+
+
+    with open('/proc/self/statm', 'r') as f:
+        statm = f.read().split()
+        rss = int(statm[1])
+
+        page_size = get_page_size()
+
+        rss_in_bytes = rss * page_size
+        rss_in_mb = rss_in_bytes / (1024.0 ** 2)
+        return rss_in_mb
+
+
 class AsyncUirHandler(SyncUriHandler):
     HANDLER_DICT = {}
     HANDLER_DICT_LOCK = threading.Lock()
@@ -162,6 +179,9 @@ class AsyncUirHandler(SyncUriHandler):
         finally:
             with self.HANDLER_DICT_LOCK:
                 self.HANDLER_DICT.pop(task_uuid, None)
+            rss_memory = get_memory_rss()
+            logger.debug("After Call: {} Current Process RSS: {:.2f} MB".format(self.uri_obj.uri, rss_memory))
+
 
     def _get_callback_uri(self, req):
         callback_uri = None
