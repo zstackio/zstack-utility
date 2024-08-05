@@ -7170,7 +7170,8 @@ class VmPlugin(kvmagent.KvmAgent):
         stdout = ""
         stderr = ""
         if cmd.scriptType == "Python":
-            exitCode, stdout, stderr = qga.guest_exec_python(dst, retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
+            exitCode, stdout, stderr = qga.guest_exec_bash("{}".format(dst), retry=cmd.scriptTimeout)
             if exitCode != 0:
                 rsp.success = False
         if cmd.scriptType == "Perl":
