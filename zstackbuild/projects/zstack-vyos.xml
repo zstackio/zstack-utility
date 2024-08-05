@@ -17,8 +17,9 @@
         </exec>
 
         <exec executable="make" dir="${vyos.source}" failonerror="true">
+            <env key="GOROOT" value="${vyos.goroot}" />
             <arg value="package" />
-            <arg value="ARCH=amd64 arm64 loong64" />
+            <arg value="ARCH=${vyos.arch}" />
         </exec>
 
         <copy todir="${vyos.bdir}/">
