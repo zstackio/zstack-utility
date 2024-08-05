@@ -3289,8 +3289,7 @@ class Vm(object):
                 logger.debug('cancelling vm[uuid:%s] migration' % cmd.vmUuid)
                 self.domain.abortJob()
 
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                super(MigrateDaemon, self).__exit__(exc_type, exc_val, exc_tb)
+            def _exit(self, exc_type, exc_val, exc_tb):
                 if exc_type == libvirt.libvirtError:
                     raise kvmagent.KvmError(
                         'unable to migrate vm[uuid:%s] to %s, %s' % (cmd.vmUuid, destUrl, str(exc_val)))
@@ -3959,8 +3958,7 @@ class Vm(object):
                 super(DriveBackupDaemon, self).__init__(task_spec, 'TakeVolumeBackup', report_progress=False)
                 self.domain_uuid = domain_uuid
 
-            def __exit__(self, exc_type, exc_val, exc_tb):
-                super(DriveBackupDaemon, self).__exit__(exc_type, exc_val, exc_tb)
+            def _exit(self, exc_type, exc_val, exc_tb):
                 os.unlink(tmp_workspace)
 
             def _cancel(self):
@@ -6848,10 +6846,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 # cancel block job async
                 self.domain.blockJobAbort(self.disk_name)
 
-            def __exit__(self, exc_type, exc_value, traceback):
+            def _exit(self, exc_type, exc_value, traceback):
                 # Concluded job should be dismiss, otherwise it will affect the next blockcopy
                 qmp.vm_dismiss_block_job(vmUuid)
-                super(BlockCopyDaemon, self).__exit__(exc_type, exc_value, traceback)
 
             def _get_percent(self):
                 # type: () -> int

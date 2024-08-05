@@ -23,11 +23,16 @@ def execute_qmp_command(domain_id, command):
 
 
 def vm_query_jobs(vm_uuid):
+    # qmp 'query-jobs' is suitable for qemu 3.0 and above versions
     r, o, e = execute_qmp_command(vm_uuid, '{"execute":"query-jobs"}')
     if r != 0:
         raise Exception("Failed to query jobs on vm[uuid:{}], error:{}".format(vm_uuid, e))
 
-    return json.loads(o.strip())["return"]
+    ret = json.loads(o.strip())
+    if "error" in ret:
+        raise Exception("Failed to query block jobs on vm[uuid:{}], error:{}".format(vm_uuid, ret["error"]))
+
+    return ret["return"]
 
 
 def vm_query_block_jobs(vm_uuid):
@@ -35,15 +40,19 @@ def vm_query_block_jobs(vm_uuid):
     if r != 0:
         raise Exception("Failed to query block jobs on vm[uuid:{}], error:{}".format(vm_uuid, e))
 
-    return json.loads(o.strip())["return"]
+    ret = json.loads(o.strip())
+    if "error" in ret:
+        raise Exception("Failed to query block jobs on vm[uuid:{}], error:{}".format(vm_uuid, ret["error"]))
+
+    return ret["return"]
 
 
 def vm_dismiss_block_job(vm_uuid):
-    jobs = vm_query_jobs(vm_uuid)
+    jobs = vm_query_block_jobs(vm_uuid)
     if not jobs:
         return
 
     for job in jobs:
         if job['status'] == "concluded":
-            execute_qmp_command(vm_uuid, '{"execute":"block-job-dismiss", "arguments": {"id":"%s"}}' % job['id'])
+            execute_qmp_command(vm_uuid, '{"execute":"block-job-dismiss", "arguments": {"id":"%s"}}' % job['device'])
     return
