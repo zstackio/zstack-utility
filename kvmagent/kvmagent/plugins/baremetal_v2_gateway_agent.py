@@ -1634,16 +1634,16 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def check_provision_ip(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        self._ping_provision_ip(cmd.provisionIp)
+        self._ping_provision_ip(cmd.provisionIp, cmd.gatewayIp)
 
         rsp = kvmagent.AgentResponse()
         return jsonobject.dumps(rsp)
 
-    def _ping_provision_ip(self, provision_ip):
-        cmd = shell.ShellCmd("ping -c 3 %s" % provision_ip)
+    def _ping_provision_ip(self, provision_ip, gateway_ip):
+        cmd = shell.ShellCmd("ping -I %s -c 3 %s" % (gateway_ip, provision_ip))
         cmd(is_exception=False)
         if cmd.return_code != 0 and '100% packet loss' in cmd.stdout:
-            raise Exception("provision ip %s is unavailable, fail to ping on the gateway")
+            raise Exception("provision ip %s is unavailable, fail to ping on the gateway" % provision_ip)
 
     def start(self):
         self.host_uuid = None
