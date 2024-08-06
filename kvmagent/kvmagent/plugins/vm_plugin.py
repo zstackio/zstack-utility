@@ -5950,12 +5950,24 @@ class Vm(object):
                 e(source, "address", None, { "uuid": uuidhelper.to_full_uuid(mdevUuid) })
 
         def make_usb_device(usbDevices):
+            def reserve_port(bus):
+                port = usb_port_dict[bus]
+                usb_port_dict[bus] += 1
+                return port
+
+            usb_manger = linux.VmUsbManager()
             if HOST_ARCH in ['aarch64', 'mips64el', 'loongarch64']:
                 next_uhci_port = 3
             else:
                 next_uhci_port = 2
             next_ehci_port = 1
             next_xhci_port = 1
+            usb_port_dict = {
+                0: next_uhci_port,
+                1: next_ehci_port,
+                2: next_xhci_port
+            }
+
             devices = elements['devices']
             for usb in usbDevices:
                 if match_usb_device(usb):
@@ -5977,41 +5989,21 @@ class Vm(object):
                         # eg. 1.1 -> 0
                         # eg. 2.0.0 -> 1
                         # eg. 3 -> 2
-                        bus = int(usb.split(":")[4][0]) - 1
-                        if bus == 0:
-                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
-                            next_uhci_port += 1
-                        elif bus == 1:
-                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
-                            next_ehci_port += 1
-                        elif bus == 2:
-                            address = e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
-                            next_xhci_port += 1
-                        else:
-                            raise kvmagent.KvmError('unknown usb controller %s', bus)
+                        bus = usb_manger.request_slot(int(usb.split(":")[4][0]))
+                        e(hostdev, "address", None, {'type': 'usb', 'bus': str(bus), 'port': str(reserve_port(bus))})
+
                     if usb.split(":")[5] == "Redirect":
                         redirdev = e(devices, "redirdev", None, {'bus': 'usb', 'type': 'tcp'})
-                        source = e(redirdev, "source", None, {'mode': 'connect', 'host': usb.split(":")[7], 'service': usb.split(":")[6]})
+                        e(redirdev, "source", None, {'mode': 'connect', 'host': usb.split(":")[7], 'service': usb.split(":")[6]})
 
                         # get controller index from usbVersion
                         # eg. 1.1 -> 0
                         # eg. 2.0.0 -> 1
                         # eg. 3 -> 2
-                        bus = int(usb.split(":")[4][0]) - 1
-                        if bus == 0:
-                            address = e(redirdev, "address", None,
-                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_uhci_port)})
-                            next_uhci_port += 1
-                        elif bus == 1:
-                            address = e(redirdev, "address", None,
-                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_ehci_port)})
-                            next_ehci_port += 1
-                        elif bus == 2:
-                            address = e(redirdev, "address", None,
-                                        {'type': 'usb', 'bus': str(bus), 'port': str(next_xhci_port)})
-                            next_xhci_port += 1
-                        else:
-                            raise kvmagent.KvmError('unknown usb controller %s', bus)
+                        bus = usb_manger.request_slot(int(usb.split(":")[4][0]))
+                        e(redirdev, "address", None,
+                                        {'type': 'usb', 'bus': str(bus), 'port': str(reserve_port(bus))})
+
                 else:
                     raise kvmagent.KvmError('cannot find usb device %s', usb)
 
@@ -9251,8 +9243,7 @@ host side snapshot files chian:
     def kvm_attach_usb_device(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = KvmAttachUsbDeviceRsp()
-        bus = int(cmd.usbVersion[0]) - 1
-        r, ex = self._attach_usb_by_libvirt(cmd, bus)
+        r, ex = self._attach_usb_by_libvirt(cmd)
         if not r:
             rsp.success = False
             rsp.error = ex
@@ -9289,7 +9280,7 @@ host side snapshot files chian:
 
         logger.debug("detached usb device from %s successfully" % cmd.vmUuid)
 
-    def _attach_usb_by_libvirt(self, cmd, bus):
+    def _attach_usb_by_libvirt(self, cmd):
         vm = get_vm_by_uuid(cmd.vmUuid)
 
         root = None
@@ -9299,12 +9290,12 @@ host side snapshot files chian:
             e(d, 'vendor', None, {'id': '0x%s' % cmd.idVendor})
             e(d, 'product', None, {'id': '0x%s' % cmd.idProduct})
             e(d, 'address', None, {'bus': str(cmd.busNum).lstrip('0'), 'device': str(cmd.devNum).lstrip('0')})
-            e(root, 'address', None, {'type': 'usb', 'bus': str(bus), 'port': str(self._get_next_usb_port(vm.domain, bus))})
+            e(root, 'address', None, {'type': 'usb', 'bus': str(cmd.vmBusNum), 'port': str(self._get_next_usb_port(vm.domain, cmd.vmBusNum))})
 
         if cmd.attachType == "Redirect":
             root = etree.Element('redirdev', {'bus': 'usb', 'type': 'tcp'})
             e(root, 'source', None, {'mode': 'connect', 'host': cmd.ip, 'service': str(cmd.port)})
-            e(root, 'address', None, {'type': 'usb', 'bus': str(bus), 'port': str(self._get_next_usb_port(vm.domain, bus))})
+            e(root, 'address', None, {'type': 'usb', 'bus': str(cmd.vmBusNum), 'port': str(self._get_next_usb_port(vm.domain, cmd.vmBusNum))})
 
         xml = etree.tostring(root)
         logger.info(xml)
@@ -9391,7 +9382,7 @@ host side snapshot files chian:
 
         self._detach_usb_by_libvirt(cmd)
         bus = int(cmd.usbVersion[0]) - 1
-        r, ex = self._attach_usb_by_libvirt(cmd, bus)
+        r, ex = self._attach_usb_by_libvirt(cmd)
         if not r:
             rsp.success = False
             rsp.error = ex
