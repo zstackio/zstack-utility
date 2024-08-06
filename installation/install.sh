@@ -2513,6 +2513,8 @@ install_zops(){
 }
 
 install_marketplace_server(){
+    marketplace_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE -name "marketplace-server.bin" | head -n 1`
+    [[ x"$marketplace_installer_bin" = x ]] && return
     echo_title "Install or upgrade marketplace server"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
@@ -3244,8 +3246,7 @@ is_upgrade_zops(){
 
 is_install_marketplace_server(){
     echo_subtitle "Install marketplace server"
-    marketplace_installer_bin=`find /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE -name "marketplace-server*" | head -n 1`
-    bash $marketplace_installer_bin >>$ZSTACK_INSTALL_LOG 2>&1
+    bash /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/marketplace-server.bin >>$ZSTACK_INSTALL_LOG 2>&1
     [ $? -eq 0 ] && pass
 }
 
