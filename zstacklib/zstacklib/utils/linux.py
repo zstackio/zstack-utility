@@ -1539,8 +1539,11 @@ def delete_bridge(bridge_name):
             continue
         shell.run("brctl delif %s %s" % (bridge_name, vif))
 
-    shell.run("ip link set %s down" % bridge_name)
-    shell.run("brctl delbr %s" % bridge_name)
+    if netconfig.is_use_network_manager():
+        shell.run("nmcli con delete %s" % bridge_name)
+    else:
+        shell.run("ip link set %s down" % bridge_name)
+        shell.run("brctl delbr %s" % bridge_name)
 
 
 def delete_bridge_and_ifcfg(bridge_name):
@@ -1607,6 +1610,7 @@ def get_interface_ip_addresses(interface):
     output = shell.call("ip -4 -o a show %s | awk '{print $4}'" % interface.strip())
     return output.splitlines() if output else []
 
+
 @retry(times=2, sleep_time=1)
 def ip_link_set_net_device_master(net_device, master):
     shell.call("ip link set %s master %s" % (net_device, master))
@@ -1616,6 +1620,7 @@ def ip_link_set_net_device_master(net_device, master):
     if not actual_result or actual_result != master:
         raise Exception("set net device[%s] master to [%s] failed, try again now" % (net_device, master))
 
+
 @retry(times=2, sleep_time=1)
 def ip_link_set_net_device_nomaster(net_device):
     shell.call("ip link set %s nomaster" % net_device)
@@ -1623,6 +1628,7 @@ def ip_link_set_net_device_nomaster(net_device):
     actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE'" % net_device, exception=False).strip('\n')
     if actual_result:
         raise Exception("set net device[%s] nomaster failed, try again now" % net_device)
+
 
 def delete_novlan_bridge(bridge_name, interface, move_route=True):
     if not is_network_device_existing(bridge_name):
@@ -1653,10 +1659,12 @@ def create_bridge(bridge_name, interface, move_route=True):
     if br_name and br_name != bridge_name:
         raise Exception('failed to create bridge[{0}], physical interface[{1}] has been occupied by bridge[{2}]'.format(bridge_name, interface, br_name))
 
-    if not is_bridge(bridge_name):
-        shell.call("brctl addbr %s" % bridge_name)
-    else:
+    if is_bridge(bridge_name):
         logger.debug('%s is a bridge device, no need to create bridge' % bridge_name)
+    elif netconfig.is_use_network_manager():
+        shell.call('nmcli con add type bridge autoconnect yes ifname %s con-name %s' % (bridge_name, bridge_name))
+    else:
+        shell.call("brctl addbr %s" % bridge_name)
 
     shell.call("brctl stp %s off" % bridge_name)
     shell.call("brctl setfd %s 0" % bridge_name)
@@ -2028,8 +2036,12 @@ def vlan_eth_exists(ethname, vlan):
 def delete_eth(dev_name):
     if not is_network_device_existing(dev_name):
         return
-    shell.call('ip link set dev %s down' % dev_name)
-    iproute.delete_link_no_error(dev_name)
+
+    if netconfig.is_use_network_manager():
+        shell.call('nmcli con delete %s' % dev_name)
+    else:
+        shell.call('ip link set dev %s down' % dev_name)
+        iproute.delete_link_no_error(dev_name)
 
 
 def delete_vlan_eth_and_ifcfg(vlan_dev_name):
@@ -2047,15 +2059,18 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
         raise LinuxError('cannot find ethernet device %s' % ethname)
 
     vlan_dev_name = make_vlan_eth_name(ethname, vlan)
+    if is_network_device_existing(vlan_dev_name) \
+            and ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
+        # recreate device and configure ip
+        delete_eth(vlan_dev_name)
+
     if not is_network_device_existing(vlan_dev_name):
-        shell.call('ip link add link %s name %s type vlan id %s' % (ethname, vlan_dev_name, vlan))
+        if netconfig.is_use_network_manager():
+            shell.call('nmcli con add type vlan con-name %s dev %s id %s' % (vlan_dev_name, ethname, vlan))
+        else:
+            shell.call('ip link add link %s name %s type vlan id %s' % (ethname, vlan_dev_name, vlan))
+
         if ip:
-            iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
-    else:
-        if ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
-            # recreate device and configure ip
-            delete_eth(vlan_dev_name)
-            shell.call('ip link add link %s name %s.%s type vlan id %s' % (ethname, ethname, vlan, vlan))
             iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
 
     iproute.set_link_up(vlan_dev_name)

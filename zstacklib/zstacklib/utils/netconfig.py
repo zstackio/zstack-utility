@@ -40,6 +40,8 @@ NET_CONFIG_NM_CONTROLLED_NO = 'no'
 NET_CONFIG_SERVICE_TYPE_NMCLI = 'NetworkManager'
 NET_CONFIG_SERVICE_TYPE_NORMAL = 'network'
 
+network_manager_status = None
+
 
 class NetConfigError(Exception):
     '''net config error'''
@@ -76,7 +78,7 @@ class NetConfig(object):
 
     def _get_service_type(self):
         '''netconfig: get network service type(network or NetworkManager)'''
-        if use_network_manager():
+        if is_use_network_manager():
             return NET_CONFIG_SERVICE_TYPE_NMCLI
 
         return NET_CONFIG_SERVICE_TYPE_NORMAL
@@ -191,8 +193,6 @@ class NetConfig(object):
             raise NetConfigError('configure error, unable to set ip when boot protocol is [dhcp]')
         if not self.config_path:
             raise NetConfigError('configure error, ifcfg config path must be specified')
-        if not self.service_type:
-            raise NetConfigError('configure error, can not get network service type')
 
         default_count = 0
         for ip_config in self.ip_configs:
@@ -221,19 +221,19 @@ class NetConfig(object):
         ifcfg_content = '\n'.join(config_list) + '\n'
 
         ifcfg_file_path = os.path.join(self.config_path, 'ifcfg-%s' % self.name)
-        logger.debug('netconfig: type: %s, ifcfg file path: %s, content: %s' % (self.service_type, ifcfg_file_path, ifcfg_content))
+        logger.debug('netconfig: ifcfg file path: %s, content: %s' % (ifcfg_file_path, ifcfg_content))
 
         with open(ifcfg_file_path, 'w') as file:
             file.write(ifcfg_content)
 
-        if self.service_type == NET_CONFIG_SERVICE_TYPE_NMCLI:
-            shell.call('nmcli c load %s' % ifcfg_file_path)
+        if is_use_network_manager():
+            shell.call('nmcli con reload')
 
         self.post_restore_config()
 
         if is_reload:
-            if self.service_type == NET_CONFIG_SERVICE_TYPE_NMCLI:
-                shell.call('nmcli c up %s' % self.name)
+            if is_use_network_manager():
+                shell.call('nmcli con up %s' % self.name)
             else:
                 shell.call('ifdown %s' % self.name)
                 shell.call('ifup %s' % self.name)
@@ -255,7 +255,8 @@ class NetConfig(object):
         if 'BRIDGE' in self.config_dict:
             self.config_dict.pop('BRIDGE')
 
-        self.restore_config()
+        # reload interface for NetworkManager
+        self.restore_config(True)
         logger.debug('flush interface[%s] config successfully' % self.name)
 
     def _build_config(self):
@@ -352,7 +353,7 @@ class NetVlanConfig(NetConfig):
         self.add_config('IPV6_AUTOCONF', 'no')
         self.add_config('VLAN', 'yes')
 
-        if self.service_type == NET_CONFIG_SERVICE_TYPE_NMCLI:
+        if is_use_network_manager():
             self.add_config('REORDER_HDR', 'yes')
             self.add_config('GVRP', 'no')
             self.add_config('MVRP', 'no')
@@ -560,8 +561,11 @@ def prefix_to_netmask(prefix):
             str((0x000000ff & netmask)))
 
 
-def use_network_manager():
-    return shell.run('nmcli general status') == 0
+def is_use_network_manager():
+    global network_manager_status
+    if network_manager_status is None:
+        network_manager_status = shell.run('nmcli general status') == 0
+    return network_manager_status
 
 
 if __name__ == '__main__':

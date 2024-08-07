@@ -18,10 +18,12 @@ checkPhysicalNetworkInterface = {
     "interfaceNames": []
 }
 
+
 def create_request_body_jsonobject(struct=None):
     # type: () -> jsonobject.JsonObject
 
     return jsonobject.loads(jsonobject.dumps(struct))
+
 
 @checkParamNotNone
 def check_physical_network_interface(interfaces=None):
@@ -31,14 +33,6 @@ def check_physical_network_interface(interfaces=None):
         })
     )
 
-@checkParamNotNone
-def add_interface_to_bridge(physicalInterfaceName=None, bridgeName=None):
-    return NETWORK_PLUGIN.add_interface_to_bridge(
-        misc.make_a_request({
-            "physicalInterfaceName": physicalInterfaceName,
-            "bridgeName": bridgeName
-        })
-    )
 
 @checkParamNotNone
 def create_bridge(physicalInterfaceName=None, mtu=None, l2NetworkUuid=None, disableIptables=False, bridgeName=None):
@@ -52,8 +46,10 @@ def create_bridge(physicalInterfaceName=None, mtu=None, l2NetworkUuid=None, disa
         })
     )
 
+
 @checkParamNotNone
-def create_vlan_bridge(physicalInterfaceName=None, mtu=None, l2NetworkUuid=None, disableIptables=False, bridgeName=None, vlan=None, vlanInterfName=None):
+def create_vlan_bridge(physicalInterfaceName=None, mtu=None, l2NetworkUuid=None, disableIptables=False, bridgeName=None,
+                       vlan=None, vlanInterfName=None):
     return NETWORK_PLUGIN.create_vlan_bridge(
         misc.make_a_request({
             "physicalInterfaceName": physicalInterfaceName,
@@ -66,6 +62,7 @@ def create_vlan_bridge(physicalInterfaceName=None, mtu=None, l2NetworkUuid=None,
         })
     )
 
+
 @checkParamNotNone
 def check_bridge(bridgeName=None, physicalInterfaceName=None):
     return NETWORK_PLUGIN.check_bridge(
@@ -74,6 +71,8 @@ def check_bridge(bridgeName=None, physicalInterfaceName=None):
             "physicalInterfaceName": physicalInterfaceName
         })
     )
+
+
 @checkParamNotNone
 def check_vlan_bridge(bridgeName=None, physicalInterfaceName=None):
     return NETWORK_PLUGIN.check_bridge(
@@ -82,6 +81,21 @@ def check_vlan_bridge(bridgeName=None, physicalInterfaceName=None):
             "physicalInterfaceName": physicalInterfaceName
         })
     )
+
+
+def batch_update_bridge(old_physical_interface=None, old_bonding_name=None,
+                        new_physical_interface=None, new_bonding=None,
+                        bridge_params=None):
+    return NETWORK_PLUGIN.batch_update_bridge(
+        misc.make_a_request({
+            "oldPhysicalInterface": old_physical_interface,
+            "oldBondingName": old_bonding_name,
+            "newPhysicalInterface": new_physical_interface,
+            "newBonding": new_bonding,
+            "bridgeParams": bridge_params
+        })
+    )
+
 
 @checkParamNotNone
 def check_vxlan_cidr(physicalInterfaceName=None, cidr=None, vtepip=None):
@@ -93,19 +107,21 @@ def check_vxlan_cidr(physicalInterfaceName=None, cidr=None, vtepip=None):
         })
     )
 
+
 @checkParamNotNone
-def create_vxlan_bridge(bridgeName=None, vtepIp=None, vni=None, dstport=None, l2NetworkUuid=None, peers=None,mtu=None):
+def create_vxlan_bridge(bridgeName=None, vtepIp=None, vni=None, dstport=None, l2NetworkUuid=None, peers=None, mtu=None):
     return NETWORK_PLUGIN.create_vxlan_bridge(
         misc.make_a_request({
             "bridgeName": bridgeName,
             "vtepIp": vtepIp,
             "vni": vni,
-            "dstport": dstport ,
+            "dstport": dstport,
             "l2NetworkUuid": l2NetworkUuid,
             "peers": peers,
-            "mtu" :mtu# []string
+            "mtu": mtu  # []string
         })
     )
+
 
 @checkParamNotNone
 def create_vxlan_bridges(bridgeCmds=None):
@@ -122,6 +138,7 @@ def create_vxlan_bridges(bridgeCmds=None):
         })
     )
 
+
 @checkParamNotNone
 def delete_vxlan_bridge(bridgeName=None, vtepIp=None, vni=None):
     return NETWORK_PLUGIN.delete_vxlan_bridge(
@@ -132,41 +149,46 @@ def delete_vxlan_bridge(bridgeName=None, vtepIp=None, vni=None):
         })
     )
 
+
 @checkParamNotNone
 def populate_vxlan_fdb(peers=None, vni=None):
     return NETWORK_PLUGIN.populate_vxlan_fdb(
         misc.make_a_request({
-            "peers": peers, #[] string
+            "peers": peers,  # [] string
             "vni": vni
         })
     )
+
 
 @checkParamNotNone
 def delete_vxlan_fdbs(networkUuids=None, peers=None):
     return NETWORK_PLUGIN.delete_vxlan_fdbs(
         misc.make_a_request({
-            "networkUuids": networkUuids, #[] string
+            "networkUuids": networkUuids,  # [] string
             "peers": peers
         })
     )
+
 
 @checkParamNotNone
 def populate_vxlan_fdbs(networkUuids=None, peers=None):
     return NETWORK_PLUGIN.populate_vxlan_fdb(
         misc.make_a_request({
-            "networkUuids": networkUuids, #[] string
+            "networkUuids": networkUuids,  # [] string
             "peers": peers
         })
     )
+
 
 @checkParamNotNone
 def set_bridge_router_port(enable=False, nicNames=None):
     return NETWORK_PLUGIN.set_bridge_router_port(
         misc.make_a_request({
             "enable": enable,
-            "nicNames": nicNames # []string
+            "nicNames": nicNames  # []string
         })
     )
+
 
 @checkParamNotNone
 def delete_vlan_bridge(bridgeName=None, physicalInterfaceName=None, vlan=0):
@@ -178,6 +200,7 @@ def delete_vlan_bridge(bridgeName=None, physicalInterfaceName=None, vlan=0):
         })
     )
 
+
 @checkParamNotNone
 def delete_vxlan_bridge(vni=None, vtepIp=None, bridgeName=None):
     return NETWORK_PLUGIN.delete_vxlan_bridge(
@@ -187,5 +210,3 @@ def delete_vxlan_bridge(vni=None, vtepIp=None, bridgeName=None):
             "bridgeName": bridgeName
         })
     )
-
-

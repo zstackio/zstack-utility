@@ -51,3 +51,4 @@ kvmagent/test/shareblock_testsuite/test_ha_shareblock.py
 kvmagent/test/shareblock_testsuite/test_physical_nic.py
 zstacklib/test/zstacklib_unittest_suite.py
 kvmagent/test/vm_plugin_testsuite/test_apply_memory_balloon.py
+kvmagent/test/network_plugin_testsuite/test_bridge_api.py
