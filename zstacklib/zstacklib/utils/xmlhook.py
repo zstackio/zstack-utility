@@ -48,7 +48,7 @@ class XmlHook:
         xmlbranch.set(attribute, attribute_value)
 
     def delete_attribute(self, xmlbranch, attribute):
-        if found_attribute(xmlbranch, attribute) is True:
+        if self.found_attribute(xmlbranch, attribute) is True:
             del xmlbranch.attrib[attribute]
 
     def get_index_of_element(self, root, element_key):
@@ -72,8 +72,14 @@ class XmlHook:
     def add_element_to_parent(self, child_xmlbranch, parent_xmlbranch, index = -1):
         if index >= 0:
             parent_xmlbranch.insert(index, child_xmlbranch)
-        else:
-            parent_xmlbranch.append(child_xmlbranch)
+            return
+        if child_xmlbranch is None:
+            return
+        for element in parent_xmlbranch:
+            if element.attrib == child_xmlbranch.attrib:
+                raise Exception(
+                    "attributes: %s exist in the original xml, contact operations engineer to check the xml hooks" % element.attrib)
+        parent_xmlbranch.append(child_xmlbranch)
 
     def get_changed_xmlstr(self, root_xmlbranch):
         changed_xmlstr = tostring(root_xmlbranch)
