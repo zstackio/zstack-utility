@@ -1169,8 +1169,7 @@ class CbdHeartbeatController(AbstractStorageFencer):
     def _kill_vm(self):
         running_vm_uuids = set()
         ret = {}
-        for covering_path in self.covering_paths:
-            running_vm_uuids.update(find_ps_running_vm(covering_path))
+        running_vm_uuids.update(find_ps_running_vm('zbs'))
 
         for vm_uuid in running_vm_uuids:
             pid = linux.get_vm_pid(vm_uuid)
