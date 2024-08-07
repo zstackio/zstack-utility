@@ -7164,41 +7164,63 @@ class VmPlugin(kvmagent.KvmAgent):
             "Powershell": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + ".ps1"),
         }
 
+        timestamp = str(int(time.time()))
+        stdout_dict = {
+            "Python": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+            "Perl": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+            "Shell": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+            "Bat": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+            "Powershell": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+        }
+        stderr_dict = {
+            "Python": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+            "Perl": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+            "Shell": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+            "Bat": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+            "Powershell": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+        }
+
         qga = VmQga(call_libvirt())
         dst = script_type_dict.get(cmd.scriptType)
+        stdout_dst = stdout_dict.get(cmd.scriptType)
+        stderr_dst = stderr_dict.get(cmd.scriptType)
         exitCode = 0
         stdout = ""
         stderr = ""
         if cmd.scriptType == "Python":
             qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
-            exitCode, stdout, stderr = qga.guest_exec_bash("{}".format(dst), retry=cmd.scriptTimeout)
-            if exitCode != 0:
-                rsp.success = False
+            qga.guest_exec_bash("{} > {} 2> {}".format(dst, stdout_dst, stderr_dict), retry=cmd.scriptTimeout)
+            exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst), retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dict):
+                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dict), retry=cmd.scriptTimeout)
         if cmd.scriptType == "Perl":
-            exitCode, stdout, stderr = qga.guest_exec_bash("perl {}".format(dst), retry=cmd.scriptTimeout)
-            if exitCode != 0:
-                rsp.success = False
+            qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("perl {} > {} 2> {}".format(dst, stdout_dst, stderr_dict), retry=cmd.scriptTimeout)
+            exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst),  retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dict):
+                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dict), retry=cmd.scriptTimeout)
         if cmd.scriptType == "Shell":
-            exitCode, stdout, stderr = qga.guest_exec_bash("bash {}".format(dst), retry=cmd.scriptTimeout)
-            if exitCode != 0:
-                rsp.success = False
+            qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("{} > {} 2> {}".format(dst, stdout_dst, stderr_dict), retry=cmd.scriptTimeout)
+            exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst), retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dict):
+                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dict), retry=cmd.scriptTimeout)
         if cmd.scriptType == "Bat":
             exitCode, stdout, stderr = qga.guest_exec_cmd(["/c", "call", dst], retry=cmd.scriptTimeout)
-            if exitCode != 0:
-                rsp.success = False
         if cmd.scriptType == "Powershell":
             exitCode, stdout, stderr = qga.guest_exec_powershell_script(dst, retry=cmd.scriptTimeout)
-            if exitCode != 0:
-                rsp.success = False
+
+        if cmd.logPath is not None:
+            createLog(cmd.logPath, cmd.vmUuid, stdout)
+            createLog(cmd.logPath, cmd.vmUuid, stderr)
+
+        rsp.exitCode = exitCode
+        if exitCode != 0:
+            rsp.success = False
         if stdout is not None:
-            if cmd.logPath is not None:
-                createLog(cmd.logPath, cmd.vmUuid, stdout)
             rsp.stdout = streamSplit(stdout, 1000)
         if stderr is not None:
-            if cmd.logPath is not None:
-                createLog(cmd.logPath, cmd.vmUuid, stderr)
             rsp.stderr = streamSplit(stderr, 1000)
-        rsp.exitCode = exitCode
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
