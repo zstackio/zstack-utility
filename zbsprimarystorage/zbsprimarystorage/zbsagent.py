@@ -254,10 +254,7 @@ class ZbsAgent(plugin.TaskManager):
         if not file_infos:
             return jsonobject.dumps(rsp)
 
-        o = zbsutils.delete_snapshot(cmd.logicalPoolName, cmd.lunName, file_infos)
-        r = jsonobject.loads(o)
-        if r.error.code != 0:
-            raise Exception('failed to delete snapshot[%s/%s@%s], error[%s]' % (cmd.logicalPoolName, cmd.lunName, cmd.snapshotName, r.error.message))
+        zbsutils.delete_snapshot(cmd.logicalPoolName, cmd.lunName, file_infos)
 
         return jsonobject.dumps(rsp)
 
