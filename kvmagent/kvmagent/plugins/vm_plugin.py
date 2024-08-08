@@ -7094,8 +7094,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 fw = qga.guest_file_open(dst, True)
         else:
             # binary wrote
-            if create_path(qga, cmd.dstPath):
-                fw = qga.call_qga_command("guest-file-open", {"path": cmd.dstPath, "mode": "wb"})
+            fw = qga.call_qga_command("guest-file-open", {"path": cmd.dstPath, "mode": "wb"})
 
         if fw == 0:
             rsp.success = False
