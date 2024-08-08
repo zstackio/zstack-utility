@@ -7052,6 +7052,9 @@ class VmPlugin(kvmagent.KvmAgent):
     @in_bash
     def upload_vm_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        cmd.dstPath = cmd.dstPath.replace("\\\\", "/")
+        cmd.dstPath = cmd.dstPath.replace("\\", "/")
+        logger.info("distPath %s" % cmd.dstPath)
         rsp = QgaUploadfileRsp()
 
         @LibvirtAutoReconnect
