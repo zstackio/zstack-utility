@@ -568,8 +568,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
             # sync to collectd
             config_file = '/var/lib/zstack/kvm/collectd.conf'
-            self._add_interface_to_collectd_conf(config_file, cmd.bondName)
-            self._restart_collectd(config_file)
+            if os.path.exists(config_file):
+                self._add_interface_to_collectd_conf(config_file, cmd.bondName)
+                self._restart_collectd(config_file)
         except Exception as e:
             if "already exists" not in str(e):
                 shell.run('/usr/local/bin/zs-bond -d %s' % cmd.bondName)
@@ -678,8 +679,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
             # sync to collectd
             config_file = '/var/lib/zstack/kvm/collectd.conf'
-            self._remove_interface_from_collectd_conf(config_file, cmd.bondName)
-            self._restart_collectd(config_file)
+            if os.path.exists(config_file):
+                self._remove_interface_from_collectd_conf(config_file, cmd.bondName)
+                self._restart_collectd(config_file)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to delete bonding[%s], because %s' % (cmd.bondName, str(e))
