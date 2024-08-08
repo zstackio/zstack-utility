@@ -93,6 +93,10 @@ class XmlHook:
 def get_modified_xml_from_hook(hook_code, input_xmlstr):
     hook = XmlHook()
     root = hook.get_xmlroot(input_xmlstr)
-    exec(hook_code, locals())
+    try:
+        exec(hook_code, locals())
+    except Exception as ex:
+        raise Exception(
+            "the xml hook script fails to be executed, details is %s" % ex)
     changed_xml_str = hook.get_changed_xmlstr(root)
     return changed_xml_str
