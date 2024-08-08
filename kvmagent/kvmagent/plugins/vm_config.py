@@ -251,6 +251,12 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             rsp.error = msg
         else:
             logger.debug("config vm {} by qga successfully, detail info {}".format(cmd.vmUuid, msg))
+            ret, msg = self.set_vm_hostname_by_qga(domain, cmd.hostName, cmd.defaultIP)
+            if ret != 0:
+                rsp.success = False
+                rsp.error = msg
+            else:
+                logger.debug("config vm {} by qga successfully, detail info {}".format(cmd.vmUuid, msg))
 
         return jsonobject.dumps(rsp)
 
