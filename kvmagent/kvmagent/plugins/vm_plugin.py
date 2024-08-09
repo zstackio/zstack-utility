@@ -2076,20 +2076,22 @@ def get_running_vms():
     vms = []
 
     @LibvirtAutoReconnect
-    def get_domain(conn):
+    def get_domain_vm(conn):
         try:
-            return conn.lookupByID(i)
+            domain = conn.lookupByID(i)
+            if domain is None:
+                return None
+            return Vm.from_virt_domain(domain)
         except libvirt.libvirtError as ex:
             if ex.get_error_code() == libvirt.VIR_ERR_NO_DOMAIN:
                 return None
             raise ex
 
     for i in ids:
-        domain = get_domain()
-        if domain == None:
-            continue
-        vm = Vm.from_virt_domain(domain)
-        vms.append(vm)
+        vm = get_domain_vm()
+        if vm is not None:
+            vms.append(vm)
+
     return vms
 
 
