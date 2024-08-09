@@ -9,6 +9,7 @@
 
     <target name="build-zstack-zwatch">
         <makeDir dir="${zsw.bdir}" />
+        <makeDir dir="${guesttools.bdir}" />
 
         <checkProperty property="zstackzwatch.source" />
         <checkFile file="${zstackzwatch.source}" />
