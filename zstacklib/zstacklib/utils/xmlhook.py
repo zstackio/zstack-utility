@@ -76,7 +76,7 @@ class XmlHook:
         if child_xmlbranch is None:
             return
         for element in parent_xmlbranch:
-            if element.attrib == child_xmlbranch.attrib:
+            if element.attrib and element.attrib == child_xmlbranch.attrib:
                 raise Exception(
                     "attributes: %s exist in the original xml, contact operations engineer to check the xml hooks" % element.attrib)
         parent_xmlbranch.append(child_xmlbranch)
