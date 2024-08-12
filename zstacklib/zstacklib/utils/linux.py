@@ -1662,7 +1662,8 @@ def create_bridge(bridge_name, interface, move_route=True):
     if is_bridge(bridge_name):
         logger.debug('%s is a bridge device, no need to create bridge' % bridge_name)
     elif netconfig.is_use_network_manager():
-        shell.call('nmcli con add type bridge autoconnect yes ifname %s con-name %s' % (bridge_name, bridge_name))
+        shell.call('nmcli con add type bridge autoconnect yes ifname %s con-name %s' % (bridge_name, bridge_name) +
+                   ' ipv4.method disabled ipv6.method ignore')
     else:
         shell.call("brctl addbr %s" % bridge_name)
 
@@ -2066,7 +2067,8 @@ def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
 
     if not is_network_device_existing(vlan_dev_name):
         if netconfig.is_use_network_manager():
-            shell.call('nmcli con add type vlan con-name %s dev %s id %s' % (vlan_dev_name, ethname, vlan))
+            shell.call('nmcli con add type vlan con-name %s dev %s id %s' % (vlan_dev_name, ethname, vlan) +
+                       ' ipv4.method disabled ipv6.method ignore')
         else:
             shell.call('ip link add link %s name %s type vlan id %s' % (ethname, vlan_dev_name, vlan))
 
