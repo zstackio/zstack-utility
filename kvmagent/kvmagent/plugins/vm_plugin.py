@@ -7098,6 +7098,7 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             # binary wrote
             fw = qga.call_qga_command("guest-file-open", {"path": cmd.dstPath, "mode": "wb"})
+            cmd.fileContent = base64.b64decode(cmd.fileContent)
 
         if fw == 0:
             rsp.success = False
@@ -7114,7 +7115,6 @@ class VmPlugin(kvmagent.KvmAgent):
             cmd.fileContent = conversion_template(cmd.fileContent, dict_param)
 
         try:
-            logger.info("fileContent --> %s" % cmd.fileContent)
             if cmd.fileContent != "":
                 ret = qga.call_qga_command("guest-file-write", {"handle": fw, "buf-b64": cmd.fileContent})
                 fileSize = ret["count"]
@@ -7191,22 +7191,22 @@ class VmPlugin(kvmagent.KvmAgent):
         stderr = ""
         if cmd.scriptType == "Python":
             qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
-            qga.guest_exec_bash("{} > {} 2> {}".format(dst, stdout_dst, stderr_dict), retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("{} > {} 2> {}".format(dst, stdout_dst, stderr_dst), retry=cmd.scriptTimeout)
             exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst), retry=cmd.scriptTimeout)
-            if qga.guest_file_is_exist(stderr_dict):
-                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dict), retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dst):
+                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dst), retry=cmd.scriptTimeout)
         if cmd.scriptType == "Perl":
             qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
-            qga.guest_exec_bash("perl {} > {} 2> {}".format(dst, stdout_dst, stderr_dict), retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("perl {} > {} 2> {}".format(dst, stdout_dst, stderr_dst), retry=cmd.scriptTimeout)
             exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst),  retry=cmd.scriptTimeout)
-            if qga.guest_file_is_exist(stderr_dict):
-                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dict), retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dst):
+                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dst), retry=cmd.scriptTimeout)
         if cmd.scriptType == "Shell":
             qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
-            qga.guest_exec_bash("{} > {} 2> {}".format(dst, stdout_dst, stderr_dict), retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("{} > {} 2> {}".format(dst, stdout_dst, stderr_dst), retry=cmd.scriptTimeout)
             exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst), retry=cmd.scriptTimeout)
-            if qga.guest_file_is_exist(stderr_dict):
-                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dict), retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dst):
+                exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dst), retry=cmd.scriptTimeout)
         if cmd.scriptType == "Bat":
             exitCode, stdout, stderr = qga.guest_exec_cmd(["/c", "call", dst], retry=cmd.scriptTimeout)
         if cmd.scriptType == "Powershell":
