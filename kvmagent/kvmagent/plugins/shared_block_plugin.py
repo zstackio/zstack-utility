@@ -1289,7 +1289,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                         raise e
                     if not killProcess:
                         return
-                    qemus = lvm.find_qemu_for_lv_in_use(fpath)
+                    qemus = linux.find_qemu_for_volume_in_use(fpath)
                     if len(qemus) == 0:
                         return
                     for qemu in qemus:
