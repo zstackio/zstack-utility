@@ -1017,6 +1017,13 @@ def get_fmt_from_magic(magic):
         return 'raw'
 
 
+def remove_invalid_opt_if_not_support(opt):
+    if "extended_l2" in opt and not qemu_img.support_extended_l2():
+        pattern = re.compile("\-o\ extended_l2\=\w+ ")
+        opt = re.sub(pattern, " ", opt)
+    return opt
+
+
 def qcow2_clone(src, dst, size=""):
     fmt = get_img_fmt(src)
     shell.check_run('/usr/bin/qemu-img create -F %s -b %s -f qcow2 %s %s' % (fmt, src, dst, size))
@@ -1033,6 +1040,8 @@ def qcow2_clone_with_option(src, dst, opt="", size=""):
     # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
     pattern = re.compile("\-o\ preallocation\=\w+ ")
     opt = re.sub(pattern, " ", opt)
+
+    opt = remove_invalid_opt_if_not_support(opt)
 
     fmt = get_img_fmt(src)
     shell.check_run('/usr/bin/qemu-img create -F %s %s -b %s -f qcow2 %s %s' % (fmt, opt, src, dst, size))
@@ -1058,8 +1067,10 @@ def qcow2_create_with_cmd(dst, size, cmd=None, discard_on_metadata=True):
         qcow2_create_with_option(dst, size, cmd.kvmHostAddons.qcow2Options, discard_on_metadata)
 
 def qcow2_create_with_option(dst, size, opt="", discard_on_metadata=True):
+    opt = remove_invalid_opt_if_not_support(opt)
+
     shell.check_run('/usr/bin/qemu-img create -f qcow2 %s %s %s' % (opt, dst, size))
-    if 'preallocation=metadata' in opt and discard_on_metadata:
+    if discard_on_metadata and 'preallocation=metadata' in opt and 'extended_l2=on' not in opt:
         qcow2_discard(dst)
     os.chmod(dst, 0o660)
 
@@ -1080,6 +1091,8 @@ def qcow2_create_with_backing_file_and_option(backing_file, dst, opt="", size=""
     # NOTE(weiw): qcow2 doesn't support specify backing file and preallocation at same time
     pattern = re.compile("\-o\ preallocation\=\w+ ")
     opt = re.sub(pattern, " ", opt)
+
+    opt = remove_invalid_opt_if_not_support(opt)
 
     shell.call('/usr/bin/qemu-img create -F %s -f qcow2 %s -b %s %s %s' % (fmt, opt, backing_file, dst, size))
     os.chmod(dst, 0o660)
