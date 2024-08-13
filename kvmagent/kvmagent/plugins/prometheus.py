@@ -1533,6 +1533,15 @@ def collect_nvidia_gpu_status():
 
 def collect_huawei_gpu_status():
     metrics = get_gpu_metrics()
+    metrics['host_gpu_ddr_capacity'] = GaugeMetricFamily('host_gpu_ddr_capacity', 'gpu DDR Capacity', None,
+                                            ['pci_device_address', 'gpu_serial'])
+    metrics['host_gpu_ddr_usage_rate'] = GaugeMetricFamily('host_gpu_ddr_usage_rate', 'gpu DDR Usage Rate(%)', None,
+                                            ['pci_device_address', 'gpu_serial'])
+    metrics['host_gpu_hbm_capacity'] = GaugeMetricFamily('host_gpu_hbm_capacity', 'gpu HBM Capacity', None,
+                                            ['pci_device_address', 'gpu_serial'])
+    metrics['host_gpu_hbm_rate'] = GaugeMetricFamily('host_gpu_hbm_rate', 'gpu HBM Usage Rate(%)', None,
+                                                         ['pci_device_address', 'gpu_serial'])
+
     if has_npu_smi() is False:
         return metrics.values()
 
@@ -1541,8 +1550,6 @@ def collect_huawei_gpu_status():
         check_gpu_status_and_save_gpu_status("HUAWEI", metrics)
         return metrics.values()
     npu_ids = set()
-    pci_device_address = None
-    gpu_serial = None
     for info in gpu_info_out.splitlines():
         if 'NpuID' in info:
             continue
@@ -1552,8 +1559,15 @@ def collect_huawei_gpu_status():
         if npu_id in npu_ids:
             continue
         npu_ids.add(npu_id)
+        pci_device_address = None
+        gpu_serial = None
+        gpu_ddr_capacity = None
+        gpu_ddr_usage_rate = None
+        gpu_hbm_capacity = None
+        gpu_hbm_rate = None
+        gpu_power = None
 
-        r, info_out = bash_ro("npu-smi info -t board -i %s" % npu_id)
+        r, info_out = bash_ro("npu-smi info -t board -i %s;npu-smi info -t power -i %s;npu-smi info -t usages -i %s" % (npu_id, npu_id, npu_id))
         if r != 0:
             logger.error("npu query gpu board is error, %s " % info_out)
             break
@@ -1568,15 +1582,35 @@ def collect_huawei_gpu_status():
             if "Serial Number" in line:
                 gpu_serial = line.split(":")[1].strip()
                 continue
+            if "DDR Capacity(MB)" in line:
+                gpu_ddr_capacity = float(line.split(":")[1].strip()) * 1024 * 1024
+                continue
+            if "DDR Usage Rate" in line:
+                gpu_ddr_usage_rate = line.split(":")[1].strip()
+                continue
+            if "HBM Capacity" in line:
+                gpu_hbm_capacity = float(line.split(":")[1].strip()) * 1024 * 1024
+                continue
+            if "HBM Usage Rate" in line:
+                gpu_hbm_rate = line.split(":")[1].strip()
+                continue
+            if "Power Dissipation" in line:
+                gpu_power = line.split(":")[1].strip()
 
-            if pci_device_address is not None and gpu_serial is not None:
+            if (pci_device_address is not None and gpu_serial is not None and gpu_ddr_capacity is not None
+                    and gpu_ddr_usage_rate is not None and gpu_ddr_usage_rate is not None and gpu_hbm_capacity is not None
+                    and gpu_hbm_rate is not None and gpu_power is not None):
                 break
 
         add_gpu_pci_device_address("HUAWEI", pci_device_address, gpu_serial)
-        add_metrics('host_gpu_power_draw', gpu_info[2].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_power_draw', gpu_power if gpu_info[2].strip() == 'NA' else gpu_info[2].strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_temperature', gpu_info[3].strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_utilization', gpu_info[4].strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_memory_utilization', gpu_info[5].strip(), [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_ddr_capacity', gpu_ddr_capacity, [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_ddr_usage_rate', gpu_ddr_usage_rate, [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_hbm_capacity', gpu_hbm_capacity, [pci_device_address, gpu_serial], metrics)
+        add_metrics('host_gpu_hbm_rate', gpu_hbm_rate, [pci_device_address, gpu_serial], metrics)
 
     check_gpu_status_and_save_gpu_status("HUAWEI", metrics)
     return metrics.values()

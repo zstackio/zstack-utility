@@ -69,6 +69,13 @@ BOND_MODE_ACTIVE_6 = "balance-alb"
 DISTRO_USING_DNF = ['rl84', 'h84r', 'ky10sp1', 'ky10sp2', 'ky10sp3',
                     'oe2203sp1', 'h2203sp1o']
 
+class VendorEnum:
+    INTEL = "Intel"
+    AMD = "AMD"
+    NVIDIA = "NVIDIA"
+    HAIGUANG = "Haiguang"
+    HUAWEI = "Huawei"
+    TIANSHU = "TianShu"
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -2253,12 +2260,8 @@ done
             return False
         return True
 
-    def _get_vfio_mdev_info(self, to):
+    def _get_nvidia_vfio_mdev_info(self, to):
         addr = to.pciDeviceAddress
-
-        if not self.NVIDIA_SMI_INSTALLED:
-            return False
-
         check_mdev_folder = '/sys/bus/pci/devices/%s/mdev_supported_types' % addr
         legacy_mdev_dir_exists = os.path.isdir(check_mdev_folder)
         check_virtfn_folder = '/sys/bus/pci/devices/%s/virtfn0/mdev_supported_types' % addr
@@ -2289,6 +2292,80 @@ done
             self._virt_function(to)
 
         return True
+
+    def _get_huawei_vfio_mdev_info(self, to):
+        addr = to.pciDeviceAddress
+        check_mdev_folder = '/sys/bus/pci/devices/%s/mdev_supported_types' % addr
+        if not os.path.isdir(check_mdev_folder):
+            return False
+
+        if shell.run("which npu-smi") != 0:
+            logger.debug("no npu-smi")
+            return False
+
+        r, npu_ids_out = bash_ro("npu-smi info -l")
+        if r != 0:
+            logger.error("npu query gpu is error, %s " % npu_ids_out)
+            return False
+
+        npu_id = None
+        for line in npu_ids_out.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if "NPU ID" in line:
+                npu_id = line.split(":")[1].strip()
+                break
+
+        if npu_id:
+            r, o, e = bash_roe("npu-smi info -t board -i %s" % npu_id)
+            if r != 0:
+                logger.error("npu query gpu board is error, %s " % e)
+                return False
+
+            if to.pciDeviceAddress.lower() not in o.lower():
+                return False
+
+            r, o, e = bash_roe("npu-smi info -t template-info -i %s" % npu_id)
+
+            if r != 0:
+                logger.error("npu query gpu template-info is error, %s " % e)
+                return False
+
+            for line in o.splitlines():
+                match = re.match(r'\|(\w+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\|', line)
+                if match and len(match.group(1)) > 0:
+                    template = {
+                        'Name': match.group(1),
+                        'TypeId': match.group(1),
+                        'AICORE': int(match.group(2)),
+                        'Memory': int(match.group(3)),
+                        'AICPU': int(match.group(4)),
+                        'VPC': int(match.group(5)),
+                        'VENC': int(match.group(6)),
+                        'JPEGD': int(match.group(7))
+                    }
+                    to.mdevSpecifications.append(template)
+
+        r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
+        if r != 0:
+            return False
+
+        if addr.lower() in virtStatusOut.lower():
+            to.virtStatus = "VFIO_MDEV_VIRTUALIZED"
+        else:
+            to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
+
+        return True
+
+    def _get_vfio_mdev_info(self, to):
+        vendor_name = to.vendor
+        if vendor_name == VendorEnum.NVIDIA:
+            return self._get_nvidia_vfio_mdev_info(to)
+        elif vendor_name == VendorEnum.HUAWEI:
+            return self._get_huawei_vfio_mdev_info(to)
+        else:
+            return False
 
     def _legacy_mdev(self, to):
         # if supported specs != creatable specs, means it's aleady virtualized
@@ -2333,17 +2410,17 @@ done
 
     def _simplify_pci_device_name(self, name):
         if 'Intel Corporation' in name:
-            return 'Intel'
+            return VendorEnum.INTEL
         elif 'Advanced Micro Devices' in name:
-            return 'AMD'
+            return VendorEnum.AMD
         elif 'NVIDIA Corporation' in name:
-            return 'NVIDIA'
+            return VendorEnum.NVIDIA
         elif 'Haiguang' in name:
-            return 'Haiguang'
+            return VendorEnum.HAIGUANG
         elif 'Huawei' in name:
-            return 'Huawei'
+            return VendorEnum.HUAWEI
         elif '1e3e' in name:
-            return 'TianShu'
+            return VendorEnum.TIANSHU
         else:
             return name.replace('Co., Ltd ', '')
 
@@ -2446,8 +2523,8 @@ done
                 elif 'PCI bridge' in to.type or (pci_device_mapper.get('PCI bridge') is not None
                                                  and pci_device_mapper.get('PCI bridge') in to.type):
                     to.type = "PCI_Bridge"
-                elif "Processing accelerators" in to.type or (
-                        pci_device_mapper.get('Processing accelerators') is not None):
+                elif ("Processing accelerators" in to.type or (
+                        pci_device_mapper.get('Processing accelerators') is not None)) and 'Device' in to.device:
                     to.type = "GPU_Processing_Accelerators"
                 else:
                     to.type = "Generic"
@@ -2467,11 +2544,11 @@ done
     def _collect_gpu_addoninfo(self, to, vendor_name):
         if pci.is_gpu(to.type):
             collect_vendor_nvidia_gpu_infos = {
-                'NVIDIA': self._collect_nvidia_gpu_info,
-                'AMD': self._collect_amd_gpu_info,
-                'Haiguang': self._collect_haiguang_gpu_info,
-                'Huawei': self._collect_huawei_gpu_info,
-                'TianShu': self._collect_tianshu_gpu_info
+                VendorEnum.NVIDIA: self._collect_nvidia_gpu_info,
+                VendorEnum.AMD: self._collect_amd_gpu_info,
+                VendorEnum.HAIGUANG: self._collect_haiguang_gpu_info,
+                VendorEnum.HUAWEI: self._collect_huawei_gpu_info,
+                VendorEnum.TIANSHU: self._collect_tianshu_gpu_info
             }
             handler = collect_vendor_nvidia_gpu_infos.get(vendor_name)
             if handler:
@@ -2846,15 +2923,9 @@ done
 
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    def generate_vfio_mdev_devices(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+    def _generate_nvidia_vfio_mdev_devices(self, cmd):
         rsp = GenerateVfioMdevDevicesRsp()
-        logger.debug("generate_vfio_mdev_devices: mdevUuids[%s]" % cmd.mdevUuids)
-
-        # ramdisk file in /dev/shm to mark host rebooting
         addr = cmd.pciDeviceAddress
-
         # before 3.5.1, pciDeviceAddress is composed by only bus:slot.func
         no_domain_addr = addr if len(addr.split(':')) != 3 else ':'.join(addr.split(':')[1:])
         ramdisk = os.path.join('/dev/shm', 'pci-' + no_domain_addr)
@@ -2913,7 +2984,7 @@ done
             else:
                 is_generate = False
                 for virtfn in o.splitlines():
-                    virtfn_dir =  "/sys/bus/pci/devices/%s/%s/mdev_supported_types/nvidia-%d" % (addr, virtfn, type)
+                    virtfn_dir = "/sys/bus/pci/devices/%s/%s/mdev_supported_types/nvidia-%d" % (addr, virtfn, type)
                     with open(os.path.join(virtfn_dir, "available_instances"), 'r') as af:
                         max_instances = af.read().strip()
                         if int(max_instances) > 0:
@@ -2935,18 +3006,67 @@ done
         open(ramdisk, 'a').close()
         return jsonobject.dumps(rsp)
 
-    @kvmagent.replyerror
-    @in_bash
-    def ungenerate_vfio_mdev_devices(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = UngenerateVfioMdevDevicesRsp()
+    def _generate_huawei_vfio_mdev_devices(self, cmd):
+        rsp = GenerateVfioMdevDevicesRsp()
+        addr = cmd.pciDeviceAddress
+        r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
+        if r == 0 and addr in virtStatusOut:
+            logger.debug("no need to re-splite pci device[addr:%s] into mdev devices" % addr)
+            return jsonobject.dumps(rsp)
 
+        r, o = bash_ro("npu-smi set -t vnpu-mode -d 1")
+        if r != 0:
+            rsp.success = False
+            rsp.error = o
+            return jsonobject.dumps(rsp)
+
+        spec_path = os.path.join("/sys/bus/pci/devices/", addr, "mdev_supported_types", "vnpu-%s" % cmd.mdevSpecTypeId)
+        if not os.path.exists(spec_path):
+            rsp.success = False
+            rsp.error = "cannot generate vfio mdev devices from pci device[addr:%s]" % addr
+            return jsonobject.dumps(rsp)
+
+        if cmd.mdevUuids and len(cmd.mdevUuids) != 0:
+            for _uuid in cmd.mdevUuids:
+                with open(os.path.join(spec_path, "create"), 'w') as f:
+                    f.write(str(uuid.UUID(_uuid)))
+                    logger.debug("re-generate mdev device[uuid:%s] from pci device[addr:%s]" % (_uuid, addr))
+            return jsonobject.dumps(rsp)
+
+        with open(os.path.join(spec_path, "available_instances"), 'r') as af:
+            max_instances = af.read().strip()
+        for i in range(int(max_instances)):
+            _uuid = str(uuid.uuid4())
+            rsp.mdevUuids.append(_uuid)
+            with open(os.path.join(spec_path, "create"), 'w') as cf:
+                cf.write(_uuid)
+                logger.debug("generate mdev device[uuid:%s] from pci device[addr:%s]" % (_uuid, addr))
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def generate_vfio_mdev_devices(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GenerateVfioMdevDevicesRsp()
+        logger.debug("generate_vfio_mdev_devices: mdevUuids[%s]" % cmd.mdevUuids)
+        if cmd.vendor == VendorEnum.NVIDIA:
+            return self._generate_nvidia_vfio_mdev_devices(cmd)
+        elif cmd.vendor == VendorEnum.HUAWEI:
+            return self._generate_huawei_vfio_mdev_devices(cmd)
+        else:
+            rsp.success = False
+            rsp.error = "%s device does not support being generated into mdev devices" % (cmd.vendor)
+            return jsonobject.dumps(rsp)
+
+    def _ungenerate_nvidia_vfio_mdev_devices(self, cmd):
+        rsp = UngenerateVfioMdevDevicesRsp()
         # support nvidia gpu only
         addr = cmd.pciDeviceAddress
         type = int(cmd.mdevSpecTypeId, 0)
         device_path = os.path.join("/sys/bus/pci/devices/", addr, "mdev_supported_types", "nvidia-%d" % type, "devices")
         legacy_spec_exists = os.path.exists(device_path)
-        virtfn_path = os.path.join("/sys/bus/pci/devices/", addr, "virtfn0", "mdev_supported_types", "nvidia-%d" % type, "devices")
+        virtfn_path = os.path.join("/sys/bus/pci/devices/", addr, "virtfn0", "mdev_supported_types", "nvidia-%d" % type,
+                                   "devices")
         virt_function_dir_exits = os.path.exists(virtfn_path)
 
         if not legacy_spec_exists and not virt_function_dir_exits:
@@ -2973,12 +3093,47 @@ done
                 return jsonobject.dumps(rsp)
 
             for virtfn in o.splitlines():
-                virtfn_dir =  os.path.join("/sys/bus/pci/devices/", addr, virtfn, "mdev_supported_types", "nvidia-%d" % type, "devices")
+                virtfn_dir = os.path.join("/sys/bus/pci/devices/", addr, virtfn, "mdev_supported_types",
+                                          "nvidia-%d" % type, "devices")
                 for _uuid in os.listdir(virtfn_dir):
                     with open(os.path.join(virtfn_dir, _uuid, "remove"), "w") as f:
                         f.write("1")
 
         return jsonobject.dumps(rsp)
+
+    def _ungenerate_huawei_vfio_mdev_devices(self, cmd):
+        rsp = UngenerateVfioMdevDevicesRsp()
+        device_path = os.path.join("/sys/bus/pci/devices/", cmd.pciDeviceAddress, "mdev_supported_types", "vnpu-%s" % cmd.mdevSpecTypeId, "devices")
+        if not os.path.exists(device_path):
+            rsp.success = False
+            rsp.error = "no vfio mdev devices to ungenerate from pci device[addr:%s]" % addr
+            return jsonobject.dumps(rsp)
+
+        for _uuid in os.listdir(device_path):
+            with open(os.path.join(device_path, _uuid, "remove"), 'w') as f:
+                f.write("1")
+
+        r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
+        if r == 0 and addr in virtStatusOut:
+            rsp.success = False
+            rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def ungenerate_vfio_mdev_devices(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UngenerateVfioMdevDevicesRsp()
+
+        if cmd.vendor == VendorEnum.NVIDIA:
+            return self._ungenerate_nvidia_vfio_mdev_devices(cmd)
+        elif cmd.vendor == VendorEnum.HUAWEI:
+            return self._ungenerate_huawei_vfio_mdev_devices(cmd)
+        else:
+            rsp.success = False
+            rsp.error = "%s device does not support being ungenerate into mdev devices" % (cmd.vendor)
+            return jsonobject.dumps(rsp)
 
     def _collect_format_mtty_device_info(self, rsp):
         r, o, e = bash_roe("ls /dev/wst-se")
