@@ -228,7 +228,7 @@ def get_pci_info():
                 gpu_type = _class
                 description = _class + ": "
             elif title == 'Vendor':
-                vendor_name = simplify_pci_device_name('['.join(content.split('[')[:-1]).strip())
+                vendor_name = simplify_pci_device_name(content.strip())
                 vendor = vendor_name
                 vendor_id = content.split('[')[-1].strip(']')
                 description += vendor_name + " "
@@ -251,6 +251,8 @@ def get_pci_info():
         elif any(vendor in description for vendor in gpu_vendors) \
                 and ('3D controller' in gpu_type):
             gpu_type = "GPU_3D_Controller"
+        elif "Processing accelerators" in gpu_type and 'Device' in device:
+            gpu_type = "GPU_Processing_Accelerators"
         else:
             gpu_type = "Generic"
 
@@ -352,6 +354,10 @@ def simplify_pci_device_name(name):
         return 'NVIDIA'
     elif 'Haiguang' in name:
         return 'Haiguang'
+    elif 'Huawei' in name:
+        return 'Huawei'
+    elif '1e3e' in name:
+        return 'TianShu'
     else:
         return name.replace('Co., Ltd ', '')
 
