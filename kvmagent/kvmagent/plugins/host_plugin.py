@@ -3106,7 +3106,7 @@ done
         device_path = os.path.join("/sys/bus/pci/devices/", cmd.pciDeviceAddress, "mdev_supported_types", "vnpu-%s" % cmd.mdevSpecTypeId, "devices")
         if not os.path.exists(device_path):
             rsp.success = False
-            rsp.error = "no vfio mdev devices to ungenerate from pci device[addr:%s]" % addr
+            rsp.error = "no vfio mdev devices to ungenerate from pci device[addr:%s]" % cmd.pciDeviceAddress
             return jsonobject.dumps(rsp)
 
         for _uuid in os.listdir(device_path):
@@ -3114,9 +3114,9 @@ done
                 f.write("1")
 
         r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
-        if r == 0 and addr in virtStatusOut:
+        if r == 0 and cmd.pciDeviceAddress in virtStatusOut:
             rsp.success = False
-            rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % addr
+            rsp.error = "failed to ungenerate vfio mdev devices from pci device[addr:%s]" % cmd.pciDeviceAddress
 
         return jsonobject.dumps(rsp)
 
