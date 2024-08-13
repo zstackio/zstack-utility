@@ -605,6 +605,102 @@ mock_identical_host(root)
 
 #------------------------------------------------
 
+mock_memtune_INPUT = """
+<domain>
+</domain>
+"""
+
+mock_memtune_EXPECT_OUTPUT = """
+<domain>
+    <memoryBacking>
+        <locked/>
+    </memoryBacking>
+    <memtune>
+        <hard_limit unit="G">1</hard_limit>
+        <soft_limit unit="M">128</soft_limit>
+    </memtune>
+</domain>
+"""
+
+mock_memtune_HOOK_SCRIPT = """
+def add_lock_to_memory_backing(root, hook):
+    xml_object_memory = None
+    xml_element_locked = "locked"
+    xml_element_memory = "memoryBacking"
+ 
+    def has_memory_backing(root):
+        if hook.found_element(root, xml_element_memory) is False:
+            return False
+        return True
+ 
+    def create_memory_backing(root):
+        memory_backing = hook.create_element(xml_element_memory)
+        hook.add_element_to_parent(memory_backing, root)
+        return memory_backing
+ 
+    def get_memory_backing(root):
+        for memory_backing in root.findall(xml_element_memory):
+            return memory_backing
+ 
+    def add_lock_from_memory_backing(memory_backing):
+        memory_locked = hook.create_element(xml_element_locked)
+        hook.add_element_to_parent(memory_locked, memory_backing)
+ 
+    if has_memory_backing(root) is True:
+        xml_object_memory = get_memory_backing(root)
+    else:
+        xml_object_memory = create_memory_backing(root)
+ 
+    add_lock_from_memory_backing(xml_object_memory)
+ 
+ 
+def add_limit_to_memtune(root, hook, hard_limit_value, soft_limit_value):
+    xml_object_memtune = None
+    xml_element_memtune = "memtune"
+    xml_element_hard_limit = "hard_limit"
+    xml_element_soft_limit = "soft_limit"
+ 
+    def has_memtune(root):
+        if hook.found_element(root, xml_element_memtune) is False:
+            return False
+        return True
+ 
+    def create_memtune(root):
+        memtune = hook.create_element(xml_element_memtune)
+        hook.add_element_to_parent(memtune, root)
+        return memtune
+ 
+    def get_memtune(root):
+        for memtune in root.findall(xml_element_memtune):
+            return memtune
+ 
+    def add_hard_limit_from_memtune(root, memtune, limit_value):
+        hard_limit = hook.create_element(xml_element_hard_limit)
+        hook.add_attribute(hard_limit, "unit", "G")
+        hook.modify_value_of_element(hard_limit, str(limit_value))
+        hook.add_element_to_parent(hard_limit, memtune)
+ 
+    def add_soft_limit_from_memtune(root, memtune, limit_value):
+        soft_limit = hook.create_element(xml_element_soft_limit)
+        hook.add_attribute(soft_limit, "unit", "M")
+        hook.modify_value_of_element(soft_limit, str(limit_value))
+        hook.add_element_to_parent(soft_limit, memtune)
+ 
+    if has_memtune(root) is True:
+        xml_object_memtune = get_memtune(root)
+    else:
+        xml_object_memtune = create_memtune(root)
+ 
+    add_hard_limit_from_memtune(root, xml_object_memtune, hard_limit_value)
+    add_soft_limit_from_memtune(root, xml_object_memtune, soft_limit_value)
+ 
+ 
+add_lock_to_memory_backing(root, hook)
+add_limit_to_memtune(root, hook, 1, 128)
+"""
+
+#------------------------------------------------
+
 class Test(unittest.TestCase):
     def test_function_is_bad_vm_root_volume(self):
         def test_xml_hook_works_or_not(hook_code, input_xmlstr, expect_output_xmlstr):
@@ -621,6 +717,7 @@ class Test(unittest.TestCase):
         test_xml_hook_works_or_not(config_mac_address_by_bandwidth_HOOK_SCRIPT, config_mac_address_by_bandwidth_INPUT, config_mac_address_by_bandwidth_EXPECT_OUTPUT)
         test_xml_hook_works_or_not(config_disk_serial_number_HOOK_SCRIPT, config_disk_serial_number_INPUT, config_disk_serial_number_EXPECT_OUTPUT)
         test_xml_hook_works_or_not(mock_identical_host_HOOK_SCRIPT, mock_identical_host_INPUT, mock_identical_host_EXPECT_OUTPUT)
+        test_xml_hook_works_or_not(mock_memtune_HOOK_SCRIPT, mock_memtune_INPUT, mock_memtune_EXPECT_OUTPUT)
 
 
 if __name__ == "__main__":
