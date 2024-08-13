@@ -171,12 +171,6 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         if qga.state != VmQga.QGA_STATE_RUNNING:
             return 1, "qga is not running for vm {}".format(vm_uuid)
 
-        if qga.os in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() and \
-                qga.os_version in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
-            cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
-        else:
-            return 1, "not support for os {}".format(qga.os)
-
         # configure windows by zs-tools
         if qga.os == VmQga.VM_OS_WINDOWS:
             ret, msg = qga.guest_exec_zs_tools(operate='net', config=jsonobject.dumps(nicParams))
@@ -191,6 +185,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             return 1, "config vm {}, write parameters file {} failed".format(vm_uuid, self.VM_QGA_PARAM_FILE)
 
         # exec qga command
+        cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
         ret, msg = qga.guest_exec_python(cmd_file)
         if ret != 0:
             logger.debug("config vm {} by qga failed: {}".format(vm_uuid, msg))
@@ -205,10 +200,6 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         qga = VmQga(domain)
         if qga.state != VmQga.QGA_STATE_RUNNING:
             return 1, "qga is not running for vm {}".format(vm_uuid)
-
-        if qga.os not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() or \
-                qga.os_version not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
-            return 1, "not support for os {} version {}".format(qga.os, qga.os_version)
 
         if default_ip is None:
             default_ip = ""
