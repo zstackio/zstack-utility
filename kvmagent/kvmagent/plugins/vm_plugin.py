@@ -7097,6 +7097,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 fw = qga.guest_file_open(dst, True)
         else:
             # binary wrote
+            create_path(qga, cmd.dstPath)
             fw = qga.call_qga_command("guest-file-open", {"path": cmd.dstPath, "mode": "wb"})
             cmd.fileContent = base64.b64decode(cmd.fileContent)
 
