@@ -134,6 +134,7 @@ def get_snapshot_name(install_path):
 
 class ZbsAgent(plugin.TaskManager):
     ECHO_PATH = "/zbs/primarystorage/echo"
+    PING_PATH = "/zbs/primarystorage/ping"
     GET_FACTS_PATH = "/zbs/primarystorage/facts"
     GET_CAPACITY_PATH = "/zbs/primarystorage/capacity"
     COPY_PATH = "/zbs/primarystorage/copy"
@@ -154,6 +155,7 @@ class ZbsAgent(plugin.TaskManager):
     def __init__(self):
         super(ZbsAgent, self).__init__()
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
+        self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS_PATH, self.get_facts)
         self.http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         self.http_server.register_async_uri(self.COPY_PATH, self.copy)
@@ -167,6 +169,29 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CREATE_SNAPSHOT_PATH, self.create_snapshot)
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
         self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
+
+    @replyerror
+    def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        o = zbsutils.query_mds_status_info()
+        ret = jsonobject.loads(o)
+        if ret.error.code != 0:
+            raise Exception('failed to query mds status info, error[%s]' % ret.error.message)
+
+        found = False
+        for mds in ret.result:
+            if cmd.mdsAddr in mds.addr:
+                found = True
+                break
+
+        if not found:
+            rsp.success = False
+            rsp.error = 'mds addr was not found on the server[uuid:%s], not %s anymore.' % (cmd.psUuid, cmd.mdsAddr)
+            return jsonobject.dumps(rsp)
+
+        return jsonobject.dumps(rsp)
 
     @replyerror
     def expand_volume(self, req):
