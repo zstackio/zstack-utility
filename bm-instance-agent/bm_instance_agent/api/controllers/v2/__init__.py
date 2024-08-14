@@ -1,7 +1,7 @@
 from pecan import expose
 from pecan.rest import RestController
 
-from bm_instance_agent.api.controllers.v2 import console
+from bm_instance_agent.api.controllers.v2 import console, inspect
 from bm_instance_agent.api.controllers.v2 import default_route
 from bm_instance_agent.api.controllers.v2 import nic
 from bm_instance_agent.api.controllers.v2 import password
@@ -21,7 +21,8 @@ class Controller(RestController):
         'ping': ping.PingController,
         'reboot': reboot.RebootController,
         'stop': stop.StopController,
-        'volume': volume.VolumeController
+        'volume': volume.VolumeController,
+        'inspect': inspect.InspectController
     }
 
     # @expose()
