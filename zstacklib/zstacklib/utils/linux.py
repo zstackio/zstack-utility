@@ -2083,7 +2083,7 @@ def create_vlan_eth_with_bridge(ethname, vlan, bridge_name, ip=None, netmask=Non
     vlan_dev_name = create_vlan_eth(ethname, vlan, ip, netmask)
     ifcfg = netconfig.NetVlanConfig(vlan_dev_name)
     ifcfg.bridge = bridge_name
-    ifcfg.restore_config()
+    ifcfg.restore_config(restore_only=True)
     return vlan_dev_name
 
 

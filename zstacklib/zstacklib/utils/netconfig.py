@@ -205,10 +205,11 @@ class NetConfig(object):
         if default_count > 1:
             raise NetConfigError('configure error, only one ip can be default')
 
-    def restore_config(self, is_reload=False):
+    def restore_config(self, is_reload=False, restore_only=False):
         '''restore config'''
         self.check_config()
-        self.pre_restore_config()
+        if not restore_only:
+            self.pre_restore_config()
         self.build_ifcfg_file()
         if not self.config_dict:
             raise NetConfigError('configure error, ifcfg content is empty')
@@ -229,7 +230,8 @@ class NetConfig(object):
         if is_use_network_manager():
             shell.call('nmcli con reload')
 
-        self.post_restore_config()
+        if not restore_only:
+            self.post_restore_config()
 
         if is_reload:
             if is_use_network_manager():

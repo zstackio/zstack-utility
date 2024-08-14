@@ -951,6 +951,9 @@ configure lldp status rx-only \n
                         vlan_eth_list.append(new_vlan_interface)
                     else:
                         new_vlan_interface = new_interface
+                        ifcfg = netconfig.NetBondConfig(new_interface)
+                        ifcfg.bridge = bridge_name
+                        ifcfg.restore_config(restore_only=True)
 
                     linux.attach_interface_to_bridge(new_vlan_interface, bridge_name, l2_network_uuid)
 
@@ -977,6 +980,9 @@ configure lldp status rx-only \n
                     else:
                         old_vlan_interface = old_interface
                         new_vlan_interface = new_interface
+                        ifcfg = netconfig.NetEtherConfig(new_interface)
+                        ifcfg.bridge = bridge_name
+                        ifcfg.restore_config(restore_only=True)
 
                     linux.update_bridge_interface_configuration(old_vlan_interface, new_vlan_interface,
                                                                 bridge_name, l2_network_uuid)
