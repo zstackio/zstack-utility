@@ -42,6 +42,19 @@ class TaskPlugin1(plugin.Plugin):
         except:
             exception_catched.add(task_name)
 
+        class FakeTaskDaemon2(plugin.TaskDaemon):
+            def __init__(self):
+                super(FakeTaskDaemon2, self).__init__(cmd, task_name)
+                self.percent = 0
+
+            def _get_percent(self):
+                self.percent = self.percent + 1
+
+            def _cancel(self):
+                pass
+        with FakeTaskDaemon2():
+            print "FakeTaskDaemon2"
+
     def start(self):
         pass
 

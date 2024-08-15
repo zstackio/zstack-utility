@@ -135,7 +135,6 @@ class TaskDaemon(object):
         logger.debug('It is going to cancel %s.' % self.task_name)
         self._cancel()
 
-    @abc.abstractmethod
     def _exit(self, exc_type, exc_val, exc_tb):
         # returning true means ignoring exception
         pass
