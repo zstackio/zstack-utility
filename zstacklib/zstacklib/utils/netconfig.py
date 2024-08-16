@@ -18,11 +18,11 @@ NET_CONFIG_MTU_MIN = 576
 NET_CONFIG_MTU_MAX = 9000
 NET_CONFIG_MTU_DEFAULT = 1500
 
-NET_CONFIG_VLAN_TYPE = 'VLAN'
-NET_CONFIG_BRIDGE_TYPE = 'BRIDGE'
-NET_CONFIG_BOND_TYPE = 'BOND'
-NET_CONFIG_ETHER_TYPE = 'ETHER'
-NET_CONFIG_VXLAN_TYPE = 'VXLAN'
+NET_CONFIG_VLAN_TYPE = 'Vlan'
+NET_CONFIG_BRIDGE_TYPE = 'Bridge'
+NET_CONFIG_BOND_TYPE = 'Bond'
+NET_CONFIG_ETHER_TYPE = 'Ethernet'
+NET_CONFIG_VXLAN_TYPE = 'Vxlan'
 
 NET_CONFIG_BOOTPROTO_STATIC = 'static'
 NET_CONFIG_BOOTPROTO_DHCP = 'dhcp'
@@ -31,14 +31,11 @@ NET_CONFIG_BOOTPROTO_NONE = 'none'
 NET_CONFIG_ONBOOT_YES = 'yes'
 NET_CONFIG_ONBOOT_NO = 'no'
 
+NET_CONFIG_IPV6_INIT_YES = 'yes'
+NET_CONFIG_IPV6_INIT_NO = 'no'
+
 NET_CONFIG_STP_YES = 'yes'
 NET_CONFIG_STP_NO = 'no'
-
-NET_CONFIG_NM_CONTROLLED_YES = 'yes'
-NET_CONFIG_NM_CONTROLLED_NO = 'no'
-
-NET_CONFIG_SERVICE_TYPE_NMCLI = 'NetworkManager'
-NET_CONFIG_SERVICE_TYPE_NORMAL = 'network'
 
 network_manager_status = None
 
@@ -66,22 +63,16 @@ class NetConfig(object):
         self.name = name
         self.device = None
         self.link_type = link_type
-        self.boot_mode = NET_CONFIG_ONBOOT_YES
-        self.boot_proto = NET_CONFIG_BOOTPROTO_NONE
+        self.boot_mode = None
+        self.boot_proto = None
+        self.ipv6_init = None
         self.mtu = None
         self.alias = None
         self.config_dict = None
         self.ip_configs = []
-        self.service_type = self._get_service_type()
         self.config_path = self._get_config_path()
         self._build_config()
-
-    def _get_service_type(self):
-        '''netconfig: get network service type(network or NetworkManager)'''
-        if is_use_network_manager():
-            return NET_CONFIG_SERVICE_TYPE_NMCLI
-
-        return NET_CONFIG_SERVICE_TYPE_NORMAL
+        self._init_config()
 
     def _get_config_path(self):
         '''netconfig: get network config path'''
@@ -133,11 +124,23 @@ class NetConfig(object):
         self.add_config('NAME', self.name)
         self.add_config('DEVICE', self.device if self.device else self.name)
         self.add_config('ONBOOT', self.boot_mode)
+
         self.add_config('BOOTPROTO', self.boot_proto)
-        if self.mtu:
-            self.add_config('MTU', self.mtu)
+        if self.boot_proto == NET_CONFIG_BOOTPROTO_DHCP:
+            self.add_config('DEFROUTE', 'yes')
+            self.add_config('IPV4_FAILURE_FATAL', 'no')
+
+        self.add_config("IPV6INIT", self.ipv6_init)
+        if self.ipv6_init == NET_CONFIG_IPV6_INIT_YES:
+            self.add_config('IPV6_AUTOCONF', 'yes')
+            self.add_config('IPV6_DEFROUTE', 'yes')
+            self.add_config('IPV6_FAILURE_FATAL', 'no')
+            self.add_config('IPV6_ADDR_GEN_MODE', 'eui64')
+
+        self.add_config('MTU', self.mtu)
         if self.alias:
             self.add_config('ALIAS', '"{}"'.format(self.alias))
+        self.add_config('TYPE', self.link_type)
 
     def build_ip_config(self):
         if not self.ip_configs:
@@ -183,14 +186,21 @@ class NetConfig(object):
             raise NetConfigError('configure error, can not get link type')
         if self.mtu and (self.mtu < NET_CONFIG_MTU_MIN or self.mtu > NET_CONFIG_MTU_MAX):
             raise NetConfigError('configure error, netdev mtu must be between 576 and 9000')
-        if not self.boot_mode or not self.boot_proto:
-            raise NetConfigError('configure error, boot mode and boot protocol must be specified')
-        if self.boot_mode not in [NET_CONFIG_ONBOOT_YES, NET_CONFIG_ONBOOT_NO]:
+        if not self.boot_mode and 'ONBOOT' not in self.config_dict:
+            raise NetConfigError('configure error, boot mode must be specified')
+        if self.boot_mode and self.boot_mode not in [NET_CONFIG_ONBOOT_YES, NET_CONFIG_ONBOOT_NO]:
             raise NetConfigError('configure error, boot mode must be yes or no')
-        if self.boot_proto not in [NET_CONFIG_BOOTPROTO_STATIC, NET_CONFIG_BOOTPROTO_DHCP, NET_CONFIG_BOOTPROTO_NONE]:
+        if not self.boot_proto and 'BOOTPROTO' not in self.config_dict:
+            raise NetConfigError('configure error, boot protocol must be specified')
+        if self.boot_proto and self.boot_proto not in [NET_CONFIG_BOOTPROTO_STATIC, NET_CONFIG_BOOTPROTO_DHCP,
+                                                       NET_CONFIG_BOOTPROTO_NONE]:
             raise NetConfigError('configure error, boot protocol must be static, dhcp or none')
         if self.boot_proto == NET_CONFIG_BOOTPROTO_DHCP and self.ip_configs:
             raise NetConfigError('configure error, unable to set ip when boot protocol is [dhcp]')
+        if not self.ipv6_init and 'IPV6INIT' not in self.config_dict:
+            raise NetConfigError('configure error, ipv6 init must be specified')
+        if self.ipv6_init and self.ipv6_init not in [NET_CONFIG_IPV6_INIT_YES, NET_CONFIG_IPV6_INIT_NO]:
+            raise NetConfigError('configure error, ipv6 init must be yes or no')
         if not self.config_path:
             raise NetConfigError('configure error, ifcfg config path must be specified')
 
@@ -339,20 +349,27 @@ class NetConfig(object):
                         config_dict[key1] = value1
         return config_dict
 
+    def _init_config(self):
+        if 'ONBOOT' not in self.config_dict:
+            self.boot_mode = NET_CONFIG_ONBOOT_YES
+        if 'BOOTPROTO' not in self.config_dict:
+            self.boot_proto = NET_CONFIG_BOOTPROTO_NONE
+        if 'IPV6INIT' not in self.config_dict:
+            self.ipv6_init = NET_CONFIG_IPV6_INIT_NO
+
 
 class NetVlanConfig(NetConfig):
     '''netconfig: net vlan config'''
 
     def __init__(self, name):
-        super(NetVlanConfig, self).__init__(name, NET_CONFIG_VLAN_TYPE)
         self.vlan_id = None
         self.bridge = None
         self.bond = None
+        super(NetVlanConfig, self).__init__(name, NET_CONFIG_VLAN_TYPE)
 
     def build_ifcfg_file(self):
         super(NetVlanConfig, self).build_ifcfg_file()
-        self.add_config('IPV6INIT', 'no')
-        self.add_config('IPV6_AUTOCONF', 'no')
+        self.config_dict.pop('TYPE')
         self.add_config('VLAN', 'yes')
 
         if is_use_network_manager():
@@ -363,10 +380,8 @@ class NetVlanConfig(NetConfig):
             self.add_config('MASTER', self.bond)
             self.add_config('SLAVE', 'yes')
 
-        if self.vlan_id:
-            self.add_config('VLAN_ID', self.vlan_id)
-        if self.bridge:
-            self.add_config('BRIDGE', self.bridge)
+        self.add_config('VLAN_ID', self.vlan_id)
+        self.add_config('BRIDGE', self.bridge)
 
     def check_config(self):
         super(NetVlanConfig, self).check_config()
@@ -395,28 +410,23 @@ class NetBridgeConfig(NetConfig):
     '''netconfig: net bridge config'''
 
     def __init__(self, name):
-        super(NetBridgeConfig, self).__init__(name, NET_CONFIG_BRIDGE_TYPE)
-        self.stp = NET_CONFIG_STP_NO
-        self.delay = 5
+        self.stp = None
+        self.delay = None
         self.phys_dev = None
+        super(NetBridgeConfig, self).__init__(name, NET_CONFIG_BRIDGE_TYPE)
 
     def build_ifcfg_file(self):
         super(NetBridgeConfig, self).build_ifcfg_file()
-        self.add_config('IPV6INIT', 'no')
-        self.add_config('IPV6_AUTOCONF', 'no')
-        self.add_config('TYPE', 'Bridge')
 
-        if self.service_type == NET_CONFIG_SERVICE_TYPE_NMCLI:
+        if is_use_network_manager():
             self.add_config('PROXY_METHOD', 'none')
             self.add_config('BROWSER_ONLY', 'no')
-        if self.service_type == NET_CONFIG_SERVICE_TYPE_NORMAL:
-            if self.delay:
-                self.add_config('DELAY', self.delay)
+        # delay takes effect only when stp is enabled.
+        elif self.stp == NET_CONFIG_STP_YES and self.delay:
+            self.add_config('DELAY', self.delay)
 
-        if self.stp:
-            self.add_config('STP', self.stp)
-        if self.phys_dev:
-            self.add_config('PHYSDEV', self.phys_dev)
+        self.add_config('STP', self.stp)
+        self.add_config('PHYSDEV', self.phys_dev)
 
     def check_config(self):
         super(NetBridgeConfig, self).check_config()
@@ -427,32 +437,35 @@ class NetBridgeConfig(NetConfig):
         if self.phys_dev and len(self.phys_dev) > 15:
             raise NetConfigError('configure error, phys dev name must be between 1 and 15 characters')
 
+    def _init_config(self):
+        super(NetBridgeConfig, self)._init_config()
+        if 'STP' not in self.config_dict:
+            self.stp = NET_CONFIG_STP_NO
+        if 'DELAY' not in self.config_dict:
+            self.delay = 5
+
 
 class NetBondConfig(NetConfig):
     '''netconfig: net bond config'''
 
     def __init__(self, name):
-        super(NetBondConfig, self).__init__(name, NET_CONFIG_BOND_TYPE)
         self.bond_options = None
         self.bridge = None
+        super(NetBondConfig, self).__init__(name, NET_CONFIG_BOND_TYPE)
 
     def build_ifcfg_file(self):
         super(NetBondConfig, self).build_ifcfg_file()
-        self.add_config('IPV6INIT', 'no')
-        self.add_config('IPV6_AUTOCONF', 'no')
-        self.add_config('TYPE', 'Bond')
         self.add_config('BONDING_MASTER', 'yes')
 
-        if self.service_type == NET_CONFIG_SERVICE_TYPE_NMCLI:
+        if is_use_network_manager():
             self.add_config('PROXY_METHOD', 'none')
             self.add_config('BROWSER_ONLY', 'no')
-        if self.service_type == NET_CONFIG_SERVICE_TYPE_NORMAL:
+        else:
             self.add_config('NM_CONTROLLED', 'no')
 
         if self.bond_options:
             self.add_config('BONDING_OPTS', '"{}"'.format(self.bond_options))
-        if self.bridge:
-            self.add_config('BRIDGE', self.bridge)
+        self.add_config('BRIDGE', self.bridge)
 
     def check_config(self):
         super(NetBondConfig, self).check_config()
@@ -476,26 +489,20 @@ class NetEtherConfig(NetConfig):
     '''netconfig: net ether config'''
 
     def __init__(self, name):
-        super(NetEtherConfig, self).__init__(name, NET_CONFIG_ETHER_TYPE)
         self.bridge = None
         self.bond = None
+        super(NetEtherConfig, self).__init__(name, NET_CONFIG_ETHER_TYPE)
 
     def build_ifcfg_file(self):
         super(NetEtherConfig, self).build_ifcfg_file()
-        self.add_config('TYPE', 'Ethernet')
         self.add_config('PROXY_METHOD', 'none')
         self.add_config('BROWSER_ONLY', 'no')
-        self.add_config('IPV4_FAILURE_FATAL', 'no')
-        self.add_config('IPV6INIT', 'yes')
-        self.add_config('IPV6_AUTOCONF', 'yes')
-        self.add_config('IPV6_FAILURE_FATAL', 'no')
 
         if self.bond:
             self.add_config('MASTER', self.bond)
             self.add_config('SLAVE', 'yes')
 
-        if self.bridge:
-            self.add_config('BRIDGE', self.bridge)
+        self.add_config('BRIDGE', self.bridge)
 
     def check_config(self):
         super(NetEtherConfig, self).check_config()
@@ -521,9 +528,9 @@ class NetVxlanConfig(NetConfig):
     '''TODO netconfig: net vxlan config'''
 
     def __init__(self, name):
-        super(NetVxlanConfig, self).__init__(name, NET_CONFIG_VXLAN_TYPE)
         self.bridge = None
         self.vni = None
+        super(NetVxlanConfig, self).__init__(name, NET_CONFIG_VXLAN_TYPE)
 
 
 def find_bridge_files(file_path, bridge_name, exclude_dev=None):
