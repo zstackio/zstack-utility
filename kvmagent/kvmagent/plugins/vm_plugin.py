@@ -4,6 +4,7 @@
 import contextlib
 import difflib
 import os.path
+import string
 import glob
 import tempfile
 import time
@@ -37,6 +38,7 @@ import zstacklib.utils.ebtables as ebtables
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
 
+from jinja2 import Template
 from kvmagent import kvmagent
 from kvmagent.plugins.baremetal_v2_gateway_agent import \
     BaremetalV2GatewayAgentPlugin as BmV2GwAgent
@@ -59,6 +61,7 @@ from zstacklib.utils import image
 from zstacklib.utils import iproute
 from zstacklib.utils import ovs
 from zstacklib.utils import drbd
+from zstacklib.utils.jsonobject import JsonObject
 from zstacklib.utils.qga import *
 from zstacklib.utils import jsonobject
 from zstacklib.utils.qmp import get_block_node_name_and_file, QmpResult
@@ -94,6 +97,10 @@ MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_s
 
 MIPS64EL_CPU_MODEL = "Loongson-3A4000-COMP"
 LOONGARCH64_CPU_MODEL = "Loongson-3A5000"
+
+LINUX_SCRIPT_LIB_PATH = "/var/lib/zstack/script/"
+WINDOWS_SCRIPT_LIB_PATH = "C:/Program Files/Qemu-ga/script/"
+
 
 class RetryException(Exception):
     pass
@@ -930,6 +937,23 @@ class FailColoPrimaryVmCmd(kvmagent.AgentCommand):
         self.targetHostIp = None
         self.targetHostPort = None
         self.targetHostPassword = None
+
+class QgaExecOutputRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(QgaExecOutputRsp, self).__init__()
+        self.exitCode = 0
+        self.stdout = ""
+        self.stderr = ""
+
+class QgaOpenFileRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(QgaOpenFileRsp, self).__init__()
+        self.fileHandle = 0
+
+class QgaUploadfileRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(QgaUploadfileRsp, self).__init__()
+        self.fileSize = ""
 
 
 class GetVirtualizerInfoRsp(kvmagent.AgentResponse):
@@ -6543,6 +6567,8 @@ class VmPlugin(kvmagent.KvmAgent):
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     VM_PRIORITY_PATH = "/vm/priority"
+    UPLOAD_FILE_GUEST_TOOLS_FOR_VM_PATH = "/vm/guesttools/upload_file"
+    EXEC_CMD_IN_VM_PATH = "/vm/guesttools/exec"
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
     DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
@@ -7034,6 +7060,194 @@ class VmPlugin(kvmagent.KvmAgent):
             read_bytes_sec = self._get_volume_bandwidth_value(cmd.vmUuid, device_id, "read")
             shell.call('%s --read_bytes_sec %s --write_bytes_sec %s' % (cmd_base, read_bytes_sec, cmd.writeBandwidth))
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def upload_vm_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        cmd.dstPath = cmd.dstPath.replace("\\\\", "/")
+        cmd.dstPath = cmd.dstPath.replace("\\", "/")
+        logger.info("distPath %s" % cmd.dstPath)
+        rsp = QgaUploadfileRsp()
+
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.lookupByName(cmd.vmUuid)
+
+        def conversion_template(template_text, param):
+            template = Template(template_text)
+            return template.render(param)
+
+        def create_path(qga, file):
+            exit_code = 0
+            path = os.path.dirname(file)
+            if qga.os == "mswindows":
+                noExist, _, _ = qga.guest_exec_cmd(["/c", "dir", "/ad", path.replace("/", "\\")])
+                if noExist:
+                    exit_code, _, _ = qga.guest_exec_cmd(["/c", "md", path.replace("/", "\\")])
+            else:
+                noExist, _, _ = qga.guest_exec_bash("test -d {}".format(path))
+                if noExist:
+                    exit_code, _, _ = qga.guest_exec_bash("mkdir -p {}".format(path))
+            return not exit_code
+
+        script_type_dict = {
+            "Python": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".py"),
+            "Perl": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".pl"),
+            "Shell": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".sh"),
+            "Bat": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + ".bat"),
+            "Powershell": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + ".ps1"),
+        }
+
+        qga = VmQga(call_libvirt())
+
+        fw = 0
+        dst = ""
+        if cmd.fileType == "Script":
+            # text wrote
+            dst = script_type_dict.get(cmd.scriptType)
+            if create_path(qga, dst):
+                fw = qga.guest_file_open(dst, True)
+        else:
+            # binary wrote
+            create_path(qga, cmd.dstPath)
+            fw = qga.call_qga_command("guest-file-open", {"path": cmd.dstPath, "mode": "wb"})
+            cmd.fileContent = base64.b64decode(cmd.fileContent)
+
+        if fw == 0:
+            rsp.success = False
+            rsp.error = "do not open file {}".format(dst)
+            return jsonobject.dumps(rsp)
+
+        fileSize = 0
+        dict_param = {}
+
+        if cmd.param is not None and cmd.param != "":
+            param = jsonobject.loads(cmd.param)
+            for i in param:
+                dict_param.setdefault(i.key, i.value)
+            cmd.fileContent = conversion_template(cmd.fileContent, dict_param)
+
+        try:
+            if cmd.fileContent != "":
+                ret = qga.call_qga_command("guest-file-write", {"handle": fw, "buf-b64": cmd.fileContent})
+                fileSize = ret["count"]
+                rsp.fileSize = fileSize
+        except Exception as e:
+            rsp.success = False
+            rsp.error = "copy file exception {}".format(e)
+        finally:
+            logger.info("upload finished file size {}".format(fileSize))
+            if fw != 0:
+                qga.guest_file_close(fw)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def script_exec_on_vm(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = QgaExecOutputRsp()
+
+        @LibvirtAutoReconnect
+        def call_libvirt(conn):
+            return conn.lookupByName(cmd.vmUuid)
+
+        def streamSplit(stream, lineNum):
+            streamLines = stream.split("\n")
+            streamLineNum = streamLines.__len__()
+            if streamLineNum < lineNum:
+                streamLines = streamLines[-streamLineNum:]
+                streamLines = "\n".join(streamLines)
+            else:
+                streamLines = streamLines[-lineNum:]
+                streamLines = "\n".join(streamLines)
+            if streamLines.__sizeof__() >= (2 << 19):
+                streamLines = streamLines[-(2 << 19):]
+            return streamLines
+
+        def createLog(logDir, logName, log):
+            if not os.path.exists(logDir):
+                os.makedirs(logDir)
+            with open(os.path.join(logDir, logName), mode="a", buffering=4096) as logFile:
+                if logFile.tell() != 0:
+                    logFile.write("\n")
+                logFile.write(log)
+
+        script_type_dict = {
+            "Python": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".py"),
+            "Perl": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".pl"),
+            "Shell": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + ".sh"),
+            "Bat": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + ".bat"),
+            "Powershell": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + ".ps1"),
+        }
+
+        timestamp = str(int(time.time()))
+        stdout_dict = {
+            "Python": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+            "Perl": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+            "Shell": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+            "Bat": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+            "Powershell": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + "_stdout_" + timestamp + ".log"),
+        }
+        stderr_dict = {
+            "Python": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+            "Perl": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+            "Shell": os.path.join(LINUX_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+            "Bat": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+            "Powershell": os.path.join(WINDOWS_SCRIPT_LIB_PATH, cmd.vmUuid + "_stderr_" + timestamp + ".log"),
+        }
+
+        qga = VmQga(call_libvirt())
+        dst = script_type_dict.get(cmd.scriptType)
+        stdout_dst = stdout_dict.get(cmd.scriptType)
+        stderr_dst = stderr_dict.get(cmd.scriptType)
+        exitCode = 0
+        stdout = ""
+        stderr = ""
+        if cmd.scriptType == "Python":
+            qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("{} > {} 2> {}".format(dst, stdout_dst, stderr_dst), retry=cmd.scriptTimeout)
+            exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst), retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dst):
+                exitCode, err_std_out, err_std_err = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dst), retry=cmd.scriptTimeout)
+                stderr = "" if stderr is None else stderr
+                stderr += err_std_out if err_std_out is not None else ""
+                stderr += err_std_err if err_std_err is not None else ""
+        if cmd.scriptType == "Perl":
+            qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("perl {} > {} 2> {}".format(dst, stdout_dst, stderr_dst), retry=cmd.scriptTimeout)
+            exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst),  retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dst):
+                exitCode, err_std_out, err_std_err = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dst), retry=cmd.scriptTimeout)
+                stderr = "" if stderr is None else stderr
+                stderr += err_std_out if err_std_out is not None else ""
+                stderr += err_std_err if err_std_err is not None else ""
+        if cmd.scriptType == "Shell":
+            qga.guest_exec_bash("chmod 777 {}".format(dst), retry=cmd.scriptTimeout)
+            qga.guest_exec_bash("{} > {} 2> {}".format(dst, stdout_dst, stderr_dst), retry=cmd.scriptTimeout)
+            exitCode, stdout, stderr = qga.guest_exec_bash("tail -n 1000 {}".format(stdout_dst), retry=cmd.scriptTimeout)
+            if qga.guest_file_is_exist(stderr_dst):
+                exitCode, err_std_out, err_std_err = qga.guest_exec_bash("tail -n 1000 {}".format(stderr_dst), retry=cmd.scriptTimeout)
+                stderr = "" if stderr is None else stderr
+                stderr += err_std_out if err_std_out is not None else ""
+                stderr += err_std_err if err_std_err is not None else ""
+        if cmd.scriptType == "Bat":
+            exitCode, stdout, stderr = qga.guest_exec_cmd(["/c", "call", dst], retry=cmd.scriptTimeout)
+        if cmd.scriptType == "Powershell":
+            exitCode, stdout, stderr = qga.guest_exec_powershell_script(dst, retry=cmd.scriptTimeout)
+
+        if cmd.logPath is not None:
+            createLog(cmd.logPath, cmd.vmUuid, stdout)
+            createLog(cmd.logPath, cmd.vmUuid, stderr)
+
+        logger.info("exitCode=%s stdout=%s stderr=%s" % (exitCode, stdout, stderr))
+        rsp.exitCode = exitCode
+        if exitCode != 0 or (stderr is not None and stderr != ""):
+            rsp.success = False
+        if stdout is not None:
+            rsp.stdout = streamSplit(stdout, 1000)
+        if stderr is not None:
+            rsp.stderr = streamSplit(stderr, 1000)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -10743,6 +10957,8 @@ host side snapshot files chian:
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
+        http_server.register_async_uri(self.UPLOAD_FILE_GUEST_TOOLS_FOR_VM_PATH, self.upload_vm_file)
+        http_server.register_async_uri(self.EXEC_CMD_IN_VM_PATH, self.script_exec_on_vm)
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
         http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)
