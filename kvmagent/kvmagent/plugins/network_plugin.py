@@ -445,6 +445,17 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def _configure_bridge_learning(self, bridgeName, interf, learning='on'):
         shell.call("bridge link set dev %s learning %s" % (interf, learning), False)
 
+    def _configure_bonding_mtu(self, cmd):
+        # take the mtu of the smallest interface as the mtu of the bond
+        min_mtu = 1500
+        for slave in cmd.slaves:  # type: HostNetworkInterfaceStruct
+            mtu = self._get_interface_mtu(slave.interfaceName)
+            if mtu < min_mtu:
+                min_mtu = mtu
+
+        # zs-bond -u mtu 1450
+        shell.call('/usr/local/bin/zs-bond -u %s mtu %s' % (cmd.bondName, min_mtu))
+
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -530,9 +541,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def create_bonding(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        return jsonobject.dumps(self.do_create_bonding(cmd))
+        return jsonobject.dumps(self._do_create_bonding(cmd))
 
-    def do_create_bonding(self, cmd):
+    def _do_create_bonding(self, cmd):
         rsp = CreateBondingResponse()
         try:
             try:
@@ -552,15 +563,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 # zs-bond -c bond1 mode active-backup
                 shell.call('/usr/local/bin/zs-bond -c %s mode %s' % (cmd.bondName, cmd.mode))
 
-            # take the mtu of the smallest interface as the mtu of the bond
-            min_mtu = 1500
-            for slave in cmd.slaves:
-                mtu = self._get_interface_mtu(slave.interfaceName)
-                if mtu < min_mtu:
-                    min_mtu = mtu
-
-            # zs-bond -u mtu 1450
-            shell.call('/usr/local/bin/zs-bond -u %s mtu %s' % (cmd.bondName, min_mtu))
+            self._configure_bonding_mtu(cmd)
 
             # zs-nic-to-bond -a bond2 nic3
             for slave in cmd.slaves:
@@ -628,9 +631,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def attach_nic_to_bonding(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        return jsonobject.dumps(self.do_attach_nic_to_bonding(cmd))
+        return jsonobject.dumps(self._do_attach_nic_to_bonding(cmd))
 
-    def do_attach_nic_to_bonding(self, cmd):
+    def _do_attach_nic_to_bonding(self, cmd):
         rsp = AttachNicToBondResponse()
 
         try:
@@ -666,9 +669,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def delete_bonding(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        return jsonobject.dumps(self.do_delete_bonding(cmd))
+        return jsonobject.dumps(self._do_delete_bonding(cmd))
 
-    def do_delete_bonding(self, cmd):
+    def _do_delete_bonding(self, cmd):
         rsp = DeleteBondingResponse()
         try:
             if self._has_vlan_or_bridge(cmd.bondName):
@@ -923,7 +926,7 @@ configure lldp status rx-only \n
 
                     linux.detach_interface_from_bridge(old_vlan_interface, bridge_name)
 
-                create_rsp = self.do_create_bonding(create_cmd)
+                create_rsp = self._do_create_bonding(create_cmd)
                 if not create_rsp.success:
                     for param in cmd.bridgeParams:
                         bridge_name = param.bridgeName
@@ -937,6 +940,8 @@ configure lldp status rx-only \n
                     rsp.success = create_rsp.success
                     rsp.error = create_rsp.error
                     return jsonobject.dumps(rsp)
+
+                self._configure_bonding_mtu(attach_cmd)
 
                 for vlan_eth in vlan_eth_list:
                     linux.delete_vlan_eth_and_ifcfg(vlan_eth)
@@ -957,13 +962,13 @@ configure lldp status rx-only \n
 
                     linux.attach_interface_to_bridge(new_vlan_interface, bridge_name, l2_network_uuid)
 
-                attach_rsp = self.do_attach_nic_to_bonding(attach_cmd)
+                attach_rsp = self._do_attach_nic_to_bonding(attach_cmd)
                 if not attach_rsp.success:
                     for vlan_eth in vlan_eth_list:
                         linux.delete_vlan_eth_and_ifcfg(vlan_eth)
                     del_cmd = DeleteBondingCmd()
                     del_cmd.bondName = attach_cmd.bondName
-                    self.do_delete_bonding(del_cmd)
+                    self._do_delete_bonding(del_cmd)
                     rsp.success = attach_rsp.success
                     rsp.error = attach_rsp.error
                     return jsonobject.dumps(rsp)
@@ -993,7 +998,7 @@ configure lldp status rx-only \n
             if cmd.oldBondingName:
                 del_cmd = DeleteBondingCmd()
                 del_cmd.bondName = old_interface
-                del_rsp = self.do_delete_bonding(del_cmd)
+                del_rsp = self._do_delete_bonding(del_cmd)
                 if not del_rsp.success:
                     logger.warning(del_rsp.error)
 
