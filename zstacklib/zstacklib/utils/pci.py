@@ -1,6 +1,7 @@
 import os
 
 from zstacklib.utils import log, linux
+import xml.etree.ElementTree as ET
 
 logger = log.get_logger(__name__)
 
@@ -157,3 +158,24 @@ def parse_resources(device_path):
 
     logger.info("get pci device[path: %s],resources: %s" % (device_path, resources))
     return resources
+
+def get_pci_passthrough_mapping(vm_dom):
+    pci_mapping = {}
+    xml_tree = ET.fromstring(vm_dom.XMLDesc())
+    for hostdev in xml_tree.find('devices').findall('hostdev'):
+        source_address = hostdev.find('source/address')
+        host_domain = source_address.get('domain').replace('0x', '')
+        host_bus = source_address.get('bus').replace('0x', '')
+        host_slot = source_address.get('slot').replace('0x', '')
+        host_function = source_address.get('function').replace('0x', '')
+        host_pci_address = "{}:{}:{}.{}".format(host_domain, host_bus, host_slot, host_function)
+
+        vm_address = hostdev.find('address')
+        vm_domain = vm_address.get('domain').replace('0x', '')
+        vm_bus = vm_address.get('bus').replace('0x', '')
+        vm_slot = vm_address.get('slot').replace('0x', '')
+        vm_function = vm_address.get('function').replace('0x', '')
+        vm_pci_address = "{}:{}:{}.{}".format(vm_domain, vm_bus, vm_slot, vm_function)
+        pci_mapping[vm_pci_address] = host_pci_address
+
+    return pci_mapping

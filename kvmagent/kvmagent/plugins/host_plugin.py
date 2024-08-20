@@ -21,7 +21,7 @@ import subprocess
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http, lvm, ceph, pci
+from zstacklib.utils import http, lvm, ceph, pci, gpu
 from zstacklib.utils import qemu
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
@@ -2559,20 +2559,11 @@ done
         if shell.run("which ixsmi") != 0:
             logger.debug("no ixsmi")
             return
-        r, o, e = bash_roe("ixsmi --query-gpu=gpu_bus_id,memory.total,gpu.power.limit,gpu_serial --format=csv,noheader")
+        r, o, e = bash_roe(gpu.get_tianshu_gpu_basic_info_cmd())
         if r != 0:
             logger.error("ixsmi query gpu is error, %s " % e)
             return
-
-        for part in o.split('\n'):
-            if len(part.strip()) == 0:
-                continue
-            gpuinfo = part.split(',')
-            if to.pciDeviceAddress in gpuinfo[0].strip():
-                to.addonInfo["memory"] = gpuinfo[1].strip()
-                to.addonInfo["power"] = gpuinfo[2].strip()
-                to.addonInfo["serialNumber"] = gpuinfo[3].strip()
-                to.addonInfo["isDriverLoaded"] = True
+        self._update_to_addon_info_from_gpu_infos(gpu.parse_tianshu_gpu_output(o), to)
 
     @in_bash
     def _collect_huawei_gpu_info(self, to):
@@ -2580,72 +2571,31 @@ done
             logger.debug("no npu-smi")
             return
 
-        r, npu_ids_out = bash_ro("npu-smi info -l")
+        r, npu_ids_out = bash_ro(gpu.get_huawei_gpu_npu_id_cmd())
         if r != 0:
             logger.error("npu query gpu is error, %s " % npu_ids_out)
             return
+        npu_id = gpu.get_huawei_npu_id(npu_ids_out)
+        if npu_id is None:
+            return
 
-        for line in npu_ids_out.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if "NPU ID" in line:
-                npu_id = line.split(":")[1].strip()
-                break
+        r, o, e = bash_roe(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
+        if r != 0:
+            logger.error("npu query gpu board is error, %s " % e)
+            return
+        self._update_to_addon_info_from_gpu_infos(gpu.parse_huawei_gpu_output_by_npu_id(o), to)
 
-        if npu_id:
-            r, o, e = bash_roe("npu-smi info -t board -i %s" % npu_id)
-            if r != 0:
-                logger.error("npu query gpu board is error, %s " % e)
-                return
-
-            if to.pciDeviceAddress.lower() not in o.lower():
-                return
-
-            for line in o.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                if "Serial Number" in line:
-                    to.addonInfo["serialNumber"] = line.split(":")[1].strip()
-                    break
-
-            r, o, e = bash_roe("npu-smi info -i %s -t memory;npu-smi info -i %s -t power" % (npu_id, npu_id))
-            if r != 0:
-                logger.error("npu query gpu memory and power is error, %s " % e)
-                return
-
-            for line in o.splitlines():
-                line = line.strip()
-                if not line:
-                    continue
-                if "DDR Capacity(MB)" in line:
-                    to.addonInfo["memory"] = line.split(":")[1].strip() + "MB"
-                    continue
-                if "Power Dissipation(W)" in line:
-                    to.addonInfo["power"] = line.split(":")[1].strip()
-            to.addonInfo["isDriverLoaded"] = True
     @in_bash
     def _collect_haiguang_gpu_info(self, to):
         if shell.run("which hy-smi") != 0:
             logger.debug("no hy-smi")
             return
 
-        r, o, e = bash_roe("hy-smi --showserial --showmaxpower --showmemavailable --showbus --json")
+        r, o, e = bash_roe(gpu.get_hy_gpu_basic_info_cmd())
         if r != 0:
             logger.error("hy query gpu is error, %s " % e)
             return
-
-        try:
-            gpu_info_json = json.loads(o)
-            for card_name, card_data in gpu_info_json.items():
-                if to.pciDeviceAddress.lower() in card_data["PCI Bus"].lower():
-                    to.addonInfo["memory"] = card_data["Available memory size (MiB)"] + " MiB"
-                    to.addonInfo["power"] = card_data["Max Graphics Package Power (W)"]
-                    to.addonInfo["serialNumber"] = card_data["Serial Number"]
-                    to.addonInfo["isDriverLoaded"] = True
-        except Exception as e:
-            logger.error("hy query gpu is error, %s " % e)
+        self._update_to_addon_info_from_gpu_infos(gpu.parse_hy_gpu_output(o), to)
 
 
     @in_bash
@@ -2654,21 +2604,21 @@ done
             logger.debug("no nvidia-smi")
             return
 
-        r, o, e = bash_roe("nvidia-smi --query-gpu=gpu_bus_id,memory.total,power.limit,gpu_serial"
-                           " --format=csv,noheader")
+        r, o, e = bash_roe(gpu.get_nvidia_gpu_basic_info_cmd())
         if r != 0:
             logger.error("nvidia query gpu is error, %s " % e)
             return
+        self._update_to_addon_info_from_gpu_infos(gpu.parse_nvidia_gpu_output(o), to)
 
-        for part in o.split('\n'):
-            if len(part.strip()) == 0:
+
+    def _update_to_addon_info_from_gpu_infos(self, gpu_infos, to):
+        for gpuinfo in gpu_infos:
+            if to.pciDeviceAddress not in gpuinfo["pciAddress"]:
                 continue
-            gpuinfo = part.split(',')
-            if to.pciDeviceAddress in gpuinfo[0].strip():
-                to.addonInfo["memory"] = gpuinfo[1].strip()
-                to.addonInfo["power"] = gpuinfo[2].strip()
-                to.addonInfo["serialNumber"] = gpuinfo[3].strip()
-                to.addonInfo["isDriverLoaded"] = True
+            to.addonInfo["memory"] = gpuinfo["memory"]
+            to.addonInfo["power"] = gpuinfo["power"]
+            to.addonInfo["serialNumber"] = gpuinfo["serialNumber"]
+            to.addonInfo["isDriverLoaded"] = True
 
     @in_bash
     def _collect_amd_gpu_info(self, to):
@@ -2677,20 +2627,12 @@ done
             logger.debug("no rocm-smi")
             return
 
-        r, o, e = bash_roe("rocm-smi --showbus --showmeminfo vram --showpower --showserial --json")
+        r, o, e = bash_roe(gpu.get_amd_gpu_basic_info_cmd())
         if r != 0:
             logger.error("amd query gpu is error, %s " % e)
             return
-        try:
-            gpu_info_json = json.loads(o.strip())
-            for card_name, card_data in gpu_info_json.items():
-                if to.pciDeviceAddress.lower() in card_data['PCI Bus'].lower():
-                    to.addonInfo["memory"] = card_data['VRAM Total Memory (B)']
-                    to.addonInfo["power"] = card_data['Average Graphics Package Power (W)']
-                    to.addonInfo["serialNumber"] = card_data['Serial Number']
-                    to.addonInfo["isDriverLoaded"] = True
-        except Exception as e:
-            logger.error("amd query gpu is error, %s " % e)
+
+        self._update_to_addon_info_from_gpu_infos(gpu.parse_amd_gpu_output(o), to)
 
     # moved from vm_plugin to host_plugin
     @kvmagent.replyerror
