@@ -186,7 +186,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
         # exec qga command
         cmd_file = self.VM_QGA_CONFIG_LINUX_CMD
-        ret, msg = qga.guest_exec_python(cmd_file)
+        ret, msg, _ = qga.guest_exec_python(cmd_file)
         if ret != 0:
             logger.debug("config vm {} by qga failed: {}".format(vm_uuid, msg))
             return 1, "config vm {} by qga failed: {}".format(vm_uuid, msg)
@@ -218,7 +218,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             cmd_file = self.VM_QGA_SET_HOSTNAME_EL6
         else:
             cmd_file = self.VM_QGA_SET_HOSTNAME
-        ret, msg = qga.guest_exec_python(cmd_file, [hostname, default_ip])
+        ret, msg, _ = qga.guest_exec_python(cmd_file, [hostname, default_ip])
         if ret != 0:
             logger.debug("set vm hostname {} by qga failed: {}".format(vm_uuid, msg))
             return 1, "set vm hostname {} by qga failed: {}".format(vm_uuid, msg)
@@ -242,7 +242,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             rsp.error = msg
         else:
             logger.debug("config vm {} by qga successfully, detail info {}".format(cmd.vmUuid, msg))
-            ret, msg = self.set_vm_hostname_by_qga(domain, cmd.hostName, cmd.defaultIP)
+            ret, msg = self.set_vm_hostname_by_qga(domain, cmd.hostname, cmd.defaultIP)
             if ret != 0:
                 rsp.success = False
                 rsp.error = msg
