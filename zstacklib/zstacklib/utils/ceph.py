@@ -23,6 +23,7 @@ QEMU_NBD_SOCKET_DIR = "/var/lock/"
 QEMU_NBD_SOCKET_PREFIX = "qemu-nbd-nbd"
 NBD_DEV_PREFIX = "/dev/nbd"
 SUPPORT_DEFER_DELETING = None
+from distutils.version import LooseVersion
 
 def get_fsid(conffile='/etc/ceph/ceph.conf'):
     import rados
@@ -402,3 +403,10 @@ class DefaultCephPoolCapacityGetter:
 pool_capacity_getter_mapping = {
     "zstone":ZStoneCephPoolCapacityGetter()
 }
+
+def get_version():
+    return shell.call("ceph version").split(" ")[2]
+
+def rbd_create_support_byte():
+    # ceph hammer not support in bytes
+    return get_ceph_manufacturer() != "open-source" or LooseVersion(get_version()) >= LooseVersion("10.0.0")
