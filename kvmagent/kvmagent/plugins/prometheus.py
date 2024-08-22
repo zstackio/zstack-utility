@@ -1757,6 +1757,12 @@ LoadPlugin virt
                         bash_errorout('collectdmon -- -C %s' % conf_path)
 
         def run_in_systemd(binPath, args, log):
+            def get_env_config(path):
+                if "node_exporter" in path:
+                    return "GOMAXPROCS=1"
+                else:
+                    return ""
+
             def get_systemd_name(path):
                 if "collectd_exporter" in path:
                     return "collectd_exporter"
@@ -1770,6 +1776,7 @@ LoadPlugin virt
             def reload_and_restart_service(service_name):
                 bash_errorout("systemctl daemon-reload && systemctl restart %s.service" % service_name)
 
+            service_env_config = get_env_config(binPath)
             service_name = get_systemd_name(binPath)
             service_path = '/etc/systemd/system/%s.service' % service_name
             memory_limit_config = ""
@@ -1782,6 +1789,7 @@ Description=prometheus %s
 After=network.target
 
 [Service]
+Environment="%s"
 ExecStart=/bin/sh -c '%s %s > %s 2>&1'
 ExecStop=/bin/sh -c 'pkill -TERM -f %s'
 
@@ -1790,7 +1798,7 @@ Restart=always
 RestartSec=30s
 [Install]
 WantedBy=multi-user.target
-''' % (service_name, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log, binPath, memory_limit_config)
+''' % (service_name, service_env_config, binPath, args, '/dev/null' if log.endswith('/pushgateway.log') else log, binPath, memory_limit_config)
 
             if not os.path.exists(service_path):
                 linux.write_file(service_path, service_conf, True)
