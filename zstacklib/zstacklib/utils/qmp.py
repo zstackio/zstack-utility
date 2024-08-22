@@ -8,11 +8,10 @@ QEMU_VERSION = qemu.get_version()
 
 
 def get_vm_block_nodes(domain_uuid):
-    r, o, err = bash.bash_roe("virsh qemu-monitor-command %s '{\"execute\":\"query-named-block-nodes\"}' --pretty" % domain_uuid)
-    if r != 0:
-        raise Exception("failed to query block nodes on vm[uuid:{}], libvirt error:{}".format(domain_uuid, err))
+    block_nodes, err = execute_qmp_command(domain_uuid, '{"execute":"query-named-block-nodes"}')
+    if err:
+        raise Exception(err)
 
-    block_nodes = jsonobject.loads(o)["return"]
     if not block_nodes:
         raise Exception("no block nodes found on vm[uuid:{}]".format(domain_uuid))
 
@@ -28,12 +27,11 @@ def get_block_node_name_and_file(domain_id):
 
 
 def get_yank_instances(vm):
-    r, o, e = execute_qmp_command(vm, '{"execute": "query-yank" }')
-    if r != 0:
+    results, err = execute_qmp_command(vm, '{"execute": "query-yank" }')
+    if err:
         logger.warn("query yank failed of vm[uuid: %s]" % vm)
         return None
 
-    results = json.loads(o)['return']
     return [result['node-name'] for result in results if result.get('type') == 'block-node']
 
 
@@ -49,10 +47,9 @@ def do_yank(vm):
 
 
 def get_block_job_ids(vm):
-    r, o, err = execute_qmp_command(vm, '{"execute":"query-block-jobs"}')
+    jobs, err = execute_qmp_command(vm, '{"execute":"query-block-jobs"}')
     if err:
         return
-    jobs = json.loads(o)['return']
     return [job['device'] for job in jobs]
 
 
@@ -63,7 +60,13 @@ def block_job_cancel(vm, device):
 
 @bash.in_bash
 def execute_qmp_command(domain_id, command):
-    return bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, qmp_subcmd(QEMU_VERSION, command)))
+    r, o, e = bash.bash_roe("virsh qemu-monitor-command %s '%s' --pretty" % (domain_id, qmp_subcmd(QEMU_VERSION, command)))
+    if r != 0:
+        return None, "Failed to execute qmp command '{}', vmUuid:{}, retcode:{}, stderr:{}".format(command, domain_id, r, e)
+    ret = json.loads(o.strip())
+    if "error" in ret:
+        return None, "Failed to execute qmp command '{}', vmUuid:{}, error:{}".format(command, domain_id, ret["error"])
+    return ret["return"], None
 
 
 def qmp_subcmd(qemu_version, s_cmd):
