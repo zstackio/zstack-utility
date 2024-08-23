@@ -1567,7 +1567,7 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
     if is_vif_on_bridge(bridge_name, interface):
         #recode bridge ip
         out = shell.call('ip addr show dev %s | grep "inet "' % bridge_name, exception=False)
-        
+
         #record old routes
         routes = []
         r_out = shell.call("ip route show dev %s | grep via | sed 's/onlink//g'" % bridge_name)
@@ -1576,7 +1576,7 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
                 routes.append(line)
 
         delete_bridge(bridge_name)
-        
+
         #mv ip on bridge to interface
         shell.call("ip link set %s up" % interface)
         if len(out.strip()) != 0:
@@ -1587,11 +1587,11 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
         if move_route:
             for r in routes:
                 shell.call('ip route add %s' % r)
-  
+
     else:
         logger.debug("bridge %s do not have interface %s. only delete bridge. " % (bridge_name,interface))
         delete_bridge(bridge_name)
-        
+
 
 def create_bridge(bridge_name, interface, move_route=True):
     if not is_network_device_existing(interface):
@@ -1620,7 +1620,7 @@ def create_bridge(bridge_name, interface, move_route=True):
     else:
         ip_link_set_net_device_master(interface, bridge_name)
 
-    #Set bridge MAC address as network device MAC address. It will avoid of 
+    #Set bridge MAC address as network device MAC address. It will avoid of
     # bridge MAC address is reset to other new added dummy network device's 
     # MAC address.
     shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
@@ -3113,3 +3113,35 @@ def compare_segmented_xxhash(src_path, dst_path, total_size, raise_exception=Fal
 def check_unixsock_connection(socket_path, timeout=10):
     # NOTE: -z option may not be supported in some lower versions of Ncat, such as 6.40
     return shell.run("nc -z -U %s -w %s" % (socket_path, timeout))
+
+
+class VmUsbManager(object):
+    def __init__(self):
+        self.usb_slots = {
+            0: 1,
+            1: 6,
+            2: 4
+        }
+        self.usb_version_map = {
+            1: {0, 2},
+            2: {1, 2},
+            3: {2}
+        }
+
+    def request_slot(self, usb_type):
+        if usb_type not in self.usb_version_map.keys():
+            raise Exception("Invalid USB type: %s" % usb_type)
+
+        bus_set = self.usb_version_map.get(usb_type)
+        for current_bus in bus_set:
+            if self.usb_slots[current_bus] > 0:
+                self.usb_slots[current_bus] -= 1
+                return current_bus
+
+        self.print_status()
+        raise Exception("No enough USB slots available")
+
+    def print_status(self):
+        logger.info("Current USB slot status:")
+        for usb_type, count in self.usb_slots.iteritems():
+            logger.info("bus:%s: %d" % (usb_type, count))
