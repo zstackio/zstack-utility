@@ -2278,14 +2278,14 @@ class ZstackLib(object):
 
             user_defined = self.zstack_repo == "false"
             if user_defined:
-                # zstack_repo is empty, will use system repo
-                # libselinux-python depend by ansible copy/file/template module
-                # when selinux enabled on host
-                yum_install_package("libselinux-python", self.host_post_info)
                 # Enable extra repo for install centos-release-qemu-ev in
                 # kvm.py
                 if self.distro_version >= 7 and self.zstack_releasever in centos:
                     self.copy_redhat_yum_repo()
+                # zstack_repo is empty, will use system repo
+                # libselinux-python depend by ansible copy/file/template module
+                # when selinux enabled on host
+                yum_install_package("libselinux-python", self.host_post_info)
                 # install epel-release
                 if self.distro in RPM_BASED_OS and self.zstack_releasever in centos:
                     self.enable_epel_yum_repo()
