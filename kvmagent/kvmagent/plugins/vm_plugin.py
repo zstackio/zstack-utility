@@ -3228,6 +3228,17 @@ class Vm(object):
                                                         % (qemu_img.subcmd('info'), volume)) == 0:
             raise kvmagent.KvmError('found internal snapshot in the backing chain of volume[path:%s].' % volume)
 
+
+    @staticmethod
+    def ensure_delta_snapshot_not_exceed(volume_install_path):
+        qcow2_chain_length = len(linux.qcow2_get_backing_chain(volume_install_path)) + 1
+        # ZSTAC-67846: too many snapshots will result in qmp 'query block' command to fail
+        if qcow2_chain_length >= 121:
+            raise Exception("the chain length of qcow2 %s has reached maximum length 121. Please modify the global config "
+                            "'incrementalSnapshot.maxNum' to a smaller value to ensure that the next snapshot "
+                            "is full snapshot or delete some incremental snapshots." % volume_install_path)
+
+
     def get_block_job_info(self, disk_path):
         status = self.domain.blockJobInfo(disk_path, 0)
         if status == -1:
@@ -3649,6 +3660,7 @@ class Vm(object):
         if full_snapshot:
             return take_full_snapshot()
         else:
+            Vm.ensure_delta_snapshot_not_exceed(previous_install_path)
             return take_delta_snapshot()
 
     def _do_block_stream_disk(self, task_spec, target_disk, disk_name):
@@ -8388,6 +8400,9 @@ class VmPlugin(kvmagent.KvmAgent):
                     'when taking an {4}'.format(cmd.snapshotJobs[0].vmInstanceUuid, cmd.snapshotJobs[0].deviceId, vm_state,
                     Vm.SNAPSHOT_VM_STATE_DICT[expected_snapshot_state], expected_snapshot_state))
 
+            volume_install_paths = map(lambda job: job.previousInstallPath, filter(lambda job: not job.full, cmd.snapshotJobs))
+            for volume_install_path in volume_install_paths:
+                Vm.ensure_delta_snapshot_not_exceed(volume_install_path)
             if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
                 rsp.snapshots = vm.take_live_volumes_delta_snapshots(cmd.snapshotJobs)
             else:
@@ -8510,6 +8525,7 @@ host side snapshot files chian:
             return install_path, new_volume_path
 
         def take_delta_snapshot_by_qemu_img_convert(previous_install_path, install_path):
+            Vm.ensure_delta_snapshot_not_exceed(previous_install_path)
             new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone_with_cmd(previous_install_path, new_volume_path, cmd)
