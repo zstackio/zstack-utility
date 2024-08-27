@@ -52,6 +52,7 @@ isInstallHostShutdownHook = 'false'
 isEnableKsm = 'none'
 restart_libvirtd = 'false'
 enable_spice_tls = None
+enable_cgroup_device_acl = None
 
 
 # get parameter from shell
@@ -516,6 +517,16 @@ def copy_kvm_files():
         # disable spice_tls
         replace_content(qemu_conf_dst, "regexp='^spice_tls_x509_cert_dir = \"/var/lib/zstack/kvm/package/spice-certs/\"' replace='#spice_tls_x509_cert_dir ='", host_post_info)
         replace_content(qemu_conf_dst, "regexp='^spice_tls = 1' replace='#spice_tls = 1'", host_post_info)
+
+    if enable_cgroup_device_acl == 'true':
+        replace_content(qemu_conf_dst, "regexp='^#(cgroup_device_acl = \[|\s*\"/dev/.*\",|\s*\])' replace='\\1'", host_post_info)
+
+        (status, stdout) = run_remote_command("ls /dev/infiniband/", host_post_info, return_status=True, return_output=True)
+        if status is True:
+            infiniband_devices = ['/dev/infiniband/' + item for item in stdout.split('\n')]
+            formatted_devices = ',\\n    '.join('\\"%s\\"' % device for device in infiniband_devices)
+            add_infiniband_devices_args = "regexp='(cgroup_device_acl\s*=\s*\[[^\]]*?,\s*)' replace='\\1" + formatted_devices + ",\\n    '"
+            replace_content(qemu_conf_dst, add_infiniband_devices_args, host_post_info)
 
     # copy zstacklib pkg
     zslib_src = os.path.join("files/zstacklib", pkg_zstacklib)
