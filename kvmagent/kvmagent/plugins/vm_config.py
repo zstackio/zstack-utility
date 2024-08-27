@@ -5,6 +5,8 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils.qga import VmQga
+from zstacklib.utils import pci
+from zstacklib.utils import gpu
 
 from kvmagent import kvmagent
 
@@ -133,11 +135,17 @@ class GetGuestToolsStateResponse(kvmagent.AgentResponse):
         super(GetGuestToolsStateResponse, self).__init__()
         self.states = None
 
+class GetVmGpuInfoResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetVmGpuInfoResponse, self).__init__()
+        self.gpuInfos = []
+
 
 class VmConfigPlugin(kvmagent.KvmAgent):
     VM_CONFIG_PORTS = "/vm/configsync/ports"
     VM_GUEST_TOOLS_STATE = "/vm/guesttools/state"
     VM_SET_HOSTNAME = "/vm/set/hostname"
+    VM_GPU_INFO_SYNC = "/vm/gpuinfo/sync"
 
     VM_QGA_PARAM_FILE = "/usr/local/zstack/zs-nics.json"
     VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-tools/config_linux.py"
@@ -278,11 +286,120 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def map_pci_addresses_in_gpu_info(self, gpuinfos, qga):
+        gpus = []
+        pci_mapping = pci.get_pci_passthrough_mapping(qga.domain)
+        for gpuinfo in gpuinfos:
+            pci_device_address = gpuinfo["pciAddress"]
+            if pci_device_address not in pci_mapping:
+                continue
+            gpuinfo["pciAddress"] = pci_mapping[pci_device_address]
+            gpus.append(gpuinfo)
+        return gpus
+
+    def get_vm_nvidia_gpu_info_by_guesttool(self, qga):
+        cmd = gpu.get_nvidia_gpu_basic_info_cmd("mswindows" in qga.os)
+        gpu_info_output = qga.guest_exec_cmd_no_exitcode(cmd)
+
+        if gpu_info_output is None:
+            return []
+
+        return self.map_pci_addresses_in_gpu_info(gpu.parse_nvidia_gpu_output(gpu_info_output), qga)
+
+    def get_vm_amd_gpu_info_by_guesttool(self, qga):
+        gpuinfos = []
+        cmd = gpu.get_amd_gpu_basic_info_cmd("mswindows" in qga.os)
+        gpu_info_output = qga.guest_exec_cmd_no_exitcode(cmd)
+        if gpu_info_output is None:
+            return gpuinfos
+
+        return self.map_pci_addresses_in_gpu_info(gpu.parse_amd_gpu_output(gpu_info_output), qga)
+
+    def get_vm_hy_gpu_info_by_guesttool(self, qga):
+        gpuinfos = []
+        cmd = gpu.get_hy_gpu_basic_info_cmd("mswindows" in qga.os)
+        gpu_info_output = qga.guest_exec_cmd_no_exitcode(cmd)
+        if gpu_info_output is None:
+            return gpuinfos
+        return self.map_pci_addresses_in_gpu_info(gpu.parse_hy_gpu_output(gpu_info_output), qga)
+
+    def get_vm_tianshu_gpu_info_by_guesttool(self, qga):
+        gpuinfos = []
+        cmd = gpu.get_tianshu_gpu_basic_info_cmd("mswindows" in qga.os)
+        gpu_info_output = qga.guest_exec_cmd_no_exitcode(cmd)
+        if gpu_info_output is None:
+            return gpuinfos
+
+        return self.map_pci_addresses_in_gpu_info(gpu.parse_tianshu_gpu_output(gpu_info_output), qga)
+
+    def get_vm_hauwei_gpu_info_by_guesttool(self, qga):
+        gpuinfos = []
+        npu_id_output = qga.guest_exec_cmd_no_exitcode(gpu.get_huawei_gpu_npu_id_cmd())
+        if npu_id_output is None:
+            return gpuinfos
+
+        npu_id = gpu.get_huawei_npu_id(npu_id_output)
+        if npu_id is None:
+            return gpuinfos
+
+        npu_info_board_output = qga.guest_exec_cmd_no_exitcode(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
+        if npu_info_board_output is None:
+            return gpuinfos
+
+        return self.map_pci_addresses_in_gpu_info(gpu.parse_huawei_gpu_output_by_npu_id(npu_info_board_output), qga)
+
+    def get_vm_gpu_info_by_guesttool(self, domain, vendors):
+        vm_uuid = domain.name()
+        qga = VmQga(domain)
+        if qga.state != VmQga.QGA_STATE_RUNNING:
+            return 1, "qga is not running for vm {}".format(vm_uuid)
+
+        if qga.os not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() or \
+                qga.os_version not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
+            return 1, "not support for os {} version {}".format(qga.os, qga.os_version)
+        gpuinfos = []
+        vendor_method_map = {
+            "NVIDIA": self.get_vm_nvidia_gpu_info_by_guesttool,
+            "AMD": self.get_vm_amd_gpu_info_by_guesttool,
+            "Haiguang": self.get_vm_hy_gpu_info_by_guesttool,
+            "Huawei": self.get_vm_hauwei_gpu_info_by_guesttool,
+            "TianShu": self.get_vm_tianshu_gpu_info_by_guesttool,
+        }
+
+        for vendor in vendors:
+            if vendor in vendor_method_map:
+                gpus = vendor_method_map[vendor](qga)
+                if any(gpus):
+                    gpuinfos.extend(gpus)
+
+        return 0, gpuinfos
+
+    @kvmagent.replyerror
+    def vm_gpu_info_sync(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetVmGpuInfoResponse()
+
+        domain = get_virt_domain(cmd.vmUuid)
+        if not domain or not domain.isActive():
+            rsp.success = False
+            rsp.error = 'vm {} not running'.format(cmd.vmUuid)
+            return jsonobject.dumps(rsp)
+
+        return_code, ret = self.get_vm_gpu_info_by_guesttool(domain, cmd.vendors)
+        if return_code != 0:
+            rsp.success = False
+            rsp.error = ret
+            return jsonobject.dumps(rsp)
+
+        rsp.gpuInfos = ret
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.VM_CONFIG_PORTS, self.vm_config_ports)
         http_server.register_async_uri(self.VM_GUEST_TOOLS_STATE, self.vm_guest_tools_state)
         http_server.register_async_uri(self.VM_SET_HOSTNAME, self.vm_set_hostname)
+        http_server.register_async_uri(self.VM_GPU_INFO_SYNC, self.vm_gpu_info_sync)
 
     def stop(self):
         pass
