@@ -6371,8 +6371,8 @@ def get_vm_migration_caps(domain_id, cap_key):
         return None
 
     for cap in caps:
-        if cap.capability == cap_key:
-            return cap.state
+        if cap["capability"] == cap_key:
+            return cap["state"]
     return None
 
 
