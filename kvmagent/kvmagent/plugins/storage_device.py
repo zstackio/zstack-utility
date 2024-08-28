@@ -585,13 +585,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def raid_smart(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RaidPhysicalDriveSmartRsp()
-
-        r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
-        if r != 0:
-            raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
-
         bus_number = self.get_bus_number()
-        drive = self.get_megaraid_device_info_megacli("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
+        drive = self.get_megaraid_device_via_device_number_and_bus_number(cmd.deviceNumber, bus_number)
         if drive.wwn != cmd.wwn:
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
                             (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
@@ -651,16 +646,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        if misc.isHyperConvergedHost():
-            r, o, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-            if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
-                self.mega_raid_locate_storcli(cmd, o)
-                return jsonobject.dumps(rsp)
-        else:
-            r, o, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
-            if r == 0 and "Adapter #" in o:
-                self.mega_raid_locate_megacli(cmd, o)
-                return jsonobject.dumps(rsp)
+        r, o, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
+        if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
+            self.mega_raid_locate_storcli(cmd, o)
+            return jsonobject.dumps(rsp)
 
         r, o, e = bash.bash_roe("arcconf list")
         if r == 0 and "Controller ID" in o:
@@ -748,12 +737,8 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RaidPhysicalDriveSmartTestRsp()
 
-        r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
-        if r != 0:
-            raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
-
         bus_number = self.get_bus_number()
-        drive = self.get_megaraid_device_info_megacli("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
+        drive = self.get_megaraid_device_via_device_number_and_bus_number(cmd.deviceNumber, bus_number)
         if drive.wwn != cmd.wwn:
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
                             (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
@@ -815,10 +800,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = RaidScanRsp()
         r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
         if r == 0 and o.strip() != "":
-            if misc.isHyperConvergedHost():
-                rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_storcli(o)
-            else:
-                rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_megacli(o)
+            rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_storcli(o)
             return jsonobject.dumps(rsp)
 
         r, o, e = bash.bash_roe("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
@@ -1659,3 +1641,17 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 result.append(d)
        
         return result
+
+    @bash.in_bash
+    def get_megaraid_device_via_device_number_and_bus_number(self, device_number, bus_number):
+        # type: (int, int) -> RaidPhysicalDriveStruct
+        r, vd_info, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
+        if r != 0:
+            raise Exception("can not execute storcli64: %s, stdout: %s, stderr: %s" % (r, vd_info, e))
+        # If a RAID-built disk is pulled out, this cmd will return 45.
+        pd_info = bash.bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
+
+        drive = self.get_megaraid_device_info_storcli("/dev/bus/%d -d megaraid,%d" % (bus_number, device_number), vd_info, pd_info)
+        return drive
+
+
