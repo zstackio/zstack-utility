@@ -2565,6 +2565,17 @@ done
             return
         self._update_to_addon_info_from_gpu_infos(gpu.parse_tianshu_gpu_output(o), to)
 
+        # support product name(^_^)
+        r, o, e = bash_roe(gpu.get_tianshu_gpu_product_name_cmd())
+        if r != 0:
+            logger.error("ixsmi query gpu product name is error, %s " % e)
+            return
+
+        product_name = gpu.get_tianshu_product_name(o)
+        if product_name:
+            to.device = product_name.split(" ")[1]
+            to.name = product_name
+
     @in_bash
     def _collect_huawei_gpu_info(self, to):
         if shell.run("which npu-smi") != 0:
