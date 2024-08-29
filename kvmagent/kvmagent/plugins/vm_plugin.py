@@ -133,37 +133,148 @@ class NicTO(object):
         self.deviceId = None
 
 
-class VolumeTO(object):
+class DomainVolume(object):
     def __init__(self):
-        self.installPath = None
-        self.deviceType = None
-        self.format = None
-        self.is_cdrom = False
+        self.type = ''
+        self.source = ''
+        self.source_type =''
+        self.driver_type = ''
+        self.backing_store = None
+        self.deviceType = ''
+        self.disk_device = ''
 
-    @staticmethod
-    def from_xmlobject(xml_obj):
-        # type: (etree.Element) -> VolumeTO
+        self._origin_xml_obj = None
 
-        if xml_obj.attrib['type'] == 'file':
-            source = xml_obj.find('source')
-            if source is not None and 'file' in source.attrib:
-                v = VolumeTO()
-                v.installPath = source.attrib['file']
-                v.deviceType = "file"
-                v.is_cdrom = xml_obj.attrib['device'] == 'cdrom'
-                driver = xml_obj.find('driver')
-                if driver is not None and 'type' in driver.attrib:
-                    v.format = driver.attrib['type']
-                return v
+    @classmethod
+    def from_xmlobject(cls, xml_obj):
+        ret = cls()
+        ret._origin_xml_obj = xml_obj
+        ret.type = xml_obj.attrib['type']
+        ret.deviceType = ret.type
+        ret.disk_device = xml_obj.attrib['device']
+        ret.backing_store = DomainVolumeBackingStore.from_xmlobject(xml_obj)
 
-    # TODO remove it, should converted in MN
-    @staticmethod
-    def get_volume_actual_installpath(install_path):
-        if install_path.startswith('sharedblock'):
-            return shared_block_to_file(install_path)
-        elif install_path.startswith('block'):
-            return block_to_path(install_path)
-        return install_path
+        source = xml_obj.find('source')
+        if source is None:
+            return ret
+        if 'file' in source.attrib:
+            ret.source_type = 'file'
+            ret.source = source.attrib['file']
+        elif 'dev' in source.attrib:
+            ret.source_type = 'dev'
+            ret.source = source.attrib['dev']
+
+        driver = xml_obj.find('driver')
+        if driver is not None and 'type' in driver.attrib:
+            ret.driver_type = driver.attrib['type']
+        return ret
+
+    @property
+    def installPath(self):
+        return self.source
+
+    @property
+    def format(self):
+        return self.driver_type
+
+    @property
+    def is_cdrom(self):
+        return self.disk_device == 'cdrom'
+
+    def over_incorrect_driver(self):
+        return block_device_use_block_type() \
+            and (block_volume_over_incorrect_driver(self) \
+                or self._backing_store_over_incorrect_driver())
+
+    def _backing_store_over_incorrect_driver(self):
+        return False if not self.backing_store else self.backing_store.over_incorrect_driver()
+
+
+class DomainVolumeBackingStore(object):
+    def __init__(self):
+        self.type = ''
+        self.format_type = ''
+        self.source = ''
+        self.source_type = ''
+        self.backing_store = None
+
+        self._origin_xml_obj = None
+
+    @property
+    def deviceType(self):
+        return self.type
+
+    @property
+    def installPath(self):
+        return self.source
+
+    @classmethod
+    def from_xmlobject(cls, xml_obj):
+        '''
+    <disk type='block' device='disk' snapshot='external'>
+      <driver name='qemu' type='qcow2' cache='none'/>
+      <source dev='/dev/94db02a247614ddaaf574076c6b58677/dc3641c1c7824e9bbbfdd906e7d86177'/>
+      <backingStore type='file' index='1'>
+        <format type='qcow2'/>
+        <source file='/dev/94db02a247614ddaaf574076c6b58677/d63ebad7d76e45ccbd69b192f26f7c8a'/>
+        <backingStore type='block' index='2'>
+          <format type='qcow2'/>
+          <source dev='/dev/94db02a247614ddaaf574076c6b58677/176756835c27443e95f6a34d49eb0628'/>
+          <backingStore/>
+        </backingStore>
+      </backingStore>
+      <target dev='vda' bus='virtio'/>
+      <serial>d63ebad7d76e45ccbd69b192f26f7c8a</serial>
+      <boot order='1'/>
+      <alias name='virtio-disk0'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x0a' function='0x0'/>
+    </disk>
+        '''
+        backing_store = xml_obj.find('backingStore')
+        if backing_store is None or not backing_store.attrib:
+            return None
+        ret = cls()
+        ret._origin_xml_obj = backing_store
+        ret.type = backing_store.attrib['type']
+
+        backing_store_format = backing_store.find('format')
+        ret.format_type = backing_store_format.attrib['type']
+
+        source = backing_store.find('source')
+        if 'file' in source.attrib:
+            ret.source_type = 'file'
+            ret.source = source.attrib['file']
+        elif 'dev' in source.attrib:
+            ret.source_type = 'dev'
+            ret.source = source.attrib['dev']
+
+        ret.backing_store = cls.from_xmlobject(backing_store)
+        return ret
+
+    def over_incorrect_driver(self):
+        if not self.backing_store:
+            return self._over_incorrect_driver()
+        return self._over_incorrect_driver() \
+            or self.backing_store.over_incorrect_driver()
+
+    def _over_incorrect_driver(self):
+        return block_volume_over_incorrect_driver(self)
+
+    def update_backing_store_type_to_block(self):
+        if self.backing_store is not None:
+            self.backing_store.update_backing_store_type_to_block()
+
+        if self._over_incorrect_driver():
+            self._update_backing_store_type_to_block()
+
+    def _update_backing_store_type_to_block(self):
+        bs = self._origin_xml_obj
+        bs.attrib['type'] = 'block'
+        self.type = 'block'
+
+        source = bs.find('source')
+        source.attrib = {'dev': self.source}
+        self.source_type = 'dev'
 
 
 class RemoteStorageFactory(object):
@@ -2157,11 +2268,14 @@ def get_cpu_memory_used_by_running_vms():
 def cleanup_stale_vnc_iptable_chains():
     VncPortIptableRule().delete_stale_chains()
 
-def shared_block_to_file(sbkpath):
-    return sbkpath.replace("sharedblock:/", "/dev")
 
-def block_to_path(blockpath):
-    return blockpath.replace("block://", "/dev/disk/by-id/wwn-0x")
+def get_volume_actual_installpath(install_path):
+    if install_path.startswith('sharedblock'):
+        return install_path.replace("sharedblock:/", "/dev")
+    elif install_path.startswith('block'):
+        return install_path.replace("block://", "/dev/disk/by-id/wwn-0x")
+    return install_path
+
 
 class VmOperationJudger(object):
     def __init__(self, op):
@@ -3321,7 +3435,7 @@ class Vm(object):
         return d and n
 
     def _get_target_disk_by_path(self, installPath, is_exception=True):
-        installPath = VolumeTO.get_volume_actual_installpath(installPath)
+        installPath = get_volume_actual_installpath(installPath)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
             if not xmlobject.has_element(disk, 'source'):
@@ -3362,7 +3476,7 @@ class Vm(object):
         return target_disk_alias_names
 
     def _get_target_disk(self, volume, is_exception=True):
-        volume.installPath = VolumeTO.get_volume_actual_installpath(volume.installPath)
+        volume.installPath = get_volume_actual_installpath(volume.installPath)
         volume = file_volume_check(volume)
 
         for disk in self.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -3628,8 +3742,8 @@ class Vm(object):
             return base
 
         target_disk, disk_name = self._get_target_disk(volume)
-        top = VolumeTO.get_volume_actual_installpath(task_spec.top)
-        base = VolumeTO.get_volume_actual_installpath(task_spec.base)
+        top = get_volume_actual_installpath(task_spec.top)
+        base = get_volume_actual_installpath(task_spec.base)
         install_path = VmPlugin.get_source_file_by_disk(target_disk)
         active_commit = top == install_path
         with BlockCommitDaemon(task_spec, self, disk_name, top=top, base=base, active_commit=active_commit) as d:
@@ -3648,10 +3762,17 @@ class Vm(object):
         first_snapshot = full_snapshot and (back_file_len == 1 or back_file_len == 0)
 
         def take_delta_snapshot():
+            backing_store_type = target_disk.type_
+            source_type = 'file' if target_disk.type_ == 'file' else 'dev'
+            if block_device_use_block_type() \
+                and install_path.startswith('/dev/'):
+                backing_store_type = 'block'
+                source_type = 'dev'
+
             snapshot = etree.Element('domainsnapshot')
             disks = e(snapshot, 'disks')
-            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
-            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': install_path})
+            d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': backing_store_type})
+            e(d, 'source', None, attrib={source_type: install_path})
             e(d, 'driver', None, attrib={'type': 'qcow2'})
 
             # QEMU 2.3 default create snapshots on all devices
@@ -3722,7 +3843,7 @@ class Vm(object):
 
     def block_stream_disk(self, task_spec, volume):
         target_disk, disk_name = self._get_target_disk(volume)
-        top = VolumeTO.get_volume_actual_installpath(volume.installPath)
+        top = get_volume_actual_installpath(volume.installPath)
         with MergeSnapshotDaemon(task_spec, self, disk_name, top=top):
             self._do_block_stream_disk(task_spec, target_disk, disk_name)
 
@@ -4112,7 +4233,7 @@ class Vm(object):
             ic.iso = iso
             cdrom = ic.to_xmlobject(dev, bus)
         else:
-            iso.path = VolumeTO.get_volume_actual_installpath(iso.path)
+            iso.path = get_volume_actual_installpath(iso.path)
             if iso.path.startswith('iscsi://'):
                 iso.path = iscsi.connect_iscsi_target(iso.path)
                 iso.type = 'block'
@@ -6507,7 +6628,7 @@ def get_block_file_content_by_disk_name(domain_id, disk_name):
 def check_install_path_by_qmp(domain_id, disk_name, path):
     file_content = get_block_file_content_by_disk_name(domain_id, disk_name)
     logger.info("get %s file content from qmp: %s" % (disk_name, file_content))
-    r_path = VolumeTO.get_volume_actual_installpath(path)
+    r_path = get_volume_actual_installpath(path)
     if r_path in file_content:
         return True
 
@@ -8134,10 +8255,16 @@ class VmPlugin(kvmagent.KvmAgent):
             e(cdrom, 'readonly', None)
             return cdrom
 
+        block_backing_store = None
         if volume is None:
-            volume = VolumeTO.from_xmlobject(old_disk)
-            if not (volume and block_volume_over_incorrect_driver(volume) and block_device_use_block_type()):
+            volume = DomainVolume.from_xmlobject(old_disk)
+            if not volume.over_incorrect_driver():
                 return old_disk  # no change
+
+        # vm created by ISO image or storage migrated may not have backing store info
+        if volume.backing_store is not None:
+            volume.backing_store.update_backing_store_type_to_block()
+            block_backing_store = volume.backing_store._origin_xml_obj
 
         driver_type = volume.format if volume.format else 'qcow2'
         volume = file_volume_check(volume)
@@ -8156,6 +8283,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 child = ele.find(c.tag)
                 if child is not None: ele.remove(child)
                 ele.append(c)
+
+        if block_backing_store is not None:
+            ele.append(block_backing_store)
 
         logger.info("updated disk XML: " + etree.tostring(ele))
         return ele
@@ -9112,8 +9242,8 @@ host side snapshot files chian:
     @kvmagent.replyerror
     def block_commit(self, req):
         def block_commit_with_qemu_img():
-            top = VolumeTO.get_volume_actual_installpath(cmd.top)
-            base = VolumeTO.get_volume_actual_installpath(cmd.base)
+            top = get_volume_actual_installpath(cmd.top)
+            base = get_volume_actual_installpath(cmd.base)
             linux.qcow2_commit(top, base)
             return base
 
