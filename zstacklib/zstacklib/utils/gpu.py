@@ -98,17 +98,26 @@ def parse_tianshu_gpu_output(output):
             continue
         infos = part.split(',')
         gpuinfo = {}
-        pci_device_address = info[0].strip()
+        pci_device_address = infos[0].strip()
         if len(pci_device_address.split(':')[0]) == 8:
             pci_device_address = pci_device_address[4:].lower()
 
         gpuinfo["pciAddress"] = pci_device_address
         gpuinfo["memory"] = infos[1].strip()
-        gpuinfo["power"] = info[2].strip()
+        gpuinfo["power"] = infos[2].strip()
         gpuinfo["serialNumber"] = infos[3].strip()
         gpuinfos.append(gpuinfo)
 
     return gpuinfos
+
+def get_tianshu_product_name(output):
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "Product Name" in line:
+            return line.split(":")[1].strip()
+    return None
 
 def get_nvidia_gpu_basic_info_cmd(iswindows = False):
     cmd = "nvidia-smi --query-gpu=gpu_bus_id,memory.total,power.limit,gpu_serial --format=csv,noheader"
@@ -130,6 +139,12 @@ def get_hy_gpu_basic_info_cmd(iswindows = False):
 
 def get_tianshu_gpu_basic_info_cmd(iswindows = False):
     cmd = "ixsmi --query-gpu=gpu_bus_id,memory.total,gpu.power.limit,gpu_serial --format=csv,noheader"
+    if iswindows:
+        cmd = cmd.replace(" ", "|")
+    return cmd
+
+def get_tianshu_gpu_product_name_cmd(iswindows = False):
+    cmd = "ixsmi -q |grep 'Product Name'"
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd
