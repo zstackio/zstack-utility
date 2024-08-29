@@ -87,6 +87,8 @@ def parse_huawei_gpu_output_by_npu_id(output):
             gpuinfo["pciAddress"] = line.partition(": ")[-1].strip().lower()
         elif "DDR Capacity(MB)" in line:
             gpuinfo["memory"] = line.split(":")[1].strip() + " MB"
+        elif "Power Dissipation" in line:
+            gpuinfo["power"] = line.split(":")[1].strip()
 
     gpuinfos.append(gpuinfo)
     return gpuinfos
@@ -138,7 +140,7 @@ def get_huawei_gpu_npu_id_cmd():
     return "npu-smi info -l"
 
 def get_huawei_gpu_basic_info_cmd(npu_id, iswindows = False):
-    cmd = "npu-smi info -t board -i %s;npu-smi info -i %s -t memory" % (npu_id, npu_id)
+    cmd = "npu-smi info -t board -i {0};npu-smi info -i {0} -t memory;npu-smi info -t power -i {0}".format(npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd
