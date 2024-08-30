@@ -1590,6 +1590,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def cancel_block_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.cancel_fencer(cmd.uuid)
+        bash.bash_roe("pkill -15 -f rbd_rw.py")
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
@@ -1689,9 +1690,9 @@ class HaPlugin(kvmagent.KvmAgent):
                 rbd_controller.init()
                 logger.debug("rbd start run fencer list :%s" % ",".join(fencer_list))
                 while self.run_fencer(ps_uuid, created_time):
-                    time.sleep(cmd.interval)
                     ha_fencer.exec_fencer_list(fencer_init, update_fencer)
                     update_fencer = False
+                    time.sleep(cmd.interval)
 
                 logger.debug('stop self-fencer on pool %s of rbd storage' % pool_name)
             except Exception as e:
