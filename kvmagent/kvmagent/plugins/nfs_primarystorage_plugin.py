@@ -169,6 +169,7 @@ class GetVolumeBaseImagePathRsp(NfsResponse):
     def __init__(self):
         super(GetVolumeBaseImagePathRsp, self).__init__()
         self.path = None
+        self.otherPaths = []
         self.size = None
 
 class GetBackingChainRsp(NfsResponse):
@@ -484,12 +485,18 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         if not os.path.basename(cmd.volumeInstallDir).endswith(cmd.volumeUuid):
             raise Exception('maybe you pass a wrong install dir')
 
-        path = linux.get_qcow2_base_image_recusively(cmd.volumeInstallDir, cmd.imageCacheDir)
-        if not path:
-            return jsonobject.dumps(rsp)
+        paths = linux.get_qcow2_base_images_recusively(cmd.volumeInstallDir, cmd.imageCacheDir)
+        current_chain = linux.qcow2_get_file_chain(cmd.volumeInstallPath)
 
-        rsp.path = path
-        rsp.size = linux.get_qcow2_file_chain_size(path)
+        for path in current_chain:
+            real_path = os.path.realpath(path)
+            if real_path in paths:
+                rsp.path = real_path
+                rsp.size = linux.get_qcow2_file_chain_size(rsp.path)
+                paths.remove(real_path)
+                break
+
+        rsp.otherPaths = list(paths)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

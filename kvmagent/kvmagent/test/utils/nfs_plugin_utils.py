@@ -54,3 +54,13 @@ def migrate_bits(srcFolderPath, dstFolderPath, independentPath=False, filtPaths=
         "mountPath": mountPath,
         "kvmHostAddons":kvmHostAddons
     }))
+
+
+@misc.return_jsonobject()
+def get_volume_base_image(volumeInstallPath, volumeInstallDir, imageCacheDir, volumeUuid):
+    return NFS_PLUGIN.get_volume_base_image_path(misc.make_a_request({
+        "volumeInstallPath": volumeInstallPath,
+        "volumeInstallDir": volumeInstallDir,
+        "imageCacheDir": imageCacheDir,
+        "volumeUuid": volumeUuid
+    }))
