@@ -93,6 +93,15 @@ def parse_huawei_gpu_output_by_npu_id(output):
     gpuinfos.append(gpuinfo)
     return gpuinfos
 
+def get_huawei_product_type(output):
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "Product Type" in line:
+            return line.split(":")[1].strip()
+    return None
+
 def parse_tianshu_gpu_output(output):
     gpuinfos = []
     for part in output.split('\n'):
@@ -156,6 +165,12 @@ def get_huawei_gpu_npu_id_cmd():
 
 def get_huawei_gpu_basic_info_cmd(npu_id, iswindows = False):
     cmd = "npu-smi info -t board -i {0};npu-smi info -i {0} -t memory;npu-smi info -t power -i {0}".format(npu_id)
+    if iswindows:
+        cmd = cmd.replace(" ", "|")
+    return cmd
+
+def get_huawei_gpu_product_name_cmd(npu_id, iswindows = False):
+    cmd = "npu-smi info -t product -i {0}".format(npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd

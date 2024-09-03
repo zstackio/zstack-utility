@@ -2605,6 +2605,16 @@ done
             return
         self._update_to_addon_info_from_gpu_infos(gpu.parse_huawei_gpu_output_by_npu_id(o), to)
 
+        r, o, e = bash_roe(gpu.get_huawei_gpu_product_name_cmd(npu_id))
+        if r != 0:
+            logger.error("npu-smi query gpu product type is error, %s " % e)
+            return
+
+        product_type = gpu.get_huawei_product_type(o)
+        if product_type:
+            to.device = "-"
+            to.name = product_type
+
     @in_bash
     def _collect_haiguang_gpu_info(self, to):
         if shell.run("which hy-smi") != 0:
