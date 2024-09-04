@@ -1,8 +1,10 @@
 from zstacklib.utils import shell
 from distutils.version import LooseVersion
 import json
+import re
 
 __QEMU_IMG_VERSION = None
+__QEMU_IMG_RELEASE_VERSION = None
 
 class CheckResult(object):
     def __init__(self, offset, t_clusters, check_erorrs, a_clusters, filename, format):
@@ -21,6 +23,15 @@ def get_version():
 
     return __QEMU_IMG_VERSION
 
+# qemu-img version 4.2.0 (qemu-kvm-4.2.0-640.g70d8f25.el7)
+# return 4.2.0-640
+def get_release_version():
+    global __QEMU_IMG_RELEASE_VERSION
+    if not __QEMU_IMG_RELEASE_VERSION:
+        version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 4")
+        __QEMU_IMG_RELEASE_VERSION = get_version() + "-" + re.search(r'%s-(\d+)' % get_version(), version).group(1)
+    return __QEMU_IMG_RELEASE_VERSION
+
 def subcmd(subcmd):
     options = ''
     if LooseVersion(get_version()) >= LooseVersion('2.10.0'):
@@ -38,6 +49,9 @@ def get_check_result(path):
 
 def take_default_backing_fmt_for_convert():
     return LooseVersion(get_version()) <= LooseVersion("6.0.0")
+
+def resize_backing_before_rebase():
+    return LooseVersion(get_release_version()) < LooseVersion("6.2.0-227")
 
 
 
