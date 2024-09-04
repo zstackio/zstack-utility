@@ -89,6 +89,7 @@ MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_s
 
 MIPS64EL_CPU_MODEL = "Loongson-3A4000-COMP"
 LOONGARCH64_CPU_MODEL = "Loongson-3A5000"
+MAX_PERIOD = "1000000"
 
 class RetryException(Exception):
     pass
@@ -300,6 +301,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.memBalloon = None # type:VirtualDeviceInfo
         self.suspendToRam = None
         self.suspendToDisk = None
+        self.vmCpuQuota = None
 
 class StartVmResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -837,6 +839,10 @@ class UpdateVmPriorityRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(UpdateVmPriorityRsp, self).__init__()
 
+class UpdateVmCpuQuotaRsp(kvmagent.AgentResponse):
+    def _init_(self):
+        super(UpdateVmCpuQuotaRsp, self)._init_()
+        
 class BlockStreamResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BlockStreamResponse, self).__init__()
@@ -4601,10 +4607,13 @@ class Vm(object):
                 e(backing, "access", attrib={'mode': 'shared'})
 
         def make_cpu():
-            if use_numa:
-                root = elements['root']
-                tune = e(root, 'cputune')
+            root = elements['root']
+            tune = e(root, 'cputune')
+            e(tune, 'period', MAX_PERIOD)
+            quota_value = str(cmd.vmCpuQuota) if cmd.vmCpuQuota else MAX_PERIOD
+            e(tune, 'quota', quota_value)
 
+            if use_numa:
                 if cmd.addons and cmd.addons.hasattr("ioThreadPins") and cmd.addons.ioThreadPins:
                     for pin in cmd.addons.ioThreadPins:
                         e(tune, "iothreadpin", attrib={"iothread": str(pin["ioThreadId"]), "cpuset": pin["pin"]})
@@ -4691,9 +4700,7 @@ class Vm(object):
 
                 eval("on_{}".format(HOST_ARCH))()
             else:
-                root = elements['root']
                 e(root, 'vcpu', str(cmd.cpuNum), {'placement': 'static'})
-                tune = e(root, 'cputune')
 
                 if cmd.addons and cmd.addons.hasattr("ioThreadPins") and cmd.addons.ioThreadPins:
                     for pin in cmd.addons.ioThreadPins:
@@ -6344,6 +6351,7 @@ class VmPlugin(kvmagent.KvmAgent):
     CHECK_MOUNT_DOMAIN_PATH = "/check/mount/domain"
     KVM_RESIZE_VOLUME_PATH = "/volume/resize"
     VM_PRIORITY_PATH = "/vm/priority"
+    VM_UPDATE_CPU_QUOTA_PATH = "/vm/cpu/quota"
     ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH = "/vm/guesttools/attachiso"
     DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH = "/vm/guesttools/detachiso"
     GET_VM_GUEST_TOOLS_INFO_PATH = "/vm/guesttools/getinfo"
@@ -9147,7 +9155,22 @@ host side snapshot files chian:
             pid = linux.find_vm_pid_by_uuid(pcs.vmUuid)
             linux.set_vm_priority(pid, pcs)
         return jsonobject.dumps(rsp)
-
+    
+    @kvmagent.replyerror
+    def set_vm_cpu_quota(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = UpdateVmCpuQuotaRsp()
+        
+        command = "virsh schedinfo %s --set vcpu_quota=%s" % (cmd.vmUuid, str(cmd.vmCpuQuota))
+        r, o, e = bash.bash_roe(command)
+        if r != 0:
+            rsp.success = False
+            rsp.error = "Command failed: %s, stdout: %s, stderr: %s" % (command, o, e)
+            logger.debug("Failed to update vm cpu quota: %s" % rsp.error)
+        else:
+            logger.debug("Successfully updated vm cpu quota to %s" % str(cmd.vmCpuQuota))
+        return jsonobject.dumps(rsp)  
+        
     @kvmagent.replyerror
     def kvm_resize_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -10237,6 +10260,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.CHECK_MOUNT_DOMAIN_PATH, self.check_mount_domain)
         http_server.register_async_uri(self.KVM_RESIZE_VOLUME_PATH, self.kvm_resize_volume)
         http_server.register_async_uri(self.VM_PRIORITY_PATH, self.vm_priority)
+        http_server.register_async_uri(self.VM_UPDATE_CPU_QUOTA_PATH, self.set_vm_cpu_quota)
         http_server.register_async_uri(self.ATTACH_GUEST_TOOLS_ISO_TO_VM_PATH, self.attach_guest_tools_iso_to_vm)
         http_server.register_async_uri(self.DETACH_GUEST_TOOLS_ISO_FROM_VM_PATH, self.detach_guest_tools_iso_from_vm)
         http_server.register_async_uri(self.GET_VM_GUEST_TOOLS_INFO_PATH, self.get_vm_guest_tools_info)

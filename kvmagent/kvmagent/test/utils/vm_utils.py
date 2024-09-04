@@ -124,7 +124,8 @@ startVmCmdBody = {
         "qcow2Options": " -o cluster_size=2097152 "
     },
     "x2apic": True,
-    "acpi": True
+    "acpi": True,
+    "vmCpuQuota": 1000000
 }
 
 migrate_vm_cmd_body = {
