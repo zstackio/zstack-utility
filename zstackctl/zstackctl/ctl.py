@@ -178,7 +178,7 @@ if [ $? -ne 0 ]; then
     sed -i "/\[mysqld\]/a tmpdir=$mysql_tmp_path" $mysql_conf
 fi
 
-([ x`systemctl is-enabled zstack-ha 2>/dev/null` == x"enabled" ] && { systemctl start keepalived.service || true; }) || true
+([ x`systemctl is-enabled zstack-ha 2>/dev/null` == x"enabled" ] && { systemctl stop keepalived.service || true; }) || true
 
 if [ `systemctl is-active mariadb` != "unknown" ]; then 
     systemctl restart mariadb
