@@ -2140,17 +2140,17 @@ upgrade_mysql_configuration(){
 
     grep 'interactive_timeout' $MYSQL_CONF_FILE >/dev/null 2>&1
     if [ $? -ne 0 ]; then
-        sed -i '/\[mysqld\]/a interactive_timeout=600\' $MYSQL_CONF_FILE
+        sed -i '/\[mysqld\]/a interactive_timeout=28800\' $MYSQL_CONF_FILE
     else
-        sed -i 's/interactive_timeout.*/interactive_timeout=600/g' $MYSQL_CONF_FILE
+        sed -i 's/interactive_timeout.*/interactive_timeout=28800/g' $MYSQL_CONF_FILE
     fi
 
     grep 'wait_timeout' $MYSQL_CONF_FILE >/dev/null 2>&1
     if [ $? -ne 0 ]; then
         echo "wait_timeout=600" >>$ZSTACK_INSTALL_LOG 2>&1
-        sed -i '/\[mysqld\]/a wait_timeout=600\' $MYSQL_CONF_FILE
+        sed -i '/\[mysqld\]/a wait_timeout=28800\' $MYSQL_CONF_FILE
     else
-        sed -i 's/wait_timeout.*/wait_timeout=600/g' $MYSQL_CONF_FILE
+        sed -i 's/wait_timeout.*/wait_timeout=28800/g' $MYSQL_CONF_FILE
     fi
 
     grep 'TimeoutStartSec' /usr/lib/systemd/system/mariadb.service >/dev/null 2>&1
