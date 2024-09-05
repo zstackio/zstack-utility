@@ -1,6 +1,7 @@
 import os
 
 from zstacklib.utils import log, linux
+import json
 
 logger = log.get_logger(__name__)
 
