@@ -36,8 +36,12 @@ class HeartbeatIOResult(object):
 def get_cluster():
     global cluster
     if not cluster:
-        cluster = rados.Rados(conffile='/etc/xstor.conf', conf=external_conf)
-        cluster.connect()
+        temp_cluster = rados.Rados(conffile='/etc/xstor.conf', conf=external_conf)
+        temp_cluster.connect()
+        if temp_cluster.state == 'connected':
+            cluster = temp_cluster
+        else:
+            raise Exception("failed to connect cluster, please check your configuration.")
     return cluster
 
 
