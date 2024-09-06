@@ -2471,31 +2471,14 @@ def get_management_node_pid():
     return None
 
 def release_mysql_lock(lock_name, mn_ip):
-    access_db_hostname = None
-    if is_ha_installed():
-        access_db_hostname = ctl.read_property('management.server.vip')
-
-    result = mysql("select IS_USED_LOCK('%s')" % lock_name, db_hostname=access_db_hostname)
+    result = mysql("select IS_USED_LOCK('%s')" % lock_name, db_hostname=mn_ip)
     result = result.strip().splitlines()
 
     connection_id = result[1].strip()
     if connection_id == 'NULL' or connection_id == '-1' or connection_id == '0':
         return
-
-    default_ip = get_default_ip()
-    if default_ip and default_ip != mn_ip:
-        result = mysql("SELECT count(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE ID = %s and (HOST like '%s%%' or HOST like '%s%%')" % (
-                connection_id, mn_ip, default_ip), db_hostname=access_db_hostname)
-    else:
-        result = mysql("SELECT count(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE ID = %s and HOST like '%s%%'" % (
-            connection_id, mn_ip), db_hostname=access_db_hostname)
-    
-    result = result.strip().splitlines()[1]
-    if result == '0':
-        return
-
     info("kill connection %s to release lock %s held by management node %s" % (connection_id, lock_name, mn_ip))
-    mysql("KILL %s" % connection_id, db_hostname=access_db_hostname)
+    mysql("KILL %s" % connection_id, db_hostname=mn_ip)
 
 def clear_management_node_leftovers():
     pid = get_management_node_pid()
@@ -9393,7 +9376,7 @@ class VDIUiStatusCmd(Command):
 
 def mysql(cmd, db_hostname = None):
     (db_hostname_origin, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
-    db_hostname = db_hostname_origin if db_hostname else db_hostname_origin
+    db_hostname = db_hostname or db_hostname_origin
     if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in RestoreMysqlCmd.all_local_ip):
         db_hostname = ""
     else:
