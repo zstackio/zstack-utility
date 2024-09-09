@@ -155,7 +155,7 @@ class AbstractHaFencer(object):
         threads = []
         for fencer in self.run_fencer_list:
             if fencer in self.ha_fencer:
-                thread = threading.Thread(target=self.ha_fencer[fencer].exec_fencer())
+                thread = threading.Thread(target=self.ha_fencer[fencer].exec_fencer)
                 thread.start()
                 threads.append(thread)
 
@@ -694,7 +694,13 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
     @thread.AsyncThread
     def write_vm_uuid(self):
         heartbeat_file_path = self.get_heartbeat_file_path()
-        vm_uuids = find_ps_running_vm(self.ps_uuid)
+
+        r = bash.bash_r("timeout 5 virsh list")
+        if r == 0:
+            vm_uuids = find_ps_running_vm(self.ps_uuid)
+        else:
+            _, vm_uuids = get_runnning_vm_root_volume_on_ps(self.max_attempts, self.strategy, self.mount_path, isFlushbufs=False, vm_uuid_only=True)
+
         content = {"heartbeat_time": time.time(),
                    "vm_uuids": None if len(vm_uuids) == 0 else ','.join(str(x) for x in vm_uuids)}
 
@@ -745,24 +751,31 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
 
     def check_storage_heartbeat(self):
         if self.write_fencer_heartbeat() is False:
-            # FIXME
-            # self.report_storage_status_ca ([self.ps_uuid], 'Disconnected')
-            killed_vms = self.kill_vm()
+            self.fencer_triggered_callback([self.ps_uuid], 'Disconnected')
+            killed_vms, on_storage_vm_uuids = self.kill_vm()
 
             if len(killed_vms) != 0:
                 self.fencer_triggered_callback([self.ps_uuid], ','.join(killed_vms.keys()))
                 clean_network_config(killed_vms.keys())
 
-            killed_vm_pids = killed_vms.values()
-            self.after_kill_vm(killed_vm_pids)
+            self.after_kill_vm(killed_vms.keys(), on_storage_vm_uuids)
 
             if self.mounted_by_zstack and not linux.is_mounted(self.mount_path):
                 self.try_remount_fs_callback(self.mount_path, self.ps_uuid, self.created_time, self, self.url, self.options)
                 self.prepare_heartbeat_dir()
 
-    def after_kill_vm(self, killed_vm_pids):
-        if not killed_vm_pids or not self.mounted_by_zstack:
+    def after_kill_vm(self, killed_vm_uuids, on_storage_vm_uuids):
+        if not self.mounted_by_zstack:
             return
+
+        not_kill_on_storage_vm_uuids = set(on_storage_vm_uuids) - set(killed_vm_uuids)
+        if self.strategy == 'Permissive':
+            if len(not_kill_on_storage_vm_uuids) != 0:
+                logger.debug('Permissive strategy, no need to umount fs due to vm %s is still running'
+                            % not_kill_on_storage_vm_uuids)
+                return
+            else:
+                logger.debug('Permissive strategy, but no vm is running on storage, umount fs')
 
         try:
             kill_and_umount(self.mount_path, mount_path_is_nfs(self.mount_path))
@@ -828,7 +841,7 @@ class CephHeartbeatController(AbstractStorageFencer):
                 # for example, pool name is aaa
                 # add slash to confirm kill_vm matches vm with volume aaa/volume_path
                 # but not aaa_suffix/volume_path
-                vm_uuids = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False).keys()
+                vm_uuids, _ = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False)
                 if self.strategy == 'Permissive':
                     self.reset_failure_count()
 
@@ -1302,18 +1315,19 @@ def not_exec_kill_vm(strategy, vm_uuid, fencer_name):
 
 
 def kill_vm_by_xml(maxAttempts, strategy, mountPath, isFlushbufs = True):
-    vm_pids_dict = get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushbufs)
+    vm_pids_dict, on_storage_vm_uuids = get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushbufs)
     reason = "because we lost connection to the storage, failed to read the heartbeat file %s times" % maxAttempts
     kill_vm_use_pid(vm_pids_dict, reason)
-    return vm_pids_dict
+    return vm_pids_dict, on_storage_vm_uuids
 
 
 @bash.in_bash
-def get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushbufs = True):
+def get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushbufs = True, vm_uuid_only = False):
     # 1. get root volume from live vm xml
     # 2. make sure io has error
     # 3. filter for mountPaths
     vm_pids_dict = {}
+    on_storage_vm_uuids = []
     for file_name in linux.listdir(LIVE_LIBVIRT_XML_DIR):
         xs = file_name.split(".")
         if len(xs) != 2 or xs[1] != "xml":
@@ -1325,9 +1339,6 @@ def get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushb
 
         vm = linux.VmStruct()
         vm.uuid = xs[0]
-        vm.pid = linux.get_vm_pid(vm.uuid)
-        vm.load_from_xml(xml)
-
         if not vm.root_volume:
             logger.warn("found strange vm[pid: %s, uuid: %s], can not find boot volume" % (vm.pid, vm.uuid))
             continue
@@ -1335,6 +1346,7 @@ def get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushb
         if not mountPath in vm.root_volume:
             continue
 
+        on_storage_vm_uuids.append(vm.uuid)
         if is_allow_fencer(host_storage_name, vm.uuid):
             logger.debug("fencer detect ha strategy is %s skip fence vm[uuid:%s]" % (strategy, vm.uuid))
             continue
@@ -1345,8 +1357,16 @@ def get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushb
                 logger.debug("volume %s for vm %s io success, skiped" % (vm.root_volume, vm.uuid))
                 continue
 
+        if vm_uuid_only:
+            vm_pids_dict[vm.uuid] = None
+            on_storage_vm_uuids.append(vm.uuid)
+            continue
+
+        vm.pid = linux.get_vm_pid(vm.uuid)
+        vm.load_from_xml(xml)
+
         vm_pids_dict[vm.uuid] = vm.pid
-    return vm_pids_dict
+    return vm_pids_dict, on_storage_vm_uuids
 
 
 def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
@@ -1358,6 +1378,7 @@ def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
 
     # kill vm's qemu process
     vm_pids_dict = {}
+    on_storage_vm_uuids = []
     for vm_uuid in vm_in_process_uuid_list:
         vm_uuid = vm_uuid.strip()
         if not vm_uuid:
@@ -1367,6 +1388,7 @@ def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
                 and not need_kill(vm_uuid, mountPaths, isFileSystem):
             continue
 
+        on_storage_vm_uuids.append(vm_uuid)
         if not_exec_kill_vm(strategy, vm_uuid, host_storage_name):
             logger.debug("fencer detect ha strategy is %s skip fence vm[uuid:%s]" % (strategy, vm_uuid))
             continue
@@ -1379,7 +1401,7 @@ def kill_vm(maxAttempts, strategy, mountPaths=None, isFileSystem=None):
         vm_pids_dict[vm_uuid] = vm_pid
     reason = "because we lost connection to the storage, failed to read the heartbeat file %s times" % maxAttempts
     kill_vm_use_pid(vm_pids_dict, reason)
-    return vm_pids_dict
+    return vm_pids_dict, on_storage_vm_uuids
 
 def kill_vm_use_pid(vm_pids_dict, reason):
     for vm_uuid, vm_pid in vm_pids_dict.items():
@@ -1638,7 +1660,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("aliyun nas storage %s fencer fired!" % cmd.uuid)
 
-                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.strategy).keys()
+                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy)
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
@@ -1717,7 +1739,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     try:
                         logger.warn("block storage %s fencer fired!" % cmd.uuid)
 
-                        vm_uuids = kill_vm(cmd.maxAttempts, cmd.strategy, cmd.uuid, True).keys()
+                        vm_uuids, _ = kill_vm(cmd.maxAttempts, cmd.strategy, cmd.uuid, True)
 
                         if vm_uuids:
                             self.report_self_fencer_triggered([cmd.uuid], ','.join(vm_uuids))
