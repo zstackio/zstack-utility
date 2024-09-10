@@ -9851,7 +9851,7 @@ class StartUiCmd(Command):
         parser.add_argument('--redis-password', help="zstack_ui redis password")
 
         # arguments for api_inspector
-        parser.add_argument('--api_inspector', help="Enable API Inspector for ZStack UI. DO NOT ENABLE IT IN PRODUCTION ENVIRONMENT. [DEFAULT] False")
+        parser.add_argument('--api-inspector', help="Enable API Inspector for ZStack UI. DO NOT ENABLE IT IN PRODUCTION ENVIRONMENT. [DEFAULT] False")
 
         # arguments for mini judgment
         parser.add_argument('--force', help="Force start_ui on mini", action='store_true', default=False)
@@ -10211,7 +10211,7 @@ class ConfigUiCmd(Command):
         parser.add_argument('--redis-password', help="password of zstack_ui redis")
 
         # arguments for api_inspector
-        parser.add_argument('--api_inspector', choices=['True', 'False'], type=str.title, help="Enable API Inspector for ZStack UI. DO NOT ENABLE IT IN PRODUCTION ENVIRONMENT. [DEFAULT] False")
+        parser.add_argument('--api-inspector', choices=['True', 'False'], type=str.title, help="Enable API Inspector for ZStack UI. DO NOT ENABLE IT IN PRODUCTION ENVIRONMENT. [DEFAULT] False")
 
 
 
