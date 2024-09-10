@@ -647,6 +647,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             lvm.modify_sanlock_config("renewal_read_extend_sec", 24)
             lvm.modify_sanlock_config("debug_renew", 1)
             lvm.modify_sanlock_config("use_watchdog", 0)
+            lvm.modify_sanlock_config("max_sectors_kb", "ignore")
             lvm.modify_sanlock_config("zstack_vglock_timeout", 0)
             lvm.modify_sanlock_config("use_zstack_vglock_timeout", 0)
             lvm.modify_sanlock_config("zstack_vglock_large_delay", 8)
@@ -659,7 +660,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         config_lvm(cmd.hostId, cmd.enableLvmetad)
 
-        lvm.start_lvmlockd(cmd.ioTimeout)
+        lvm.start_lock_service(cmd.ioTimeout)
         logger.debug("find/create vg %s lock..." % cmd.vgUuid)
         rsp.isFirst = self.create_vg_if_not_found(cmd.vgUuid, disks, cmd.hostUuid, allDisks, cmd.forceWipe, cmd.isFirst)
 

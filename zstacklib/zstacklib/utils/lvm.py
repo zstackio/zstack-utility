@@ -447,6 +447,18 @@ def get_lvmlockd_version():
         LVMLOCKD_VERSION = shell.call("""lvmlockd --version | awk '{print $3}' | awk -F'.' '{print $1"."$2}'""").strip()
     return LVMLOCKD_VERSION
 
+def get_sanlock_patch_version():
+    return bash.bash_o("sanlock get_patch_version").strip()
+
+def get_sanlock_pid():
+    return linux.find_process_by_command('sanlock')
+
+def get_running_sanlock_patch_version():
+    pid = get_sanlock_pid()
+    if pid:
+        exe = "/proc/%s/exe" % pid
+        return bash.bash_o("%s get_patch_version" % exe).strip()
+
 def get_running_lvmlockd_version():
     pid = get_lvmlockd_pid()
     if pid:
@@ -773,7 +785,7 @@ def is_lvmlockd_socket_abnormal():
         return True
 
 @bash.in_bash
-def start_lvmlockd(io_timeout=40):
+def start_lock_service(io_timeout=40):
     if not os.path.exists(os.path.dirname(LVMLOCKD_LOG_FILE_PATH)):
         os.mkdir(os.path.dirname(LVMLOCKD_LOG_FILE_PATH))
 
@@ -784,7 +796,28 @@ def start_lvmlockd(io_timeout=40):
         running_lockd_version = get_running_lvmlockd_version()
         return running_lockd_version is not None and LooseVersion(running_lockd_version) < LooseVersion(get_lvmlockd_version())
 
-    restart_lvmlockd = is_lvmlockd_upgraded() or (LooseVersion(get_lvmlockd_version()) >= LooseVersion("2.03") and is_lvmlockd_socket_abnormal())
+    def need_restart_sanlock():
+        running_patch_version = get_running_sanlock_patch_version()
+        local_patch_version = get_sanlock_patch_version()
+        if not running_patch_version:
+            # sanlock not running
+            return False
+        elif not local_patch_version.isdigit():
+            return False
+        elif not running_patch_version.isdigit() or int(local_patch_version) > int(running_patch_version):
+            # patch version N  ->  patch version >N or other version  ->  patch version N
+            return True
+        if sanlock.SanlockClientStatusParser().get_config("max_sectors_kb_ignore") == "0":
+            logger.debug("need restarting sanlock to reload config")
+            return True
+        return False
+
+
+    restart_sanlock = need_restart_sanlock()
+    restart_lvmlockd = restart_sanlock or is_lvmlockd_upgraded() \
+                       or (LooseVersion(get_lvmlockd_version()) >= LooseVersion("2.03") and is_lvmlockd_socket_abnormal())
+    if restart_sanlock:
+        stop_sanlock()
     if restart_lvmlockd:
         write_lvmlockd_adopt_file()
         stop_lvmlockd()
@@ -866,6 +899,13 @@ def stop_lvmlockd():
     pid = get_lvmlockd_pid()
     if pid:
         linux.kill_process(pid)
+
+@bash.in_bash
+def stop_sanlock():
+    pid = get_sanlock_pid()
+    if pid:
+        linux.kill_process(pid)
+        bash.bash_r("timeout 30 systemctl stop sanlock.service")
 
 @bash.in_bash
 def start_vg_lock(vgUuid, hostId, retry_times_for_checking_vg_lockspace):
