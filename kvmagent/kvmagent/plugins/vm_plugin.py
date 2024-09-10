@@ -8170,7 +8170,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     'when taking an {4}'.format(cmd.snapshotJobs[0].vmInstanceUuid, cmd.snapshotJobs[0].deviceId, vm_state,
                     Vm.SNAPSHOT_VM_STATE_DICT[expected_snapshot_state], expected_snapshot_state))
 
-            volume_install_paths = map(lambda job: job.previousInstallPath, filter(lambda job: not job.full, cmd.snapshotJobs))
+            volume_install_paths = map(lambda job: job.previousInstallPath, filter(lambda job: not job.full and not job.memory, cmd.snapshotJobs))
             for volume_install_path in volume_install_paths:
                 Vm.ensure_delta_snapshot_not_exceed(volume_install_path)
             if vm and (vm.state == vm.VM_STATE_RUNNING or vm.state == vm.VM_STATE_PAUSED):
