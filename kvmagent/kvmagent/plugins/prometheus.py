@@ -1425,7 +1425,7 @@ def check_gpu_status_and_save_gpu_status(type, metrics):
         gpuStatus, gpu_status_int_value = convert_pci_status_to_int(pci_device_address)
         if gpu_status_int_value == 2:
             pci_device_address_list.discard((pci_device_address, gpu_serial))
-            gpu_devices[type] = pci_device_address_lis
+            gpu_devices[type] = pci_device_address_list
             continue
 
         metrics['host_gpu_status'].add_metric([pci_device_address, gpuStatus, gpu_serial], gpu_status_int_value)
@@ -1449,10 +1449,9 @@ def collect_nvidia_gpu_status():
         "nvidia-smi --query-gpu=power.draw,temperature.gpu,fan.speed,utilization.gpu,utilization.memory,index,"
         "gpu_bus_id,gpu_serial,memory.used,memory.total --format=csv,noheader")
     if r != 0:
-        check_gpu_status_and_save_gpu_status("NIVIDIA", metrics)
+        check_gpu_status_and_save_gpu_status("NVIDIA", metrics)
         return metrics.values()
 
-    gpu_index_mapping_pciaddress = {}
     for info in gpu_info.splitlines():
         info = info.strip().split(',')
         pci_device_address = info[6].strip().lower()
@@ -1460,7 +1459,7 @@ def collect_nvidia_gpu_status():
         if len(pci_device_address.split(':')[0]) == 8:
             pci_device_address = pci_device_address[4:].lower()
 
-        add_gpu_pci_device_address("NIVIDIA", pci_device_address, gpu_serial)
+        add_gpu_pci_device_address("NVIDIA", pci_device_address, gpu_serial)
 
         add_metrics('host_gpu_power_draw', info[0].replace('W', '').strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_temperature', info[1].strip(), [pci_device_address, gpu_serial], metrics)
@@ -1468,22 +1467,20 @@ def collect_nvidia_gpu_status():
         add_metrics('host_gpu_utilization', info[3].replace('%', '').strip(), [pci_device_address, gpu_serial], metrics)
         add_metrics('host_gpu_memory_utilization', calculate_percentage(info[8].replace('MiB', '').strip(), info[9].replace('MiB', '').strip()),
                     [pci_device_address, gpu_serial], metrics)
-        gpu_index_mapping_pciaddress[info[5].strip()] = pci_device_address
-
-    check_gpu_status_and_save_gpu_status("NIVIDIA", metrics)
-    r, gpu_pci_rx_tx = bash_ro("nvidia-smi dmon -c 1 -s t")
-    if r != 0:
-        return metrics.values()
-
-    for gpu_index_rx_tx in gpu_pci_rx_tx.splitlines()[2:]:
-        index_rx_tx = gpu_index_rx_tx.split()
-        pci_device_address = gpu_index_mapping_pciaddress[index_rx_tx[0]]
-        if pci_device_address is None:
-            logger.error("No PCI address found for GPU index {index_rx_tx[0]}")
+        r, gpu_pci_rx_tx = bash_ro("nvidia-smi pci -gCnt -i %s" % info[5].strip())
+        if r != 0:
+            logger.warn("get gpu[%s] pcie rx/tx count failed" % info[5].strip())
             continue
 
-        metrics['host_gpu_rxpci_in_bytes'].add_metric([pci_device_address, gpu_serial], float(index_rx_tx[1]) * 1024 * 1024)
-        metrics['host_gpu_txpci_in_bytes'].add_metric([pci_device_address, gpu_serial], float(index_rx_tx[2]) * 1024 * 1024)
+        for line in gpu_pci_rx_tx.splitlines():
+            line = line.strip()
+
+            if line.startswith("TX_BYTES:"):
+                add_metrics('host_gpu_txpci_in_bytes', line.split()[-1], [pci_device_address, gpu_serial], metrics)
+            if line.startswith("RX_BYTES:"):
+                add_metrics('host_gpu_rxpci_in_bytes', line.split()[-1], [pci_device_address, gpu_serial], metrics)
+
+    check_gpu_status_and_save_gpu_status("NVIDIA", metrics)
 
     r, vgpu_info = bash_ro("nvidia-smi vgpu -q")
     if r != 0 or "VM Name" not in vgpu_info:
