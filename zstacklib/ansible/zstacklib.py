@@ -671,7 +671,7 @@ def agent_install(install_arg, host_post_info):
         error("agent %s install failed" % install_arg.agent_name)
 
 
-def yum_enable_repo(name, enablerepo, host_post_info):
+def yum_enable_repo(name, disablerepo, enablerepo, host_post_info):
     '''install package from enablerepo'''
     start_time = datetime.datetime.now()
     host_post_info.start_time = start_time
@@ -684,8 +684,8 @@ def yum_enable_repo(name, enablerepo, host_post_info):
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'yum'
-    runner_args.module_args = 'name={} enablerepo={} state=present'.format(
-        name, enablerepo)
+    runner_args.module_args = 'name={} disablerepo={} enablerepo={} state=present'.format(
+        name, disablerepo, enablerepo)
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
@@ -2540,7 +2540,7 @@ EOF
         repo_epel = "epel-release-source.repo"
         self.generate_yum_repo_config_from_zstack_lib(repo_epel)
         # install epel-release
-        yum_enable_repo("epel-release", "epel-release-source",
+        yum_enable_repo("epel-release", "*", "epel-release-source",
                         self.host_post_info)
 
     def enable_debian_services(self, host_post_info, require_python_env, distro):
