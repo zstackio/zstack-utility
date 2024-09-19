@@ -2300,6 +2300,8 @@ def get_volume_actual_installpath(install_path):
         return install_path.replace("sharedblock:/", "/dev")
     elif install_path.startswith('block'):
         return install_path.replace("block://", "/dev/disk/by-id/wwn-0x")
+    elif install_path.startswith('cbd'):
+        return "{}_{}_:{}".format(install_path, DEFAULT_ZBS_USER_NAME, DEFAULT_ZBS_CONF_PATH)
     return install_path
 
 
@@ -3471,11 +3473,11 @@ class Vm(object):
             if disk.source.file__ and disk.source.file_ == installPath:
                 return disk, disk.target.dev_
 
-            # ceph
+            # ceph, cbd
             if disk.source.name__ and disk.source.name_ in installPath:
                 return disk, disk.target.dev_
 
-            # 'block':
+            # block
             if disk.source.dev__ and disk.source.dev_ in installPath:
                 return disk, disk.target.dev_
             
