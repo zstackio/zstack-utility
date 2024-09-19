@@ -854,6 +854,7 @@ class AttachGuestToolsIsoToVmCmd(kvmagent.AgentCommand):
         super(AttachGuestToolsIsoToVmCmd, self).__init__()
         self.vmInstanceUuid = None
         self.needTempDisk = None
+        self.cdromDeviceId = None
 
 class AttachGuestToolsIsoToVmRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -9231,10 +9232,10 @@ host side snapshot files chian:
             else:
                 logger.debug("attached temp disk %s to %s, %s, %s" % (spath, vm_uuid, o, e))
 
-        # attach guest tools iso to [hs]dc, whose device id is 0
+        # attach guest tools iso to [hs]dc, whose device id is ${cmd.cdromDeviceId}
         vm = get_vm_by_uuid(vm_uuid, exception_if_not_existing=False)
         iso = IsoTo()
-        iso.deviceId = 0
+        iso.deviceId = cmd.cdromDeviceId
         iso.path = iso_path
 
         # in case same iso already attached
