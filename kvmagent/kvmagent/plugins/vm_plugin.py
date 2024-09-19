@@ -76,6 +76,7 @@ ZS_XML_NAMESPACE = 'http://zstack.org'
 
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
 
+GUEST_TOOLS_DIRECTORY = "/var/lib/zstack/guesttools/"
 GUEST_TOOLS_ISO_PATH = "/var/lib/zstack/guesttools/GuestTools.iso"
 GUEST_TOOLS_ISO_LINUX_PATH = "/var/lib/zstack/guesttools/GuestTools_linux.iso"
 
@@ -4072,7 +4073,7 @@ class Vm(object):
                     ', please umount it first' % self.uuid)
             else:
                 raise Exception(
-                    'unable to detach the iso from the VM[uuid:%s]' % self.uuid)
+                    'unable to detach the iso from the VM[uuid:%s], %s' % (self.uuid, err))
 
         def check(_):
             me = get_vm_by_uuid(self.uuid)
@@ -9312,8 +9313,7 @@ host side snapshot files chian:
 
         # detach temp_disk from vm
         temp_disk = self._guesttools_temp_disk_file_path(vm_uuid)
-        guesttool_path = "/var/lib/zstack/guesttools/"
-        if os.path.exists(guesttool_path) and not os.path.exists(temp_disk):
+        if os.path.exists(GUEST_TOOLS_DIRECTORY) and not os.path.exists(temp_disk):
             linux.qcow2_create(temp_disk, 1)
 
         @linux.retry(times=3, sleep_time=2)
@@ -9333,21 +9333,30 @@ host side snapshot files chian:
         if os.path.exists(temp_disk):
             linux.rm_file_force(temp_disk)
 
-        if cmd.platform == "Linux":
-            iso_path = GUEST_TOOLS_ISO_LINUX_PATH
-        elif cmd.platform == "Windows":
-            iso_path = GUEST_TOOLS_ISO_PATH
-        else:
-            rsp.success = False
-            rsp.error = "not support platform %s" % cmd.platFrom
+        if vm.domain_xml.find(GUEST_TOOLS_DIRECTORY) < 0:
+            return jsonobject.dumps(rsp)
+
+        # find which cdrom guest-tools attached, and what deviceId is
+        domain_xmlobject = xmlobject.loads(vm.domain_xml)
+        disks = filter(lambda disk:
+                       disk.hasattr('source') and
+                       disk.source.hasattr('file_') and
+                       disk.source.file_.startswith(GUEST_TOOLS_DIRECTORY),
+                       domain_xmlobject.devices.get_child_node('disk')) # type: list
+        if len(disks) == 0:
+            return jsonobject.dumps(rsp)
+
+        # disks[0].target.dev_ maybe 'hdc'
+        dev = disks[0].target.dev_ # type: str
+        device_id = Vm.ISO_DEVICE_LETTERS.find(dev[2]) # type: int
+        if device_id < 0:
             return jsonobject.dumps(rsp)
 
         # detach guesttools iso from vm
-        if vm.domain_xml.find(iso_path) > 0:
-            detach_cmd = DetachIsoCmd()
-            detach_cmd.vmUuid = vm_uuid
-            detach_cmd.deviceId = 0
-            vm.detach_iso(detach_cmd)
+        detach_cmd = DetachIsoCmd()
+        detach_cmd.vmUuid = vm_uuid
+        detach_cmd.deviceId = device_id
+        vm.detach_iso(detach_cmd)
 
         return jsonobject.dumps(rsp)
 
