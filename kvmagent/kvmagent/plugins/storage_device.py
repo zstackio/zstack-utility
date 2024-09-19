@@ -127,6 +127,29 @@ class FiberChannelLunStruct(ScsiLunStruct):
         self.storageWwnn = ""
 
 
+class HbaStruct(object):
+    def __int__(self):
+        self.name = ""
+
+
+class FcHbaStruct(HbaStruct):
+    def __int__(self):
+        super(FcHbaStruct, self).__init__()
+        self.name = ""
+        self.portName = ""
+        self.portState = ""
+        self.speed = ""
+        self.supportedSpeeds = ""
+        self.symbolicName = ""
+        self.supportedClasses = ""
+
+
+class FcHbaScanRsp(AgentRsp):
+    def __init__(self):
+        super(FcHbaScanRsp, self).__init__()
+        self.hbaDeviceStructs = []
+
+
 class NvmeController():
     def __init__(self):
         self.name = ''
@@ -237,6 +260,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     RAID_SMART_PATH = "/storagedevice/raid/smart"
     RAID_LOCATE_PATH = "/storagedevice/raid/locate"
     RAID_SELF_TEST_PATH = "/storagedevice/raid/selftest"
+    HBA_SCAN_PATH = "/storagedevice/hba/scan"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -255,9 +279,56 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RAID_SMART_PATH, self.raid_smart)
         http_server.register_async_uri(self.RAID_LOCATE_PATH, self.raid_locate)
         http_server.register_async_uri(self.RAID_SELF_TEST_PATH, self.drive_self_test)
+        http_server.register_async_uri(self.HBA_SCAN_PATH, self.hba_scan)
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def hba_scan(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = FcHbaScanRsp()
+        rsp.hbaDeviceStructs = self.get_hba_devices()
+        return jsonobject.dumps(rsp)
+
+    def get_hba_devices(self):
+        ret = []
+        r, o, e = bash.bash_roe("systool -c fc_host -v")
+        if r != 0:
+            return ret
+
+        name_ = port_name_ = speed_ = supported_speeds_ = port_state_ = symbolic_name_ = supported_classes_ = None
+        for line in o.strip().split("\n"):
+            infos = line.split("=")
+            if len(infos) != 2:
+                continue
+            k = infos[0].lower().strip()
+            v = infos[1].strip().strip('"')
+            if k == "class Device":
+                name_ = v
+            elif k == "port_name":
+                port_name_ = v
+            elif k == "speed":
+                speed_ = v
+            elif k == "supported_speeds":
+                supported_speeds_ = v
+            elif k == "symbolic_name":
+                symbolic_name_ = v
+            elif k == "port_state":
+                port_state_ = v
+            elif k == "supported_classes":
+                supported_classes_ = v
+            elif k == "device path":
+                h = FcHbaStruct()
+                h.name = name_
+                h.portName = port_name_
+                h.speed = speed_
+                h.supportedSpeeds = supported_speeds_
+                h.symbolicName = symbolic_name_
+                h.portState = port_state_
+                h.supportedClasses = supported_classes_
+                ret.append(h)
+        return ret
 
     @kvmagent.replyerror
     @bash.in_bash
