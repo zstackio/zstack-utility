@@ -98,7 +98,6 @@ ONLY_INSTALL_LIBS=''
 ONLY_INSTALL_ZSTACK=''
 NOT_START_ZSTACK=''
 NEED_SET_MN_IP=''
-INSTALL_ENTERPRISE='n'
 REPO_MATCHED='true'
 
 MYSQL_ROOT_PASSWORD=''
@@ -2560,8 +2559,7 @@ il_install_license(){
         else
             fail "License path ${LICENSE_PATH} does not exists."
         fi
-    elif [ x"$INSTALL_ENTERPRISE" = x'y' -o x"$ZSV_INSTALL" = x'y' ]; then
-      # if "-E" or "--zsv" is set
+    elif [ x"$ZSV_INSTALL" = x'y' ]; then
       zstack-ctl install_license --license $ZSTACK_TRIAL_LICENSE >>$ZSTACK_INSTALL_LOG 2>&1
     fi
     chown -R zstack:zstack /var/lib/zstack/license >>$ZSTACK_INSTALL_LOG 2>&1
@@ -3730,8 +3728,6 @@ Options:
   -D    drop previous ${PRODUCT_NAME} database if it exists. An error will be raised
         if a previous ${PRODUCT_NAME} database is detected and no -D or -k option is provided.
 
-  -E    Install ${PRODUCT_NAME} Enterprise version. This option is only valid after ${PRODUCT_NAME} 2.0.
-
   -f LOCAL_PATH_OR_URL_OF_ZSTACK_ALL_IN_ONE_PACKAGE
         file path to ${PRODUCT_NAME} all-in-one package. By default the script
         will download the all-in-one package from ${PRODUCT_NAME} official website.
@@ -3895,7 +3891,6 @@ do
         -C ) check_myarg $1 $2;CONSOLE_PROXY_ADDRESS=$2;shift 2;;
         -d ) DEBUG='y';shift;;
         -D ) NEED_DROP_DB='y';shift;;
-        -E ) INSTALL_ENTERPRISE='y';shift;;
         -H ) check_myarg $1 $2;NEED_HTTP='y' && HTTP_FOLDER=$2;shift 2;;
         -f ) check_myarg $1 $2;ZSTACK_ALL_IN_ONE=$2;shift 2;;
         -F ) FORCE='y';shift;;
