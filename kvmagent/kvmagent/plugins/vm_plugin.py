@@ -1684,7 +1684,7 @@ class VirtioCeph(object):
         return disk
 
 
-class VirtioSCSICeph(object):
+class SCSICeph(object):
     def __init__(self):
         self.volume = None
         self.dev_letter = None
@@ -2843,7 +2843,7 @@ class Vm(object):
             if volume.shareable:
                 e(disk, 'shareable')
 
-            if volume.useVirtioSCSI:
+            if volume.useVirtioSCSI or volume.useSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
             elif volume.useVirtio:
@@ -2908,14 +2908,14 @@ class Vm(object):
                 ic.bus_type = self._get_controller_type()
                 return ic.to_xmlobject()
 
-            def virtio_scsi_ceph():
-                vsc = VirtioSCSICeph()
+            def scsi_ceph():
+                vsc = SCSICeph()
                 vsc.volume = volume
                 vsc.dev_letter = dev_letter
                 return vsc.to_xmlobject()
 
-            if volume.useVirtioSCSI:
-                return virtio_scsi_ceph()
+            if volume.useVirtioSCSI or volume.useScsi:
+                return scsi_ceph()
             else:
                 if volume.useVirtio:
                     return virtoio_ceph()
@@ -2938,7 +2938,7 @@ class Vm(object):
                 if volume.shareable:
                     e(disk, 'shareable')
 
-                if volume.useVirtioSCSI:
+                if volume.useVirtioSCSI or volume.useSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', volume.wwn)
                 elif volume.useVirtio:
@@ -5253,7 +5253,7 @@ class Vm(object):
                 if _v.shareable:
                     e(disk, 'shareable')
 
-                if _v.useVirtioSCSI:
+                if _v.useVirtioSCSI or _v.useSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
                     return disk
@@ -5318,7 +5318,7 @@ class Vm(object):
                 src = e(disk, 'source', None, {'protocol': 'nbd', 'name': os.path.basename(u.path)})
                 e(src, 'host', None, {'name':u.hostname, 'port': str(u.port)})
 
-                if _v.useVirtioSCSI:
+                if _v.useVirtioSCSI or _v.useSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
                     return disk
@@ -5346,15 +5346,15 @@ class Vm(object):
                     ic.bus_type = default_bus_type
                     return ic.to_xmlobject()
 
-                def ceph_virtio_scsi():
-                    vsc = VirtioSCSICeph()
+                def ceph_scsi():
+                    vsc = SCSICeph()
                     vsc.volume = _v
                     vsc.dev_letter = _dev_letter
                     return vsc.to_xmlobject()
 
                 def build_ceph_disk():
-                    if _v.useVirtioSCSI:
-                        disk = ceph_virtio_scsi()
+                    if _v.useVirtioSCSI or _v.useSCSI:
+                        disk = ceph_scsi()
                         if _v.shareable:
                             e(disk, 'shareable')
                         return disk
@@ -5396,7 +5396,7 @@ class Vm(object):
                 if _v.shareable:
                     e(disk, 'shareable')
 
-                if _v.useVirtioSCSI:
+                if _v.useVirtioSCSI or _v.useSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
                 elif _v.useVirtio:
@@ -5932,7 +5932,10 @@ class Vm(object):
 
         def make_controllers():
             devices = elements['devices']
-            e(devices, 'controller', None, {'type': 'scsi', 'model': 'virtio-scsi'})
+
+            use_scsi = cmd.rootVolume.useSCSI or any(vol.useSCSI for vol in cmd.dataVolumes)
+            model = 'auto' if use_scsi else 'virtio-scsi'
+            e(devices, 'controller', None, {'type': 'scsi', 'model': model})
 
             for vol in cmd.dataVolumes:
                 if not vol.useVirtioSCSI:
@@ -7637,13 +7640,13 @@ class VmPlugin(kvmagent.KvmAgent):
                 ic.volume = _v
                 return ic.to_xmlobject()
 
-            def ceph_virtio_scsi():
-                vsc = VirtioSCSICeph()
+            def ceph_scsi():
+                vsc = SCSICeph()
                 vsc.volume = _v
                 return vsc.to_xmlobject()
 
-            if _v.useVirtioSCSI:
-                disk = ceph_virtio_scsi()
+            if _v.useVirtioSCSI or _v.useSCSI:
+                disk = ceph_scsi()
                 if _v.shareable:
                     e(disk, 'shareable')
                 return disk
