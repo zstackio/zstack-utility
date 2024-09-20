@@ -8296,6 +8296,13 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 return ceph_blk()
 
+        def cbd_volume(_v):
+            disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+            e(disk, 'source', None, {'protocol': 'cbd', 'name': make_cbd_conf(_v.installPath)})
+            e(disk, 'target', None, {'dev': 'vd%s' % _v.dev_letter, 'bus': 'virtio'})
+            return disk
+
         def block_volume(_v):
             disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None,
@@ -8327,6 +8334,8 @@ class VmPlugin(kvmagent.KvmAgent):
             ele = filebased_volume(volume)
         elif volume.deviceType == 'ceph':
             ele = ceph_volume(volume)
+        elif volume.deviceType == 'cbd':
+            ele = cbd_volume(volume)
         elif volume.deviceType == 'block':
             ele = block_iso(volume) if volume.is_cdrom else block_volume(volume)
         else:
