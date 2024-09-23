@@ -21,6 +21,7 @@ from zstacklib.utils import thread
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_host_physicl_nics
 from zstacklib.utils.ip import get_nic_supported_max_speed
+from zstacklib.utils.ipmitool import get_sensor_info_from_ipmi
 
 logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
@@ -32,6 +33,7 @@ QEMU_CMD = os.path.basename(kvmagent.get_qemu_path())
 ALARM_CONFIG = None
 PAGE_SIZE = None
 disk_list_record = None
+block_devices_record = None
 
 gpu_devices = {
     'NVIDIA': set(),
@@ -183,7 +185,8 @@ def send_physical_disk_status_alarm_to_mn(serial_number, slot_number, enclosure_
 def send_raid_state_alarm_to_mn(target_id, state):
     send_alarm_to_mn('raid', target_id, target_id=target_id, status=state)
 
-def send_disk_insert_or_remove_alarm_to_mn(alarm_type, serial_number, slot):
+
+def send_disk_insert_or_remove_alarm_to_mn(alarm_type, serial_number, slot=None, name=None):
     if ALARM_CONFIG is None:
         return
 
@@ -192,22 +195,24 @@ def send_disk_insert_or_remove_alarm_to_mn(alarm_type, serial_number, slot):
         logger.warn("Cannot find SEND_COMMAND_URL, unable to transmit {alarm_type} alarm info to management node".format(alarm_type=alarm_type))
         return
 
+    enclosure_device_id, slot_number = slot.split("-") if slot else (None, None)
     alarm = PhysicalStatusAlarm(
         host=ALARM_CONFIG.get(kvmagent.HOST_UUID),
         serial_number=serial_number,
-        enclosure_device_id=slot.split("-")[0],
-        slot_number=slot.split("-")[1]
+        enclosure_device_id=enclosure_device_id,
+        slot_number=slot_number,
+        name=name
     )
     http.json_dump_post(url, alarm, {'commandpath': '/host/physical/disk/{alarm_type}/alarm'.format(alarm_type=alarm_type)})
 
 @thread.AsyncThread
-def send_physical_disk_insert_alarm_to_mn(serial_number, slot):
-    send_disk_insert_or_remove_alarm_to_mn('insert', serial_number, slot)
+def send_physical_disk_insert_alarm_to_mn(serial_number, slot=None, name=None):
+    send_disk_insert_or_remove_alarm_to_mn('insert', serial_number, slot, name)
 
 
 @thread.AsyncThread
-def send_physical_disk_remove_alarm_to_mn(serial_number, slot):
-    send_disk_insert_or_remove_alarm_to_mn('remove', serial_number, slot)
+def send_physical_disk_remove_alarm_to_mn(serial_number, slot=None, name=None):
+    send_disk_insert_or_remove_alarm_to_mn('remove', serial_number, slot, name)
 
 
 def collect_memory_locator():
@@ -990,8 +995,8 @@ def collect_equipment_state_from_ipmi():
     }
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
-    r, cpu_info = bash_ro("ipmitool sdr elist | grep -i cpu")  # type: (int, str)
-    if r != 0:
+    info = get_sensor_info_from_ipmi()
+    if info is None:
         return metrics.values()
 
     check_equipment_state_from_ipmitool(metrics)
@@ -1017,7 +1022,9 @@ def collect_equipment_state_from_ipmi():
     cpu_temperature_pattern = r'^(cpu\d+_temp|cpu\d+_core_temp|cpu_temp_\d+|cpu\d+ temp|cpu\d+ core rem)$'
     cpu_status_pattern = r'^(cpu_status_\d+|cpu\d+ status|cpu\d+_status)$'
 
-    for line in cpu_info.lower().splitlines():
+    for line in info.lower().splitlines():
+        if "cpu" not in line:
+            continue
         sensor = line.split("|")
         if len(sensor) != 5:
             continue
@@ -1032,7 +1039,7 @@ def collect_equipment_state_from_ipmi():
             cpu_status = 0 if "presence detected" == sensor_value else 10
             metrics['cpu_status'].add_metric(["CPU%d" % cpu_id], float(cpu_status))
             if cpu_status == 10:
-                send_cpu_status_alarm_to_mn(cpu_id, info.Status)
+                send_cpu_status_alarm_to_mn(cpu_id, sensor_status)
             else:
                 remove_cpu_status_abnormal(cpu_id)
 
@@ -1552,6 +1559,62 @@ def has_rocm_smi():
     return shell.run("which rocm-smi") == 0
 
 
+class BlockDevice:
+    def __init__(self, name, size, children):
+        self.name = name
+        self.size = size
+        self.children = children or []
+        self.media_type = None
+        self.model = None
+        self.serial_num = None
+
+    def to_dict(self):
+        return {
+            'name': self.name,
+            'size': self.size,
+            'children': self.children,
+            'media_type': self.media_type,
+            'model': self.model,
+            'serial_number': self.serial_num
+        }
+
+    def to_json(self):
+        return json.dumps(self.to_dict())
+
+
+def collect_block_device_status():
+    metrics = {}
+    block_devices = {}
+    r, o = bash_ro('lsblk -p -d -n -o NAME,SERIAL')
+    if r == 0:
+        for line in o.strip().split('\n'):
+            name, serial_number = line.split()
+            block_devices[serial_number] = name
+        check_block_devices_insert_and_remove(block_devices)
+    return metrics.values()
+
+
+def check_block_devices_insert_and_remove(block_devices):
+    global block_devices_record
+    if block_devices_record is None:
+        block_devices_record = block_devices
+        return
+
+    if cmp(block_devices_record, block_devices) == 0:
+        return
+
+    # check disk insert
+    for serial_number in block_devices.keys():
+        if serial_number not in block_devices_record.keys():
+            send_physical_disk_insert_alarm_to_mn(serial_number, name=block_devices[serial_number])
+
+    # check disk remove
+    for serial_number in block_devices_record.keys():
+        if serial_number not in block_devices.keys():
+            send_physical_disk_remove_alarm_to_mn(serial_number, name=block_devices_record[serial_number])
+
+    block_devices_record = block_devices
+
 
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
@@ -1577,6 +1640,7 @@ kvmagent.register_prometheus_collector(collect_ssd_state)
 kvmagent.register_prometheus_collector(collect_nvidia_gpu_status)
 kvmagent.register_prometheus_collector(collect_amd_gpu_status)
 kvmagent.register_prometheus_collector(collect_hy_gpu_status)
+kvmagent.register_prometheus_collector(collect_block_device_status)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):

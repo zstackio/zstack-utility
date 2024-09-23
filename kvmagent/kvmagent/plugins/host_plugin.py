@@ -21,7 +21,7 @@ import subprocess
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http, lvm, ceph
+from zstacklib.utils import http, lvm, ceph, form
 from zstacklib.utils import qemu
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
@@ -37,6 +37,8 @@ from zstacklib.utils import shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
+from zstacklib.utils.ipmitool import get_sensor_info_from_ipmi
+from zstacklib.utils.linux import filter_lines_by_str_list
 from zstacklib.utils.report import Report
 import zstacklib.utils.ip as ip
 from zstacklib.utils import netconfig
@@ -66,6 +68,8 @@ BOND_MODE_ACTIVE_3 = "broadcast"
 BOND_MODE_ACTIVE_4 = "802.3ad"
 BOND_MODE_ACTIVE_5 = "balance-tlb"
 BOND_MODE_ACTIVE_6 = "balance-alb"
+
+sensor_type_by_name = {}  # type: dict[str, str]
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -281,6 +285,18 @@ class GetHostKernelInterfaceResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(GetHostKernelInterfaceResponse, self).__init__()
         self.interfaces = None
+
+
+class GetBlockDevicesResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetBlockDevicesResponse, self).__init__()
+        self.blockDevices = []
+
+
+class GetSensorsResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetSensorsResponse, self).__init__()
+        self.sensors = []
 
 
 class UsedIpTO(object):
@@ -985,6 +1001,8 @@ class HostPlugin(kvmagent.KvmAgent):
     DETACH_VOLUME_PATH = "/host/volume/detach"
     GET_KERNEL_INTERFACE_PATH = "/host/kernelinterface/get"
     SET_KERNEL_INTERFACE_PATH = "/host/kernelinterface/set"
+    GET_BLOCK_DEVICES_PATH = "/host/blockdevices/get"
+    GET_SENSORS_PATH = "/host/sensors/get"
 
     def __init__(self):
         self.IS_YUM = False
@@ -3454,6 +3472,111 @@ done
     def qemu_version(self):
         return qemu.get_version()
 
+    @kvmagent.replyerror
+    @in_bash
+    def get_block_devices(self, req):
+        rsp = GetBlockDevicesResponse()
+
+        class BlockDevice:
+            def __init__(self, name, type, size, model, serial_number, fs_type, mount_point):
+                self.name = name
+                self.type = type
+                self.size = size
+                self.children = []
+                self.model = model
+                self.serialNumber = serial_number
+                self.FSType = fs_type
+                self.mountPoint = mount_point
+                self.partitionTable = None
+                self.usedRatio = None
+                self.mediaType = None
+
+        def get_used_ratio(name):
+            ratio_r, ratio_o = bash_ro('df -h --output=pcent %s' % name)
+            return form.load(ratio_o)[0]['Use%'].replace('%', '') if ratio_r == 0 else None
+
+        def get_partition_table(name):
+            partition_r, partition_o = bash_ro('parted -s %s print' % name)
+            if partition_r != 0:
+                return None
+            return filter_lines_by_str_list(partition_o.splitlines(), ["Partition Table"])[0].split(':')[1].strip()
+
+        def process_device(dev):
+            name = dev['name']
+            block_dev = BlockDevice(dev['name'], dev['type'], dev['size'], dev['model'], dev['serial'], dev['fstype'],
+                                    dev['mountpoint'])
+
+            if dev['children'] is not None:
+                for child in dev['children']:
+                    child_dev = process_device(child)
+                    block_dev.children.append(child_dev)
+
+            block_dev.partitionTable = get_partition_table(name)
+            block_dev.usedRatio = get_used_ratio(name)
+            if name.startswith('nvme'):
+                block_dev.mediaType = 'SSD'
+            else:
+                block_dev.mediaType = 'SSD' if dev['rota'] == '0' else 'HDD'
+
+            return block_dev
+
+        r, o, e = bash_roe('lsblk -p -b -o NAME,TYPE,ROTA,SIZE,MOUNTPOINT,FSTYPE,SERIAL,MODEL -J')
+        if r != 0:
+            rsp.success = False
+            rsp.error = e
+            return jsonobject.dumps(rsp)
+
+        for device in jsonobject.loads(o)['blockdevices']:
+            rsp.blockDevices.append(process_device(device))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_sensors(self, req):
+        rsp = GetSensorsResponse()
+
+        class Sensor:
+            def __init__(self, info):
+                self.name = info['name'].strip() or ""
+                self.value = info['value'].strip() or ""
+                self.status = info['status'].strip() or ""
+                self.type = ""
+                self.classification = ""
+                self.set_type_and_classification()
+
+            def set_type_and_classification(self):
+                if self.name is "":
+                    return
+
+                if self.name in sensor_type_by_name:
+                    self.type = sensor_type_by_name[self.name]
+                    return
+
+                type_r, type_o = bash_ro('ipmitool sdr get "%s"' % self.name)
+                if type_r != 0:
+                    logger.warning("failed to get sensor type for %s" % self.name)
+                    return
+
+                sensor_type = filter_lines_by_str_list(type_o.splitlines(), ["Sensor Type"])[0]
+                self.type = sensor_type.split(':')[1].split('(')[0].strip()
+                self.classification = "Discrete" if "Discrete" in sensor_type else "Threshold"
+                sensor_type_by_name[self.name] = self.type
+
+        def update_sensor_type_by_name():
+            sensor_names = {sensor.name for sensor in sensors}
+            keys_to_remove = [key for key in sensor_type_by_name.keys() if key not in sensor_names]
+            for key in keys_to_remove:
+                del sensor_type_by_name[key]
+
+        sensors = []
+        for info in form.load('name|sensorId|status|entityId|value\n' + get_sensor_info_from_ipmi(), sep='|'):
+            sensors.append(Sensor(info))
+
+        update_sensor_type_by_name()
+
+        rsp.sensors = sensors
+        return jsonobject.dumps(rsp)
+
     def start(self):
         self.host_uuid = None
         self.host_socket = None
@@ -3517,6 +3640,8 @@ done
         http_server.register_async_uri(self.DETACH_VOLUME_PATH, self.detach_volume__path)
         http_server.register_async_uri(self.GET_KERNEL_INTERFACE_PATH, self.get_kernel_interface)
         http_server.register_async_uri(self.SET_KERNEL_INTERFACE_PATH, self.set_kernel_interface)
+        http_server.register_async_uri(self.GET_BLOCK_DEVICES_PATH, self.get_block_devices)
+        http_server.register_async_uri(self.GET_SENSORS_PATH, self.get_sensors)
 
         self.heartbeat_timer = {}
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'
