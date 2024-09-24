@@ -137,7 +137,7 @@ start_agent_tools() {
 
 send_install_success() {
   if [ -f /etc/os-release ]; then
-      os_type=$(awk -F= '/^ID/ {print tolower($2)}' /etc/os-release | tr -d '"')
+      os_type=$(awk -F= '/^ID=/ {print tolower($2)}' /etc/os-release | tr -d '"')
       os_version=$(awk -F= '/^VERSION_ID/ {print $2}' /etc/os-release | tr -d '"')
   elif [ -f /etc/redhat-release ]; then
       os_type=$(cat /etc/redhat-release | awk '{print tolower($1)}')
