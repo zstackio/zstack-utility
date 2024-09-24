@@ -37,6 +37,8 @@ KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
 KVM_CHECK_L2VLAN_NETWORK_PATH = "/network/l2vlan/checkbridge"
+KVM_UPDATE_L2VLAN_NETWORK_PATH = "/network/l2vlan/updatebridge"
+KVM_UPDATE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/updatebridge"
 KVM_CHECK_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/checkcidr"
 KVM_REALIZE_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/createbridge"
 KVM_REALIZE_L2VXLAN_NETWORKS_PATH = "/network/l2vxlan/createbridges"
@@ -102,6 +104,16 @@ class BatchUpdateBridgeCmd(kvmagent.AgentCommand):
         self.bridgeParams = None  # type: list[BridgeParam]
 
 
+class UpdateBridgeCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(UpdateBridgeCmd, self).__init__()
+        self.physicalInterfaceName = None
+        self.bridgeName = None
+        self.oldVirtualNetworkId = None
+        self.newVirtualNetworkId = None
+        self.l2NetworkUuid = None
+        self.peers = None  # type: list[str]
+
 
 class CheckVxlanCidrCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -158,6 +170,11 @@ class CreateVlanBridgeResponse(kvmagent.AgentResponse):
 class BatchUpdateBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(BatchUpdateBridgeResponse, self).__init__()
+
+
+class UpdateBridgeResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(UpdateBridgeResponse, self).__init__()
 
 
 class CheckVxlanCidrResponse(kvmagent.AgentResponse):
@@ -1013,6 +1030,81 @@ configure lldp status rx-only \n
 
     @lock.lock('bridge')
     @kvmagent.replyerror
+    def update_vlan_bridge(self, req):
+        rsp = UpdateBridgeResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: UpdateBridgeCmd
+
+        if cmd.oldVirtualNetworkId:
+            old_vlan_interface = linux.make_vlan_eth_name(cmd.physicalInterfaceName, cmd.oldVirtualNetworkId)
+        else:
+            old_vlan_interface = cmd.physicalInterfaceName
+        if cmd.newVirtualNetworkId:
+            new_vlan_interface = linux.make_vlan_eth_name(cmd.physicalInterfaceName, cmd.newVirtualNetworkId)
+        else:
+            new_vlan_interface = cmd.physicalInterfaceName
+
+        try:
+            self._ifup_device_if_down(cmd.physicalInterfaceName)
+            if cmd.newVirtualNetworkId:
+                linux.create_vlan_eth_with_bridge(cmd.physicalInterfaceName, cmd.newVirtualNetworkId, cmd.bridgeName)
+
+            linux.update_bridge_interface_configuration(old_vlan_interface, new_vlan_interface,
+                                                        cmd.bridgeName, cmd.l2NetworkUuid)
+
+            if cmd.oldVirtualNetworkId:
+                linux.delete_vlan_eth_and_ifcfg(old_vlan_interface)
+
+            # switch to NoVlan Network need keep physical dev ip and route in bridge
+            if not cmd.newVirtualNetworkId and cmd.oldVirtualNetworkId:
+                linux.move_dev_route(cmd.physicalInterfaceName, cmd.bridgeName)
+            # switch to Vlan Network will return bridge ip and route to physical dev
+            if cmd.newVirtualNetworkId and not cmd.oldVirtualNetworkId:
+                linux.move_dev_route(cmd.bridgeName, cmd.physicalInterfaceName)
+
+            logger.debug('successfully update bridge[%s] vlan interface from device[%s] to device[%s]'
+                % (cmd.bridgeName, old_vlan_interface, new_vlan_interface))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = ('unable to update bridge[%s] vlan interface from device[%s] to device[%s], because %s'
+                         % (cmd.bridgeName, old_vlan_interface, new_vlan_interface, str(e)))
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
+    def update_vxlan_bridge(self, req):
+        rsp = CreateBridgeResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: UpdateBridgeCmd
+
+        if not cmd.oldVirtualNetworkId or not cmd.newVirtualNetworkId:
+            error_msg = 'both oldVirtualNetworkId and newVirtualNetworkId must be provided.'
+            logger.warning(error_msg)
+            rsp.error = error_msg
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        new_vxlan_interface = linux.make_vxlan_eth_name(cmd.newVirtualNetworkId)
+        old_vxlan_interface = linux.make_vxlan_eth_name(cmd.oldVirtualNetworkId)
+
+        try:
+            if cmd.peers:
+                linux.delete_vxlan_fdbs([old_vxlan_interface], cmd.peers)
+            linux.change_vxlan_interface(cmd.oldVirtualNetworkId, cmd.newVirtualNetworkId)
+            linux.update_bridge_interface_configuration(old_vxlan_interface, new_vxlan_interface,
+                                                        cmd.bridgeName, cmd.l2NetworkUuid)
+            if cmd.peers:
+                linux.populate_vxlan_fdbs([new_vxlan_interface], cmd.peers)
+            logger.debug('successfully update bridge[%s] vxlan interface from device[%s] to device[%s]'
+                % (cmd.bridgeName, old_vxlan_interface, new_vxlan_interface))
+        except Exception as e:
+            logger.warning(traceback.format_exc())
+            rsp.error = ('unable to update bridge[%s] vxlan interface from device[%s] to device[%s], because %s'
+                         % (cmd.bridgeName, old_vxlan_interface, new_vxlan_interface, str(e)))
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
     def create_bridge(self, req):
         rsp = CreateBridgeResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -1493,6 +1585,8 @@ configure lldp status rx-only \n
         http_server.register_async_uri(KVM_CHECK_L2NOVLAN_NETWORK_PATH, self.check_bridge)
         http_server.register_async_uri(KVM_CHECK_MACVLAN_L2VLAN_NETWORK_PATH, self.check_macvlan_vlan_eth)
         http_server.register_async_uri(KVM_CHECK_L2VLAN_NETWORK_PATH, self.check_vlan_bridge)
+        http_server.register_async_uri(KVM_UPDATE_L2VLAN_NETWORK_PATH, self.update_vlan_bridge)
+        http_server.register_async_uri(KVM_UPDATE_L2VXLAN_NETWORK_PATH, self.update_vxlan_bridge)
         http_server.register_async_uri(KVM_CHECK_L2VXLAN_NETWORK_PATH, self.check_vxlan_cidr)
         http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORK_PATH, self.create_vxlan_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VXLAN_NETWORKS_PATH, self.create_vxlan_bridges)
