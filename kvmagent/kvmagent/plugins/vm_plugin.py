@@ -3540,7 +3540,7 @@ class Vm(object):
                 if disk.source.path__ and disk.source.path_ == volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'cbd':
-                if disk.source.name__ and disk.source.name_ == make_cbd_conf(volume.installPath):
+                if disk.source.name__ and disk.source.name_ in volume.installPath:
                     return disk, disk.target.dev_
 
         if not is_exception:
