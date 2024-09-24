@@ -100,6 +100,10 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.libvirtCapabilities = []
         self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
         self.iscsiInitiatorName = None
+        self.cpuProcessorNum = 0
+        self.cpuSockets = 0
+        self.cpuCoresPerSocket = 0
+        self.cpuThreadsPerCore = 0
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -1266,8 +1270,11 @@ class HostPlugin(kvmagent.KvmAgent):
             if not cpu_cores_per_socket:
                 cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per cluster/{print $NF}'")
             cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
-            sockets = linux.get_socket_num()
-            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core) * sockets
+
+            rsp.cpuSockets = linux.get_socket_num()
+            rsp.cpuCoresPerSocket = int(cpu_cores_per_socket.strip())
+            rsp.cpuThreadsPerCore = int(cpu_threads_per_core)
+            rsp.cpuProcessorNum = rsp.cpuCoresPerSocket * rsp.cpuThreadsPerCore * rsp.cpuSockets
 
             '''
             examples:         
@@ -1317,8 +1324,11 @@ class HostPlugin(kvmagent.KvmAgent):
             if not cpu_cores_per_socket:
                 cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per cluster/{print $NF}'")
             cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
-            sockets = linux.get_socket_num()
-            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core) * sockets
+
+            rsp.cpuSockets = linux.get_socket_num()
+            rsp.cpuCoresPerSocket = int(cpu_cores_per_socket.strip())
+            rsp.cpuThreadsPerCore = int(cpu_threads_per_core)
+            rsp.cpuProcessorNum = rsp.cpuCoresPerSocket * rsp.cpuThreadsPerCore * rsp.cpuSockets
 
             cpu_cache_list = self._get_cpu_cache()
             rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
