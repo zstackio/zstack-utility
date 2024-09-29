@@ -349,7 +349,7 @@ class VmQga(object):
         cmd = "& '{}'".format("' '".join([part for part in cmd_parts]))
 
         ret = self.guest_exec(
-            {"path": "powershell.exe", "arg": ["-Command", cmd], "capture-output": output})
+            {"path": "powershell.exe", "arg": ["-ExecutionPolicy", "Bypass", "-Command", cmd], "capture-output": output})
         if ret and "pid" in ret:
             pid = ret["pid"]
         else:
