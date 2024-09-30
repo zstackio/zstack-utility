@@ -2301,6 +2301,8 @@ def get_volume_actual_installpath(install_path):
         return install_path.replace("sharedblock:/", "/dev")
     elif install_path.startswith('block'):
         return install_path.replace("block://", "/dev/disk/by-id/wwn-0x")
+    elif install_path.startswith('cbd'):
+        return "{}_{}_:{}".format(install_path, DEFAULT_ZBS_USER_NAME, DEFAULT_ZBS_CONF_PATH)
     return install_path
 
 
@@ -3472,11 +3474,11 @@ class Vm(object):
             if disk.source.file__ and disk.source.file_ == installPath:
                 return disk, disk.target.dev_
 
-            # ceph
+            # ceph, cbd
             if disk.source.name__ and disk.source.name_ in installPath:
                 return disk, disk.target.dev_
 
-            # 'block':
+            # block
             if disk.source.dev__ and disk.source.dev_ in installPath:
                 return disk, disk.target.dev_
             
@@ -3538,7 +3540,7 @@ class Vm(object):
                 if disk.source.path__ and disk.source.path_ == volume.installPath:
                     return disk, disk.target.dev_
             elif volume.deviceType == 'cbd':
-                if disk.source.name__ and disk.source.name_ == make_cbd_conf(volume.installPath):
+                if disk.source.name__ and disk.source.name_ in volume.installPath:
                     return disk, disk.target.dev_
 
         if not is_exception:
@@ -8302,6 +8304,13 @@ class VmPlugin(kvmagent.KvmAgent):
             else:
                 return ceph_blk()
 
+        def cbd_volume(_v):
+            disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
+            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+            e(disk, 'source', None, {'protocol': 'cbd', 'name': make_cbd_conf(_v.installPath)})
+            e(disk, 'target', None, {'dev': 'vd%s' % _v.dev_letter, 'bus': 'virtio'})
+            return disk
+
         def block_volume(_v):
             disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None,
@@ -8333,6 +8342,8 @@ class VmPlugin(kvmagent.KvmAgent):
             ele = filebased_volume(volume)
         elif volume.deviceType == 'ceph':
             ele = ceph_volume(volume)
+        elif volume.deviceType == 'cbd':
+            ele = cbd_volume(volume)
         elif volume.deviceType == 'block':
             ele = block_iso(volume) if volume.is_cdrom else block_volume(volume)
         else:
