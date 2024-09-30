@@ -6104,12 +6104,19 @@ class Vm(object):
 
             devices = elements['devices']
             channel = cmd.addons['channel']
+            channel_vr = cmd.addons['channel_vr']
             if channel:
                 basedir = os.path.dirname(channel.socketPath)
                 linux.mkdir(basedir, 0777)
                 chan = e(devices, 'channel', None, {'type': 'unix'})
                 e(chan, 'source', None, {'mode': 'bind', 'path': channel.socketPath})
                 e(chan, 'target', None, {'type': 'virtio', 'name': channel.targetName})
+            if channel_vr:
+                basedir = os.path.dirname(channel_vr.socketPath)
+                linux.mkdir(basedir, 0777)
+                chan_vr = e(devices, 'channel', None, {'type': 'unix'})
+                e(chan_vr, 'source', None, {'mode': 'bind', 'path': channel_vr.socketPath})
+                e(chan_vr, 'target', None, {'type': 'virtio', 'name': channel_vr.targetName})
 
             cephSecretKey = cmd.addons['ceph_secret_key']
             cephSecretUuid = cmd.addons['ceph_secret_uuid']
