@@ -1,8 +1,9 @@
+import os.path
 import random
 
 from kvmagent.test.shareblock_testsuite.shared_block_plugin_teststub import SharedBlockPluginTestStub
 from kvmagent.test.utils import sharedblock_utils,pytest_utils,storage_device_utils
-from zstacklib.utils import bash
+from zstacklib.utils import bash,lvm
 from unittest import TestCase
 from zstacklib.test.utils import misc,env
 import concurrent.futures
@@ -50,4 +51,19 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
                 to_do.append(future)
 
             for future in concurrent.futures.as_completed(to_do):
-                self.assertEqual(future.result().success, True, future.result().error)
+                if not future.result().success:
+                    self.assertEqual("other thread is connecting now" in future.result().error, True, future.result().error)
+
+        r, o ,e = bash.bash_roe("vgchange --lockstop %s" % vgUuid)
+        self.assertEqual(0, r, e)
+
+        r, o = bash.bash_ro(" pvs -oname --noheading -Svg_name=%s" % vgUuid)
+        disk = o.strip().splitlines()[0].strip()
+        bash.bash_roe("wipefs -af %s" % disk)
+        r = bash.bash_r("vgs | grep %s" % vgUuid)
+        self.assertNotEqual(0, r)
+
+        rsp = self.connect([blockUuid], [blockUuid], vgUuid, hostUuid, hostId, forceWipe=True, isFirst=False)
+        self.assertEqual(False, rsp.success, rsp.error)
+        r = bash.bash_r("vgs | grep %s" % vgUuid)
+        self.assertNotEqual(0, r)

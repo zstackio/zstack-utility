@@ -11,7 +11,6 @@ from zstacklib.utils import log
 
 
 storage_device_utils.init_storagedevice_plugin()
-init_kvmagent()
 vm_utils.init_vm_plugin()
 
 
