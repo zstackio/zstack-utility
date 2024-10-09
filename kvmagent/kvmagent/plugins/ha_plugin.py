@@ -1777,9 +1777,9 @@ class HaPlugin(kvmagent.KvmAgent):
             rsp.error = ("update cbd client conf fail, %s not exist." % cbd_client_conf_path)
             return jsonobject.dumps(rsp)
 
-        mds_info_list = ["{}:{}".format(mds_info.mdsAddr, mds_info.mdsPort) for mds_info in cmd.mdsInfos]
-        mds_info_str = ",".join(mds_info_list)
-        bash.bash_o('sed -i "s/^mds\.listen\.addr=.*/mds.listen.addr=%s/" %s' % (mds_info_str, cbd_client_conf_path))
+        mds_external_addr_list = [mds_info.mdsExternalAddr for mds_info in cmd.mdsInfos]
+        mds_external_addr_str = ",".join(mds_external_addr_list)
+        bash.bash_o('sed -i "s/^mds\.listen\.addr=.*/mds.listen.addr=%s/" %s' % (mds_external_addr_str, cbd_client_conf_path))
 
         return jsonobject.dumps(rsp)
 
