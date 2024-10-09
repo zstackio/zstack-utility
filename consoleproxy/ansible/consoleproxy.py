@@ -81,7 +81,7 @@ else:
     command = 'mkdir -p %s %s' % (consoleproxy_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-# name: create zstack-baremetal-nginx.service
+# name: create zstack nginx.service
 command = """
 mkdir -p /var/log/zstack/zstack-baremetal-nginx
 touch /var/log/zstack/zstack-baremetal-nginx/error.log
@@ -115,6 +115,30 @@ PrivateTmp=true
 WantedBy=multi-user.target" > /usr/lib/systemd/system/zstack-baremetal-nginx.service
 
 systemctl disable zstack-baremetal-nginx.service
+
+echo -e "[Unit]
+Description=ZStack AI Nginx Service
+After=network.target remote-fs.target nss-lookup.target
+
+[Service]
+Type=forking
+Restart=always
+RestartSec=3
+PIDFile=/var/lib/zstack/nginx/nginx_pid_file
+ExecStartPre=/usr/bin/rm -f /var/run/zstack/zstack-ai-nginx.pid
+ExecStartPre=/usr/sbin/nginx -t -c /var/lib/zstack/nginx/nginx.conf
+ExecStart=/usr/sbin/nginx -c /var/lib/zstack/nginx/nginx.conf -p /var/lib/zstack/nginx/
+ExecReload=/bin/kill -s HUP \$MAINPID
+KillSignal=SIGQUIT
+TimeoutStopSec=5
+KillMode=process
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target" > /usr/lib/systemd/system/zstack-ai-nginx.service
+
+systemctl enable zstack-ai-nginx.service
+systemctl start zstack-ai-nginx.service
 
 echo -e "user nginx;
 worker_processes auto;
