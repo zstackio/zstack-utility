@@ -430,7 +430,7 @@ class NetBridgeConfig(NetConfig):
 
     def check_config(self):
         super(NetBridgeConfig, self).check_config()
-        if self.stp not in [NET_CONFIG_STP_YES, NET_CONFIG_STP_NO]:
+        if self.stp and self.stp not in [NET_CONFIG_STP_YES, NET_CONFIG_STP_NO]:
             raise NetConfigError('configure error, stp must be yes or no')
         if self.delay and self.delay < 0:
             raise NetConfigError('configure error, bridge delay must be greater than 0')

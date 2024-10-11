@@ -1571,17 +1571,18 @@ def get_pf_name_by_vf_pci_address(pci_address):
 
 
 def delete_bridge(bridge_name):
+    if netconfig.is_use_network_manager():
+        shell.run("nmcli con delete %s" % bridge_name)
+        return
+
     vifs = get_all_bridge_interface(bridge_name)
     for vif in vifs:
         if vif == '':
             continue
         shell.run("brctl delif %s %s" % (bridge_name, vif))
 
-    if netconfig.is_use_network_manager():
-        shell.run("nmcli con delete %s" % bridge_name)
-    else:
-        shell.run("ip link set %s down" % bridge_name)
-        shell.run("brctl delbr %s" % bridge_name)
+    shell.run("ip link set %s down" % bridge_name)
+    shell.run("brctl delbr %s" % bridge_name)
 
 
 def delete_bridge_and_ifcfg(bridge_name):
@@ -2147,10 +2148,10 @@ def delete_vlan_bridge(bridge_name, vlan_interface):
             ips = get_ip_list_by_nic_name(vlan_interface)
             for ip in ips:
                 ifcfg.add_ip_config(ip.ip, ip.netmask)
+            delete_bridge_and_ifcfg(bridge_name)
             ifcfg.flush_config()
-
-        delete_bridge_and_ifcfg(bridge_name)
-        if not has_ip:
+        else:
+            delete_bridge_and_ifcfg(bridge_name)
             delete_vlan_eth_and_ifcfg(vlan_interface)
 
     else:
