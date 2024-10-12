@@ -57,6 +57,8 @@ HOST_TAKEOVER_FLAG_PATH = '/var/run/zstack/takeOver'
 NODE_INFO_PATH = '/sys/devices/system/node/'
 PCI_CONFIG_PATH = '/etc/pci_config'
 KVMAGENT_VERSION_PATH = '/var/lib/zstack/kvmagent_version'
+KVMAGENT_SHUTDOWN_PATH = '/var/lib/zstack/kvm/shutdown_vm'
+KVMAGENT_SHUTDOWN_INIT_PATH = '/etc/init.d/shutdown_vm'
 
 BOND_MODE_ACTIVE_0 = "balance-rr"
 BOND_MODE_ACTIVE_1 = "active-backup"
@@ -1017,6 +1019,8 @@ class HostPlugin(kvmagent.KvmAgent):
         # save kvmagent version
         self.save_kvmagent_version(cmd.version)
 
+        self.install_shutdown_hook(cmd)
+
         # create udev rule
         self.handle_usb_device_events()
 
@@ -1616,6 +1620,33 @@ if __name__ == "__main__":
         if flag:
             with open(KVMAGENT_VERSION_PATH, 'w') as fd:
                 fd.write(version)
+
+    def install_shutdown_hook(self, cmd):
+        if not cmd.isInstallHostShutdownHook:
+            shell_cmd = shell.ShellCmd(
+                "rm -rf /etc/init.d/shutdown_vm && rm -rf /etc/rc1.d/K01shutdown_vm && rm -rf /etc/rc6.d/K01shutdown_vm && rm -rf /etc/rc0.d/K01shutdown_vm",
+                None, False)
+            shell_cmd(False)
+            return
+
+        shell_cmd = shell.ShellCmd(
+            "/bin/cp -f %s %s && chmod 755 %s" % (KVMAGENT_SHUTDOWN_PATH, KVMAGENT_SHUTDOWN_INIT_PATH), None, False)
+        shell_cmd(False)
+        if shell_cmd.return_code != 0:
+            logger.debug("failed to copy %s to %s,%s, stdout: %s, stderr: %s" % (
+                KVMAGENT_SHUTDOWN_PATH, KVMAGENT_SHUTDOWN_INIT_PATH, shell_cmd.stdout, shell_cmd.stderr))
+            return
+
+        shell_cmd = shell.ShellCmd(
+            "sed -i 's/send_command_url/%s/g; s/host_uuid/%s/g' /etc/init.d/shutdown_vm" % (cmd.sendCommandUrl, cmd.hostUuid) +
+            " && ln -s -f /etc/init.d/shutdown_vm /etc/rc1.d/K01shutdown_vm "
+            "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc6.d/K01shutdown_vm "
+            "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc0.d/K01shutdown_vm "
+            "&& chkconfig shutdown_vm on", None, False)
+        shell_cmd(False)
+        if shell_cmd.return_code != 0:
+            logger.debug(
+                "failed to chkconfig shutdown_vm on, stdout: %s, stderr: %s" % (shell_cmd.stdout, shell_cmd.stderr))
 
     @kvmagent.replyerror
     @in_bash
