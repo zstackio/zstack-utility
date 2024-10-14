@@ -243,12 +243,12 @@ def send_hba_port_state_abnormal_alarm_to_mn(name, port_name, prot_state):
             "cannot find SEND_COMMAND_URL, unable to transmit hba port state abnormal alarm info to management node")
         return
 
-    if port not in hba_port_state_list_record_map.keys():
+    if port_name not in hba_port_state_list_record_map.keys():
         hba_port_state_abnormal_alarm = HBAPortStateAbnormalAlarm()
         hba_port_state_abnormal_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
         hba_port_state_abnormal_alarm.portName = port_name
         hba_port_state_abnormal_alarm.protState = prot_state
-        ba_port_state_abnormal_alarm.name = name
+        hba_port_state_abnormal_alarm.name = name
         http.json_dump_post(url, hba_port_state_abnormal_alarm,
                             {'commandpath': '/storagedevice/hba/state/alarm'})
 
@@ -1732,7 +1732,7 @@ def collect_hba_port_device_state():
 
     r, o = bash_ro("systool -c fc_host -v")
     if r != 0:
-        return ret
+        return metrics.values()
     port_name = None
     port_state = None
     name = None
@@ -1743,7 +1743,7 @@ def collect_hba_port_device_state():
             continue
         k = infos[0].lower().strip()
         v = infos[1].strip().strip('"')
-        if k == "Class Device":
+        if k == "class device":
             name = v
         if k == "port_name":
             port_name = v

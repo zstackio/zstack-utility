@@ -142,6 +142,7 @@ class FcHbaStruct(HbaStruct):
         self.supportedSpeeds = ""
         self.symbolicName = ""
         self.supportedClasses = ""
+        self.nodeName = ""
 
 
 class FcHbaScanRsp(AgentRsp):
@@ -297,15 +298,18 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if r != 0:
             return ret
 
-        name_ = port_name_ = speed_ = supported_speeds_ = port_state_ = symbolic_name_ = supported_classes_ = None
+        name_ = node_name_ = port_name_ = speed_ = None
+        supported_speeds_ = port_state_ = symbolic_name_ = supported_classes_ = None
         for line in o.strip().split("\n"):
             infos = line.split("=")
             if len(infos) != 2:
                 continue
             k = infos[0].lower().strip()
             v = infos[1].strip().strip('"')
-            if k == "class Device":
+            if k == "class device":
                 name_ = v
+            elif k == "node_name":
+                node_name_ = v
             elif k == "port_name":
                 port_name_ = v
             elif k == "speed":
@@ -321,6 +325,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             elif k == "device path":
                 h = FcHbaStruct()
                 h.name = name_
+                h.nodeName = node_name_
                 h.portName = port_name_
                 h.speed = speed_
                 h.supportedSpeeds = supported_speeds_
