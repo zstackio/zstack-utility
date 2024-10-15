@@ -852,6 +852,7 @@ class CephHeartbeatController(AbstractStorageFencer):
         waited_time = 0
         while not completion.is_complete():
             time.sleep(1)
+            logger.debug("ceph fencer: ceph write operation not complete, waiting at %d/%d" % (waited_time, write_timeout))
             waited_time += 1
             if waited_time == write_timeout:
                 logger.debug("write operation to %s not finished util timeout, report update failure" % heartbeat_object_name)
