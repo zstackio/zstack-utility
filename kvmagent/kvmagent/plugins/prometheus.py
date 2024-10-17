@@ -24,6 +24,7 @@ from zstacklib.utils.ip import get_nic_supported_max_speed
 logger = log.get_logger(__name__)
 collector_dict = {}  # type: Dict[str, threading.Thread]
 collectd_dir = "/var/lib/zstack/collectd/"
+pushgateway_conf = "/var/lib/zstack/prometheus/host_pushgateway/pushgateway.yaml"
 latest_collect_result = {}
 collectResultLock = threading.RLock()
 asyncDataCollectorLock = threading.RLock()
@@ -1394,6 +1395,19 @@ LoadPlugin virt
 
             service_name = get_systemd_name(binPath)
             service_path = '/etc/systemd/system/%s.service' % service_name
+
+            if service_name == "pushgateway":
+                # password used: htpasswd -bnBC 12 "" 123456 | tr -d ':\n'
+                # https://github.com/prometheus/pushgateway?tab=readme-ov-file#tls-and-basic-authentication
+                content = """basic_auth_users:
+                              admin: "$2y$12$Tf7suRl0fqOdo8xns2lAHufji..N3vZ/DTz06P5kQKsgHAh0eaIZq"
+                            """
+                if not os.path.exists(pushgateway_conf):
+                    with open(pushgateway_conf, 'w') as f:
+                        f.write(content)
+                    logger.info("write pushgateway conf success")
+                else:
+                    logger.info("pushgateway conf exists")
 
             service_conf = '''
 [Unit]
