@@ -92,15 +92,14 @@ else:
 
 
 # name: install dependencies
-install_rpm_list = ""
+install_rpm_list = "libcbd"
 qemu_installed = yum_check_package("qemu-kvm", host_post_info)
 if not qemu_installed:
     install_rpm_list += " %s" % qemu_alias.get(releasever, 'qemu-kvm')
 
 if zstack_repo != 'false':
-    command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
-            """ in $pkg_list; do yum --disablerepo=* --enablerepo={} install -y $pkg; done;"""\
-            .format(install_rpm_list, zstack_repo)
+    command = "for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;" % (
+        install_rpm_list, zstack_repo)
     run_remote_command(command, host_post_info)
 
     if host_info.major_version >= 7:
