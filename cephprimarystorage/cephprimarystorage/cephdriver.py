@@ -40,8 +40,12 @@ class CephDriver(object):
         if cmd.skipIfExisting and shell.run("rbd info %s" % path) == 0:
             return rsp
 
-        if ceph.is_xsky():
-            # do NOT round to MB
+        multiple_of_MB = cmd.size % sizeunit.m == 0
+        if multiple_of_MB:
+            call_string = 'rbd create --size %s --image-format 2 %s' % (sizeunit.Byte.toMegaByte(cmd.size), path)
+            call_string = self._wrap_shareable_cmd(cmd, call_string)
+            shell.call(call_string)
+        elif ceph.rbd_create_support_byte():
             call_string = 'rbd create --size %dB --image-format 2 %s' % (cmd.size, path)
             call_string = self._wrap_shareable_cmd(cmd, call_string)
             shell.call(call_string)
@@ -49,15 +53,7 @@ class CephDriver(object):
             pool, image = path.split('/')
             ioctx = agent.get_ioctx(pool)
             rbd_inst = rbd.RBD()
-            try:
-                rbd_inst.create(ioctx, image, cmd.size)
-            except Exception as e:
-                logger.debug("caught an exception[%s] when creating volume, try again now" % str(e))
-                size_M = sizeunit.Byte.toMegaByte(cmd.size) + 1
-                call_string = 'rbd create --size %s --image-format 2 %s' % (size_M, path)
-                call_string = self._wrap_shareable_cmd(cmd, call_string)
-                shell.call(call_string)
-                rsp.size = sizeunit.MegaByte.toByte(size_M)
+            rbd_inst.create(ioctx, image, cmd.size)
 
         return rsp
 
