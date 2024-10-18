@@ -3004,7 +3004,6 @@ class Vm(object):
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
-        logger.debug('>>> attaching xml=%s' % etree.tostring(disk_element))
         Vm.set_device_address(disk_element, volume, get_vm_by_uuid(self.uuid))
         Vm.set_volume_qos(addons, volume.volumeUuid, disk_element)
         Vm.set_volume_serial_id(volume.volumeUuid, disk_element)

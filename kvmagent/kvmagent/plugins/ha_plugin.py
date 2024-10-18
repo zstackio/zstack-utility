@@ -194,15 +194,16 @@ class PhysicalNicFencer(AbstractHaFencer):
     def __init__(self, interval, max_attempts, ps_uuid, run_fencer_list):
         super(PhysicalNicFencer, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
         self.name = self.get_ha_fencer_name()
-        self.falut_nic_count = {} #type: dict[str, int]
+        self.fault_nic_count = {} #type: dict[str, int]
 
     def exec_fencer(self):
-        vm_use_falut_nic_pids_dict, falut_nic = self.find_vm_use_falut_nic()
+        vm_use_fault_nic_pids_dict, fault_nic = self.find_vm_use_fault_nic()
 
-        if len(vm_use_falut_nic_pids_dict) == 0:
+        if len(vm_use_fault_nic_pids_dict) == 0:
+            logger.debug("[%s] report no VMs related to the fault nics" % self.get_ha_fencer_name())
             return
-        reason = "because physical nic[%s] status has been checked %s times and is still down" % (",".join(falut_nic), self.max_attempts)
-        kill_vm_use_pid(vm_use_falut_nic_pids_dict, reason)
+        reason = "because physical nic[%s] status has been checked %s times and is still down" % (",".join(fault_nic), self.max_attempts)
+        kill_vm_use_pid(vm_use_fault_nic_pids_dict, reason)
 
     def get_ha_fencer_name(self):
         return "hostBusinessNic"
@@ -215,20 +216,19 @@ class PhysicalNicFencer(AbstractHaFencer):
 
         return False
 
-    def find_vm_use_falut_nic(self):
-        vm_use_falut_nic_pids_dict = {}
-        falut_nic = self.find_falut_business_nic()
-        if len(falut_nic) == 0:
-            return vm_use_falut_nic_pids_dict, falut_nic
-        logger.debug("nics[%s] is down" % ",".join(falut_nic))
+    def find_vm_use_fault_nic(self):
+        vm_use_fault_nic_pids_dict = {}
+        fault_nic = self.find_fault_business_nics()
+        if len(fault_nic) == 0:
+            return vm_use_fault_nic_pids_dict, fault_nic
 
         r = bash.bash_r("timeout 5 virsh list")
         if r == 0:
-            vm_use_falut_nic_pids_dict = self.find_vm_use_falut_nic_with_virsh(falut_nic)
+            vm_use_fault_nic_pids_dict = self.find_vm_use_fault_nic_with_virsh(fault_nic)
         else:
-            vm_use_falut_nic_pids_dict = self.find_vm_use_falut_nic_without_virsh(falut_nic)
+            vm_use_fault_nic_pids_dict = self.find_vm_use_fault_nic_without_virsh(fault_nic)
 
-        return vm_use_falut_nic_pids_dict, falut_nic
+        return vm_use_fault_nic_pids_dict, fault_nic
 
 
     def is_bridge_related_to_nic(self, bridge, nic):
@@ -251,8 +251,8 @@ class PhysicalNicFencer(AbstractHaFencer):
 
 
     # get interface and bridge from xml
-    def find_vm_use_falut_nic_without_virsh(self, falut_nic):
-        vm_use_falut_nic_pids_dict = {}
+    def find_vm_use_fault_nic_without_virsh(self, fault_nic):
+        vm_use_fault_nic_pids_dict = {}
         vm_in_process_uuid_list = find_vm_uuid_list_by_process()
         for vm_uuid in vm_in_process_uuid_list:
             if self.skip_vm_bussiness_nic_check(vm_uuid):
@@ -270,22 +270,23 @@ class PhysicalNicFencer(AbstractHaFencer):
             vm.load_from_xml(xml)
 
             for bridge_nic in vm.bridges:
-                if not self.is_bridge_related_to_nic(bridge_nic, falut_nic):
+                if not self.is_bridge_related_to_nic(bridge_nic, fault_nic):
                     continue
 
                 vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
                 if not vm_pid:
-                    logger.warn('vm %s pid not found' % vm_uuid)
+                    logger.warn('pid of VM[%s] is not found' % vm_uuid)
                     continue
 
-                vm_use_falut_nic_pids_dict[vm_uuid] = vm_pid
+                vm_use_fault_nic_pids_dict[vm_uuid] = vm_pid
 
-        logger.debug("vm_use_falut_nic_pids_dict: %s" % vm_use_falut_nic_pids_dict)
-        return vm_use_falut_nic_pids_dict
+        logger.debug("[%s] report VM with fault nics by related network bridges:\n%s" % (
+                self.get_ha_fencer_name(), '\n'.join(map(lambda i: '\tuuid:%s, pid:%s' % (i[0], i[1]), vm_use_fault_nic_pids_dict.items()))))
+        return vm_use_fault_nic_pids_dict
 
 
-    def find_vm_use_falut_nic_with_virsh(self, falut_nic):
-        vm_use_falut_nic_pids_dict = {}
+    def find_vm_use_fault_nic_with_virsh(self, fault_nic):
+        vm_use_fault_nic_pids_dict = {}
         vm_in_process_uuid_list = find_vm_uuid_list_by_virsh()
         for vm_uuid in vm_in_process_uuid_list:
             if self.skip_vm_bussiness_nic_check(vm_uuid):
@@ -293,33 +294,35 @@ class PhysicalNicFencer(AbstractHaFencer):
 
             bridge_nics = shell.call("virsh domiflist %s | grep bridge | awk '{print $3}'" % vm_uuid)
             for bridge_nic in bridge_nics.splitlines():
-                if not self.is_bridge_related_to_nic(bridge_nic, falut_nic):
+                if not self.is_bridge_related_to_nic(bridge_nic, fault_nic):
                     continue
 
                 vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
                 if not vm_pid:
-                    logger.warn('vm %s pid not found' % vm_uuid)
+                    logger.warn('pid of VM[%s] is not found' % vm_uuid)
                     continue
 
-                vm_use_falut_nic_pids_dict[vm_uuid] = vm_pid
-        logger.debug("vm_use_falut_nic_pids_dict: %s" % vm_use_falut_nic_pids_dict)
-        return vm_use_falut_nic_pids_dict
+                vm_use_fault_nic_pids_dict[vm_uuid] = vm_pid
+        logger.debug("[%s] report VM with fault nics by virsh:\n%s" % (
+                self.get_ha_fencer_name(), '\n'.join(map(lambda i: '\tuuid:%s, pid:%s' % (i[0], i[1]), vm_use_fault_nic_pids_dict.items()))))
+        return vm_use_fault_nic_pids_dict
 
-    def find_falut_business_nic(self):
+    def find_fault_business_nics(self):
         nics = []
         nics.extend(ipUtils.get_host_physicl_nics())
-        nics.extend(self.get_nomal_bond_nic())
+        nics.extend(self.get_nomal_bond_nics())
         for new_nic in nics:
-            if new_nic not in self.falut_nic_count:
-                self.falut_nic_count[new_nic] = 0
+            if new_nic not in self.fault_nic_count:
+                self.fault_nic_count[new_nic] = 0
             ip = iproute.query_links(new_nic)
             if ip[0].state == 'DOWN':
-                self.falut_nic_count[new_nic] += 1
+                self.fault_nic_count[new_nic] += 1
+                logger.debug("[%s] report nics[%s] is down (%d/%d)" % (self.get_ha_fencer_name(), new_nic, self.fault_nic_count[new_nic], self.max_attempts))
             else:
-                self.falut_nic_count[new_nic] = 0
-        return [nic for nic, count in self.falut_nic_count.items() if count > self.max_attempts]
+                self.fault_nic_count[new_nic] = 0
+        return [nic for nic, count in self.fault_nic_count.items() if count > self.max_attempts]
 
-    def get_nomal_bond_nic(self):
+    def get_nomal_bond_nics(self):
         bond_path = "/proc/net/bonding/"
         if os.path.exists(bond_path):
             return os.listdir(bond_path)
