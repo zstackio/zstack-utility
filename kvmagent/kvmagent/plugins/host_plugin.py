@@ -2121,7 +2121,7 @@ done
             rsp.success = False
         else:
             logger.debug('host kernel interface is: %s, vlan id is: %s' % (interface.interfaceName, interface.vlanId))
-            interface.ips = [UsedIpTO(ip=item.ip, netmask=item.netmask, ipVersion=4) for item in ip_list]
+            interface.ips = [UsedIpTO(ip=item.ip, netmask=item.netmask, ipVersion=item.version, gateway=item.gateway) for item in ip_list]
             rsp.interfaces.append(interface)
 
         return jsonobject.dumps(rsp)
@@ -2170,7 +2170,7 @@ done
                 if to_create_ips:
                     for item in to_create_ips:
                         shell.call('ip addr add %s/%s dev %s' % (item.ip, item.netmask, target_dev))
-                        ifcfg.add_ip_config(item.ip, item.netmask)
+                        ifcfg.add_ip_config(item.ip, item.netmask, item.gateway, item.version, item.is_default)
                 if to_delete_ips:
                     for item in to_delete_ips:
                         shell.call('ip addr del %s/%s dev %s || true' % (item.ip, item.netmask, target_dev))
