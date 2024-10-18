@@ -87,6 +87,7 @@ class NetConfig(object):
         for item in self.ip_configs:
             if item.ip == ip:
                 ip_config = item
+                self.ip_configs.remove(item)
                 break
         if ip_config is None:
             ip_config = IpConfig(ip=ip, netmask=netmask)
