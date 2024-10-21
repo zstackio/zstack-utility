@@ -218,40 +218,29 @@ class PhysicalNicFencer(AbstractHaFencer):
 
     def find_vm_use_fault_nic(self):
         vm_use_fault_nic_pids_dict = {}
-        fault_nic = self.find_fault_business_nics()
-        if len(fault_nic) == 0:
-            return vm_use_fault_nic_pids_dict, fault_nic
+        fault_nics = self.find_fault_business_nics()
+        if len(fault_nics) == 0:
+            return vm_use_fault_nic_pids_dict, fault_nics
 
         r = bash.bash_r("timeout 5 virsh list")
         if r == 0:
-            vm_use_fault_nic_pids_dict = self.find_vm_use_fault_nic_with_virsh(fault_nic)
+            vm_use_fault_nic_pids_dict = self.find_vm_use_fault_nic_with_virsh(fault_nics)
         else:
-            vm_use_fault_nic_pids_dict = self.find_vm_use_fault_nic_without_virsh(fault_nic)
+            vm_use_fault_nic_pids_dict = self.find_vm_use_fault_nic_without_virsh(fault_nics)
 
-        return vm_use_fault_nic_pids_dict, fault_nic
+        return vm_use_fault_nic_pids_dict, fault_nics
 
 
-    def is_bridge_related_to_nic(self, bridge, nic):
-        if len(bridge) == 0:
+    def is_bridge_related_to_nic(self, bridge, nics):
+        phy_nic_name = linux.get_bridge_phy_nic_name_from_alias(bridge)
+        if len(phy_nic_name) == 0:
             return False
 
-        if '_' in bridge:
-            bridge = bridge.split('_')[1]
-
-        if '.' in bridge:
-            bridge = bridge.split('.')[0]
-
-        if len(bridge) == 0:
-            return False
-
-        if bridge.strip() in nic:
-            return True
-
-        return False
+        return phy_nic_name.strip() in nics
 
 
     # get interface and bridge from xml
-    def find_vm_use_fault_nic_without_virsh(self, fault_nic):
+    def find_vm_use_fault_nic_without_virsh(self, fault_nics):
         vm_use_fault_nic_pids_dict = {}
         vm_in_process_uuid_list = find_vm_uuid_list_by_process()
         for vm_uuid in vm_in_process_uuid_list:
@@ -270,7 +259,7 @@ class PhysicalNicFencer(AbstractHaFencer):
             vm.load_from_xml(xml)
 
             for bridge_nic in vm.bridges:
-                if not self.is_bridge_related_to_nic(bridge_nic, fault_nic):
+                if not self.is_bridge_related_to_nic(bridge_nic, fault_nics):
                     continue
 
                 vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
@@ -285,7 +274,7 @@ class PhysicalNicFencer(AbstractHaFencer):
         return vm_use_fault_nic_pids_dict
 
 
-    def find_vm_use_fault_nic_with_virsh(self, fault_nic):
+    def find_vm_use_fault_nic_with_virsh(self, fault_nics):
         vm_use_fault_nic_pids_dict = {}
         vm_in_process_uuid_list = find_vm_uuid_list_by_virsh()
         for vm_uuid in vm_in_process_uuid_list:
@@ -294,7 +283,7 @@ class PhysicalNicFencer(AbstractHaFencer):
 
             bridge_nics = shell.call("virsh domiflist %s | grep bridge | awk '{print $3}'" % vm_uuid)
             for bridge_nic in bridge_nics.splitlines():
-                if not self.is_bridge_related_to_nic(bridge_nic, fault_nic):
+                if not self.is_bridge_related_to_nic(bridge_nic, fault_nics):
                     continue
 
                 vm_pid = linux.find_vm_pid_by_uuid(vm_uuid)
