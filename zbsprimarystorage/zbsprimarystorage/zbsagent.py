@@ -135,6 +135,7 @@ def get_snapshot_name(install_path):
 class ZbsAgent(plugin.TaskManager):
     ECHO_PATH = "/zbs/primarystorage/echo"
     PING_PATH = "/zbs/primarystorage/ping"
+    DEPLOY_CLIENT_PATH = "/zbs/primarystorage/client/deploy"
     GET_FACTS_PATH = "/zbs/primarystorage/facts"
     GET_CAPACITY_PATH = "/zbs/primarystorage/capacity"
     COPY_PATH = "/zbs/primarystorage/copy"
@@ -156,6 +157,7 @@ class ZbsAgent(plugin.TaskManager):
         super(ZbsAgent, self).__init__()
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
+        self.http_server.register_async_uri(self.DEPLOY_CLIENT_PATH, self.deploy_client)
         self.http_server.register_async_uri(self.GET_FACTS_PATH, self.get_facts)
         self.http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         self.http_server.register_async_uri(self.COPY_PATH, self.copy)
@@ -456,6 +458,19 @@ class ZbsAgent(plugin.TaskManager):
 
         if not found:
             raise Exception('cannot found logical pool[%s], you must create it manually' % cmd.logicalPoolName)
+
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def deploy_client(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+
+        o = zbsutils.deploy_client(cmd.clientIp, cmd.clientPassword)
+        r = jsonobject.loads(o)
+        if r.error.code != 0:
+            rsp.success = False
+            rsp.error = 'failed to deploy client, error[%s].' % r.error.message
 
         return jsonobject.dumps(rsp)
 

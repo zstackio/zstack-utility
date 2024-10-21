@@ -1573,7 +1573,6 @@ class HaPlugin(kvmagent.KvmAgent):
     ADD_VM_FENCER_RULE_TO_HOST = "/add/vm/fencer/rule/to/host"
     REMOVE_VM_FENCER_RULE_FROM_HOST = "/remove/vm/fencer/rule/from/host"
     GET_VM_FENCER_RULE = "/get/vm/fencer/rule/"
-    CBD_CONFIGURE_CLIENT_PATH = "/cbd/configure/client"
     CBD_SETUP_SELF_FENCER_PATH = "/ha/cbd/setupselffencer"
 
     RET_SUCCESS = "success"
@@ -1765,23 +1764,6 @@ class HaPlugin(kvmagent.KvmAgent):
 
         heartbeat_on_block()
         return jsonobject.dumps(AgentRsp())
-
-    @kvmagent.replyerror
-    def configure_cbd_client(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentRsp()
-
-        cbd_client_conf_path = "/etc/zbs/client.conf"
-        if not os.path.exists(cbd_client_conf_path):
-            rsp.success = False
-            rsp.error = ("update cbd client conf fail, %s not exist." % cbd_client_conf_path)
-            return jsonobject.dumps(rsp)
-
-        mds_external_addr_list = [mds_info.mdsExternalAddr for mds_info in cmd.mdsInfos]
-        mds_external_addr_str = ",".join(mds_external_addr_list)
-        bash.bash_o('sed -i "s/^mds\.listen\.addr=.*/mds.listen.addr=%s/" %s' % (mds_external_addr_str, cbd_client_conf_path))
-
-        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def setup_cbd_self_fencer(self, req):
@@ -2472,7 +2454,6 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ADD_VM_FENCER_RULE_TO_HOST, self.add_vm_fencer_rule_to_host)
         http_server.register_async_uri(self.REMOVE_VM_FENCER_RULE_FROM_HOST, self.remove_vm_fencer_rule_from_host)
         http_server.register_async_uri(self.GET_VM_FENCER_RULE, self.get_vm_fencer_rule)
-        http_server.register_async_uri(self.CBD_CONFIGURE_CLIENT_PATH, self.configure_cbd_client)
         http_server.register_async_uri(self.CBD_SETUP_SELF_FENCER_PATH, self.setup_cbd_self_fencer)
 
 
