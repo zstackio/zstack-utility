@@ -230,8 +230,8 @@ class ZbsAgent(plugin.TaskManager):
         with CopyDaemon(task_spec=cmd):
             o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
             ret = jsonobject.loads(o)
-            if not ret.result.hasattr('fileInfo'):
-                raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
+            if ret.error.code != 0:
+                raise Exception('failed to query snapshot info for lun[%s], error[%s]' % (cmd.lunName, ret.error.message))
 
             o = zbsutils.copy(snapshot_path, dst_lun_path, True)
             ret = jsonobject.loads(o)
