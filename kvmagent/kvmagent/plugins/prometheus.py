@@ -226,11 +226,11 @@ def send_disk_insert_or_remove_alarm_to_mn(alarm_type, serial_number, slot):
                         {'commandpath': '/host/physical/disk/{alarm_type}/alarm'.format(alarm_type=alarm_type)})
 
 @thread.AsyncThread
-def send_hba_port_state_abnormal_alarm_to_mn(name, port_name, prot_state):
+def send_hba_port_state_abnormal_alarm_to_mn(name, port_name, port_state):
     class HBAPortStateAbnormalAlarm(object):
         def __init__(self):
             self.portName = None
-            self.protState = None
+            self.portState = None
             self.host = None
             self.name = None
 
@@ -247,7 +247,7 @@ def send_hba_port_state_abnormal_alarm_to_mn(name, port_name, prot_state):
         hba_port_state_abnormal_alarm = HBAPortStateAbnormalAlarm()
         hba_port_state_abnormal_alarm.host = ALARM_CONFIG.get(kvmagent.HOST_UUID)
         hba_port_state_abnormal_alarm.portName = port_name
-        hba_port_state_abnormal_alarm.protState = prot_state
+        hba_port_state_abnormal_alarm.portState = port_state
         hba_port_state_abnormal_alarm.name = name
         http.json_dump_post(url, hba_port_state_abnormal_alarm,
                             {'commandpath': '/storagedevice/hba/state/alarm'})
