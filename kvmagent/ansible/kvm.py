@@ -573,6 +573,17 @@ def copy_ovmf_tools():
     _dst = "/usr/share/OVMF/"
     copy_to_remote(_src, _dst, None, host_post_info)
 
+
+def copy_exporter_tools():
+    """copy zs-exporter from mn_node to host_node"""
+    file_list = ["process_exporter", "zstack_service_exporter"]
+    for file in file_list:
+        _src = '/opt/zstack-dvd/{}/{}/tools/{}'.format(host_info.host_arch, releasever, file)
+        if os.path.exists(_src):
+            _dst = os.path.join(workplace, file)
+            copy_to_remote(_src, _dst, "mode=755", host_post_info)
+
+
 def copy_lsusb_scripts():
     _src = os.path.join(file_root, "lsusb.py")
     _dst = "/usr/local/bin/"
@@ -915,6 +926,7 @@ check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
 copy_kvm_files()
+copy_exporter_tools()
 copy_gpudriver()
 copy_ovmf_tools()
 copy_lsusb_scripts()

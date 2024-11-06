@@ -1947,20 +1947,25 @@ LoadPlugin virt
 
         def run_in_systemd(binPath, args, log):
             def get_env_config(path):
-                if "node_exporter" in path:
+                keywords = ["node_exporter", "process_exporter", "zstack_service_exporter"]
+                if any(keyword in path for keyword in keywords):
                     return "GOMAXPROCS=1"
                 else:
                     return ""
 
             def get_systemd_name(path):
-                if "collectd_exporter" in path:
-                    return "collectd_exporter"
-                elif "node_exporter" in path:
-                    return "node_exporter"
-                elif "pushgateway" in path:
-                    return "pushgateway"
-                elif "ipmi_exporter" in path:
-                    return "ipmi_exporter"
+                exporter_names = [
+                    "collectd_exporter",
+                    "node_exporter",
+                    "pushgateway",
+                    "process_exporter",
+                    "zstack_service_exporter",
+                    "ipmi_exporter"
+                ]
+                for name in exporter_names:
+                    if name in path:
+                        return name
+                return None
 
             def reload_and_restart_service(service_name):
                 bash_errorout("systemctl daemon-reload && systemctl restart %s.service" % service_name)
@@ -1975,6 +1980,10 @@ LoadPlugin virt
             memory_limit_config = ""
             if service_name == "ipmi_exporter":
                 memory_limit_config = "MemoryLimit=64M"
+            elif service_name == "process_exporter":
+                memory_limit_config = "MemoryLimit=1G"
+            elif service_name == "zstack_service_exporter":
+                memory_limit_config = "MemoryLimit=1G"
 
             service_conf = '''
 [Unit]
@@ -2021,6 +2030,39 @@ WantedBy=multi-user.target
                 ARGUMENTS = ""
             os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
+
+        def start_custom_exporter(cmd, config_filename, config_option):
+            EXPORTER_PATH = cmd.binaryPath
+            if not os.path.exists(EXPORTER_PATH):
+                logger.info("binaryPath %s not found." % EXPORTER_PATH)
+                return
+
+            LOG_FILE = os.path.join(os.path.dirname(EXPORTER_PATH), os.path.basename(cmd.binaryPath) + '.log')
+            conf_path = os.path.join(os.path.dirname(EXPORTER_PATH), config_filename)
+
+            try:
+                with open(conf_path, 'w') as file:
+                    file.write(cmd.configYaml)
+                logger.info("config file %s writing completed." % conf_path)
+            except Exception as e:
+                logger.warn("an error occurred while writing to the file: %s" % e)
+                return
+
+            run_in_systemd(EXPORTER_PATH, "%s=%s" % (config_option, conf_path), LOG_FILE)
+
+        def check_if_mn_node_and_start_exporter(cmd, config_file, config_option):
+            if linux.find_process_by_cmdline('appName=zstack'):
+                logger.info("%s is already running on mn. skipping startup on compute node." % cmd.binaryPath)
+                return
+            start_custom_exporter(cmd, config_file, config_option)
+
+        @in_bash
+        def start_zs_exporter(cmd):
+            check_if_mn_node_and_start_exporter(cmd, "zs_host_exporter_config.yaml", "-config.file")
+
+        @in_bash
+        def start_process_exporter(cmd):
+            check_if_mn_node_and_start_exporter(cmd, "process_exporter_config.yaml", "-config.path")
 
         @in_bash
         def start_ipmi_exporter(cmd):
@@ -2081,6 +2123,10 @@ modules:
                 else:
                     logger.info("Current environment is a virtualized environment, skipping ipmi_exporter startup")
                     continue
+            elif "process_exporter" in cmd.binaryPath:
+                start_process_exporter(cmd)
+            elif "zstack_service_exporter" in cmd.binaryPath:
+                start_zs_exporter(cmd)
             else:
                 start_exporter(cmd)
 
