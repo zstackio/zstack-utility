@@ -1081,7 +1081,8 @@ def collect_equipment_state_from_ipmi():
         sensor_value = sensor[4].strip()
         if re.match(cpu_temperature_pattern, sensor_id):
             cpu_id = int(re.sub(r'\D', '', sensor_id))
-            cpu_temperature = filter(str.isdigit, sensor_value) if bool(re.search(r'\d', sensor_value)) else 0
+            cpu_temperature_match = re.search(r'(-?\d+(\.\d+)?)', sensor_value)
+            cpu_temperature = float(cpu_temperature_match.group(1)) if cpu_temperature_match else 0
             metrics['cpu_temperature'].add_metric(["CPU%d" % cpu_id], float(cpu_temperature))
         if re.match(cpu_status_pattern, sensor_id):
             cpu_id = int(re.sub(r'\D', '', sensor_id))
