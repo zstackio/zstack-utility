@@ -7993,8 +7993,12 @@ class VmPlugin(kvmagent.KvmAgent):
             job_over = True
             if shell_cmd.return_code != 0:
                 if 'non-file destination not supported' in shell_cmd.stderr:
-                    shell_cmd.stderr = 'the current libvirt does not support migrating storage to ceph ' \
-                                       'from the same host. Please upgrade to libvirt-4.9.0-22.gef3a393 or higher'
+                    shell_cmd.stderr = 'current versions of qemu or libvirt do not support migrating storage to ceph ' \
+                                       'from the same host. check whether the libvirt version is later than libvirt-4.9.0-22, ' \
+                                       'and the qemu version running on the vm is later than 6.2.0-901.'
+                elif "Unknown driver 'rbd'" in shell_cmd.stderr:
+                    shell_cmd.stderr = 'the qemu version running on the vm is later than that on the host,' \
+                                       ' upgrade the qemu running on the virtual machine and try again.'
                 logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, shell_cmd.stderr))
                 return False, shell_cmd.stderr
             valid, errText = check_volume()
