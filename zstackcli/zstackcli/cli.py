@@ -389,6 +389,8 @@ Parse command parameters error:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIDeployModelEvalServiceMsg' and params[0] in ['requestHeaders']:
                     all_params[params[0]] = eval(params[1])
+                elif apiname == 'APIUpdateDatasetsMsg' and params[0] == 'updateDatasetStructs':
+                    all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIUpdateSchedulerJobMsg' and params[0] == 'parameters':
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreateIAM2TickFlowCollectionMsg' and params[0] == 'flows':
