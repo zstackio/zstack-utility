@@ -2353,29 +2353,34 @@ done
             logger.error("npu query gpu is error, %s " % npu_ids_out)
             return False
 
-        npu_id = None
+        npu_ids = []
         for line in npu_ids_out.splitlines():
             line = line.strip()
             if not line:
                 continue
             if "NPU ID" in line:
-                npu_id = line.split(":")[1].strip()
-                break
+                npu_ids.append(line.split(":")[1].strip())
 
-        if npu_id:
+        if len(npu_ids) == 0:
+            return False
+
+        add_found = False
+        for npu_id in npu_ids:
             r, o, e = bash_roe("npu-smi info -t board -i %s" % npu_id)
             if r != 0:
                 logger.error("npu query gpu board is error, %s " % e)
-                return False
+                continue
 
             if to.pciDeviceAddress.lower() not in o.lower():
-                return False
+                continue
+
+            add_found = True
 
             r, o, e = bash_roe("npu-smi info -t template-info -i %s" % npu_id)
 
             if r != 0:
                 logger.error("npu query gpu template-info is error, %s " % e)
-                return False
+                continue
 
             for line in o.splitlines():
                 match = re.match(r'\|(\w+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\|', line)
@@ -2391,6 +2396,10 @@ done
                         'JPEGD': int(match.group(7))
                     }
                     to.mdevSpecifications.append(template)
+
+        if not add_found:
+            logger.error("can't find gpu %s mdev spec in npu-smi output" % to.pciDeviceAddress)
+            return False
 
         r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
         if r != 0:
