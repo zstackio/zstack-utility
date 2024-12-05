@@ -10,7 +10,7 @@ from prometheus_client.core import GaugeMetricFamily, REGISTRY
 import psutil
 
 from kvmagent import kvmagent
-from zstacklib.utils import http
+from zstacklib.utils import http, debug
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import lock
@@ -35,6 +35,8 @@ cpu_status_abnormal_list_record = set()
 memory_status_abnormal_list_record = set()
 fan_status_abnormal_list_record = set()
 disk_status_abnormal_list_record = {}
+dump_stack_and_objects = True
+kvmagent_physical_memory_usage_alarm_time = None
 
 # collect domain max memory
 domain_max_memory = {}
@@ -1229,6 +1231,77 @@ def collect_host_conntrack_statistics():
     return metrics.values()
 
 
+class ProcessPhysicalMemoryUsageAlarm(object):
+    def __init__(self, pid, process_name, mem_usage, **kwargs):
+        self.pid = pid
+        self.process_name = process_name
+        self.memory_usage = mem_usage
+        self.additionalProperties = kwargs
+
+    def to_dict(self):
+        result = {
+            "hostUuid": ALARM_CONFIG.get(kvmagent.HOST_UUID),
+            "pid": self.pid,
+            "processName": self.process_name,
+            "memoryUsage": self.memory_usage,
+            "additionalProperties": self.additionalProperties
+        }
+        return result
+
+    @thread.AsyncThread
+    def send_alarm_to_mn(self):
+        if ALARM_CONFIG is None:
+            logger.warn("Cannot find ALARM_CONFIG")
+            return
+        url = ALARM_CONFIG.get(kvmagent.SEND_COMMAND_URL)
+        if not url:
+            logger.warn("Cannot find SEND_COMMAND_URL, unable to transmit alarm info to management node")
+            return
+
+        http.json_dump_post(url, self.to_dict(), {'commandpath': '/host/process/physicalMemory/usage/alarm'})
+
+
+def report_self_abnormal_memory_usage_if_need(usage):
+    global kvmagent_physical_memory_usage_alarm_time
+    if kvmagent_physical_memory_usage_alarm_time and linux.get_current_timestamp() - kvmagent_physical_memory_usage_alarm_time <= 1800:
+        return
+
+    ProcessPhysicalMemoryUsageAlarm(os.getpid(), "zstack-kvmagent", long(usage)).send_alarm_to_mn()
+    kvmagent_physical_memory_usage_alarm_time = linux.get_current_timestamp()
+
+
+@lock.lock('dump_debug')
+def dump_debug_info_if_need():
+    global dump_stack_and_objects
+    if dump_stack_and_objects:
+        debug.track_memory_growth()
+    dump_stack_and_objects = False
+
+
+def collect_kvmagent_memory_statistics():
+    metrics = {
+        'kvmagent_used_physical_memory': GaugeMetricFamily('kvmagent_used_physical_memory', 'kvmagent used physical memory', None, ['pid'])
+    }
+
+    used_physical_memory = float(psutil.Process().memory_info().rss)
+    metrics['kvmagent_used_physical_memory'].add_metric([str(os.getpid())], used_physical_memory)
+
+    mem_alarm_threshold = kvmagent.configs.get(kvmagent.PHYSICALMEMORY_USAGE_ALARM_THRESHOLD)
+    mem_hard_limit = kvmagent.configs.get(kvmagent.PHYSICALMEMORY_USAGE_HARDLIMIT)
+    if not mem_alarm_threshold or not mem_hard_limit:
+        return metrics.values()
+
+    if used_physical_memory <= min(mem_hard_limit, mem_alarm_threshold):
+        return metrics.values()
+
+    logger.warn("kvmagent used physical memory abnormal, used: %s" % used_physical_memory)
+    report_self_abnormal_memory_usage_if_need(used_physical_memory)
+    # if used_physical_memory <= 4 * 1024**3:  # 4GB
+    #    dump_debug_info_if_need()
+
+    return metrics.values()
+
+
 kvmagent.register_prometheus_collector(collect_host_network_statistics)
 kvmagent.register_prometheus_collector(collect_host_capacity_statistics)
 kvmagent.register_prometheus_collector(collect_vm_statistics)
@@ -1249,6 +1322,7 @@ if misc.isHyperConvergedHost():
     kvmagent.register_prometheus_collector(collect_ssd_state)
 else:
     kvmagent.register_prometheus_collector(collect_physical_cpu_state)
+kvmagent.register_prometheus_collector(collect_kvmagent_memory_statistics)
 
 
 class PrometheusPlugin(kvmagent.KvmAgent):
@@ -1620,3 +1694,6 @@ WantedBy=multi-user.target
     def configure(self, config):
         global ALARM_CONFIG
         ALARM_CONFIG = config
+        debug.CONFIG = config
+        debug.SEND_COMMAND_URL = kvmagent.SEND_COMMAND_URL
+        debug.HOST_UUID = kvmagent.HOST_UUID
