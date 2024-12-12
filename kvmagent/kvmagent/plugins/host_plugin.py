@@ -1210,7 +1210,8 @@ class HostPlugin(kvmagent.KvmAgent):
             if not cpu_cores_per_socket:
                 cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per cluster/{print $NF}'")
             cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
-            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
+            sockets = linux.get_socket_num()
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core) * sockets
 
             '''
             examples:         
@@ -1260,7 +1261,8 @@ class HostPlugin(kvmagent.KvmAgent):
             if not cpu_cores_per_socket:
                 cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per cluster/{print $NF}'")
             cpu_threads_per_core = shell.call("lscpu | awk -F':' '/per core/{print $NF}'")
-            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core)
+            sockets = linux.get_socket_num()
+            rsp.cpuProcessorNum = int(cpu_cores_per_socket.strip()) * int(cpu_threads_per_core) * sockets
 
             cpu_cache_list = self._get_cpu_cache()
             rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
@@ -1948,7 +1950,7 @@ done
                     serial_number = v
                 elif "rank" == k:
                     rank = v
-                elif "configured clock speed" == k:
+                elif k in ["configured clock speed", "configured memory speed"]:
                     clock_speed = v
                 elif "configured voltage" == k:
                     if serial_number.lower() != "no dimm" and serial_number.lower() != "unknown" and serial_number is not None:
