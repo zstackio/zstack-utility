@@ -5049,7 +5049,6 @@ class Vm(object):
                 keyboard = e(devices, 'input', None, {'type': 'keyboard', 'bus': 'usb'})
                 e(keyboard, 'address', None, {'type': 'usb', 'bus': '0', 'port': '2'})
 
-            @linux.with_arch(todo_list=['sw_64'])
             def set_tablet():
                 tablet = e(devices, 'input', None, {'type': 'tablet', 'bus': 'usb'})
                 if HOST_ARCH in ['sw_64']:
@@ -5678,7 +5677,6 @@ class Vm(object):
                     e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
                 e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
 
-            @linux.with_arch(todo_list=['sw_64'])
             def set_redirdev():
                 if HOST_ARCH in ['sw_64']:
                     return
