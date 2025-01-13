@@ -145,6 +145,7 @@ def dump_threads():
                 thread_info.append("Locals: {}".format(simplified_locals))
             except Exception as e:
                 logger.debug("Error dumping thread {}: {}".format(th.name, str(e)))
+                logger.warning(traceback.format_exc())
 
         output.append("\n".join(thread_info))
 

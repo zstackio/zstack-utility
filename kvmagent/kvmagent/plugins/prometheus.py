@@ -1296,8 +1296,8 @@ def collect_kvmagent_memory_statistics():
 
     logger.warn("kvmagent used physical memory abnormal, used: %s" % used_physical_memory)
     report_self_abnormal_memory_usage_if_need(used_physical_memory)
-    # if used_physical_memory <= 4 * 1024**3:  # 4GB
-    #    dump_debug_info_if_need()
+    if used_physical_memory <= 4 * 1024**3:  # 4GB
+        dump_debug_info_if_need()
 
     return metrics.values()
 
