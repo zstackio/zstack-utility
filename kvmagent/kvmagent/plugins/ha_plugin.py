@@ -1446,6 +1446,14 @@ class FileSystemMountPoint:
         typ = shell.call("mount | grep '%s' | awk '{print $5}'" % mount_path)
         return typ.startswith('nfs')
 
+    def prepare_heartbeat_dir(self, dir_path):
+        if not self.mounted_by_zstack or linux.is_mounted(self.mount_path):
+            if not os.path.exists(dir_path):
+                os.makedirs(dir_path)
+        else:
+            if os.path.exists(dir_path):
+                linux.rm_dir_force(dir_path)
+
     def retry_recover_mount_path(self, retry_times=1, sleep_time=180):
         if self.mount_path_is_nfs(self.mount_path):
             shell.run("systemctl start nfs-client.target")
@@ -1482,6 +1490,8 @@ class FileSystemFencer(StorageFencer):
         # TODO: duplicate code, need to be refactored
         self.heartbeat_file_path = os.path.join(os.path.join(self.mount_point.mount_path, 'heartbeat'),
                                                  'heartbeat-file-kvm-host-%s.hb' % host_uuid)
+        self.mount_point.prepare_heartbeat_dir(
+            os.path.dirname(self.heartbeat_file_path))
 
     def run_fencer(self):
         touch = shell.ShellCmd('timeout %s touch %s' 
@@ -1503,7 +1513,11 @@ class FileSystemFencer(StorageFencer):
             return False
     
         logger.debug("remount the file system[%s] because it is mounted by zstack" % self.mount_point.mount_path)
-        return self.mount_point.retry_recover_mount_path()
+        ret = self.mount_point.retry_recover_mount_path()
+        if ret:
+            self.mount_point.prepare_heartbeat_dir(
+                os.path.dirname(self.heartbeat_file_path))
+        return ret
 
     def get_status(self):
         return "FileSystemFencer Status:\n" \
