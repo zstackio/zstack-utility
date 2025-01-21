@@ -1,11 +1,13 @@
-from zstacklib.utils import plugin
+from zstacklib.utils import plugin, log
 from zstacklib.utils import jsonobject
 from zstacklib.utils.thread import AsyncThread
+
 import time
 
 canceld = set()
 exception_catched = set()
 
+logger = log.get_logger(__name__)
 
 class TaskPlugin1(plugin.Plugin):
     def __init__(self):
@@ -13,7 +15,7 @@ class TaskPlugin1(plugin.Plugin):
         self.progress_count = 0
 
     @AsyncThread
-    def run_fake_task(self, task_name, secs, timeout, run_exception=False):
+    def run_fake_task(self, task_name, secs, timeout, run_exception=False, ignore_exception=False):
         cmd = jsonobject.loads('{"threadContext":{"api":"fakeApiId"}}')
 
         class FakeTaskDaemon(plugin.TaskDaemon):
@@ -21,9 +23,12 @@ class TaskPlugin1(plugin.Plugin):
                 super(FakeTaskDaemon, self).__init__(cmd, task_name, timeout=timeout)
                 self.percent = 0
 
+            def _exit(self, exc_type, exc_val, exc_tb):
+                return ignore_exception
+
             def _get_percent(self):
                 self.percent = self.percent + 1
-                print 'percent' + str(self.percent)
+                logger.debug("task %s-%s progress %s" % (self.task_name, id(self), self.percent))
 
             def _cancel(self):
                 canceld.add(self.task_name)

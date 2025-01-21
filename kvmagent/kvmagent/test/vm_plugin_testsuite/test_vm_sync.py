@@ -24,7 +24,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
+    @env.test_for(handlers=[
         vm_plugin.VmPlugin.KVM_VM_SYNC_PATH
     ])
     @pytest_utils.ztest_decorater

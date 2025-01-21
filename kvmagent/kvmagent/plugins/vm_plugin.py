@@ -64,6 +64,7 @@ from zstacklib.utils import ovs
 from zstacklib.utils import drbd
 from zstacklib.utils.jsonobject import JsonObject
 from zstacklib.utils.linux import is_virtual_machine
+from zstacklib.utils.plugin import TaskManager, TaskResult
 from zstacklib.utils.qga import *
 from zstacklib.utils import jsonobject
 from zstacklib.utils.qmp import get_block_node_name_and_file
@@ -3956,6 +3957,24 @@ class Vm(object):
         else:
             return None, None
 
+    MIGRATE_VM_TASK_NAME = "MigrateVm"
+    @staticmethod
+    def wait_live_migrate(cmd):
+        def check_migrated(task_name, api_id):
+            r = TaskResult()
+            with contextlib.closing(get_connect(cmd.destHostIp)) as conn:
+                dst_vm = get_vm_by_uuid(cmd.vmUuid, False, conn)
+                if not dst_vm or dst_vm.state != Vm.VM_STATE_RUNNING:
+                    r.fail("cannot find task[name=%s] for api[%s] and "
+                                    "vm[uuid:%s] is not running on destination host" % (task_name, api_id, cmd.vmUuid))
+                logger.debug("vm[uuid:%s] is running on destination host[%s], we assume migration is completed."
+                             % (cmd.vmUuid, cmd.destHostIp))
+                return r
+
+        ret = TaskManager.wait_task(cmd, Vm.MIGRATE_VM_TASK_NAME, check_migrated)
+        if not ret.success:
+            raise Exception(ret.error)
+
     def migrate(self, cmd):
         if self.state == Vm.VM_STATE_SHUTDOWN:
             raise kvmagent.KvmError('vm[uuid:%s] is stopped, cannot live migrate,' % cmd.vmUuid)
@@ -4025,7 +4044,7 @@ class Vm(object):
         timeout = get_timeout(cmd)
         class MigrateDaemon(plugin.TaskDaemon):
             def __init__(self, domain, uuid):
-                super(MigrateDaemon, self).__init__(cmd, 'MigrateVm')
+                super(MigrateDaemon, self).__init__(cmd, Vm.MIGRATE_VM_TASK_NAME)
                 self.domain = domain
                 self.uuid = uuid
                 self.progress_status =deque(maxlen=60)
@@ -4149,7 +4168,6 @@ class Vm(object):
                 self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, bandwidth)
 
         try:
-            logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
             if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeout):
                 try: self.domain.abortJob()
                 except: pass
@@ -8122,52 +8140,16 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    def _check_vm_live_migate_status(self, cmd):
-        def _check_vm_on_dsthost(retry_times=1):
-            @linux.retry(times=retry_times, sleep_time=2)
-            def _check():
-                with contextlib.closing(get_connect(cmd.destHostIp)) as conn:
-                    vm = get_vm_by_uuid(cmd.vmUuid, False, conn)
-                    if vm is not None and vm.state == vm.VM_STATE_RUNNING:
-                        return True
-                    raise RetryException("")
-            try:
-                return _check()
-            except Exception:
-                return False
-
-        if _check_vm_on_dsthost():
-            return True
-
-        vm = get_vm_by_uuid(cmd.vmUuid)
-        if vm.state != vm.VM_STATE_RUNNING:
-            logger.debug("vm[uuid:%s] state is not running, unable to recover live storage migration" % cmd.vmuuid)
-            return False
-
-        def _wait_job(_):
-            vm.refresh()
-            for oldpath, volume in cmd.disks.__dict__.items():
-                _, disk_name = vm._get_target_disk_by_path(oldpath, is_exception=False)
-                if disk_name is not None and vm._wait_for_block_job(disk_name, abort_on_error=False):
-                    return False
-            return True
-
-        try:
-            logger.debug('migrate vm[%s] with block is waiting for job completion' % vm.uuid)
-            timeout = 259200 if get_timeout(cmd) <= 0 else get_timeout(cmd)
-            linux.wait_callback_success(_wait_job, timeout=timeout, interval=10)
-        except Exception as e:
-            logger.warn("caught an exception on waiting for storage migration job completion: %s" % str(e))
-        finally:
-            return _check_vm_on_dsthost(retry_times=5)
-
     @kvmagent.replyerror
     def migrate_vm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = MigrateVmResponse()
         try:
-            self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
+            if cmd.reload:
+                Vm.wait_live_migrate(cmd)
+                return jsonobject.dumps(rsp)
 
+            self._record_operation(cmd.vmUuid, self.VM_OP_MIGRATE)
             if cmd.migrateFromDestination:
                 with contextlib.closing(get_connect(cmd.srcHostIp)) as conn:
                     vm = get_vm_by_uuid(cmd.vmUuid, False, conn)
@@ -8175,12 +8157,6 @@ class VmPlugin(kvmagent.KvmAgent):
                         logger.warn('unable to find vm {0} on host {1}'.format(cmd.vmUuid, cmd.srcHostIp))
                         raise kvmagent.KvmError('unable to find vm %s on host %s' % (cmd.vmUuid, cmd.srcHostIp))
                     vm.migrate(cmd)
-            elif cmd.reload and cmd.disks:
-                ## storage migration recovery
-                rsp.success = self._check_vm_live_migate_status(cmd)
-                if not rsp.success:
-                    rsp.error = 'unable to resume storage migration of vm %s' % cmd.vmUuid
-                return jsonobject.dumps(rsp)
             else:
                 vm = get_vm_by_uuid(cmd.vmUuid)
                 vm.migrate(cmd)

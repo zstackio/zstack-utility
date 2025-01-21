@@ -210,7 +210,6 @@ def dumps(obj, pretty=False, include_protected_attr=False):
         return simplejson.dumps(jsonmap, ensure_ascii=True)
 
 
-def from_dict(obj):
-    # type: (dict) -> JsonObject
-
-    return loads(dumps(obj))
+def from_dict(obj, include_protected_attr=False):
+    # type: (dict, bool) -> JsonObject
+    return loads(dumps(obj, include_protected_attr=include_protected_attr))

@@ -22,7 +22,7 @@ class TestNetwork(TestCase, MevocoPluginTestStub):
     def setUpClass(cls):
         cls.bridge_name = network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
+    @env.test_for(handlers=[
         mevoco.Mevoco.DHCP_DELETE_NAMESPACE_PATH,
     ])
     def test_batch_apply_dhcp(self):

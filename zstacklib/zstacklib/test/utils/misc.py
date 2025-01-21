@@ -1,10 +1,6 @@
 import functools
-import os
+import time
 import uuid as uid
-
-import simplejson
-
-import env
 from zstacklib.utils import jsonobject, log
 from zstacklib.utils.http import REQUEST_BODY
 
@@ -15,6 +11,19 @@ def uuid():
     return str(uid.uuid4()).replace('-', '')
 
 
+def make_context_dict(api_msg_name, api_id=uuid(), timeout=1800):
+    return {
+        "threadContext": {
+            "api": api_id,
+            "task-name": api_msg_name
+        },
+        "threadContextStack": [],
+        "taskContext": {
+            "__messagetimeout__": str(timeout * 1000),
+            "__messagedeadline__": str(int(time.time() + timeout) * 1000)
+        }
+    }
+
 def make_a_request(body):
     # type: (dict) -> dict
 
@@ -23,6 +32,7 @@ def make_a_request(body):
     return {
         REQUEST_BODY: bodyStr
     }
+
 
 
 def return_jsonobject():
@@ -44,58 +54,4 @@ def return_jsonobject():
         return inner
 
     return wrap
-
-
-def _write_test_for_info(handlers, case_info):
-    cc = case_info.split('::')
-    case_name = cc[0]
-    func_name = '::'.join(cc[1:])
-
-    if handlers is not None and not isinstance(handlers, list) and not isinstance(handlers, str):
-        raise ValueError('handlers of %s must be a non-empty list or a non-empty string' % func_name)
-
-    if not handlers:
-        # empty means just skip test for dry-run
-        logger.warn('%s has empty handler' % case_info)
-        return
-
-    output_dir = os.path.abspath(env.TEST_FOR_OUTPUT_DIR)
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-
-    file_path = os.path.join(output_dir, '%s.json' % os.path.basename(case_name).split('.')[0])
-
-    if os.path.isfile(file_path):
-        with open(file_path, 'r') as fd:
-            data = jsonobject.loads(fd.read())
-    else:
-        data = jsonobject.from_dict({})
-
-    data.case_path = case_name
-    if data.test_for is None:
-        data.test_for = []
-
-    data.test_for.append({
-        'func': func_name,
-        'handlers': handlers if isinstance(handlers, list) else [handlers]
-    })
-
-    with open(file_path, 'w+') as fd:
-        fd.write(jsonobject.dumps(data))
-        logger.debug('write test_for into to: %s' % file_path)
-
-
-def test_for(handlers):
-    def wrap(f):
-        @functools.wraps(f)
-        def inner(*args, **kwargs):
-            if env.DRY_RUN:
-                _write_test_for_info(handlers, os.environ.get('PYTEST_CURRENT_TEST'))
-            else:
-                return f(*args, **kwargs)
-
-        return inner
-
-    return wrap
-
 

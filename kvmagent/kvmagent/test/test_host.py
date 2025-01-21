@@ -13,7 +13,7 @@ __ENV_SETUP__ = {
 
 
 class TestHost(TestCase, pytest_utils.PytestExtension):
-    @misc.test_for(handlers=[
+    @env.test_for(handlers=[
         host_plugin.HostPlugin.CONNECT_PATH
     ])
     @pytest_utils.ztest_decorater

@@ -21,7 +21,7 @@ class TestVmPlugin(TestCase, vm_utils.VmPluginTestStub):
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
+    @env.test_for(handlers=[
         vm_plugin.VmPlugin.KVM_GET_CONSOLE_PORT_PATH
     ])
 

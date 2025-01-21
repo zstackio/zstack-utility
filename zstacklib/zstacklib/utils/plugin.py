@@ -11,6 +11,7 @@ import imp
 import inspect
 import threading
 import traceback
+import warnings
 
 import log
 import ConfigParser
@@ -18,6 +19,7 @@ import ConfigParser
 import time
 
 from zstacklib.utils import jsonobject, http
+from zstacklib.utils.misc import ignore_exception
 from zstacklib.utils.report import get_api_id, AutoReporter, get_timeout, get_task_stage
 from zstacklib.utils import traceable_shell
 
@@ -59,6 +61,15 @@ def completetask(func):
     return wrap
 
 
+class TaskResult(object):
+    def __init__(self, success=True, error=None):
+        self.success = success
+        self.error = error
+
+    def fail(self, error):
+        self.success = False
+        self.error = error
+
 class TaskDaemon(object):
     __metaclass__ = abc.ABCMeta
 
@@ -79,6 +90,8 @@ class TaskDaemon(object):
         self.closed = False
         self.start_time = None
         self.deadline = None
+        self.complete_event = threading.Event()
+        self.result = TaskResult()
 
     def __enter__(self):
         self.start()
@@ -97,12 +110,19 @@ class TaskDaemon(object):
         except:
             pass
 
+        ignore_err = False
         try:
-            return self._exit(exc_type, exc_val, exc_tb)
+            ignore_err = self._exit(exc_type, exc_val, exc_tb)
+            return ignore_err
         except Exception:
             if exc_type is not None:
                 raise
             logger.warning("ignoring an exception when exiting the task daemon:\n%s" % traceback.format_exc())
+        finally:
+            if not ignore_err and exc_type is not None:
+                self.result.fail(str(exc_val))
+            self.complete_event.set()
+
 
     def start(self):
         if self.api_id:
@@ -187,6 +207,7 @@ def _cancel_job(cmd, rsp, times=1, interval=3):
     rsp.error = "no matched job to cancel"
     return rsp
 
+
 class TaskManager(object):
     CANCEL_JOB = "/job/cancel"
     global task_daemons
@@ -201,6 +222,8 @@ class TaskManager(object):
 
     # TODO(MJ): use task daemon instead
     def load_task(self, req):
+        warnings.warn("deprecated function {}.".format(self.load_task.__name__), category=DeprecationWarning)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if cmd.identificationCode in self.longjob_progress_mapper.keys():
             return self.longjob_progress_mapper[cmd.identificationCode]
@@ -208,6 +231,8 @@ class TaskManager(object):
 
     # todo : load task when agent restart
     def load_and_save_task(self, req, rsp, validate_task_result_existing, args):
+        warnings.warn("deprecated function {}.".format(self.load_and_save_task.__name__), category=DeprecationWarning)
+
         assert validate_task_result_existing, "you must validate task result has not been clean"
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if not cmd.identificationCode:
@@ -220,6 +245,8 @@ class TaskManager(object):
                 return None
 
     def complete_task(self, req, err=None):
+        warnings.warn("deprecated function {}.".format(self.complete_task.__name__), category=DeprecationWarning)
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if not cmd.identificationCode:
             return
@@ -236,6 +263,8 @@ class TaskManager(object):
         # threading.Timer(300, self.longjob_progress_mapper.pop, args=[cmd.identificationCode]).start()
 
     def wait_task_complete(self, task_info, timeout=259200):
+        warnings.warn("deprecated function {}.".format(self.wait_task_complete.__name__), category=DeprecationWarning)
+
         interval = 60
         key = task_info.key
         assert self.longjob_progress_mapper[key].completed is not None, "last task must be existing"
@@ -286,6 +315,37 @@ class TaskManager(object):
             task.cancel()
 
         return len(to_cancel_tasks)
+
+    @staticmethod
+    def wait_task(task_spec, task_name, no_task_return=lambda task_name, api_id:
+                TaskResult(False, "cannot find task[name=%s] for api[%s]" % (task_name, api_id))):
+        # type: (object, str, function) -> TaskResult
+
+        api_id = get_api_id(task_spec)
+        timeout = get_timeout(task_spec)
+        task = None
+        with task_operator_lock:
+            if api_id not in task_daemons:
+                return no_task_return(task_name, api_id)
+
+            tasks = task_daemons[api_id]
+            for t in tasks:
+                if t.task_name == task_name:
+                    task = t
+                    break
+
+        if not task:
+            return no_task_return(task_name, api_id)
+
+        logger.debug("waiting for task[name=%s, api_id=%s] to complete" % (task_name, api_id))
+        ret = task.complete_event.wait(timeout)
+        if not ret:
+            logger.debug("task[name=%s, api_id=%s] timeout after %d seconds" % (task_name, api_id, timeout))
+            task.cancel()
+            return TaskResult(False, "task[name=%s, api_id=%s] timeout after %d seconds" % (task_name, api_id, timeout))
+        logger.debug("task[name=%s, api_id=%s] completed, success: %s" % (task_name, api_id, task.result.success))
+        return task.result
+
 
 class Plugin(TaskManager):
     __metaclass__  = abc.ABCMeta

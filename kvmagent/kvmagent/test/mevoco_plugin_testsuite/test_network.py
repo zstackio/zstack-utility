@@ -21,7 +21,7 @@ class TestNetwork(TestCase, vm_utils.VmPluginTestStub):
     def setUpClass(cls):
         cls.bridge_name = network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
+    @env.test_for(handlers=[
         mevoco.Mevoco.BATCH_PREPARE_DHCP_PATH,
         mevoco.Mevoco.BATCH_APPLY_DHCP_PATH,
     ])
