@@ -913,7 +913,7 @@ def do_kvm_host_config():
     run_remote_command(command, host_post_info, False, False, isZYJ)
     qemu_conf_src = os.path.join(file_root, "qemu.conf")
     qemu_conf_dst = "/etc/libvirt/qemu.conf"
-    qemu_conf_status = copy_to_remote(qemu_conf_src, qemu_conf_dst, None, host_post_info)
+    qemu_conf_status = copy_to_remote(qemu_conf_src, qemu_conf_dst, None, host_post_info, isZYJ=isZYJ)
 
     # aarch64 zyj does not support iptables currently
     if IS_AARCH64:

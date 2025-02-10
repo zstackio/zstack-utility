@@ -1338,9 +1338,15 @@ def download_chain_from_filesystem(converter, first_node_path, dst_vol_dir, over
     download(first_node_path)
     return downloaded_chain_info
 
+
 def is_zyj():
     path = "/etc/.zyj.flag"
     return os.path.exists(path)
+
+
+def has_soc():
+    return os.path.exists("/opt/VMSecurity/bin/libvsoc_interface.so")
+
 
 def rmdir_if_empty(dirpath):
     try:

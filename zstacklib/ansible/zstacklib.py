@@ -1137,12 +1137,12 @@ def copy(copy_arg, host_post_info, isZYJ="false"):
             # pass the copy result to outside
             return change_status
 
-def copy_to_remote(src, dest, args, host_post_info):
+def copy_to_remote(src, dest, args, host_post_info, isZYJ="false"):
     copy_arg = CopyArg()
     copy_arg.src = src
     copy_arg.dest = dest
     copy_arg.args = args
-    return copy(copy_arg, host_post_info)
+    return copy(copy_arg, host_post_info, isZYJ=isZYJ)
 
 def sync(sync_arg, host_post_info):
     '''The copy module recursively copy facility does not scale to lots (>hundreds) of files.
@@ -2077,11 +2077,11 @@ export HISTTIMEFORMAT HISTSIZE HISTFILESIZE PROMPT_COMMAND'''
     host_post_info.post_label_param = None
     run_remote_command(enforce_history_cmd, host_post_info)
 
-def check_umask(host_post_info):
+def check_umask(host_post_info, isZYJ="false"):
     check_umask_cmd = "[[ ! `umask` == '0022' ]] && echo 'umask 0022' >> /etc/bashrc || true"
     host_post_info.post_label = "ansible.shell.check.umask"
     host_post_info.post_label_param = None
-    run_remote_command(check_umask_cmd, host_post_info)
+    run_remote_command(check_umask_cmd, host_post_info, isZYJ=isZYJ)
 
 
 def install_release_on_host(is_rpm, host_info, host_post_info):
@@ -2131,14 +2131,15 @@ class ZstackLib(object):
         else:
             self.require_python_env = "true"
 
-        check_umask(self.host_post_info)
-        configure_hosts(self.host_post_info)
-
         host_info = args.host_info
         if not host_info:
             host_info = get_remote_host_info_obj(self.host_post_info)
 
-        if host_info.distro_version == "zyj":
+        isZYJ = "true" if host_info.distro_version == "zyj" else "false"
+        check_umask(self.host_post_info, isZYJ=isZYJ)
+        configure_hosts(self.host_post_info, isZYJ=isZYJ)
+
+        if isZYJ == "true":
             return
 
         # enforce history
@@ -2492,9 +2493,9 @@ deb http://{{ apt_server }}/zstack/static/zstack-repo/$basearch/{{ zstack_releas
         apt_install_packages(install_pkg_list, self.host_post_info)
 
 
-def configure_hosts(host_post_info):
+def configure_hosts(host_post_info, isZYJ="false"):
     configure_hosts_cmd = 'grep `hostname` /etc/hosts >/dev/null || echo "127.0.0.1 `hostname` # added by ZStack" >> /etc/hosts'
-    run_remote_command(configure_hosts_cmd, host_post_info)
+    run_remote_command(configure_hosts_cmd, host_post_info, isZYJ=isZYJ)
 
 
 def remote_bin_installed(host_post_info, bin_name, return_status=False):

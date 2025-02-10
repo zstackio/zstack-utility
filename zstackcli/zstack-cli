@@ -11,4 +11,11 @@ LC_ALL=en_US.utf8
 export LANG LC_ALL
 
 . ${VIRTUAL_ENV}/bin/activate
-python -c "from zstackcli import cli; cli.main()" "$@"
+
+PYTHON_SCRIPT="$VIRTUAL_ENV/lib/python2.7/site-packages/zstackcli/cli.py"
+if [ -f "$PYTHON_SCRIPT" ]; then
+    python -u "$PYTHON_SCRIPT" "$@"
+else
+    echo "Error: Cannot find cli.py script"
+    exit 1
+fi

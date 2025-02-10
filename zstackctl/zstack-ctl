@@ -31,4 +31,11 @@ if [ $all_full = true ]; then
 fi
 
 . $VIRTUAL_ENV/bin/activate
-python -u -c "from zstackctl import ctl; ctl.main()" "$@"
+PYTHON_SCRIPT="$VIRTUAL_ENV/lib/python2.7/site-packages/zstackctl/ctl.py"
+if [ -f "$PYTHON_SCRIPT" ]; then
+    python -u "$PYTHON_SCRIPT" "$@"
+else
+    echo "Error: Cannot find ctl.py script"
+    exit 1
+fi
+
