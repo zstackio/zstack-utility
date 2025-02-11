@@ -307,6 +307,7 @@ def get_host_physicl_nics():
 
 def find_host_physicl_nics():
     global CURRENT_HOST_PHYSICAL_NICS
+    #dpdk-devbind.py --bind=vfio-pci enp101s0f0 绑定vfio驱动后，find /sys/class/net -type l 查不到网卡信息
     nic_all_physical = bash.bash_o("find /sys/class/net -type l -not \( -lname '*virtual*' -or -lname '*usb*' \) -printf '%f\\n'").splitlines()
     if not nic_all_physical:
         return []

@@ -38,6 +38,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.report import Report
+from zstacklib.utils import ovn
 import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
 
@@ -419,7 +420,7 @@ class HostNetworkBondingInventory(object):
             return None
 
 class HostNetworkInterfaceInventory(object):
-    def init(self, name, master=None, managementServerIp=None):
+    def init(self, name, master=None, managementServerIp=None, driverType=None, pciAddress=None):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
         self.speed = None
@@ -429,7 +430,7 @@ class HostNetworkInterfaceInventory(object):
         self.ipAddresses = None
         self.interfaceType = None
         self.master = master
-        self.pciDeviceAddress = None
+        self.pciDeviceAddress = pciAddress
         self.offloadStatus = None
         self.callBackIp = None
         self.interfaceModel = None
@@ -438,7 +439,10 @@ class HostNetworkInterfaceInventory(object):
         self.subvendorId = None
         self.subdeviceId = None
         self.rev = None
-        self.driverType = None
+        self.driverType = driverType
+
+        if driverType == "vfio-pci":
+            return
 
         bonds = ovs.getAllBondFromFile()
 
@@ -453,9 +457,9 @@ class HostNetworkInterfaceInventory(object):
             self._init_from_name(managementServerIp)
 
 
-    def __new__(cls, name, master=None, managementServerIp=None, *args, **kwargs):
+    def __new__(cls, name, master=None, managementServerIp=None, driverType=None, pciAddress=None, *args, **kwargs):
         o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
-        o.init(name, master, managementServerIp)
+        o.init(name, master, managementServerIp, driverType, pciAddress)
         return o
 
     def _updateActiveState(self):
@@ -2219,15 +2223,16 @@ done
         nics = []
         pcis = set()
 
-        def get_nic_info(interfaceName, index):
-            nics[index] = HostNetworkInterfaceInventory(interfaceName, None, managementServerIp)
+        def get_nic_info(interfaceName, index, driverType=None, pciAddress=None):
+            nics[index] = HostNetworkInterfaceInventory(interfaceName, None, managementServerIp, driverType, pciAddress)
 
         threads = []
         nic_names = ip.get_host_physicl_nics()
         if len(nic_names) == 0:
             return nics
 
-        nics = [None] * len(nic_names)
+        vfioNics = ovn.getAllVfioPciNic()
+        nics = [None] * (len(nic_names) + len(vfioNics))
         for index, nic in enumerate(nic_names, start=0):
             interfaceName = nic.strip()
             pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % interfaceName).strip().split('/')[-1]
@@ -2237,6 +2242,11 @@ done
                 pcis.add(pciDeviceAddress)
         for t in threads:
             t.join()
+
+        index = len(nic_names)
+        for nic in vfioNics:
+            get_nic_info(nic.name, index, driverType=nic.driver, pciAddress=nic.pciAddress)
+            index = index + 1
         return nics
 
     @staticmethod

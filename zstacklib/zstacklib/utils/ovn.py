@@ -72,6 +72,16 @@ def getAllDpdkNic():
     return ret
 
 
+def getAllVfioPciNic():
+    ret = []
+    dpdkNics = getAllDpdkNic()
+    for nic in dpdkNics:
+        if nic.driver == "vfio-pci":
+            ret.append(nic)
+
+    return ret
+
+
 @bash.in_bash
 def changeNicToDpdkDriver(nicNamePciAddressMap):
     # uio_pci_generic is used for nest virtual
@@ -200,9 +210,9 @@ class VsCtl(object):
                       '{cmd} add-port {brName} {nicName} ' \
                       '-- set Interface {nicName} type={nicType} options:vhost-server-path={srcPath} ' \
                       '-- set interface {nicName} external-ids:iface-id={nicUuid}'.format(
-                          cmd=CtlBin, brName=brName, nicName=nicName, nicType=nicType, srcPath=srcPath, nicUuid=nicUuid)
+                    cmd=CtlBin, brName=brName, nicName=nicName, nicType=nicType, srcPath=srcPath, nicUuid=nicUuid)
             else:
-                cmd = CtlBin + '--may-exist addp-port {brName} {nicName} ' \
+                cmd = CtlBin + '--may-exist add-port {brName} {nicName} ' \
                                '-- set Interface {nicName} type={nicType} options:vhost-server-path={srcPath} ' \
                                '-- set interface {nicName} external-ids:iface-id={nicUuid}'.format(
                     brName=brName, nicName=nicName, nicType=nicType, srcPath=srcPath, nicUuid=nicUuid)
@@ -244,9 +254,10 @@ class VsCtl(object):
 
     @bash.in_bash
     def addUplink(self, portPciMap, bondMode, lacpmode, ip, netmask, brName="br-phy", bondName="dpdkbond"):
-        bash.bash_roe(CtlBin + " --may-exist add-br {};"
-                               "ovs-vsctl set Bridge br-phy datapath_type=netdev;"
-                               "ovs-vsctl set bridge br-phy fail-mode=standalone".format(brName))
+        bash.bash_roe("{binPath} --may-exist add-br {brName};"
+                      "{binPath} set Bridge br-phy datapath_type=netdev;"
+                      "{binPath} set bridge br-phy fail-mode=standalone"
+                      .format(binPath=CtlBin, brName=brName))
 
         uplinks = self.getUplink(brName)
         for link in uplinks:
