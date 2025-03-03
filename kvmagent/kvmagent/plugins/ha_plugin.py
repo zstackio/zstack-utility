@@ -2208,16 +2208,13 @@ class HaPlugin(kvmagent.KvmAgent):
                     logger.debug("connected to ceph[uuid: %s] cluster" % ceph_controller.primary_storage_uuid)
                     with cluster.open_ioctx(pool_name) as ioctx:
                         logger.debug("open ceph[uuid: %s] pool: %s]" % (ceph_controller.primary_storage_uuid, ceph_controller.pool_name))
-                        write_heartbeat_used_time = None
                         ceph_controller.ioctx = ioctx
                         fencer_init[ceph_controller.get_ha_fencer_name()] = ceph_controller
                         logger.debug("ceph start run fencer list :%s" % ",".join(fencer_list))
                         while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
-                            if write_heartbeat_used_time:
-                                # wait an interval before next heartbeat
-                                time.sleep(cmd.interval)
+                            # wait an interval before next heartbeat
+                            time.sleep(cmd.interval)
                             # reset variables
-                            write_heartbeat_used_time = 0
                             ha_fencer.exec_fencer_list(fencer_init, update_fencer)
                             update_fencer = False
 
