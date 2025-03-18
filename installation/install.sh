@@ -5327,6 +5327,8 @@ configure_management_ip6
 
 zstack-ctl configure RepoVersion.Strategy="permissive"
 
+zstack-ctl configure locale="en_US"
+
 # configure chrony.serverIp if not exists
 configure_chrony_servers
 
