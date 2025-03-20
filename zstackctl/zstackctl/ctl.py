@@ -7387,7 +7387,7 @@ class ChangeIpCmd(Command):
         self.check_mysql_password(ui_db_user, ui_db_password)
 
         if self.check_greatsql_existence():
-            grant_access_cmd = " DELETE FROM user WHERE Host != 'localhost' AND Host != '127.0.0.1' AND Host != '::1' AND Host != '%%';"
+            grant_access_cmd = " DELETE FROM user WHERE Host != 'localhost' AND Host != '127.0.0.1' AND Host != '::1' AND Host != '%';"
             grant_access_cmd += " DROP USER IF EXISTS 'zstack'@'%s';" % host
             grant_access_cmd += " DROP USER IF EXISTS 'zstack_ui'@'%s';" % host
             grant_access_cmd += " CREATE USER 'zstack'@'%s' IDENTIFIED BY '%s';" % (host, db_password)
