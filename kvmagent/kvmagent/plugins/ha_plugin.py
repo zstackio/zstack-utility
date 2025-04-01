@@ -1612,7 +1612,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.vpc_uuids = []
         self.vpc_lock = threading.RLock()
 
-        self.fencer_name_mapping = {}
+        self.fencer_storage_list = set()
 
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
@@ -2456,7 +2456,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def get_fencer_state(self, req):
         rsp = FencerStateRsp()
 
-        rsp.psUuids = self.fencer_name_mapping.values()
+        rsp.psUuids = list(self.fencer_storage_list)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2599,9 +2599,9 @@ class HaPlugin(kvmagent.KvmAgent):
             self.run_fencer_timestamp[ps_uuid] = created_time
 
         if origin_uuid is not None:
-            self.fencer_name_mapping[ps_uuid] = origin_uuid
+            self.fencer_storage_list.add(origin_uuid)
         else:
-            self.fencer_name_mapping[ps_uuid] = ps_uuid
+            self.fencer_storage_list.add(ps_uuid)
 
 
     def cancel_fencer(self, ps_uuid):
@@ -2611,5 +2611,5 @@ class HaPlugin(kvmagent.KvmAgent):
                     logger.debug('cancel fencer for ps: %s, with fencer key: %s' % (ps_uuid, key))
                     self.run_fencer_timestamp.pop(key, None)
                     self.sblk_health_checker.delvg(ps_uuid)  # ugly ...
-        if ps_uuid in self.fencer_name_mapping.keys():
-            del self.fencer_name_mapping[ps_uuid]
+        if ps_uuid in self.fencer_storage_list:
+            self.fencer_storage_list.remove(ps_uuid)
