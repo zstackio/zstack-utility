@@ -9121,8 +9121,8 @@ host side snapshot files chian:
 
     @kvmagent.replyerror
     def export_nbd_volumes(self, req):
-        def _export_nbd(nbd_port, volume_path, volume_uuid):
-            process = qemu_nbd.export(nbd_port, "-b", "0.0.0.0", volume_path, "-x", volume_uuid)
+        def _export_nbd(nbd_port, format, volume_path, volume_uuid):
+            process = qemu_nbd.export(nbd_port, "-b", "0.0.0.0", "-f", format, volume_path, "-x", volume_uuid)
             if not linux.check_socket_available('0.0.0.0', int(nbd_port)):
                 process.terminate()
                 _, stderr = process.communicate()
@@ -9135,8 +9135,10 @@ host side snapshot files chian:
         start_port, end_port = linux.parse_port_range(cmd.portRange)
         try:
             for volumeInfo in cmd.volumeInfos:
+                format, install_path = volumeInfo.volume.format, volumeInfo.volume.installPath
                 port, l = linux.find_free_port_with_locking(start_port, end_port)
-                _export_nbd(port, volumeInfo.volume.installPath, volumeInfo.volume.volumeUuid)
+                real_path = qemu_nbd.get_volume_actual_install_path(install_path)
+                _export_nbd(port, format, real_path, volumeInfo.volume.volumeUuid)
                 volumeInfo.scratchNodeName = volumeInfo.volume.volumeUuid
                 volumeInfo.nbdPort = port
                 infos.append(volumeInfo)
@@ -9156,7 +9158,8 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
         for volume in cmd.volumes:
-            qemu_nbd.kill_nbd_process_by_flag(volume.installPath)
+            real_path = qemu_nbd.get_volume_actual_install_path(volume.installPath)
+            qemu_nbd.kill_nbd_process_by_flag(real_path)
 
         rsp.success = True
         return jsonobject.dumps(rsp)
@@ -9245,6 +9248,8 @@ host side snapshot files chian:
                 rbd_end = rbd_start + rbd_length
                 result[rbd_start] = rbd_length
 
+                if not qcow2_list:
+                    continue
                 for qcow2_start, qcow2_length in qcow2_list.items():
                     qcow2_end = qcow2_start + qcow2_length
 
@@ -9265,7 +9270,7 @@ host side snapshot files chian:
             if volume_info.mode == "full":
                 if volume_info.volume.primaryStorageType == 'Ceph':
                     qcow2_path = "rbd:%s" % (volume_info.target.replace('ceph://', ''))
-                    qcow2_result = qemu.get_data_bitmap(qcow2_path, False, True, MAX_NBD_READ_SIZE)
+                    qcow2_result = qemu.get_data_bitmap(qcow2_path, MAX_NBD_READ_SIZE, False, True)
 
                     raw_path = volume_info.volume.installPath.replace('ceph://', '')
                     raw_result = qemu.get_rbd_data_bitmap(raw_path, MAX_NBD_READ_SIZE)
@@ -9277,7 +9282,7 @@ host side snapshot files chian:
             else:
                 path = "driver=nbd,export=%s,server.type=inet,server.host=%s,server.port=%s,x-dirty-bitmap=qemu:dirty-bitmap:%s" % (
                     volume_info.scratchNodeName, volume_info.nbdServer, volume_info.nbdPort, cmd.bitmapTimestamp)
-                bitmap_map = qemu.get_data_bitmap(path, False, False, MAX_NBD_READ_SIZE, "--image-opts")
+                bitmap_map = qemu.get_data_bitmap(path, MAX_NBD_READ_SIZE, False, False, "--image-opts")
 
             return bitmap_map
 
