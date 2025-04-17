@@ -595,6 +595,15 @@ class GetPciDevicesResponse(kvmagent.AgentResponse):
         self.pciDevicesInfo = []
         self.hostIommuStatus = False
 
+class ReloadDeviceDriverOnHostCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ReloadDeviceDriverOnHostCommand, self).__init__()
+        self.pciDeviceAddress = None
+
+class ReloadDeviceDriverOnHostRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ReloadDeviceDriverOnHostRsp, self).__init__()
+
 class GetMttyDevicesCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetMttyDevicesCmd, self).__init__()
@@ -930,6 +939,7 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_SHUTDOWN = "/host/shutdown"
     HOST_REBOOT = "/host/reboot"
     GET_PCI_DEVICES = "/pcidevice/get"
+    RELOAD_DEVICE_DRIVER_ON_HOST = "/pcidevice/reloaddriver"
     CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     GENERATE_SRIOV_PCI_DEVICES = "/pcidevice/generate"
     UNGENERATE_SRIOV_PCI_DEVICES = "/pcidevice/ungenerate"
@@ -2763,6 +2773,38 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @in_bash
+    def reload_device_driver_on_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ReloadDeviceDriverOnHostRsp()
+        addr = cmd.pciDeviceAddress
+        vender = cmd.vendor
+
+        self._reload_gpu_driver(addr, vender, rsp)
+
+        return jsonobject.dumps(rsp)
+
+    def _reload_gpu_driver(self, addr, vendor_name, rsp):
+        vendor_handler_map = {
+            VendorEnum.HAIGUANG: self._reload_haiguang_gpu_driver,
+        }
+        handler = vendor_handler_map.get(vendor_name)
+        if handler:
+            handler(addr, rsp)
+
+    def _reload_haiguang_gpu_driver(self, addr, rsp):
+        r, o, e = bash_roe(gpu.is_hygon_gpu_cmd(addr))
+        logger.debug("check hygon gpu %s: %s, %s" % (addr, o, e))
+        if r != 0 or o == '':
+            return
+
+        r, o, e = bash_roe(gpu.reload_hygon_gpu_driver_cmd())
+        logger.debug("reload hygon gpu driver %s: %s, %s" % (addr, o, e))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to reload hygon gpu driver %s: %s, %s" % (addr, o, e)
+
+    @kvmagent.replyerror
     def create_pci_device_rom_file(self, req):
         PCI_ROM_PATH = "/var/lib/zstack/pcirom"
         if not os.path.exists(PCI_ROM_PATH):
@@ -3663,6 +3705,7 @@ done
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.HOST_REBOOT, self.reboot_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
+        http_server.register_async_uri(self.RELOAD_DEVICE_DRIVER_ON_HOST, self.reload_device_driver_on_host)
         http_server.register_async_uri(self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(self.GENERATE_SRIOV_PCI_DEVICES, self.generate_sriov_pci_devices)
         http_server.register_async_uri(self.UNGENERATE_SRIOV_PCI_DEVICES, self.ungenerate_sriov_pci_devices)
