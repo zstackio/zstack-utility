@@ -4508,6 +4508,8 @@ zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
 
 zstack-ctl configure RepoVersion.Strategy="permissive"
 
+zstack-ctl configure locale="en_US"
+
 # configure chrony.serverIp if not exists
 if [ -n "$CHRONY_SERVER_IP" ]; then
     sed -i "/^[[:space:]]*chrony\.serverIp\.[0-9]/d" $properties_file
