@@ -2460,7 +2460,7 @@ done
             return VendorEnum.AMD
         elif 'NVIDIA Corporation' in name:
             return VendorEnum.NVIDIA
-        elif 'Haiguang' in name:
+        elif 'Haiguang' in name or '1d94' in name:
             return VendorEnum.HAIGUANG
         elif 'Huawei' in name:
             return VendorEnum.HUAWEI
@@ -2571,7 +2571,7 @@ done
                 elif ("Processing accelerators" in to.type or (
                         pci_device_mapper.get('Processing accelerators') is not None)) and 'Device' in to.device:
                     to.type = "GPU_Processing_Accelerators"
-                elif any(vendor in to.description for vendor in gpu_vendors) \
+                elif (any(vendor in to.description for vendor in gpu_vendors) or '1d94' in to.vendorId ) \
                         and ('Co-processor' in to.type or (pci_device_mapper.get('Co-processor') is not None
                                                            and pci_device_mapper.get('Co-processor') in to.type)):
                     to.type = "GPU_Co_Processor"
