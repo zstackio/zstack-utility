@@ -2793,11 +2793,6 @@ done
             handler(addr, rsp)
 
     def _reload_haiguang_gpu_driver(self, addr, rsp):
-        r, o, e = bash_roe(gpu.is_hygon_gpu_cmd(addr))
-        logger.debug("check hygon gpu %s: %s, %s" % (addr, o, e))
-        if r != 0 or o == '':
-            return
-
         r, o, e = bash_roe(gpu.reload_hygon_gpu_driver_cmd())
         logger.debug("reload hygon gpu driver %s: %s, %s" % (addr, o, e))
         if r != 0:

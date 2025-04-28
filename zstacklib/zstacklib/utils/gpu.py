@@ -195,11 +195,6 @@ def get_huawei_gpu_product_name_cmd(npu_id, iswindows=False):
     return cmd
 
 
-def is_hygon_gpu_cmd(pci_addr):
-    cmd = "hy-smi --showbus | grep {0}".format(pci_addr)
-    return cmd
-
-
 def reload_hygon_gpu_driver_cmd():
     cmd = "hy-smi --unloaddriver && hy-smi --loaddriver"
     return cmd
