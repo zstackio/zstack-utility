@@ -104,13 +104,18 @@ def run_without_log(cmd, workdir=None):
 
 
 def run_with_json_result(cmd, workdir=None):
-    output = ShellCmd(cmd, workdir, False)
-    if output is None:
+    s = ShellCmd(cmd, workdir)
+    s(is_exception=False, logcmd=True)
+
+    output = s.stdout
+    if s.return_code != 0 or output is None:
         return None
+
     json_start = output.find('{')
     if json_start == -1:
         logger.error("No JSON data found in command %s output, output: %s", cmd, output)
         return None
+
     json_str = output[json_start:]
     try:
         return json.loads(json_str)
