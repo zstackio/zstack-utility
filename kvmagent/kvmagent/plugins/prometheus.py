@@ -1769,13 +1769,17 @@ def collect_enflame_gpu_status():
         pci_device_address = info.get("pciAddress", "").strip()
         serial_number = info.get("serialNumber", "").strip()
 
-        memory_usage = info.get("memoryUsage", "0MiB").strip().rstrip("MiB")
-        memory_total = info.get("memory", "0MiB").strip().rstrip("MiB")
-        memory_utilization = calculate_percentage(memory_usage, memory_total)
+        memory_usage = info.get("memoryUsage", "").strip().rstrip("MiB")
+        memory_total = info.get("memory", "").strip().rstrip("MiB")
+        memory_utilization = calculate_percentage(memory_usage, memory_total) if is_number(memory_usage) and is_number(
+            memory_total) else None
 
-        power = info.get("power", "0W").replace(" ", "").strip().rstrip("W")
-        temperature = info.get("temperature", "0C").replace(" ", "").strip().rstrip("C")
-        gcu_usage = info.get("gcuUsage", "0%").replace(" ", "").strip().rstrip("%")
+        rx_throughput_in_mb = info.get("rxThroughput", "").strip().rstrip("MiB/s")
+        tx_throughput_in_mb = info.get("txThroughput", "").strip().rstrip("MiB/s")
+
+        power = info.get("power", "").replace(" ", "").strip().rstrip("W")
+        temperature = info.get("temperature", "").replace(" ", "").strip().rstrip("C")
+        gcu_usage = info.get("gcuUsage", "").replace(" ", "").strip().rstrip("%")
 
         add_gpu_pci_device_address("ENFLAME", pci_device_address, serial_number)
 
@@ -1788,8 +1792,17 @@ def collect_enflame_gpu_status():
         if is_number(gcu_usage):
             add_metrics('host_gpu_utilization', float(gcu_usage), [pci_device_address, serial_number], metrics)
 
-        if is_number(memory_utilization):
-            add_metrics('host_gpu_memory_utilization', float(memory_utilization), [pci_device_address, serial_number], metrics)
+        if memory_utilization is not None:
+            add_metrics('host_gpu_memory_utilization', float(memory_utilization), [pci_device_address, serial_number],
+                        metrics)
+
+        if is_number(rx_throughput_in_mb):
+            add_metrics('host_gpu_rxpci_in_bytes', float(rx_throughput_in_mb) * 1024 * 1024,
+                        [pci_device_address, serial_number], metrics)
+
+        if is_number(tx_throughput_in_mb):
+            add_metrics('host_gpu_txpci_in_bytes', float(tx_throughput_in_mb) * 1024 * 1024,
+                        [pci_device_address, serial_number], metrics)
 
     check_gpu_status_and_save_gpu_status("ENFLAME", metrics)
     return metrics.values()

@@ -231,6 +231,10 @@ def parse_enflame_gpu_output(output):
                 gpuinfo["gcuUsage"] = value
             elif key == "Dev SN":
                 gpuinfo["serialNumber"] = value
+            elif key == "Tx Throughput":
+                gpuinfo["txThroughput"] = value
+            elif key == "Rx Throughput":
+                gpuinfo["rxThroughput"] = value
 
         if domain and bus and dev_id and func:
             gpuinfo["pciAddress"] = "{}:{}:{}.{}".format(domain, bus, dev_id, func)
