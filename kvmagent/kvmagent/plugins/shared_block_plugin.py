@@ -1298,7 +1298,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, False, cmd.provisioning)
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                     linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options, discard_on_metadata=False)
-                    linux.qcow2_fill(0, 1048576, install_abs_path)
+                    if cmd.zeroFilled:
+                        linux.qcow2_fill(0, 1048576, install_abs_path)
                     rsp.size = linux.qcow2_virtualsize(install_abs_path)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))

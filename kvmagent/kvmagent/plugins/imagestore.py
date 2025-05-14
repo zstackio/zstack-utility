@@ -173,9 +173,16 @@ class ImageStoreClient(object):
                 json_data = fd.read()
                 return  _parse_json_and_update_mode(volume_infos, json_data)
 
-    def stop_vm_cbt_backup_jobs(self, vm, force=False):
+    def stop_vm_cbt_backup_jobs(self, vm, records, force=False):
+        infos = ""
+        bitmapName = ""
+        for record in records:
+            infos += ",".join([record.scratchNodeName, record.target]) + ";"
+            if record.lastBitmapName:
+                bitmapName = record.lastBitmapName
         with linux.ShowLibvirtErrorOnException(vm):
-            cmdstr = '%s stopcbtbak -force=%s -domain %s' % (self.ZSTORE_CLI_PATH, force, vm)
+            cmdstr = '%s stopcbtbak -force=%s -domain %s -volumes "%s" -bitmap "%s"' % \
+                     (self.ZSTORE_CLI_PATH, force, vm, infos, bitmapName)
             return shell.call(cmdstr).strip()
 
     def query_vm_mirror_latencies_boundary(self, vm, times):
