@@ -10320,29 +10320,13 @@ class GetZStackVersion(Command):
 
     def run(self, args):
         if args.addition:
-            sys.stdout.write(self.get_additional_version() + '\n')
+            sys.stdout.write(get_detail_version() + '\n')
         else:
             sys.stdout.write(self.get_main_version_from_db() + '\n')
 
     def get_main_version_from_db(self):
         hostname, port, user, password = ctl.get_live_mysql_portal()
         return get_zstack_version(hostname, port, user, password)
-
-    # cube:  'AliyunHCI-Z 1.1.0'
-    # zsv:   'ZSphere 4.0.0'
-    # cloud: ''
-    def get_additional_version(self):
-        if is_hyper_converged_host():
-            version = get_hci_detail_version()
-            if not version:
-                return ''
-            clips = version.rsplit("-", 1)
-            return '%s %s' % (clips[0], clips[1]) if len(clips) == 2 else version
-        elif is_zsv_env():
-            version = get_zsv_version()
-            return 'ZSphere ' + version if version else 'ZSphere Unknown'
-        else:
-            return ''
 
 class ResetAdminPasswordCmd(Command):
     SYSTEM_ADMIN_TYPE = 'SystemAdmin'
