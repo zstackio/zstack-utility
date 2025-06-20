@@ -1853,6 +1853,101 @@ mimetype.assign = (
             linux.rm_file_force(target_version_file_path)
             bash_r("ln -s %s %s" % (version_file_path, target_version_file_path))
 
+    class FieldMapper:
+        def __init__(self, field_map):
+            self.field_map = field_map
+
+        def get_file_name(self, field_name):
+            return self.field_map.get(field_name, field_name)
+
+    class NetworkInterfaceHandler:
+        def __init__(self, meta_root, network_interfaces):
+            self.meta_root = meta_root
+            self.network_interfaces = network_interfaces
+            # network mapping to fileName
+            self.nic_field_mapper = Mevoco.FieldMapper({
+                'macAddress': 'mac',
+                'gateway': 'gateway',
+                'netmask': 'netmask',
+                'ip': 'primary-ip-address',
+                'vpcCidrBlock': 'vpc-cidr-block',
+                'vSwitchCidrBlock': 'vswitch-cidr-block',
+            })
+
+        def write_network_interface_files(self):
+            macs_root = os.path.join(self.meta_root, 'network', 'interfaces', 'macs')
+            if not os.path.exists(macs_root):
+                linux.mkdir(macs_root)
+
+            # macs/index.html
+            mac_index_file_path = os.path.join(macs_root, 'index.html')
+            with open(mac_index_file_path, 'w') as fd:
+                for nic in self.network_interfaces:
+                    fd.write(nic.macAddress + '\n')
+
+            # write value to file for each nic
+            for nic in self.network_interfaces:
+                mac_dir = os.path.join(macs_root, nic.macAddress)
+                if not os.path.exists(mac_dir):
+                    linux.mkdir(mac_dir)
+
+                for attr, file_name in self.nic_field_mapper.field_map.items():
+                    if hasattr(nic, attr) and getattr(nic, attr):
+                        file_path = os.path.join(mac_dir, file_name)
+                        with open(file_path, 'w') as fd:
+                            fd.write(getattr(nic, attr))
+
+    def _write_metadata_files(self, meta_root, to):
+        field_mapper = self.FieldMapper({
+            'vmUuid': 'instance-id',
+            'vmHostname': 'local-hostname',
+            'regionName': 'region-id',
+            'mac': 'mac',
+            'dnsServersIp': 'dns-conf/',
+            'vpcId': 'vpc-id',
+            'vmIp': 'private-ipv4',
+        })
+
+        # index.html
+        index_file_path = os.path.join(meta_root, 'index.html')
+        with open(index_file_path, 'w') as fd:
+            for field in ['vmUuid', 'vmHostname', 'regionName', 'mac', 'vpcId', 'dnsServersIp']:
+                value = getattr(to.metadata, field, None)
+                if value:
+                    fd.write(field_mapper.get_file_name(field) + '\n')
+            if to.vmIp:
+                fd.write('private-ipv4\n')
+            if to.networkInterfaces:
+                fd.write('network/\n')
+
+        # write value to single file
+        for field in ['vmUuid', 'vmHostname', 'regionName', 'vpcId', 'mac']:
+            value = getattr(to.metadata, field, None)
+            if value:
+                file_path = os.path.join(meta_root, field_mapper.get_file_name(field))
+                with open(file_path, 'w') as fd:
+                    fd.write(value)
+
+        # private-ipv4
+        if to.vmIp:
+            vm_ip_file_path = os.path.join(meta_root, 'private-ipv4')
+            with open(vm_ip_file_path, 'w') as fd:
+                fd.write(to.vmIp) # in before design, to has vmIp
+
+        # dns-conf/nameservers
+        if to.metadata.dnsServersIp:
+            dns_conf_dir = os.path.join(meta_root, 'dns-conf')
+            if not os.path.exists(dns_conf_dir):
+                linux.mkdir(dns_conf_dir)
+            nameservers_file_path = os.path.join(dns_conf_dir, 'nameservers')
+            with open(nameservers_file_path, 'w') as fd:
+                fd.write(to.metadata.dnsServersIp)
+
+        # network/interfaces/macs
+        if to.networkInterfaces:
+            handler = self.NetworkInterfaceHandler(meta_root, to.networkInterfaces)
+            handler.write_network_interface_files()
+
     @in_bash
     def _apply_userdata_vmdata(self, to):
         def packUserdata(userdataList):
@@ -1886,21 +1981,7 @@ mimetype.assign = (
         if not os.path.exists(meta_root):
             linux.mkdir(meta_root)
 
-        index_file_path = os.path.join(meta_root, 'index.html')
-        with open(index_file_path, 'w') as fd:
-            fd.write('instance-id')
-            if to.metadata.vmHostname:
-                fd.write('\n')
-                fd.write('local-hostname')
-
-        instance_id_file_path = os.path.join(meta_root, 'instance-id')
-        with open(instance_id_file_path, 'w') as fd:
-            fd.write(to.metadata.vmUuid)
-
-        if to.metadata.vmHostname:
-            vm_hostname_file_path = os.path.join(meta_root, 'local-hostname')
-            with open(vm_hostname_file_path, 'w') as fd:
-                fd.write(to.metadata.vmHostname)
+        self._write_metadata_files(meta_root, to)
 
         if to.userdataList:
             userdata_file_path = os.path.join(root, 'user-data')
