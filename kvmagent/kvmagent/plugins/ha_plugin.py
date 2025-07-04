@@ -1952,7 +1952,6 @@ class HaPlugin(kvmagent.KvmAgent):
             iscsi_controller.fencer_triggered_callback = self.report_self_fencer_triggered
             iscsi_controller.report_storage_status_callback = self.report_storage_status
 
-            self.setup_fencer(ps_uuid, created_time)
             update_fencer = True
             try:
                 fencer_init = {iscsi_controller.get_ha_fencer_name(): iscsi_controller}
@@ -2647,7 +2646,7 @@ class HaPlugin(kvmagent.KvmAgent):
     def run_fencer(self, ps_uuid, created_time):
         with self.fencer_lock:
             if ps_uuid not in self.run_fencer_timestamp:
-                logger.debug('ps not in run fencer dict')
+                logger.debug('ps %s not in run fencer dict, it may has been canceled' % ps_uuid)
                 return False
             exists_time = self.run_fencer_timestamp[ps_uuid]
             if exists_time > created_time:
