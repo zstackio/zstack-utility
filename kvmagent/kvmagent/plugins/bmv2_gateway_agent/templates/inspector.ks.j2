@@ -20,6 +20,7 @@ import os
 import sys
 import platform
 import traceback
+import re
 
 PROVISION_NET = "{{ provision_net }}"
 pxe_iface_mac = ''
@@ -277,18 +278,20 @@ def get_pci_info():
 
 
 def collect_gpu_addoninfo(gpu_type, pci_device_address, vendor_name):
-    addonInfo = {}
     if gpu_type in ['GPU_3D_Controller', 'GPU_Video_Controller']:
         if vendor_name == 'NVIDIA':
-            return collect_nvidia_gpu_info(pci_device_address, addonInfo)
+            return collect_nvidia_gpu_info(pci_device_address)
         if vendor_name == 'AMD':
-            return collect_amd_gpu_info(pci_device_address, addonInfo)
+            return collect_amd_gpu_info(pci_device_address)
         if vendor_name == 'Haiguang':
-            return collect_hygon_gpu_info(pci_device_address, addonInfo)
+            return collect_hygon_gpu_info(pci_device_address)
+        if vendor_name == VendorEnum.ENFLAME:
+            return collect_enflame_gpu_info(pci_device_address)
     return addonInfo
 
 
-def collect_nvidia_gpu_info(pci_device_address, addon_info):
+def collect_nvidia_gpu_info(pci_device_address):
+    addon_info = {}
     r, o, e = shell_cmd("which nvidia-smi", False)
     if r != 0:
         return
@@ -309,7 +312,8 @@ def collect_nvidia_gpu_info(pci_device_address, addon_info):
     return addon_info
 
 
-def collect_amd_gpu_info(pci_device_address, addon_info):
+def collect_amd_gpu_info(pci_device_address):
+    addon_info = {}
     r, o, e = shell_cmd("which rocm-smi", False)
     if r != 0:
         return
@@ -327,7 +331,7 @@ def collect_amd_gpu_info(pci_device_address, addon_info):
             addon_info["serialNumber"] = card_data['Serial Number']
     return addon_info
 
-def collect_hygon_gpu_info(pci_device_address, addon_info):
+def collect_hygon_gpu_info(pci_device_address):
     r, o, e = shell_cmd("which hy-smi", False)
     if r != 0:
         return
@@ -337,6 +341,7 @@ def collect_hygon_gpu_info(pci_device_address, addon_info):
     if r != 0:
         return
 
+    addon_info = {}
     gpu_info_json = json.loads(o.strip())
     for card_name, card_data in gpu_info_json.items():
         if pci_device_address.lower() in card_data['PCI Bus'].lower():
@@ -344,6 +349,89 @@ def collect_hygon_gpu_info(pci_device_address, addon_info):
             addon_info["power"] = card_data['Average Graphics Package Power (W)']
             addon_info["serialNumber"] = card_data['Serial Number']
     return addon_info
+
+def collect_enflame_gpu_info(pci_device_address):
+    r, o, e = shell_cmd("which efsmi")
+    if r != 0:
+        return
+
+    r, o, e = shell_cmd("efsmi -q")
+    if r != 0:
+        return
+    addon_info = {}
+    for info in parse_enflame_gpu_output(o):
+        if pci_device_address not in info.get("pciAddress"):
+            continue
+
+        mem = info.get("memory", "")
+        power = info.get("powerCap", "")
+        serial = info.get("serialNumber", "")
+
+        if mem and re.match(r"^\s*\d+\s*MiB\s*$", mem, re.IGNORECASE):
+            addon_info["memory"] = mem.strip()
+
+        if power and re.match(r"^\s*\d+(\.\d+)?\s*W\s*$", power, re.IGNORECASE):
+            addon_info["power"] = power.strip()
+
+        if serial.strip():
+            addon_info["serialNumber"] = serial
+
+        addon_info["isDriverLoaded"] = True
+        break
+    return addon_info
+
+def parse_enflame_gpu_output(output):
+    gpu_infos = []
+    for dev in output.split("DEV ID")[1:]:
+        gpuinfo = {}
+        domain = bus = dev_id = func = None
+
+        for line in dev.strip().splitlines():
+            line = line.strip()
+            if ':' in line:
+                key, _, value = line.partition(":")
+                key = key.strip()
+                value = value.strip()
+            else:
+                key = line
+                value = ''
+
+            if key == "Domain":
+                domain = value.zfill(4)
+            elif key == "Bus":
+                bus = value.zfill(2)
+            elif key == "Dev":
+                dev_id = value.zfill(2)
+            elif key == "Func":
+                func = value
+            elif key == "Mem Size" or key == "Total Size":
+                gpuinfo["memory"] = value
+            elif key == "Mem Usage" or key == "Used Size":
+                gpuinfo["memoryUsage"] = value
+            elif key == "Cur Power":
+                gpuinfo["power"] = value
+            elif key == "Power Capa":
+                gpuinfo["powerCap"] = value
+            elif key == "Dpm Level":
+                gpuinfo["dpmLevel"] = value
+            elif key == "GCU Temp":
+                gpuinfo["temperature"] = value
+            elif key == "GCU Usage":
+                gpuinfo["gcuUsage"] = value
+            elif key == "Dev SN":
+                gpuinfo["serialNumber"] = value
+            elif key == "Tx Throughput":
+                gpuinfo["txThroughput"] = value
+            elif key == "Rx Throughput":
+                gpuinfo["rxThroughput"] = value
+
+        if domain and bus and dev_id and func:
+            gpuinfo["pciAddress"] = "{}:{}:{}.{}".format(domain, bus, dev_id, func)
+
+        gpu_infos.append(gpuinfo)
+
+    return gpu_infos
+
 
 def simplify_pci_device_name(name):
     if 'Intel Corporation' in name:
@@ -358,6 +446,8 @@ def simplify_pci_device_name(name):
         return 'Huawei'
     elif '1e3e' in name:
         return 'TianShu'
+    elif 'Enflame' in name:
+        return 'Enflame'
     else:
         return name.replace('Co., Ltd ', '')
 
