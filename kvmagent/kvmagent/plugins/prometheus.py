@@ -952,30 +952,32 @@ def collect_ipmi_state():
                 send_physical_fan_status_alarm_to_mn(fan_name, info.Status)
     else:
         origin_fan_flag = True
-    
-    # get power info
-    r, sdr_data = bash_ro("ipmitool sdr elist")
-    if r == 0:
-        get_power_info_from_ipmi(sdr_data,metrics)
-        for line in sdr_data.splitlines():
-            info = line.lower().strip()
-            if re.match(r"\w*fan(\w*(_|\ )speed|[a-z0-9]\ *\|)\w*", info):
+
+    sensor_info = get_sensor_info_from_ipmi()
+    if sensor_info is not None:
+        # get power info
+        get_power_info_from_ipmi(sensor_info, metrics)
+
+        # get fan info
+        for info in form.load('id|name|type|value|units|event\n' + sensor_info, sep='|'):
+            name = info['name'].strip().lower() or ""
+            value = info['value'].strip().lower() or ""
+            event = info['event'].strip().strip("'").lower() or ""
+
+            if re.match(r"\w*fan(\w*(_|\ )speed|[a-z0-9]\ *\|)\w*", name):
                 if not origin_fan_flag:
                     continue
-                if "m2" in info:
+                if "m2" in name:
                     continue
-                fan_rpm = info.split("|")[4].strip()
-                if fan_rpm == "" or fan_rpm == "no reading" or fan_rpm == "disabled":
+                if value == "" or value == "no reading" or value == "disabled":
                     continue
-                fan_name = info.split("|")[0].strip()
-                fan_state = 0 if info.split("|")[2].strip() == "ok" else 10
-                fan_rpm = float(filter(str.isdigit, fan_rpm)) if bool(re.search(r'\d', fan_rpm)) else float(0)
-                metrics['fan_speed_state'].add_metric([fan_name], fan_state)
-                metrics['fan_speed_rpm'].add_metric([fan_name], fan_rpm)
-                if fan_state == 0 and is_fan_status_abnormal(fan_name):
-                    remove_fan_status_abnormal(fan_name)
+                fan_state = 0 if event == "ok" else 10
+                metrics['fan_speed_state'].add_metric([name], fan_state)
+                metrics['fan_speed_rpm'].add_metric([name], float(value))
+                if fan_state == 0 and is_fan_status_abnormal(name):
+                    remove_fan_status_abnormal(name)
                 elif fan_state == 10:
-                    send_physical_fan_status_alarm_to_mn(fan_name, info.split("|")[2].strip())
+                    send_physical_fan_status_alarm_to_mn(name, event)
 
     collect_equipment_state_last_result = metrics.values()
     return collect_equipment_state_last_result
@@ -1009,29 +1011,27 @@ def check_equipment_state_from_ipmitool(metrics):
                 remove_memory_status_abnormal(sensor_name)
 
 
-def get_power_info_from_ipmi(ipmi_sdr_data, metrics):
+def get_power_info_from_ipmi(sensor_info, metrics):
     power_list = []
-    for line in ipmi_sdr_data.splitlines():
-        info = line.lower().strip()
-        if re.match(r"^ps\w*(\ |_)status", info):
-            ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            ps_state = info.split("|")[4].strip()
-            if "presence detected" == ps_state:
+    for info in form.load('id|name|type|value|units|event\n' + sensor_info, sep='|'):
+        name = info['name'].strip().lower()or ""
+        value = info['value'].strip().lower() or ""
+        event = info['event'].strip().strip("'").lower() or ""
+
+        if re.match(r"^ps\w*(\ |_)status", name):
+            ps_id = name.strip().split(" ")[0].split("_")[0]
+            if "presence detected" == event:
                 metrics['power_supply'].add_metric([ps_id], 0)
-            elif "presence detected" in ps_state and "ac lost" in ps_state:
+            elif "presence detected" in event and "ac lost" in event:
                 metrics['power_supply'].add_metric([ps_id], 10)
             else:
                 metrics['power_supply'].add_metric([ps_id], 20)
-        elif re.match(r"^ps\w*(\ |_)(pin|pout)", info):
-            ps_id = info.split("|")[0].strip().split(" ")[0].split("_")[0]
-            if "pout" in info and ps_id in power_list:
+        elif re.match(r"^ps\w*(\ |_)(pin|pout)", name):
+            ps_id = name.strip().split(" ")[0].split("_")[0]
+            if "pout" in name and ps_id in power_list:
                 continue
-            ps_out_power = info.split("|")[4].strip().lower()
-            ps_out_power = float(filter(str.isdigit, ps_out_power)) if bool(re.search(r'\d', ps_out_power)) else float(
-                0)
-            metrics['power_supply_current_output_power'].add_metric([ps_id], ps_out_power)
+            metrics['power_supply_current_output_power'].add_metric([ps_id], float(value))
             power_list.append(ps_id)
-
 
 
 def collect_equipment_state_from_ipmi():
@@ -1046,13 +1046,6 @@ def collect_equipment_state_from_ipmi():
     }
     metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
 
-    sensor_info = get_sensor_info_from_ipmi()
-    if sensor_info is None:
-        return metrics.values()
-
-    get_power_info_from_ipmi(sensor_info, metrics)
-    check_equipment_state_from_ipmitool(metrics)
-
     '''
         ================
         CPU TEMPERATURE
@@ -1061,7 +1054,7 @@ def collect_equipment_state_from_ipmi():
         4   | CPU0_Temp        | Temperature                 | 38.00      | C           | 'OK'
         5   | CPU1_Temp        | Temperature                 | 37.00      | C           | 'OK'
         20  | GPU0_Temp        | Temperature                 | N/A        | C           | N/A
-        
+
         ================
         CPU STATUS
         ================
@@ -1069,6 +1062,12 @@ def collect_equipment_state_from_ipmi():
         53  | CPU0_Status      | Processor                   | N/A        | N/A         | 'Processor Presence detected'
         54  | CPU1_Status      | Processor                   | N/A        | N/A         | 'Processor Presence detected'
     '''
+    sensor_info = get_sensor_info_from_ipmi()
+    if sensor_info is None:
+        return metrics.values()
+
+    get_power_info_from_ipmi(sensor_info, metrics)
+    check_equipment_state_from_ipmitool(metrics)
 
     cpu_temperature_pattern = r'^(cpu\d+_temp|cpu\d+_core_temp|cpu_temp_\d+|cpu\d+ temp|cpu\d+ core rem |cpu\d+ core temp)$'
     cpu_status_pattern = r'^(cpu_status_\d+|cpu\d+ status|cpu\d+_status)$'
