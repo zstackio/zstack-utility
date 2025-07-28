@@ -11,6 +11,11 @@ SMALL_ALIGN_SIZE = 1*1024**2
 SECTOR_SIZE_512 = 512
 SECTOR_SIZE_4K = 8*512
 BIG_ALIGN_SIZE = 8*1024**2
+EIO = -5
+SANLK_AIO_TIMEOUT = -202
+
+def io_failed(rv):
+    return rv == EIO or rv == SANLK_AIO_TIMEOUT
 
 
 logger = log.get_logger(__name__)

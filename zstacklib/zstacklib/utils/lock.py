@@ -121,3 +121,23 @@ class FileLock(object):
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.unlock()
+
+class NonBlockNamedLock(object):
+    def __init__(self, name):
+        self.name = name
+        self.acquired = False
+        self.lock = None
+
+    def __enter__(self):
+        self.lock = _get_lock(self.name)
+        self.acquired = self.lock.acquire(blocking=False)
+        return self
+
+    def __exit__(self, type, value, traceback):
+        if not self.acquired:
+            return
+        try:
+            self.lock.release()
+        except Exception as e:
+            logger.debug('%s released lock %s error: %s' % (threading.current_thread().name, self.name, str(e)))
+

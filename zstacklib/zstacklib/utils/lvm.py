@@ -2694,6 +2694,32 @@ def get_running_vm_root_volume_on_pv(vgUuid, pvUuids, checkIo=True):
 
     return vms
 
+@bash.in_bash
+def get_running_vm_root_volume_on_vg(vgUuid):
+    # type: (str) -> list[VmStruct]
+    vms = []
+    for file_name in linux.listdir(LIVE_LIBVIRT_XML_DIR):
+        xs = file_name.split(".")
+        if len(xs) != 2 or xs[1] != "xml":
+            continue
+
+        xml = linux.read_file(os.path.join(LIVE_LIBVIRT_XML_DIR, file_name))
+        if not '/dev/' + vgUuid in xml:
+            continue
+
+        vm = VmStruct()
+        vm.uuid = xs[0]
+        vm.pid = linux.get_vm_pid(vm.uuid)
+        vm.load_from_xml(xml)
+        if not vm.root_volume:
+            logger.warn("found strange vm[pid: %s, uuid: %s], can not find boot volume" % (vm.pid, vm.uuid))
+            continue
+
+        if vm.root_volume.startswith("/dev/" + vgUuid):
+            vms.append(vm)
+    return vms
+
+
 
 @bash.in_bash
 def remove_partial_lv_dm(vgUuid):

@@ -7,6 +7,7 @@ import traceback
 from kvmagent import kvmagent
 from kvmagent.plugins import volume_secret
 from kvmagent.plugins.imagestore import ImageStoreClient
+from kvmagent.plugins.ha_plugin import stop_vg_heartbeat
 from zstacklib.utils import jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import lock
@@ -33,6 +34,8 @@ DEFAULT_SANLOCK_LV_SIZE = "1024"
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 MAX_ACTUAL_SIZE_FACTOR = 3
 LUKS_HEADER_OVERHEAD = 8 * 1024 * 1024
+CONNECTED_PREFIX = "sblkConnected"
+ZSTACK_RUN_DIR = "/var/run/zstack"
 
 
 class AgentRsp(object):
@@ -681,6 +684,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             release_lock(sblk_lock)
             return rsp
 
+    def connected(self, vgUuid):
+        linux.touch_file(os.path.join(ZSTACK_RUN_DIR, "%s.%s" % (CONNECTED_PREFIX, vgUuid)))
+
     @kvmagent.replyerror
     @lock.file_lock(LOCK_FILE)
     def do_connect(self, cmd):
@@ -768,6 +774,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.check_missing_pv(cmd.vgUuid)
         lvm.update_lockspace_io_timeout_if_need(cmd.vgUuid, cmd.ioTimeout)
 
+        self.connected(cmd.vgUuid)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
@@ -867,6 +874,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     _do_detach_disks([bname])
 
 
+        stop_vg_heartbeat(cmd.vgUuid)
         deactive_lvs_on_vg(cmd.vgUuid)
         lvm.clean_vg_exists_host_tags(cmd.vgUuid, cmd.hostUuid, HEARTBEAT_TAG)
         lvm.stop_vg_lock(cmd.vgUuid)
