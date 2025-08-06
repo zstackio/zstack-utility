@@ -883,15 +883,17 @@ class RbdDeviceOperator(object):
             pool_id = pool.id
 
             try:
-                snapshot_name = array[1].split('@')[1]
-                if len(self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots) != 0:
-                    for i in self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots:
-                        if i.snap_name == snapshot_name:
-                            created_block_snapshot_id = i.id
-                            block_snapshot_exist = True
+                if len(array[1].split('@')) > 1:
+                    snapshot_name = array[1].split('@')[1]
+                    if len(self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots) != 0:
+                        for i in self.block_snapshots_api.list_block_snapshots(q=snapshot_name).block_snapshots:
+                            if i.snap_name == snapshot_name:
+                                created_block_snapshot_id = i.id
+                                block_snapshot_exist = True
                 if created_block_snapshot_id is None:
                     _uuid = str(uuid.uuid4()).replace('-', '')
                     snap_name = image_uuid + "-" + _uuid
+
                     created_block_snapshot = self.create_block_snapshot(image_uuid, snap_name)
                     created_block_snapshot_id = created_block_snapshot.id
 
@@ -991,9 +993,6 @@ class RbdDeviceOperator(object):
     def create_block_snapshot(self, image_uuid, snap_name):
         hosting_block_volumes = self.block_volumes_api.list_block_volumes(
             q=image_uuid).block_volumes
-
-        if not hosting_block_volumes:
-            raise Exception("Hosting block volume[name : %s] cannot be find " % image_uuid)
 
         api_body = {"block_snapshot": {"block_volume_id": hosting_block_volumes[0].id,
                                        "name": snap_name}}

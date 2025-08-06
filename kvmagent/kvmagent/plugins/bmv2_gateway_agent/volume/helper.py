@@ -138,6 +138,8 @@ class NbdDeviceOperator(object):
                 continue
             with open('/proc/{}/cmdline'.format(pid), 'r') as f:
                 cmdline = f.read().strip('\n')
+                if not cmdline:
+                    continue
             nbd_backend = cmdline.split('\x00')[-2]
 
             yield instance_uuid, volume_uuid, nbd_backend, nbd_id

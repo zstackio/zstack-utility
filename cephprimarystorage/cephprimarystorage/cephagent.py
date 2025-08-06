@@ -346,6 +346,7 @@ class CephAgent(plugin.TaskManager):
     XSKY_UPDATE_BLOCK_VOLUME_SNAPSHOT = "/xsky/ceph/primarystorage/volume/snapshot/update"
 
     CEPH_CONF_PATH = "/etc/ceph/ceph.conf"
+    BACKUP_SNAPSHOT_PREFIX = "rbd-storage-backup-"
 
     http_server = http.HttpServer(port=7762)
     http_server.logfile_path = log.get_logfile_path()
@@ -833,7 +834,8 @@ class CephAgent(plugin.TaskManager):
         mode = 'incremental'
         if not cmd.lastBackupUuid:
             mode = 'full'
-        if shell.run('rbd info %s@%s' % (cmd.volumePath.replace('ceph://', ''), cmd.lastBackupUuid)) != 0:
+        if shell.run('rbd info %s@%s%s' % (
+                cmd.volumePath.replace('ceph://', ''), self.BACKUP_SNAPSHOT_PREFIX, cmd.lastBackupUuid)) != 0:
             mode = 'full'
 
         rsp.mode = mode
@@ -845,13 +847,12 @@ class CephAgent(plugin.TaskManager):
         rsp = AgentResponse()
 
         vpath = self._normalize_install_path(cmd.volumePath)
-        backup_prefix = "rbd-storage-backup-"
 
         snaps = self._get_snapshots(vpath)
         if not snaps:
             return jsonobject.dumps(rsp)
 
-        target_snaps = [s for s in snaps if s.name.startswith(backup_prefix)]
+        target_snaps = [s for s in snaps if s.name.startswith(self.BACKUP_SNAPSHOT_PREFIX)]
 
         if not target_snaps:
             return jsonobject.dumps(rsp)
