@@ -2637,22 +2637,28 @@ done
 
         pci.calculate_max_addressable_memory(rsp.pciDevicesInfo)
 
-    def _collect_gpu_addoninfo(self, to, vendor_name):
-        if pci.is_gpu(to.type):
-            collect_vendor_nvidia_gpu_infos = {
-                VendorEnum.NVIDIA: self._collect_nvidia_gpu_info,
-                VendorEnum.AMD: self._collect_amd_gpu_info,
-                VendorEnum.HAIGUANG: self._collect_haiguang_gpu_info,
-                VendorEnum.HUAWEI: self._collect_huawei_gpu_info,
-                VendorEnum.TIANSHU: self._collect_tianshu_gpu_info,
-                VendorEnum.VASTAI: self._collect_vastai_gpu_info,
-            }
-            handler = collect_vendor_nvidia_gpu_infos.get(vendor_name)
-            if handler:
-                handler(to)
+    def _collect_gpu_addoninfo(self, to, vendor_name, opaque=None):
+        if not pci.is_gpu(to.type):
+            logger.debug("pci device %s is not gpu, skip collect gpu info" % to.pciDeviceAddress)
+            return
+
+        collect_vendor_nvidia_gpu_infos = {
+            VendorEnum.NVIDIA: self._collect_nvidia_gpu_info,
+            VendorEnum.AMD: self._collect_amd_gpu_info,
+            VendorEnum.HAIGUANG: self._collect_haiguang_gpu_info,
+            VendorEnum.HUAWEI: self._collect_huawei_gpu_info,
+            VendorEnum.TIANSHU: self._collect_tianshu_gpu_info,
+            VendorEnum.VASTAI: self._collect_vastai_gpu_info,
+        }
+        handler = collect_vendor_nvidia_gpu_infos.get(vendor_name)
+        if not handler:
+            logger.debug("not support collect gpu info for vendor %s" % vendor_name)
+            return
+
+        handler(to, opaque)
 
     @in_bash
-    def _collect_tianshu_gpu_info(self, to):
+    def _collect_tianshu_gpu_info(self, to, opaque=None):
         r, o, e = bash_roe("which ixsmi")
         if r != 0:
             logger.debug("no ixsmi, detail: %s " % o)
@@ -2680,7 +2686,7 @@ done
             to.name = product_name
 
     @in_bash
-    def _collect_vastai_gpu_info(self, to):
+    def _collect_vastai_gpu_info(self, to, opaque=None):
         r, o, e = bash_roe("which vasmi")
         if r != 0:
             logger.debug("no vasmi, detail: %s " % o)
@@ -2720,7 +2726,7 @@ done
         return gpuinfos
 
     @in_bash
-    def _collect_huawei_gpu_info(self, to):
+    def _collect_huawei_gpu_info(self, to, opaque=None):
         r, o, e = bash_roe("which npu-smi")
         if r != 0:
             logger.debug("no npu-smi, detail: %s " % o)
@@ -2763,8 +2769,19 @@ done
                 to.device = "-"
                 to.name = product_type
 
+        if opaque and opaque.get("AIOS_RANK_TABLE", False):
+            # collect aios rank table
+            try:
+                aios_rank_table = gpu.get_huawei_gpu_aios_rank_table_dict(npu_ids)
+                if aios_rank_table:
+                    to.addonInfo["opaque"] = {
+                        "aiosRankTable": aios_rank_table
+                    }
+            except Exception as e:
+                logger.debug("failed to get aios rank table: %s" % str(e))
+
     @in_bash
-    def _collect_haiguang_gpu_info(self, to):
+    def _collect_haiguang_gpu_info(self, to, opaque=None):
         r, o, e = bash_roe("which hy-smi")
         if r != 0:
             logger.debug("no hy-smi, detail: %s " % o)
@@ -2778,7 +2795,7 @@ done
 
 
     @in_bash
-    def _collect_nvidia_gpu_info(self, to):
+    def _collect_nvidia_gpu_info(self, to, opaque=None):
         r, o, e = bash_roe("which nvidia-smi")
         if r != 0:
             logger.debug("no nvidia-smi, detail: %s " % o)
@@ -2791,7 +2808,7 @@ done
         self._update_to_addon_info_from_gpu_infos(gpu.parse_nvidia_gpu_output(o), to)
 
 
-    def _update_to_addon_info_from_gpu_infos(self, gpu_infos, to):
+    def _update_to_addon_info_from_gpu_infos(self, gpu_infos, to, opaque=None):
         for gpuinfo in gpu_infos:
             if to.pciDeviceAddress not in gpuinfo.get("pciAddress"):
                 continue
@@ -2801,7 +2818,7 @@ done
             to.addonInfo["isDriverLoaded"] = True
 
     @in_bash
-    def _collect_amd_gpu_info(self, to):
+    def _collect_amd_gpu_info(self, to, opaque=None):
         #todo collect amd gpu info
         r, o, e = bash_roe("which rocm-smi")
         if r != 0:
