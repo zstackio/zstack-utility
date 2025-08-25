@@ -110,6 +110,7 @@ class ResizeVolumeRsp(AgentRsp):
 class ExtendMergeTargetRsp(AgentRsp):
     def __init__(self):
         super(ExtendMergeTargetRsp, self).__init__()
+        self.size = None
 
 
 class ExtendMigarteTargetRsp(AgentRsp):
@@ -121,6 +122,13 @@ class OfflineMergeSnapshotRsp(AgentRsp):
     def __init__(self):
         super(OfflineMergeSnapshotRsp, self).__init__()
         self.deleted = False
+        self.actualSize = None
+
+
+class OfflineCommitSnapshotRsp(AgentRsp):
+    def __init__(self):
+        super(OfflineCommitSnapshotRsp, self).__init__()
+        self.actualSize = None
 
 
 class ConvertVolumeFormatRsp(AgentRsp):
@@ -336,6 +344,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     EXTEND_MERGE_TARGET_PATH = "/sharedblock/snapshot/extendmergetarget"
     EXTEND_MIGRATE_TARGET_PATH = "/sharedblock/volume/extendmigratetarget"
     OFFLINE_MERGE_SNAPSHOT_PATH = "/sharedblock/snapshot/offlinemerge"
+    OFFLINE_COMMIT_SNAPSHOT_PATH = "/sharedblock/snapshot/offlinecommit"
     CREATE_EMPTY_VOLUME_PATH = "/sharedblock/volume/createempty"
     CREATE_DATA_VOLUME_WITH_BACKING_PATH = "/sharedblock/volume/createwithbacking"
     CHECK_BITS_PATH = "/sharedblock/bits/check"
@@ -388,6 +397,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.EXTEND_MERGE_TARGET_PATH, self.extend_merge_target)
         http_server.register_async_uri(self.EXTEND_MIGRATE_TARGET_PATH, self.extend_migrate_target)
         http_server.register_async_uri(self.OFFLINE_MERGE_SNAPSHOT_PATH, self.offline_merge_snapshots)
+        http_server.register_async_uri(self.OFFLINE_COMMIT_SNAPSHOT_PATH, self.offline_commit_snapshots)
         http_server.register_async_uri(self.CREATE_EMPTY_VOLUME_PATH, self.create_empty_volume)
         http_server.register_async_uri(self.CONVERT_IMAGE_TO_VOLUME, self.convert_image_to_volume)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
@@ -1219,6 +1229,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             current_size = int(lvm.get_lv_size(dst_abs_path))
             if current_size < measure_size:
                 lvm.extend_lv_from_cmd(dst_abs_path, measure_size, cmd, extend_thin_by_specified_size=True)
+            rsp.size = max(measure_size, current_size)
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
@@ -1242,8 +1253,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath) if not cmd.fullRebase else ""
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
 
-        with lvm.RecursiveOperateLv(dst_abs_path, shared=False):
+        with lvm.RecursiveOperateLv(dst_abs_path, shared=False, skip_deactivate_tags=[IMAGE_TAG]):
             if linux.qcow2_get_backing_file(dst_abs_path) == src_abs_path:
+                rsp.actualSize = lvm.get_lv_size(dst_abs_path)
                 rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
                 return jsonobject.dumps(rsp)
 
@@ -1267,7 +1279,32 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
                     qcow2.create_template_with_task_daemon(dst_abs_path, tmp_abs_path, task_spec=cmd)
                     lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
+            lvm.delete_lv_meta(dst_abs_path)
+            rsp.actualSize = lvm.get_lv_size(dst_abs_path)
+        rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
+        return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def offline_commit_snapshots(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = OfflineCommitSnapshotRsp()
+        top = translate_absolute_path_from_install_path(cmd.top)
+        base = translate_absolute_path_from_install_path(cmd.base)
+
+        with lvm.RecursiveOperateLv(top, shared=True):
+            if linux.qcow2_get_backing_file(cmd.top) != linux.qcow2_get_backing_file(cmd.base):
+                linux.qcow2_commit(top, base)
+
+            if cmd.topChildrenInstallPathInDb:
+                for childrenInstallPath in cmd.topChildrenInstallPathInDb:
+                    child_abs = translate_absolute_path_from_install_path(childrenInstallPath)
+                    with lvm.RecursiveOperateLv(child_abs, shared=True):
+                        if linux.qcow2_get_backing_file(child_abs) != base:
+                            linux.qcow2_rebase_no_check(base, child_abs)
+
+            lvm.delete_lv_meta(base)
+
+        rsp.actualSize = lvm.get_lv_size(base)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 

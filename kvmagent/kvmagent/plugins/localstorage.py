@@ -189,6 +189,18 @@ class CreateVolumeFromCacheRsp(AgentResponse):
         self.size = None
 
 
+class OfflineMergeSnapshotRsp(AgentResponse):
+    def __init__(self):
+        super(OfflineMergeSnapshotRsp, self).__init__()
+        self.actualSize = None
+
+
+class OfflineCommitSnapshotRsp(AgentResponse):
+    def __init__(self):
+        super(OfflineCommitSnapshotRsp, self).__init__()
+        self.actualSize = None
+
+
 class LocalStoragePlugin(kvmagent.KvmAgent):
     INIT_PATH = "/localstorage/init"
     GET_PHYSICAL_CAPACITY_PATH = "/localstorage/getphysicalcapacity"
@@ -209,6 +221,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     MERGE_SNAPSHOT_PATH = "/localstorage/snapshot/merge"
     MERGE_AND_REBASE_SNAPSHOT_PATH = "/localstorage/snapshot/mergeandrebase"
     OFFLINE_MERGE_PATH = "/localstorage/snapshot/offlinemerge"
+    OFFLINE_COMMIT_PATH = "/localstorage/snapshot/offlinecommit"
     CREATE_TEMPLATE_FROM_VOLUME = "/localstorage/volume/createtemplate"
     ESTIMATE_TEMPLATE_SIZE_PATH = "/localstorage/volume/estimatetemplatesize"
     CHECK_BITS_PATH = "/localstorage/checkbits"
@@ -259,6 +272,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MERGE_SNAPSHOT_PATH, self.merge_snapshot)
         http_server.register_async_uri(self.MERGE_AND_REBASE_SNAPSHOT_PATH, self.merge_and_rebase_snapshot)
         http_server.register_async_uri(self.OFFLINE_MERGE_PATH, self.offline_merge_snapshot)
+        http_server.register_async_uri(self.OFFLINE_COMMIT_PATH, self.offline_commit_snapshot)
         http_server.register_async_uri(self.CREATE_TEMPLATE_FROM_VOLUME, self.create_template_from_volume)
         http_server.register_async_uri(self.ESTIMATE_TEMPLATE_SIZE_PATH, self.estimate_template)
         http_server.register_async_uri(self.CHECK_BITS_PATH, self.check_bits)
@@ -778,10 +792,11 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def offline_merge_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = OfflineMergeSnapshotRsp()
 
         src_path = cmd.srcPath if not cmd.fullRebase else ""
         if linux.qcow2_get_backing_file(cmd.destPath) == src_path:
+            _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.destPath)
             rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
             return jsonobject.dumps(rsp)
 
@@ -792,6 +807,28 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             qcow2.create_template_with_task_daemon(cmd.destPath, tmp, task_spec=cmd)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
+        self.imagestore_client.clean_meta(cmd.destPath)
+
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.destPath)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def offline_commit_snapshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = OfflineCommitSnapshotRsp()
+
+        if linux.qcow2_get_backing_file(cmd.top) != linux.qcow2_get_backing_file(cmd.base):
+            linux.qcow2_commit(cmd.top, cmd.base)
+
+        if cmd.topChildrenInstallPathInDb:
+            for children in cmd.topChildrenInstallPathInDb:
+                if linux.qcow2_get_backing_file(children) != cmd.base:
+                    linux.qcow2_rebase_no_check(cmd.base, children)
+
+        self.imagestore_client.clean_meta(cmd.base)
+
+        _, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.base)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
