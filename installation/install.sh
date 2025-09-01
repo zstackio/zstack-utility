@@ -2548,8 +2548,7 @@ install_morph_server(){
   show_spinner is_extract_morph_tar
   show_spinner prepare_morph_user_and_db
   
-  zstack-ctl start-extra-service --name morph --init
-  systemctl restart morph
+  systemctl is-enabled morph &>/dev/null && systemctl restart morph || true
 }
 
 is_extract_morph_tar(){
@@ -2557,18 +2556,16 @@ is_extract_morph_tar(){
   cp /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/morph_all.tar.gz /var/lib/zstack/
   mkdir -p /var/lib/zstack/morph
 
-  [ -f /var/lib/zstack/morph/morph.jar ] && \
-    \cp -a /var/lib/zstack/morph/morph.jar /var/lib/zstack/morph/morph.jar.back
-  [ -f /var/lib/zstack/morph/application.yml ] && \
-    \cp -a /var/lib/zstack/morph/application.yml /var/lib/zstack/morph/application.yml.back
+  [ -f /var/lib/zstack/morph/region_config.yml ] && \
+    \cp -a /var/lib/zstack/morph/region_config.yml /var/lib/zstack/morph/region_config.yml.back
 
   tar -zxvf /var/lib/zstack/morph_all.tar.gz -C /var/lib/zstack/morph/ > /dev/null 2>&1
   if [ $? -ne 0 ]; then
       fail "Extracting the morph_all.tar.gz package failed."
   fi
 
-  if [ -f /var/lib/zstack/morph/application.yml.back ]; then
-    \cp -f /var/lib/zstack/morph/application.yml.back /var/lib/zstack/morph/application.yml
+  if [ -f /var/lib/zstack/morph/region_config.yml.back ]; then
+    \mv -f /var/lib/zstack/morph/region_config.yml.back /var/lib/zstack/morph/region_config.yml
   fi
 
   rm -f /var/lib/zstack/morph_all.tar.gz

@@ -7491,6 +7491,71 @@ class ChangeIpCmd(Command):
 
         info("update mysql restrict connection successfully")
 
+    def update_morph_config(self, change_ip):
+        default_morph_path = "/var/lib/zstack/morph/"
+        default_morph_config = default_morph_path + "application.yml"
+
+        if os.path.exists(default_morph_config):
+            data = OrderedDict()
+
+            def ordered_load(stream, Loader=yaml.SafeLoader):
+                class OrderedLoader(Loader):
+                    pass
+
+                def construct_mapping(loader, node):
+                    loader.flatten_mapping(node)
+                    return OrderedDict(loader.construct_pairs(node))
+
+                OrderedLoader.add_constructor(
+                    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+                    construct_mapping)
+
+                return yaml.load(stream, OrderedLoader)
+
+            def ordered_dump(data, stream=None, Dumper=yaml.SafeDumper, **kwds):
+                class OrderedDumper(Dumper):
+                    pass
+
+                def _dict_representer(dumper, data):
+                    return dumper.represent_mapping(
+                        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+                        data.items())
+
+                OrderedDumper.add_representer(OrderedDict, _dict_representer)
+
+                return yaml.dump(data, stream, OrderedDumper, **kwds)
+
+            try:
+                with open(default_morph_config, 'r') as f:
+                    data = ordered_load(f)
+                    if not isinstance(data, dict):
+                        data = OrderedDict()
+            except IOError as e:
+                error('Failed to load morph application.yml: %s' % str(e))
+            except yaml.YAMLError as exc:
+                if hasattr(exc, 'problem_mark'):
+                    mark = exc.problem_mark
+                    error("Error at line: %s column: %s" % (mark.line + 1, mark.column + 1))
+                error('Failed to parse morph application.yml')
+
+            data.setdefault('extension', OrderedDict())
+            old_ip = data['extension'].get('morphAddress')
+            if old_ip != change_ip:
+                data['extension']['morphAddress'] = change_ip
+                info('morph application.yml update morphAddress %s' % change_ip)
+            else:
+                info('morph application.yml morphAddress unchanged, skip write')
+                return
+
+            try:
+                with open(default_morph_config, 'w') as f:
+                    ordered_dump(data, f, default_flow_style=False)
+                info('morph application.yml write success')
+            except IOError:
+                error('morph application.yml write failed: %s', str(e))
+        else:
+            info("morph cannot find skip")
+
     def run(self, args):
         if args.ip == '0.0.0.0':
             raise CtlError('for your data safety, please do NOT use 0.0.0.0 as the listen address')
@@ -7632,6 +7697,8 @@ class ChangeIpCmd(Command):
             shell('iptables -A INPUT -p tcp --dport %s -j REJECT' % port)
             shell('iptables -I INPUT -p tcp --dport %s -d %s -j ACCEPT' % (port, args.ip))
             shell('iptables -I INPUT -p tcp --dport %s -d 127.0.0.1 -j ACCEPT' % port)
+
+        self.update_morph_config(args.ip)
 
         info("update iptables rules successfully")
         info("Change ip successfully")
@@ -11434,6 +11501,7 @@ class IamService(ExtraService):
 class MorphService(ExtraService):
     default_morph_path = "/var/lib/zstack/morph/"
     default_morph_config = default_morph_path + "application.yml"
+    default_morph_database_config = default_morph_path + "region_config.yml"
     default_morph_jar = default_morph_path + "morph.jar"
     default_port = 4747
     default_ip = get_default_ip()
@@ -11446,7 +11514,7 @@ After=network.target
 [Service]
 Type=simple
 
-ExecStart=/etc/alternatives/java_sdk_21/bin/java -jar {jar} --spring.config.location=file:{config}
+ExecStart={java} -jar {jar} --spring.config.location=file:{config} --spring.config.additional-location=file:{database_config}
 
 WorkingDirectory={path}
 
@@ -11464,7 +11532,13 @@ Environment="JAVA_OPTS=-Xms256m -Xmx256m -Dfile.encoding=UTF-8"
 
 [Install]
 WantedBy=multi-user.target
-    '''.format(jar=default_morph_jar, config=default_morph_config, path=default_morph_path)
+    '''.format(
+        java="/etc/alternatives/java_sdk_21/bin/java",
+        jar=default_morph_jar,
+        config=default_morph_config,
+        path=default_morph_path,
+        database_config=default_morph_database_config
+    )
 
     def service_name(self):
         return "morph"
@@ -11511,6 +11585,8 @@ WantedBy=multi-user.target
         try:
             with open(self.default_morph_config, 'r') as f:
                 data = ordered_load(f)
+                if not isinstance(data, dict):
+                    data = OrderedDict()
         except IOError as e:
             error('Failed to load morph application.yml: %s' % str(e))
         except yaml.YAMLError as exc:
@@ -11523,14 +11599,14 @@ WantedBy=multi-user.target
             if 'port' in data['server']:
                 data['server']['port'] = self.default_port
                 info('morph application.yml update port %s' % self.default_port)
-            if 'address' in data['server']:
-                data['server']['address'] = self.default_ip
-                info('morph application.yml update address %s' % self.default_ip)
 
         if 'extension' in data:
             if 'defaultMorphPath' in data['extension']:
                 data['extension']['defaultMorphPath'] = self.default_morph_path
                 info('morph application.yml update defaultMorphPath %s' % self.default_morph_path)
+            if 'morphAddress' in data['extension']:
+                data['extension']['morphAddress'] = self.default_ip
+                info('morph application.yml update morphAddress %s' % self.default_ip)
 
         try:
             with open(self.default_morph_config, 'w') as f:
