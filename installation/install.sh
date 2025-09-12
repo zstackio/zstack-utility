@@ -41,6 +41,7 @@ KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3 ky10sp3.2403"
 XINCHUANG_OS="$KYLIN10_OS uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
+REGION_MANAGER_OS="h84r ky10sp3"
 
 UPGRADE='n'
 FORCE='n'
@@ -1682,6 +1683,11 @@ is_install_general_libs_rh(){
     if [ "$BASEARCH" == "x86_64" ]; then
       deps_list="${deps_list} mcelog"
     fi
+
+    if [[ $REGION_MANAGER_OS =~ $ZSTACK_RELEASE ]]; then
+       deps_list="${deps_list} java-21-openjdk-devel"
+    fi
+
     always_update_list="openssh"
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
