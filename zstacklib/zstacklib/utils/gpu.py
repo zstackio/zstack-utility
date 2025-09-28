@@ -235,10 +235,16 @@ def get_huawei_gpu_aios_rank_table_dict(npu_ids, iswindows=False):
 
     # Build the command to get IP addresses for each NPU ID using hccn_tool
     device_ips = {}
+    device_netmasks = {}
     for npu_id in npu_ids:
+        # output example:
+        # hccn_tool -i 6 -ip -g
+        # ipaddr:172.20.9.77
+        # netmask:255.255.0.0
         r, o, e = bash_roe("hccn_tool -i %s -ip -g" % npu_id)
 
         ip = None
+        netmask = None
         if r == 0 and o:
             # Try to match "ipaddr:172.20.9.71" pattern
             import re
@@ -251,12 +257,24 @@ def get_huawei_gpu_aios_rank_table_dict(npu_ids, iswindows=False):
                 if ip_match_alt:
                     ip = ip_match_alt.group(1)
 
+            netmask_match = re.search(r'netmask:(\d+\.\d+\.\d+\.\d+)', o)
+            if netmask_match:
+                netmask = netmask_match.group(1)
+            else:
+                netmask_match_alt = re.search(r'Netmask:\s+(\d+\.\d+\.\d+\.\d+)', o)
+                if netmask_match_alt:
+                    netmask = netmask_match_alt.group(1)
+
         # Use fallback IP if no IP found
         if not ip:
             logger.warning("Could not retrieve IP for NPU ID %s, using default format" % npu_id)
             ip = "10.20.0.%s" % (int(npu_id) + 2)
+        if not netmask:
+            logger.warning("Could not retrieve netmask for NPU ID %s, using default" % npu_id)
+            netmask = "255.255.0.0"
 
         device_ips[npu_id] = ip
+        device_netmasks[npu_id] = netmask
 
     # Build rank table dictionary
     rank_table = {
@@ -264,13 +282,12 @@ def get_huawei_gpu_aios_rank_table_dict(npu_ids, iswindows=False):
         "server_list": []
     }
 
-    for i, npu_id in enumerate(npu_ids):
+    for _, npu_id in enumerate(npu_ids):
         server_info = {
-            "server_id": i,
             "device_id": npu_id,
             "host": device_ips[npu_id],
-            "rank_id": i,
-            "device_ip": device_ips[npu_id]
+            "device_ip": device_ips[npu_id],
+            "netmask": device_netmasks[npu_id]
         }
         rank_table["server_list"].append(server_info)
 

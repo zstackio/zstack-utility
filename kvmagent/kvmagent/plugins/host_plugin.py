@@ -2512,7 +2512,7 @@ sysctl -w vm.nr_hugepages=$pageNum
         else:
             return name.replace('Co., Ltd ', '')
 
-    def _collect_format_pci_device_info(self, rsp):
+    def _collect_format_pci_device_info(self, rsp, opaque):
         r_id, o_id, e_id = pci.get_pci_device_ids()
         r_name, o_name, e_name = pci.get_pci_device_names()
 
@@ -2677,7 +2677,7 @@ sysctl -w vm.nr_hugepages=$pageNum
 
             _set_pci_to_type()
 
-            self._collect_gpu_addoninfo(to, vendor_name)
+            self._collect_gpu_addoninfo(to, vendor_name, opaque)
 
             # if support both mdev and sriov, then set the pci device to VFIO_MDEV_VIRTUALIZABLE
             if not self._get_vfio_mdev_info(to) and not self._get_sriov_info(to):
@@ -2789,6 +2789,7 @@ sysctl -w vm.nr_hugepages=$pageNum
             return
         npu_ids = gpu.get_huawei_npu_id(npu_ids_out)
         if len(npu_ids) == 0:
+            logger.debug("no npu id can be found from output: %s" % npu_ids_out)
             return
 
         npu_infos = []
@@ -2796,7 +2797,7 @@ sysctl -w vm.nr_hugepages=$pageNum
             r, o, e = bash_roe(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
             if r != 0:
                 logger.error("npu query gpu board is error, %s " % e)
-                return
+                break
 
             npu_infos.extend(gpu.parse_huawei_gpu_output_by_npu_id(o))
 
@@ -2809,27 +2810,26 @@ sysctl -w vm.nr_hugepages=$pageNum
             r, o, e = bash_roe(gpu.get_huawei_gpu_product_name_cmd(npu_ids))
             if r != 0:
                 logger.error("npu-smi query gpu product type is error, %s " % e)
-                return
+                break
 
             if "not support" in o:
                 logger.error("current gpu device not support query product")
-                return
+                break
 
             product_type = gpu.get_huawei_product_type(o)
             if product_type:
                 to.device = "-"
                 to.name = product_type
 
-        if opaque and opaque.get("AIOS_RANK_TABLE", False):
-            # collect aios rank table
-            try:
-                aios_rank_table = gpu.get_huawei_gpu_aios_rank_table_dict(npu_ids)
-                if aios_rank_table:
-                    to.addonInfo["opaque"] = {
-                        "aiosRankTable": aios_rank_table
-                    }
-            except Exception as e:
-                logger.debug("failed to get aios rank table: %s" % str(e))
+        # collect aios rank table
+        try:
+            aios_rank_table = gpu.get_huawei_gpu_aios_rank_table_dict(npu_ids)
+            if aios_rank_table:
+                to.addonInfo["opaque"] = {
+                    "aiosRankTable": aios_rank_table
+                }
+        except Exception as e:
+            logger.debug("failed to get aios rank table: %s" % str(e))
 
     @in_bash
     def _collect_haiguang_gpu_info(self, to, opaque=None):
@@ -2896,7 +2896,7 @@ sysctl -w vm.nr_hugepages=$pageNum
 
         if cmd.skipGrubConfig:
             rsp.hostIommuStatus = True
-            self._collect_format_pci_device_info(rsp)
+            self._collect_format_pci_device_info(rsp, cmd.opaque)
             return jsonobject.dumps(rsp)
 
         # update grub to enable/disable iommu in host
@@ -2920,7 +2920,7 @@ sysctl -w vm.nr_hugepages=$pageNum
             rsp.hostIommuStatus = False
 
         # get pci device info
-        self._collect_format_pci_device_info(rsp)
+        self._collect_format_pci_device_info(rsp, cmd.opaque)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
