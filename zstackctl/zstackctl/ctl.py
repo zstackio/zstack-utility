@@ -11877,7 +11877,7 @@ class AIOSSetUpSystemServicesCmd(Command):
         # Escape uuid_list for SQL
         uuid_list_escaped = ["'%s'" % self._escape_sql(uuid) for uuid in uuid_list]
         uuid_in_clause = ",".join(uuid_list_escaped)
-        query.sql = "SELECT modelServiceUuid FROM ModelServiceImageVO WHERE cpuArchitecture='%s' AND modelServiceUuid IN (%s)" % (
+        query.sql = "SELECT modelServiceUuid FROM ModelServiceTemplateVO WHERE cpuArchitecture='%s' AND modelServiceUuid IN (%s)" % (
             architecture, uuid_in_clause)
         existing_records_result = query.query()
         existing_uuids = {record['modelServiceUuid'] for record in existing_records_result}
@@ -11901,10 +11901,10 @@ class AIOSSetUpSystemServicesCmd(Command):
                 fields.append("createDate")
                 values.append("NOW()")
 
-                query.sql = "INSERT INTO ModelServiceImageVO (%s) VALUES (%s)" % (
+                query.sql = "INSERT INTO ModelServiceTemplateVO (%s) VALUES (%s)" % (
                     ",".join(fields), ",".join(values))
                 query.query()
-                info("Inserted new ModelServiceImageVO record for modelServiceUuid '%s'" % uuid)
+                info("Inserted new ModelServiceTemplateVO record for modelServiceUuid '%s'" % uuid)
             else:
                 # Update the existing record
                 set_clauses = []
@@ -11914,10 +11914,10 @@ class AIOSSetUpSystemServicesCmd(Command):
                     set_clauses.append("dockerImage='%s'" % docker_image_name)
 
                 if set_clauses:
-                    query.sql = "UPDATE ModelServiceImageVO SET %s WHERE cpuArchitecture='%s' AND modelServiceUuid='%s'" % (
+                    query.sql = "UPDATE ModelServiceTemplateVO SET %s WHERE cpuArchitecture='%s' AND modelServiceUuid='%s'" % (
                     ", ".join(set_clauses), architecture, escaped_uuid)
                     query.query()
-                    info("Updated ModelServiceImageVO record for modelServiceUuid '%s'" % uuid)
+                    info("Updated ModelServiceTemplateVO record for modelServiceUuid '%s'" % uuid)
                 else:
                     info("No fields to update. Skipping update for modelServiceUuid '%s'." % uuid)
 
