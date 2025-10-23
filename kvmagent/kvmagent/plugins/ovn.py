@@ -237,7 +237,7 @@ class OvnNetworkPlugin(kvmagent.KvmAgent):
                 for vnic in vnics:
                     if vnic.startswith("vnic"):
                         # delete vnic from ovs
-                        r,o = bash.bash_ro("ovs-vsctl --if-exists del-port br-int {vnic}".format(vnic=vnic))
+                        r, o = bash.bash_ro("ovs-vsctl --no-wait --if-exists del-port br-int {vnic}".format(vnic=vnic))
                         if r != 0:
                             logger.warning("delete vnic:{vnic} failed: {err}".format(vnic=vnic, err=o))
 
@@ -457,6 +457,7 @@ class OvnNetworkPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    @bash.in_bash
     def ovn_check_local_port(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = OvnCheckLocalPortResponse()
@@ -478,7 +479,7 @@ class OvnNetworkPlugin(kvmagent.KvmAgent):
         for vm in vms:
             nics = vsctl.getVnicsByVmUuid(vm.uuid)
             if len(nics) == 0:
-                continue
+                vmNicsMap[vm.uuid] = []
             vmNicsMap[vm.uuid] = nics
         rsp.vmNicsMap = vmNicsMap
 
@@ -488,16 +489,29 @@ class OvnNetworkPlugin(kvmagent.KvmAgent):
 
         vnicsIfaceId = vsctl.getVnicsIfaceId(allVnics)
         lspRequestedChassisMap = {}
-        sb_ovn_remote = bash.bash_o('ovs-vsctl get Open_vSwitch . external_ids:ovn-remote').strip().strip('"')
+        r, sb_ovn_remote = bash.bash_ro('ovs-vsctl get Open_vSwitch . external_ids:ovn-remote')
+        if r != 0:
+            rsp.success = False
+            rsp.error = "Failed to get ovn-remote from ovs-vsctl"
+            return jsonobject.dumps(rsp)
+        sb_ovn_remote = sb_ovn_remote.strip().strip('"')
+        errStr = []
         for lsp in vnicsIfaceId.values():
             r, requestedChassis = bash.bash_ro('ovn-sbctl --db=%s  --column=requested_chassis find port_binding logical_port=%s | awk \'{print $3}\'' % (sb_ovn_remote, lsp))
-            if r == 0:
-                requestedChassis = ast.literal_eval(requestedChassis.strip())
-                if not requestedChassis:
-                    continue
-                lspRequestedChassisMap[lsp] = requestedChassis
+            if r != 0:
+                errStr.append("Failed to get requested_chassis for lsp %s" % lsp)
+                continue
+            if requestedChassis == "":
+                continue
+            requestedChassis = ast.literal_eval(requestedChassis.strip())
+            if not requestedChassis:
+                continue
+            lspRequestedChassisMap[lsp] = requestedChassis
         rsp.lspRequestedChassisMap = lspRequestedChassisMap
 
+        if len(errStr) > 0:
+            rsp.success = False
+            rsp.error = ";".join(errStr)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
