@@ -4528,6 +4528,22 @@ if [[ ${PRODUCT_NAME,,} != 'zstack' && ! -f "$productCliPath" ]]; then
   ln -s /usr/bin/zstack-cli $productCliPath
 fi
 
+ZS_SCRIPTS_DIR="/usr/local/bin"
+
+for file in "$ZS_SCRIPTS_DIR"/zs-*; do
+    [ -e "$file" ] || continue
+    filename=$(basename "$file")
+    new_link="$ZS_SCRIPTS_DIR/rc-${filename#zs-}"
+    [ -e "$new_link" ] || ln -s "$file" "$new_link"
+done
+
+for file in "$ZS_SCRIPTS_DIR"/zstack-*; do
+    [ -e "$file" ] || continue
+    filename=$(basename "$file")
+    new_link="$ZS_SCRIPTS_DIR/rcloud-${filename#zstack-}"
+    [ -e "$new_link" ] || ln -s "$file" "$new_link"
+done
+
 #Download ${PRODUCT_NAME} all in one package
 download_zstack
 
