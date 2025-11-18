@@ -1,3 +1,4 @@
+import difflib
 import random
 import time
 import string
@@ -146,6 +147,11 @@ class FcSanScanRsp(AgentRsp):
         self.fiberChannelLunStructs = []
         self.hbaWwnns = []
 
+class EnableMultipathRsp(AgentRsp):
+    def __init__(self):
+        super(EnableMultipathRsp, self).__init__()
+        self.configChanged = False
+        self.configDiff = ""
 
 class IscsiLoginCmd(AgentCmd):
     @log.sensitive_fields("iscsiChapUserPassword")
@@ -970,7 +976,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     @bash.in_bash
     def enable_multipath(self, req):
-        rsp = AgentRsp()
+        rsp = EnableMultipathRsp()
         cmd_dict = simplejson.loads(req[http.REQUEST_BODY])
 
         if self.multipath_conf_cannot_change():
@@ -985,8 +991,19 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             bash.bash_roe("sed -i 's/^[[:space:]]*alias/#alias/g' /etc/multipath.conf")
             bash.bash_roe("systemctl reload multipathd")
 
-        if multipath.write_multipath_conf("/etc/multipath.conf", cmd_dict.get("blacklist", None)):
+        default_config_changed = False
+        with multipath.MultipathConfigUpdater("/etc/multipath.conf") as updater:
+            default_config_changed =  updater.set_default_config()
+            if cmd_dict.get("blacklist", None):
+                updater.config_section("blacklist", cmd_dict["blacklist"])
+
+        if updater.modified:
             bash.bash_roe("systemctl reload multipathd")
+
+        if default_config_changed:
+            logger.debug("multipath default config have been restored")
+            rsp.configChanged = True
+            rsp.configDiff = "\n".join(difflib.ndiff(updater.old_config_str.splitlines(), updater.new_config_str.splitlines()))
 
         linux.set_fail_if_no_path()
         return jsonobject.dumps(rsp)

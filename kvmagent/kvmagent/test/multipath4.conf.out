@@ -1,9 +1,6 @@
 blacklist {
 
 }
-defaults {
-    user_friendly_names yes
-}
 devices {
 device {
     features "0"
@@ -14,4 +11,7 @@ device {
 device {
     vendor ".*"
 }
+}
+defaults {
+    find_multipaths yes
 }
