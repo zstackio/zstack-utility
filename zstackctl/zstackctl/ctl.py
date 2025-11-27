@@ -220,7 +220,7 @@ if [[ $DB_VERSION == *"Great"* ]]; then
     sudo ln -sf /etc/systemd/system/mysql.service /etc/systemd/system/mariadb.service
     sudo ln -sf /etc/systemd/system/mysql.service /usr/lib/systemd/system/mariadb.service
     sudo ln -sf /usr/bin/mysql /usr/bin/mariadb
-    sudo ln -sf /usr/bin/greatdbpump /usr/bin/mysqldump
+    sudo ln -sf /usr/bin/greatdbdump /usr/bin/mysqldump
     sudo ln -sf /usr/bin/greatdbcheck /usr/bin/mysqlcheck
     sudo systemctl daemon-reload
     
