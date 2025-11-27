@@ -34,16 +34,27 @@ class RbdImageOperator(object):
         def _install_or_upgrade_rpm(rpm_path):
             shell.call('rpm -Uvh %s' % rpm_path)
 
-        def _get_package_version(pkg_name, raise_exception=False):
+        def _get_package_version(pkg_name, fallback_pkg=None, raise_exception=False):
             _rc, version = commands.getstatusoutput('rpm -qa %s' % pkg_name)
+            actual_pkg = pkg_name
+
             if _rc or (not version and raise_exception):
-                raise exception.CephPackageNotFound(cmd=pkg_name)
-            return version
+                if fallback_pkg:
+                    logger.info("Package %s not found, trying %s..." % (pkg_name, fallback_pkg))
+                    _rc, version = commands.getstatusoutput('rpm -qa %s' % fallback_pkg)
+                    if _rc or not version:
+                        raise exception.CephPackageNotFound(cmd=fallback_pkg)
+                    else:
+                        logger.info("Found %s package, version %s" % (fallback_pkg, version))
+                        actual_pkg = fallback_pkg
+                else:
+                    raise exception.CephPackageNotFound(cmd=pkg_name)
+            return version, actual_pkg
 
-        ceph_version = _get_package_version("ceph", True)
-        current_rbd_nbd_version = _get_package_version("rbd-nbd")
+        ceph_version, ceph_pkg = _get_package_version("ceph", "ceph-common", True)
+        current_rbd_nbd_version, rbd_nbd_pkg = _get_package_version("rbd-nbd")
 
-        dest_rbd_nbd_version = ceph_version.replace("ceph", "rbd-nbd", 1)
+        dest_rbd_nbd_version = ceph_version.replace(ceph_pkg, "rbd-nbd", 1)
         _s, path = commands.getstatusoutput('find / -xdev -name \'%s\'.rpm | head -1' % dest_rbd_nbd_version)
 
         logger.info("current rbd-nbd version:%s , dest version: %s" % (current_rbd_nbd_version, dest_rbd_nbd_version))
