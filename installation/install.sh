@@ -2173,6 +2173,8 @@ upgrade_mysql_configuration(){
         systemctl daemon-reload
     fi
 
+    systemctl daemon-reexec
+
     [ x`systemctl is-enabled zstack-ha 2>/dev/null` == x"enabled" ] && systemctl stop keepalived.service
     if [ "$IS_UBUNTU" = "y" ]; then
         service mysql restart >>$ZSTACK_INSTALL_LOG 2>&1
