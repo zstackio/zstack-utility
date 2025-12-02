@@ -3941,8 +3941,9 @@ done
 
         errors = []
         if 'vnc' in console_modes:
-            hmp_cmd = "set_password vnc %s" % pipes.quote(cmd.password)
-            command = "virsh qemu-monitor-command %s --hmp \"%s\"" % (cmd.vmUuid, hmp_cmd)
+            hmp_cmd = "set_password vnc %s" % cmd.password
+            safe_hmp_arg = pipes.quote(hmp_cmd)
+            command = "virsh qemu-monitor-command %s --hmp %s" % (cmd.vmUuid, safe_hmp_arg)
             r, o, e = bash_roe(command)
             if r != 0:
                 errors.append("Failed to set VNC password: %s" % e)
@@ -3950,8 +3951,9 @@ done
                 logger.debug("Successfully set VNC password for VM[uuid:%s]" % cmd.vmUuid)
 
         if 'spice' in console_modes:
-            hmp_cmd = "set_password spice %s" % pipes.quote(cmd.password)
-            command = "virsh qemu-monitor-command %s --hmp \"%s\"" % (cmd.vmUuid, hmp_cmd)
+            hmp_cmd = "set_password spice %s" % cmd.password
+            safe_hmp_arg = pipes.quote(hmp_cmd)
+            command = "virsh qemu-monitor-command %s --hmp %s" % (cmd.vmUuid, safe_hmp_arg)
             r, o, e = bash_roe(command)
             if r != 0:
                 errors.append("Failed to set SPICE password: %s" % e)
