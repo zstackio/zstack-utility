@@ -1988,6 +1988,64 @@ def collect_enflame_gpu_status():
     return metrics.values()
 
 
+def collect_kunlunxin_gpu_status():
+    metrics = get_gpu_metrics()
+
+    if not has_xpu_smi():
+        return metrics.values()
+
+    r, o = bash_ro(gpu.get_kunlunxin_gpu_xpu_id_cmd())
+    if r != 0:
+        check_gpu_status_and_save_gpu_status("KUNLUNXIN", metrics)
+        return metrics.values()
+
+    xpu_ids = gpu.get_kunlunxin_xpu_id(o)
+    if len(xpu_ids) == 0:
+        check_gpu_status_and_save_gpu_status("KUNLUNXIN", metrics)
+        return metrics.values()
+
+    for xpu_id in xpu_ids:
+        r, o, e = bash_roe(gpu.get_kunlunxin_gpu_basic_info_cmd(xpu_id))
+        if r != 0:
+            logger.error("xpu query gpu id:%d is error, %s " % (xpu_id, e))
+            continue
+
+        parse_info = gpu.parse_kunlunxin_gpu_output_by_npu_id(o)
+        if not parse_info:
+            logger.error("Failed to parse gpu info for xpu id:%d" % xpu_id)
+            continue
+        info = parse_info[0]
+        pci_device_address = info.get("pciAddress", "").strip()
+        serial_number = info.get("serialNumber", "").strip()
+
+        memory_usage = info.get("memoryUsage", "").strip().rstrip("MiB")
+        memory_total = info.get("memory", "").strip().rstrip("MiB")
+        memory_utilization = calculate_percentage(memory_usage, memory_total) if is_number(memory_usage) and is_number(
+            memory_total) else None
+
+        power = info.get("powerDraw", "").replace(" ", "").strip().rstrip("W")
+        temperature = info.get("temperature", "").replace(" ", "").strip().rstrip("C")
+        xpu_utilization = info.get("xpuUtilization", "").replace(" ", "").strip().rstrip("%")
+
+        add_gpu_pci_device_address("KUNLUNXIN", pci_device_address, serial_number)
+
+        if is_number(power):
+            add_metrics('host_gpu_power_draw', float(power), [pci_device_address, serial_number], metrics)
+
+        if is_number(temperature):
+            add_metrics('host_gpu_temperature', float(temperature), [pci_device_address, serial_number], metrics)
+
+        if is_number(xpu_utilization):
+            add_metrics('host_gpu_utilization', float(xpu_utilization), [pci_device_address, serial_number], metrics)
+
+        if memory_utilization is not None:
+            add_metrics('host_gpu_memory_utilization', float(memory_utilization), [pci_device_address, serial_number],
+                        metrics)
+
+    check_gpu_status_and_save_gpu_status("KUNLUNXIN", metrics)
+    return metrics.values()
+
+
 def collect_disk_stat():
     global sblk_pv_state_fail_last_report_time
     class BlockInfo(object):
@@ -2187,6 +2245,9 @@ def has_vastai_smi():
 def has_efsmi():
     return shell.run_without_log("which efsmi") == 0
 
+def has_xpu_smi():
+    return shell.run_without_log("which xpu-smi") == 0
+
 
 def is_number(s):
     try:
@@ -2300,6 +2361,7 @@ kvmagent.register_prometheus_collector(collect_huawei_gpu_status)
 kvmagent.register_prometheus_collector(collect_tianshu_gpu_status)
 kvmagent.register_prometheus_collector(collect_vastai_gpu_status)
 kvmagent.register_prometheus_collector(collect_enflame_gpu_status)
+kvmagent.register_prometheus_collector(collect_kunlunxin_gpu_status)
 kvmagent.register_prometheus_collector(collect_hba_port_device_state)
 kvmagent.register_prometheus_collector(collect_disk_stat)
 kvmagent.register_prometheus_collector(collect_kvmagent_memory_statistics)
