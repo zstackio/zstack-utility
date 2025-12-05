@@ -1943,57 +1943,93 @@ done
 
         pageSize = cmd.pageSize
         reserveSize = cmd.reserveSize
-        enable_hugepage_script = '''#!/bin/sh
-grubs="%s"
-
-# byte to mib
-let "reserveSize=%s/1024/1024"
-pageSize=%s
-grubRockyEnvs="%s"
-memSize=`free -m | awk '/:/ {print $2;exit}'`
-let "pageNum=(memSize-reserveSize)/pageSize"
-if [ $memSize -lt $reserveSize ]                                                                                                                                                                                   
-then
-    echo "Error:reserve size is bigger than system memory size"
-    exit 1
-fi
-#drop cache 
-echo 3 > /proc/sys/vm/drop_caches
-
-# enable Transparent HugePages
-echo always > /sys/kernel/mm/transparent_hugepage/enabled
-
-# config grub
-sed -i '/GRUB_CMDLINE_LINUX=/s/\"$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'\"/g' /etc/default/grub
-
-#config boot grub
-for var in $grubs
-do 
-   if [ -f $var ]; then
-       sed -i '/^[[:space:]]*linux/s/$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $var
-   fi    
-done
-
-#config rocky grubenv related to huge pages
-for env in $grubRockyEnvs
-do 
-   if [ -f $env ]; then
-       sed -i '/^[[:space:]]*kernelopts/s/$/ transparent_hugepage=always default_hugepagesz=\'\"$pageSize\"\'M hugepagesz=\'\"$pageSize\"\'M hugepages=\'\"$pageNum\"\'/g' $env
-   fi
-done   
-''' % (' '.join(GRUB_FILES), reserveSize, pageSize, ' '.join(GRUB_ROCKY_ENVS))
-
-
-        enable_hugepage_script_path = linux.create_temp_file()
-        with open(enable_hugepage_script_path, 'w') as f:
-            f.write(enable_hugepage_script)
-        logger.info('enable_hugepage_script_path is: %s' % enable_hugepage_script_path)
-        cmd = shell.ShellCmd('bash %s' % enable_hugepage_script_path)
-        cmd(False)
-        if cmd.return_code != 0 or "Error" in cmd.stdout:
+        # Calculate memory parameters
+        reserveSize_mib = reserveSize // 1024 // 1024
+        pageSize = cmd.pageSize
+        
+        # Get system memory size
+        mem_output = shell.ShellCmd('free -m | awk \'/:/ {print $2;exit}\'')(False)
+        memSize = int(mem_output.strip())
+        
+        # Calculate page count
+        pageNum = (memSize - reserveSize_mib) // pageSize
+        if memSize < reserveSize_mib:
+            logger.error("Error: reserve size is bigger than system memory size")
             rsp.success = False
-            rsp.error = cmd.stdout
-        os.remove(enable_hugepage_script_path)
+            rsp.error = "Error: reserve size is bigger than system memory size"
+            return jsonobject.dumps(rsp)
+        
+        # Clear cache
+        with open('/proc/sys/vm/drop_caches', 'w') as f:
+            f.write('3')
+        
+        # Enable transparent hugepages
+        with open('/sys/kernel/mm/transparent_hugepage/enabled', 'w') as f:
+            f.write('always')
+        
+        # Configure grub files
+        hugepage_params = ' transparent_hugepage=always default_hugepagesz=%sM hugepagesz=%sM hugepages=%s' % (pageSize, pageSize, pageNum)
+        
+        # Define grub configuration file processing function
+        def configure_grub_file(file_path, pattern, replacement_pattern, description=""):
+            if os.path.exists(file_path):
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                
+                # logger.info("origin %s %s: %s" % (description, file_path, content))
+                
+                # First clean up all existing hugepage parameters
+                content = re.sub(r'\s*transparent_hugepage=\w+', '', content)
+                content = re.sub(r'\s*default_hugepagesz=\d+M', '', content)
+                content = re.sub(r'\s*hugepagesz=\d+M', '', content)
+                content = re.sub(r'\s*hugepages=\d+', '', content)
+
+                # Then add new parameters
+                new_content = re.sub(pattern, replacement_pattern, content, flags=re.MULTILINE)
+                
+                with open(file_path, 'w') as f:
+                    # logger.info("new %s %s: %s" % (description, file_path, new_content))
+                    f.write(new_content)
+        
+        # Configure /etc/default/grub - GRUB_CMDLINE_LINUX
+        configure_grub_file(
+            '/etc/default/grub',
+            r'(GRUB_CMDLINE_LINUX="[^"]*)"\s*\n',
+            r'\1%s"\n' % hugepage_params,
+            "grub"
+        )
+        
+        # Configure boot grub files - linux line
+        # TODO h84r: /etc/grub2-efi.cfg does not match
+        for grub_file in GRUB_FILES:
+            configure_grub_file(
+                grub_file,
+                r'(^\s*linux.*)$',
+                r'\1%s' % hugepage_params,
+                "boot grub"
+            )
+        
+        # Configure rocky grubenv files - kernelopts line
+        for grub_env in GRUB_ROCKY_ENVS:
+            if os.path.exists(grub_env):
+                r, o, e = bash_roe("grub2-editenv %s list" % grub_env)
+                if r == 0:
+                    m = re.search(r'^kernelopts=(.*)$', o, flags=re.MULTILINE)
+                    current = m.group(1) if m else ''
+                    # Clean existing hugepage parameters
+                    current = re.sub(r'\s*transparent_hugepage=\w+', '', current)
+                    current = re.sub(r'\s*default_hugepagesz=\d+M', '', current)
+                    current = re.sub(r'\s*hugepagesz=\d+M', '', current)
+                    current = re.sub(r'\s*hugepages=\d+', '', current)
+                    # Set new kernelopts
+                    new_opts = (current + hugepage_params).strip()
+                    bash_roe("grub2-editenv %s set kernelopts='%s'" % (grub_env, new_opts))
+        
+        # Set hugepage count
+        r, _, e = bash_roe('sysctl -w vm.nr_hugepages=%s' % pageNum)
+        if r != 0:
+            rsp.success = False
+            rsp.error = e
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

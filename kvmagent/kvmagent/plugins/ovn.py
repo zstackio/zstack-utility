@@ -2,6 +2,7 @@ import os
 
 import tempfile
 import shutil
+import ast
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -10,6 +11,7 @@ from zstacklib.utils import http
 from zstacklib.utils import ovn
 from zstacklib.utils import bash
 from zstacklib.utils import thread
+from kvmagent.plugins.vm_plugin import get_running_vms
 
 OVN_INSTALL_PACKAGE = '/network/ovn/install'
 OVN_UNINSTALL_PACKAGE = '/network/ovn/uninstall'
@@ -17,6 +19,11 @@ OVN_START_SERVICE = '/network/ovn/start'
 OVN_STOP_SERVICE = '/network/ovn/stop'
 OVN_ADD_PORT = '/network/ovn/addport'
 OVN_DEL_PORT = '/network/ovn/delport'
+OVN_SYNC_PORT = '/network/ovn/syncports'
+OVN_CHECK_LOCAL_PORT = '/network/ovn/checklocalport'
+OVN_SET_REQUESTED_CHASSIS = '/network/ovn/setrequestedchassis'
+OVN_SB_DBSERVER_LISTEN_PORT = '6642'
+OVN_NB_DBSERVER_LISTEN_PORT = '6641'
 
 logger = log.get_logger(__name__)
 
@@ -71,7 +78,7 @@ class OvnStopServiceResponse(kvmagent.AgentResponse):
 class OvnAddPortCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(OvnAddPortCmd, self).__init__()
-        self.vswitchType = None
+        self.vSwitchType = None
         self.nicMap = None
 
 
@@ -83,13 +90,53 @@ class OvnAddPortResponse(kvmagent.AgentResponse):
 class OvnDelPortCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(OvnDelPortCmd, self).__init__()
-        self.vswitchType = None
+        self.vSwitchType = None
         self.nicMap = None
 
 
 class OvnDelPortResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(OvnDelPortResponse, self).__init__()
+
+
+class OvnCheckLocalPortCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(OvnCheckLocalPortCmd, self).__init__()
+        self.vSwitchType = None
+        self.hostUuid = None
+
+
+class OvnCheckLocalPortResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(OvnCheckLocalPortResponse, self).__init__()
+        self.vmNicsMap = {}
+        self.vnicVmMap = {}
+        self.lspRequestedChassisMap = {}
+
+
+class OvnSyncPortCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(OvnSyncPortCmd, self).__init__()
+        self.vSwitchType = None
+        self.nicMap = None
+        self.vmUuid = None
+
+
+class OvnSyncPortResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(OvnSyncPortResponse, self).__init__()
+
+
+class OvnSetRequestedChassisCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(OvnSetRequestedChassisCmd, self).__init__()
+        self.vSwitchType = None
+        self.lspRequestedChassisMap = None
+
+
+class OvnSetRequestedChassisResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(OvnSetRequestedChassisResponse, self).__init__()
 
 
 class OvnNetworkPlugin(kvmagent.KvmAgent):
@@ -184,13 +231,15 @@ class OvnNetworkPlugin(kvmagent.KvmAgent):
             if r != 0:
                 msg = "get ovs port failed: {err}".format(err=e)
                 return self._logRestoreNicDriverMakeRsp(rsp, msg, cmd)
-            vnics = [vnic.strip() for vnic in o.split('\n') if vnic.strip()]
-            for vnic in vnics:
-                if vnic.startswith("vnic"):
-                    # delete vnic from ovs
-                    r,o = bash.bash_ro("ovs-vsctl --if-exists del-port br-int {vnic}".format(vnic=vnic))
-                    if r != 0:
-                        logger.warning("delete vnic:{vnic} failed: {err}".format(vnic=vnic, err=o))
+            vms = get_running_vms()
+            if len(vms) == 0:
+                vnics = [vnic.strip() for vnic in o.split('\n') if vnic.strip()]
+                for vnic in vnics:
+                    if vnic.startswith("vnic"):
+                        # delete vnic from ovs
+                        r, o = bash.bash_ro("ovs-vsctl --no-wait --if-exists del-port br-int {vnic}".format(vnic=vnic))
+                        if r != 0:
+                            logger.warning("delete vnic:{vnic} failed: {err}".format(vnic=vnic, err=o))
 
             r, o, e = bash.bash_roe("systemctl restart openvswitch;systemctl restart ovn-controller")
             if r != 0:
@@ -407,6 +456,118 @@ class OvnNetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    @bash.in_bash
+    def ovn_check_local_port(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = OvnCheckLocalPortResponse()
+
+        vsctl = ovn.VsCtl()
+        if not vsctl.isOvsRunning():
+            r = bash.bash_r("systemctl restart openvswitch && systemctl restart ovn-controller")
+            if r != 0:
+                rsp.success = False
+                rsp.error = "restart openvswitch service failed"
+                return jsonobject.dumps(rsp)
+
+        localPorts = vsctl.getVnicsAndVmUuid()
+        rsp.vnicVmMap = localPorts
+
+        vms = get_running_vms()
+        vmNicsMap = {}
+
+        for vm in vms:
+            nics = vsctl.getVnicsByVmUuid(vm.uuid)
+            if len(nics) == 0:
+                vmNicsMap[vm.uuid] = []
+            vmNicsMap[vm.uuid] = nics
+        rsp.vmNicsMap = vmNicsMap
+
+        allVnics = []
+        for nics in vmNicsMap.values():
+            allVnics.extend(nics)
+
+        vnicsIfaceId = vsctl.getVnicsIfaceId(allVnics)
+        lspRequestedChassisMap = {}
+        r, sb_ovn_remote = bash.bash_ro('ovs-vsctl get Open_vSwitch . external_ids:ovn-remote')
+        if r != 0:
+            rsp.success = False
+            rsp.error = "Failed to get ovn-remote from ovs-vsctl"
+            return jsonobject.dumps(rsp)
+        sb_ovn_remote = sb_ovn_remote.strip().strip('"')
+        errStr = []
+        for lsp in vnicsIfaceId.values():
+            r, requestedChassis = bash.bash_ro('ovn-sbctl --db=%s  --column=requested_chassis find port_binding logical_port=%s | awk \'{print $3}\'' % (sb_ovn_remote, lsp))
+            if r != 0:
+                errStr.append("Failed to get requested_chassis for lsp %s" % lsp)
+                continue
+            if requestedChassis == "":
+                continue
+            requestedChassis = ast.literal_eval(requestedChassis.strip())
+            if not requestedChassis:
+                continue
+            lspRequestedChassisMap[lsp] = requestedChassis
+        rsp.lspRequestedChassisMap = lspRequestedChassisMap
+
+        if len(errStr) > 0:
+            rsp.success = False
+            rsp.error = ";".join(errStr)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def ovn_sync_ports(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = OvnSyncPortResponse()
+
+        logger.debug("cmd: %s: %s" % (cmd, cmd.__dict__))
+        logger.debug("cmd nicMap: %s: %s" % (cmd.nicMap, cmd.nicMap.__dict__))
+        vsctl = ovn.VsCtl()
+
+        localVnics = vsctl.getVnicsByVmUuid(cmd.vmUuid)
+
+        for localVnic in localVnics:
+            if localVnic not in cmd.nicMap.__dict__.keys():
+                vsctl.delVnic(localVnic)
+
+        for nicName, nicUuid in cmd.nicMap.__dict__.items():
+            if nicName not in localVnics:
+                vsctl.addVnic(nicName, nicUuid, cmd.vmUuid, False)
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def ovn_set_requested_chassis(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = OvnSetRequestedChassisResponse()
+
+        logger.debug("cmd: %s: %s" % (cmd, cmd.__dict__))
+        logger.debug("cmd lspRequestedChassisMap: %s: %s" % (cmd.lspRequestedChassisMap, cmd.lspRequestedChassisMap.__dict__))
+        errStr = []
+        sb_ovn_remote = bash.bash_o('ovs-vsctl get Open_vSwitch . external_ids:ovn-remote').strip().strip('"')
+        nb_ovn_remote = sb_ovn_remote.replace(OVN_SB_DBSERVER_LISTEN_PORT, OVN_NB_DBSERVER_LISTEN_PORT)
+        for lsp, mgmtIpList in cmd.lspRequestedChassisMap.__dict__.items():
+            chassis_names = []
+            for mgmtIp in mgmtIpList:
+                r, chassis_name = bash.bash_ro('ovn-sbctl --db=%s  --column=name find chassis hostname=%s | awk \'{print $3}\'' % (sb_ovn_remote, mgmtIp))
+                if r != 0:
+                    rsp.success = False
+                    errStr.append("Failed to find chassis hostname %s" % mgmtIp)
+                    continue
+                chassis_names.append(chassis_name.strip().strip('"'))
+            if len(chassis_names) == 0:
+                r = bash.bash_r('ovn-nbctl --wait=hv --db=%s remove Logical_Switch_Port %s options requested-chassis' % (nb_ovn_remote, lsp))
+            elif len(chassis_names) == 1:
+                r = bash.bash_r('ovn-nbctl --wait=hv --db=%s lsp-set-options %s requested-chassis=%s' % (nb_ovn_remote, lsp, chassis_names[0]))
+            else:
+                r = bash.bash_r('ovn-nbctl --wait=hv --db=%s lsp-set-options %s requested-chassis=%s,%s' % (nb_ovn_remote, lsp, chassis_names[0], chassis_names[1]))
+            if r != 0:
+                rsp.success = False
+                errStr.append("Failed to set requested_chassis:%s for lsp:%s" % (chassis_names, lsp))
+        if len(errStr) > 0:
+            rsp.error = ";".join(errStr)
+        return jsonobject.dumps(rsp)
+
     def start(self):
 
         http_server = kvmagent.get_http_server()
@@ -423,6 +584,12 @@ class OvnNetworkPlugin(kvmagent.KvmAgent):
             OVN_ADD_PORT, self.ovn_add_port)
         http_server.register_async_uri(
             OVN_DEL_PORT, self.ovn_del_port)
+        http_server.register_async_uri(
+            OVN_SET_REQUESTED_CHASSIS, self.ovn_set_requested_chassis)
+        http_server.register_async_uri(
+            OVN_SYNC_PORT, self.ovn_sync_ports)
+        http_server.register_async_uri(
+            OVN_CHECK_LOCAL_PORT, self.ovn_check_local_port)
 
         self.register_ovn_logRotate()
 

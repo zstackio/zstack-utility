@@ -3364,3 +3364,78 @@ def catch_bad_alloc_exception(return_code, error_detail):
         return True
     
     return False
+
+def get_free_memory():
+    """ example
+# cat /proc/meminfo
+MemTotal:       16247260 kB
+MemFree:         7344348 kB
+MemAvailable:   14068964 kB
+Buffers:            2108 kB
+Cached:          6403684 kB
+SwapCached:            0 kB
+Active:          4667796 kB
+Inactive:        2498796 kB
+Active(anon):     713080 kB
+Inactive(anon):    49308 kB
+Active(file):    3954716 kB
+Inactive(file):  2449488 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:       8257532 kB
+SwapFree:        8257532 kB
+Dirty:                28 kB
+Writeback:             0 kB
+AnonPages:        760384 kB
+Mapped:            93788 kB
+Shmem:              1588 kB
+Slab:            1033048 kB
+SReclaimable:     658676 kB
+SUnreclaim:       374372 kB
+KernelStack:        7568 kB
+PageTables:        16160 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:    16381160 kB
+Committed_AS:    1915944 kB
+VmallocTotal:   34359738367 kB
+VmallocUsed:      201560 kB
+VmallocChunk:   34359375868 kB
+Percpu:            27648 kB
+HardwareCorrupted:     0 kB
+AnonHugePages:    366592 kB
+CmaTotal:              0 kB
+CmaFree:               0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+DirectMap4k:      139104 kB
+DirectMap2M:     5103616 kB
+DirectMap1G:    13631488 kB
+    """
+    try:
+        mem_available = None
+        memfree = buffers = cached = 0
+
+        with open('/proc/meminfo') as f:
+            for line in f:
+                if line.startswith('MemAvailable:'):
+                    mem_available = int(line.split()[1]) * 1024  # kB -> bytes
+                elif line.startswith('MemFree:'):
+                    memfree = int(line.split()[1]) * 1024
+                elif line.startswith('Buffers:'):
+                    buffers = int(line.split()[1]) * 1024
+                elif line.startswith('Cached:'):
+                    cached = int(line.split()[1]) * 1024
+
+        # if MemAvailable is not existed, return MemFree + Buffers + Cached
+        if mem_available is not None:
+            return mem_available
+        return memfree + buffers + cached
+
+    except Exception as e:
+        logger.warn("failed to parse /proc/meminfo: %s" % e)
+        return 0

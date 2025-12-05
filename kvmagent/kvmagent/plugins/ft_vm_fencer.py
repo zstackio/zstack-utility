@@ -9,6 +9,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import drbd
 from zstacklib.utils import qemu_img
 from zstacklib.utils.bash import *
+from zstacklib.utils.ovn import delVnicFromOvsByVmUuidIfExist
 import os.path
 import time
 import traceback
@@ -186,6 +187,7 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                 vm_pids_dict[vm_uuid] = vm_pid
             
             for vm_uuid, vm_pid in vm_pids_dict.items():
+                delVnicFromOvsByVmUuidIfExist(vm_uuid)
                 kill = shell.ShellCmd('kill -9 %s' % vm_pid)
                 kill(False)
                 if kill.return_code == 0:

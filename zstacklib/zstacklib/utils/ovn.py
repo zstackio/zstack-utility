@@ -89,6 +89,31 @@ def getAllVfioPciNic():
 
     return ret
 
+@bash.in_bash
+def delVnicFromOvsByVmUuidIfExist(vmUuid, brName="br-int"):
+    try:
+        # if CtlBin not exists, return directly
+        if not os.path.exists(CtlBin.strip()):
+            return
+        # find all vnic ports by vm uuid
+        vm_uuid = vmUuid.replace('-', '')
+        command = CtlBin + "--bare --columns=name find Interface external_ids:vm-uuid={}".format(vm_uuid)
+        r, o = bash.bash_ro(command)
+        if r != 0:
+            logger.warn("failed to get vnic port list for vm[uuid:%s], command[%s], output[%s]" % (vm_uuid, command, o))
+            return
+
+        vnic_names = o.splitlines()
+        for vnic_name in vnic_names:
+            vnic_name = vnic_name.strip()
+            if not vnic_name:
+                continue
+            logger.info('clean dpdk vnic port:%s from ovs' % vnic_name)
+
+            bash.bash_o(CtlBin + '--if-exists del-port {} {}'.format(brName, vnic_name))
+    except Exception as err:
+        logger.exception("Delete vnic for brdige {} failed. {}".format(brName, err))
+
 
 @bash.in_bash
 def changeNicToDpdkDriver(nicNamePciAddressMap):
@@ -209,8 +234,82 @@ class VsCtl(object):
             return []
 
     @bash.in_bash
+    def getVnicsAndVmUuid(self, brName="br-int"):
+        try:
+            vnics = {}
+            cmd = CtlBin + 'list-ports {brName}'.format(brName=brName)
+            _, o, _ = bash.bash_roe(cmd)
+            o = o.strip()
+            if o == "":
+                return vnics
+
+            lines = o.split("\n")
+            for line in lines:
+                line = line.strip()
+                if line == "":
+                    continue
+
+                if line.startswith("vnic"):
+                    r, vmUuid, e = bash.bash_roe(
+                        CtlBin + "get Interface {} external_ids:vm-uuid".format(line))
+                    if r != 0:
+                        logger.debug("get vm uuid of vnic {} failed: {}".format(line, e))
+                        continue
+                    vmUuid = vmUuid.strip("\n").strip('"')
+                    vnics[line] = vmUuid
+
+            return vnics
+        except Exception as err:
+            logger.error(
+                "Add port from brdige {} failed. {}".format(brName, err))
+            return {}
+
+
+    @bash.in_bash
+    def getVnicsIfaceId(self, vnics, brName="br-int"):
+        try:
+            ret = {}
+            for vnic in vnics:
+                iface_id = bash.bash_o('ovs-vsctl get Interface %s external_ids:iface-id' % vnic).strip().strip('"')
+                ret[vnic] = iface_id
+            return ret
+        except Exception as err:
+            logger.error(
+                "Get interface id from brdige {} failed. {}".format(brName, err)
+            )
+            return {}
+
+    @bash.in_bash
+    def getVnicsByVmUuid(self, vmUuid, brName="br-int"):
+        try:
+            vnics = []
+            vm_uuid = vmUuid.replace('-', '')
+            cmd = CtlBin + "--bare --columns=name find Interface external_ids:vm-uuid={}".format(vm_uuid)
+            r, o, e = bash.bash_roe(cmd)
+            if r != 0:
+                logger.debug("failed to get vnic port list for vm[uuid:%s], command[%s], output[%s]" % (vm_uuid, cmd, e))
+                return vnics
+
+            lines = o.split("\n")
+            for line in lines:
+                line = line.strip()
+                if line == "":
+                    continue
+
+                if line.startswith("vnic"):
+                    vnics.append(line)
+
+            return vnics
+        except Exception as err:
+            logger.error(
+                "get port from brdige {} failed. {}".format(brName, err))
+            return []
+
+    @bash.in_bash
     def addVnic(self, nicName, nicUuid, vmUuid, reinstall=False, brName="br-int", nicType="dpdkvhostuserclient"):
         try:
+            if vmUuid is not None and vmUuid.strip() != "":
+                vmUuid = vmUuid.replace('-', '')
             srcPath = OVS_DPDK_SRC_PATH + nicName
             if reinstall:
                 cmd = '{cmd} del-port {brName} {nicName}; ' \
