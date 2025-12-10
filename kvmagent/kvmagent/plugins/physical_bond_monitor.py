@@ -476,7 +476,13 @@ class PhysicalBondMonitor(kvmagent.KvmAgent):
             logger.debug('pf %s has no vf to operate on', pf_name)
             return
 
-        state = 'enable' if enable else 'disable'
+        driver = self._get_pf_driver(pf_name)
+        if enable:
+            # ixgbe do not support virtual function state enable
+            state = 'auto' if driver == 'ixgbe' else 'enable'
+        else:
+            state = 'disable'
+
         success_count = 0
         for vf_index in vf_indexes:
             rc, out, err = bash.bash_roe("ip link set %s vf %d state %s" % (pf_name, vf_index, state))
@@ -486,7 +492,16 @@ class PhysicalBondMonitor(kvmagent.KvmAgent):
                 success_count += 1
 
         if success_count > 0:
-            logger.debug('pf %s vfs(%d/%d) state set to %s', pf_name, success_count, len(vf_indexes), state)
+            logger.debug('pf %s vfs(%d/%d) state set to %s (driver: %s)', pf_name, success_count, len(vf_indexes), state, driver or 'unknown')
+
+    def _get_pf_driver(self, pf_name):
+        path = '/sys/class/net/{0}/device/driver'.format(pf_name)
+        if not os.path.islink(path):
+            return None
+        try:
+            return os.path.basename(os.path.realpath(path))
+        except OSError:
+            return None
 
     def _get_vf_indexes(self, pf_name):
         base_path = os.path.join("/sys/class/net", pf_name, "device")
