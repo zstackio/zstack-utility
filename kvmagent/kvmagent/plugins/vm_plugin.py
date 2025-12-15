@@ -2733,12 +2733,9 @@ class Vm(object):
         vnc_port = self.get_console_port()
 
         def wait_vnc_port_open(_):
-            '''#fuser  -n tcp 5900
-                5900/tcp:            1080766  ###1080766 is qemu pid'''
-            cmd = shell.ShellCmd('fuser -n tcp %s 2>&1' % vnc_port)
+            cmd = shell.ShellCmd('netstat -na | grep ":%s" > /dev/null' % vnc_port)
             cmd(is_exception=False)
-            output = (cmd.stdout or '') + (cmd.stderr or '')
-            return cmd.return_code == 0 and ('%s/tcp' % vnc_port) in output
+            return cmd.return_code == 0
 
         if not linux.wait_callback_success(wait_vnc_port_open, None, interval=0.5, timeout=30):
             raise kvmagent.KvmError("unable to start vm[uuid:%s, name:%s]; its vnc port does"
