@@ -33,6 +33,7 @@ from zstacklib.utils import ceph
 from zstacklib.utils import qemu_img
 from zstacklib.utils import traceable_shell
 from zstacklib.utils.rollback import rollback, rollbackable
+from zstacklib.utils.thread import AsyncThread
 
 logger = log.get_logger(__name__)
 BUFFER_SIZE = 16 * 1024 ** 2
@@ -404,6 +405,7 @@ def stream_body(entity, boundary, param, task, ioctx):
                  (param.image_uuid, param.slice_offset, param.slice_size))
 
 
+@AsyncThread
 def complete_upload(task, ioctx):
     # type: (UploadTask, rados.Ioctx) -> None
     try:
@@ -429,8 +431,8 @@ def complete_upload(task, ioctx):
             shell.check_run('%s -f %s -O rbd rbd:%s rbd:%s:conf=%s' % (qemu_img.subcmd('convert'), file_format,
                                                                        task.tmpPath, task.dstPath, conf_path))
         except Exception as e:
-            task.fail('cannot convert %s image %s to rbd' % (file_format, task.imageUuid))
-            logger.warn('convert image %s failed: %s', (task.imageUuid, str(e)))
+            task.fail('cannot convert %s image %s to rbd, error: %s' % (file_format, task.imageUuid, str(e)))
+            logger.warn('convert image %s failed: %s' % (task.imageUuid, str(e)))
             return
         finally:
             shell.run('rbd rm %s' % task.tmpPath)

@@ -253,6 +253,7 @@ def get_host_releasever(ansible_distribution):
         'helix green obsidian 8.4r': 'h84r',
         "uniontech kongzi 20": "uos1021a",
         "rocky green obsidian 8.4": "rl84",
+        "uniontech os 20.06r": "uos20r",
     }
     _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(_key)

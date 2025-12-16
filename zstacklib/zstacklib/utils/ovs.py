@@ -284,7 +284,7 @@ class OvsVenv(object):
             raise OvsError("ovs package file:{} not exists".format(OvsPackagesPath))
 
         try:
-            release_list = ["h84r", "rl84"]
+            release_list = ["h84r", "rl84", "uos20r"]
             zstack_release = get_zstack_release()
             if zstack_release in release_list:
                 shell.call("export YUM0={}; yum --disablerepo=* --enablerepo=zstack-local localinstall -y {}/*.rpm".format(zstack_release, OvsPackagesPath))

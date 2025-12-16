@@ -145,7 +145,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         yum_release = kvmagent.get_host_yum_release()
 
         _extra_x86_64 = ['syslinux', 'python-docutils']
-        if yum_release in ['rl84', 'h84r']:
+        if yum_release in ['rl84', 'h84r', 'uos20r']:
             _extra_x86_64 = ['syslinux', 'python2-docutils']
 
         extra_rpm_mapping = {

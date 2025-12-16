@@ -112,6 +112,7 @@ if host_info.distro in RPM_BASED_OS:
 
     releasever_mapping = {
         'h84r': ' collectd-disk pyparted iscsi-initiator-utils',
+        'uos20r': ' collectd-disk pyparted iscsi-initiator-utils',
         'h2203sp1o': ' collectd-disk iscsi-initiator-utils python2-pyparted',
     }
 

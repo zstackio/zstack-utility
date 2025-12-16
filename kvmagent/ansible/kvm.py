@@ -224,6 +224,8 @@ def install_kvm_pkg():
                      'elfutils-libelf-devel vconfig OVMF libicu') % helix_rhel_rpms,
             'h84r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
                      'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump %s') % (helix_rhel_rpms, py3_rpms),
+            'uos20r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
+                     'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump') % helix_rhel_rpms,
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel lldpd',
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'oe2203sp1': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk edac-utils lldpd tcpdump',
@@ -252,7 +254,8 @@ def install_kvm_pkg():
         }
 
         cube_releasever_mapping = {
-            'h84r': "lm_sensors"
+            'h84r': "lm_sensors",
+            'uos20r': "lm_sensors"
         }
 
         # handle zstack_repo

@@ -35,13 +35,13 @@ export TERM=xterm
 
 OS=''
 IS_UBUNTU='n'
-REDHAT_OS="CENTOS6 CENTOS7 RHEL7 HELIX7 HELIX8 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8 OE2203 H2203SP1O OE2403"
+REDHAT_OS="CENTOS6 CENTOS7 RHEL7 HELIX7 HELIX8 ALIOS7 ISOFT4 KYLIN10 EULER20 UOS1020A NFS4 ROCKY8 OE2203 H2203SP1O OE2403 UOS20R"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
 KYLIN_V10_OS="ky10sp1 ky10sp2 ky10sp3 ky10sp3.2403"
 XINCHUANG_OS="$KYLIN10_OS uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
-REGION_MANAGER_OS="h84r ky10sp3"
+REGION_MANAGER_OS="h84r uos20r ky10sp3"
 REGION_MANAGER_ARCH="x86_64 aarch64"
 
 UPGRADE='n'
@@ -897,7 +897,7 @@ check_system(){
     echo_title "Check System"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
-    cat /etc/*-release |egrep -i -h "centos |Helix|Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)|Rocky Linux" >>$ZSTACK_INSTALL_LOG 2>&1
+    cat /etc/*-release |egrep -i -h "centos |Helix|Red Hat Enterprise|Alibaba|NeoKylin|Kylin Linux Advanced Server release V10|openEuler|UnionTech OS release 20.06r|UnionTech OS Server release 20 \(kongzi\)|NFSChina Server release 4.0.220727 \(RTM3\)|Rocky Linux" >>$ZSTACK_INSTALL_LOG 2>&1
     if [ $? -eq 0 ]; then
         grep -qi 'CentOS release 6' /etc/system-release && OS="CENTOS6"
         grep -qi 'CentOS Linux release 7' /etc/system-release && OS="CENTOS7"
@@ -915,6 +915,7 @@ check_system(){
         grep -qi 'Rocky Linux release 8.4 (Green Obsidian)' /etc/system-release && OS="ROCKY8"
         grep -qi 'Helix release 7' /etc/system-release && OS="HELIX7"
         grep -qi 'Helix release 8.4r (Green Obsidian)' /etc/system-release && OS="HELIX8"
+        grep -qi 'UnionTech OS release 20.06r' /etc/system-release && OS="UOS20R"
         if [[ -z "$OS" ]];then
             fail2 "Host OS checking failure: your system is: `cat /etc/redhat-release`, $PRODUCT_NAME management node only supports $SUPPORTED_OS currently"
         elif [[ $OS == "CENTOS7" ]];then
@@ -3335,7 +3336,7 @@ is_install_marketplace_server(){
 is_install_fluentbit_server(){
     echo_subtitle "Install fluentbit server"
     if [ "$BASEARCH" = "x86_64" ]; then
-        if [ "$ZSTACK_RELEASE" = "h84r" ]; then
+        if [ "$ZSTACK_RELEASE" = "h84r" ] || [ "$ZSTACK_RELEASE" = "uos20r" ]; then
             echo "Installing libpq for fluent-bit..." >> $ZSTACK_INSTALL_LOG
             yum install libpq --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y >> $ZSTACK_INSTALL_LOG 2>&1
             if [ $? -ne 0 ]; then

@@ -65,12 +65,12 @@ def pre_detach_from_vm(domain, vm_uuid, vendor):
     return 0, None
 
 
-def pre_detach_from_host(vendor):
-    """Execute pre-detach-from-host hook for specific vendor"""
-    if vendor in _pre_detach_from_host_hooks:
-        return _pre_detach_from_host_hooks[vendor]()
-    logger.warn("No hook registered for vendor: {0}, do nothing".format(vendor))
-    return 0, None
+# def pre_detach_from_host(vendor):
+#     """Execute pre-detach-from-host hook for specific vendor"""
+#     if vendor in _pre_detach_from_host_hooks:
+#         return _pre_detach_from_host_hooks[vendor]()
+#     logger.warn("No hook registered for vendor: {0}, do nothing".format(vendor))
+#     return 0, None
 
 
 def parse_nvidia_gpu_output(output):
@@ -561,6 +561,49 @@ def get_huawei_gpu_aios_rank_table_dict(npu_ids, iswindows=False):
     return rank_table
 
 
+def check_huawei_npu_is_isolated(npu_id, all_npu_ids, iswindows=False):
+    """
+    Check whether a Huawei NPU is isolated using `npu-smi info -t hccs`.
+    Return True when health status is not OK. Do not inspect lane majority.
+    """
+    if not npu_id or not all_npu_ids or len(all_npu_ids) <= 1:
+        return False
+
+    try:
+        r, _, _ = bash_roe("which npu-smi")
+        if r != 0:
+            logger.debug("npu-smi not found, cannot check isolation status")
+            return False
+
+        cmd = "npu-smi info -t hccs -i {0} -c 0".format(npu_id)
+        if iswindows:
+            cmd = cmd.replace(" ", "|")
+
+        r, o, e = bash_roe(cmd)
+        if r != 0 or not o:
+            logger.warning("failed to run '%s' for NPU %s: %s" % (cmd, npu_id, e))
+            return False
+
+        for line in o.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.lower().startswith("hccs health status"):
+                parts = line.split(":", 1)
+                status = parts[1].strip().upper() if len(parts) > 1 else ""
+                if status != "OK":
+                    logger.debug("NPU %s health status is %s, treating as isolated" % (npu_id, status))
+                    return True
+                return False
+
+        logger.debug("NPU %s health status not found in output, treating as not isolated" % npu_id)
+        return False
+
+    except Exception as ex:
+        logger.warning("failed to check NPU %s isolation status: %s" % (npu_id, str(ex)))
+        return False
+
+
 def is_valid_video_controller(device):
     invalid_keywords = {"iBMC"}
     return all(keyword not in device for keyword in invalid_keywords)
@@ -604,7 +647,7 @@ def get_gpu_status_cmd(pci_device_address, iswindows=False):
 
 
 def get_shut_nvidia_persistence_cmd(iswindows=False):
-    cmd = "ps -ef | grep nvidia-persistenced | grep -v grep | awk '{print $2}' | xargs -r kill -9"
+    cmd = "ps -ef | grep nvidia-persistenced | grep -v grep | awk '{print $2}' | xargs -r kill -15"
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd

@@ -278,6 +278,67 @@ class VmQga(object):
 
         return exit_code, s_ret_data, e_ret_data
 
+    def guest_exec_command(self, path, args=None, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
+        """
+        Execute a command with arguments safely without shell injection risks.
+
+        This method directly passes arguments as an array to avoid shell injection vulnerabilities.
+        Use this instead of guest_exec_bash when you need to execute commands with user-provided input.
+
+        Args:
+            path: The executable path (e.g., "rm", "mkdir", "touch")
+            args: List of arguments (e.g., ["-f", "/path/to/file"])
+            output: Whether to capture command output
+            wait: Wait interval between status checks
+            retry: Number of retries for status check
+
+        Returns:
+            tuple: (exit_code, stdout_data, stderr_data)
+            - When output=True: Returns (exit_code, stdout_data, stderr_data)
+            - When output=False: Returns (0, None, None)
+
+        Example:
+            # Safe: Arguments are passed as array, no shell interpretation
+            exit_code, stdout, stderr = qga.guest_exec_command("rm", ["-f", user_file_path])
+
+            # Create directory safely
+            exit_code, _, _ = qga.guest_exec_command("mkdir", ["-p", user_dir_path])
+        """
+        if args is None:
+            args = []
+
+        ret = self.guest_exec(
+            {"path": path, "arg": args, "capture-output": output})
+        if ret and "pid" in ret:
+            pid = ret["pid"]
+        else:
+            raise Exception('qga exec command {} {} failed for vm {}'.format(path, args, self.vm_uuid))
+
+        if not output:
+            logger.debug("run qga command: {} {} no output".format(path, args))
+            return 0, None, None
+
+        ret = None
+        for i in range(retry):
+            time.sleep(wait)
+            ret = self.guest_exec_status(pid)
+            # format: {"return":{"exited":false}}
+            if ret['exited']:
+                break
+
+        if not ret or not ret.get('exited'):
+            raise Exception('qga exec command {} {} timeout for vm {}'.format(path, args, self.vm_uuid))
+
+        exit_code = ret.get('exitcode')
+        s_ret_data = None
+        e_ret_data = None
+        if 'out-data' in ret:
+            s_ret_data = decode_with_fallback(ret['out-data'])
+        if 'err-data' in ret:
+            e_ret_data = decode_with_fallback(ret['err-data'])
+
+        return exit_code, s_ret_data, e_ret_data
+
     def guest_exec_powershell_script(self, file, output=True, wait=qga_exec_wait_interval, retry=qga_exec_wait_retry):
 
         ret = self.guest_exec(

@@ -73,7 +73,7 @@ BOND_MODE_ACTIVE_5 = "balance-tlb"
 BOND_MODE_ACTIVE_6 = "balance-alb"
 
 DISTRO_USING_DNF = ['rl84', 'h84r', 'ky10sp1', 'ky10sp2', 'ky10sp3',
-                    'ky10sp3.2403', 'oe2203sp1', 'h2203sp1o']
+                    'ky10sp3.2403', 'oe2203sp1', 'h2203sp1o', 'uos20r']
 
 class ConnectResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -2839,19 +2839,43 @@ done
             return
 
         npu_infos = []
+        npu_id_map = {}  # used to map pci address to npu id
         for npu_id in npu_ids:
             r, o, e = bash_roe(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
             if r != 0:
                 logger.error("npu query gpu board is error, %s " % e)
                 break
 
-            npu_infos.extend(gpu.parse_huawei_gpu_output_by_npu_id(o))
+            parsed_infos = gpu.parse_huawei_gpu_output_by_npu_id(o)
+            # save mapping info
+            for info in parsed_infos:
+                pci_addr = info.get("pciAddress", "")
+                if pci_addr:
+                    npu_id_map[pci_addr.lower()] = npu_id
+            npu_infos.extend(parsed_infos)
 
         self._update_to_addon_info_from_gpu_infos(npu_infos, to)
 
         for npu_info in npu_infos:
             if to.pciDeviceAddress not in npu_info.get("pciAddress"):
                 continue
+
+            # keep saved npu id
+            matched_npu_id = npu_id_map.get(to.pciDeviceAddress.lower())
+            if matched_npu_id:
+                to.addonInfo["npuId"] = matched_npu_id
+                logger.debug("found npu id %s for pci address %s" % (matched_npu_id, to.pciDeviceAddress))
+
+                try:
+                    is_isolated = gpu.check_huawei_npu_is_isolated(matched_npu_id, npu_ids)
+                    if is_isolated:
+                        to.addonInfo["isIsolated"] = True
+                        logger.debug("NPU %s is isolated, name changed to: %s" % (matched_npu_id, to.name))
+                    else:
+                        to.addonInfo["isIsolated"] = False
+                except Exception as ex:
+                    logger.debug("failed to check isolation status for NPU %s: %s" % (matched_npu_id, str(ex)))
+                    to.addonInfo["isIsolated"] = False
 
             r, o, e = bash_roe(gpu.get_huawei_gpu_product_name_cmd(npu_ids))
             if r != 0:
@@ -2876,6 +2900,7 @@ done
                 }
         except Exception as e:
             logger.debug("failed to get aios rank table: %s" % str(e))
+
 
     @in_bash
     def _collect_haiguang_gpu_info(self, to, opaque=None):

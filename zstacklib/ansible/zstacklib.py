@@ -43,14 +43,14 @@ apt_server = ""
 trusted_host = ""
 uos = ['uos20', 'uos1021a']
 kylin = ["ky10sp1", "ky10sp2", "ky10sp3", "ky10sp3.2403"]
-centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84', 'h84r']
+centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84', 'h84r', 'uos20r']
 enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "oe2203sp1", "h2203sp1o", "oe2403sp1"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
 KYLIN_DISTRO = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance", "kylin_halberd"]
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance", "kylin_halberd",
                 "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs",
-                "redhat", "rocky", "helix"]
+                "redhat", "rocky", "helix", "uniontech_na"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -71,7 +71,8 @@ qemu_alias = {
     "nfs4": "qemu-kvm",
     'h76c': 'qemu-kvm',
     'h79c': 'qemu-kvm',
-    'h84r': 'qemu-kvm'
+    'h84r': 'qemu-kvm',
+    'uos20r': 'qemu-kvm'
 }
 
 ansible_constants.set_constant('HOST_KEY_CHECKING', False)
@@ -554,6 +555,7 @@ def get_host_releasever(host_info):
         "uos fou 20": "uos20",
         "uniontech_kongzi kongzi 20": "uos1021a",
         "rocky green obsidian 8.4": "rl84",
+        "uniontech os 20.06r": "uos20r",
     }
     # _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(host_info.ansible_distribution)
@@ -2273,8 +2275,9 @@ def install_release_on_host(is_rpm, host_info, host_post_info):
             'h76c': 'h7',
             'h79c': 'h7',
             'h84r': 'h8',
-            'h2203sp1o': 'h2203sp1',
-            'oe2403sp1': 'oe2403sp1'}
+            'oe2403sp1': 'oe2403sp1',
+            'uos20r': 'h8',
+            'h2203sp1o': 'h2203sp1'}
         release_name = release_name_mapping.get(releasever, 'el7')
         pkg_name = 'zstack-release-{0}-1.{1}.zstack.noarch.rpm'.format(releasever, release_name)
         src_pkg = '/opt/zstack-dvd/{0}/{1}/Packages/{2}'.format(host_info.host_arch, releasever, pkg_name)

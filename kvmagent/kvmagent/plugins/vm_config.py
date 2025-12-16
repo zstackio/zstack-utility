@@ -150,7 +150,8 @@ class VmConfigPlugin(kvmagent.KvmAgent):
     VM_GUEST_TOOLS_STATE = "/vm/guesttools/state"
     VM_SET_HOSTNAME = "/vm/set/hostname"
     VM_GPU_INFO_SYNC = "/vm/gpuinfo/sync"
-    VM_WRITE_CONFIG_FILE = "/vm/write/config/file"
+    VM_WRITE_FILE = "/vm/write/file"
+    VM_DELETE_FILE = "/vm/delete/file"
 
     VM_QGA_PARAM_FILE = "/usr/local/zstack/zs-nics.json"
     VM_QGA_CONFIG_LINUX_CMD = "/usr/local/zstack/zs-tools/config_linux.py"
@@ -433,7 +434,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
-    def vm_write_config_file(self, req):
+    def vm_write_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
@@ -460,13 +461,43 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def vm_delete_file(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+
+        domain = get_virt_domain(cmd.vmUuid)
+        if not domain or not domain.isActive():
+            rsp.success = False
+            rsp.error = 'vm {} not running'.format(cmd.vmUuid)
+            return jsonobject.dumps(rsp)
+
+        qga = VmQga(domain)
+        if qga.state != VmQga.QGA_STATE_RUNNING:
+            rsp.success = False
+            rsp.error = "qga is not running for vm {}".format(cmd.vmUuid)
+            return jsonobject.dumps(rsp)
+
+        # Use guest_exec_command for safe execution without shell injection risks
+        # Arguments are passed as array, not through shell interpretation
+        exit_code, _, err_data = qga.guest_exec_command("rm", ["-f", cmd.filePath])
+        if exit_code != 0:
+            rsp.success = False
+            error_msg = err_data if err_data else "unknown error"
+            rsp.error = "delete file {} failed for vm {}: {}".format(cmd.filePath, cmd.vmUuid, error_msg)
+            return jsonobject.dumps(rsp)
+
+        return jsonobject.dumps(rsp)
+
+
     def start(self):
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(self.VM_CONFIG_PORTS, self.vm_config_ports)
         http_server.register_async_uri(self.VM_GUEST_TOOLS_STATE, self.vm_guest_tools_state)
         http_server.register_async_uri(self.VM_SET_HOSTNAME, self.vm_set_hostname)
         http_server.register_async_uri(self.VM_GPU_INFO_SYNC, self.vm_gpu_info_sync)
-        http_server.register_async_uri(self.VM_WRITE_CONFIG_FILE, self.vm_write_config_file)
+        http_server.register_async_uri(self.VM_WRITE_FILE, self.vm_write_file)
+        http_server.register_async_uri(self.VM_DELETE_FILE, self.vm_delete_file)
 
     def stop(self):
         pass

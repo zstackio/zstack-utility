@@ -29,17 +29,17 @@ class GpuServiceManager(kvmagent.KvmAgent):
 
     def start(self):
         """Start all supported GPU vendor services"""
-        with self._lock:
-            for vendor, service in self.vendor_service_map.items():
-                self._service_threads[vendor] = thread.ThreadFacade.run_in_thread(service)
-                logger.debug("Starting {0} gpu auxiliary service".format(vendor))
+        # with self._lock:
+        #     for vendor, service in self.vendor_service_map.items():
+        #         self._service_threads[vendor] = thread.ThreadFacade.run_in_thread(service)
+        #         logger.debug("Starting {0} gpu auxiliary service".format(vendor))
 
     def stop(self):
         """Stop all GPU vendor services"""
-        with self._lock:
-            for vendor, service_thread in self._service_threads.items():
-                if service_thread and service_thread.is_alive():
-                    logger.debug("Stopping {0} gpu auxiliary service".format(vendor))
-                    service_thread.stop()
-                    service_thread.join(timeout=5)
-            self._service_threads.clear()
+        # with self._lock:
+        #     for vendor, service_thread in self._service_threads.items():
+        #         if service_thread and service_thread.is_alive():
+        #             logger.debug("Stopping {0} gpu auxiliary service".format(vendor))
+        #             service_thread.stop()
+        #             service_thread.join(timeout=5)
+        #     self._service_threads.clear()
