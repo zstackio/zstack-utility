@@ -71,6 +71,12 @@ class CheckIscsiVmStateRsp(AgentRsp):
         self.result = None
         self.vmUuids = []
 
+class CheckCbdVmStateRsp(AgentRsp):
+    def __init__(self):
+        super(CheckCbdVmStateRsp, self).__init__()
+        self.result = None
+        self.vmUuids = []
+
 class GetVmFencerRuleRsp(AgentRsp):
     def __init__(self):
         super(GetVmFencerRuleRsp, self).__init__()
@@ -1140,7 +1146,6 @@ class IscsiHeartbeatController(AbstractStorageFencer):
 
     def __init__(self, interval, max_attempts, ps_uuid, run_fencer_list):
         super(IscsiHeartbeatController, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
-        self.heartbeat_url = None
         self.heartbeat_path = None
         self.host_id = -1
         self.heartbeat_required_space = 1024 * 1024  # 1MiB
@@ -1251,7 +1256,6 @@ class CbdHeartbeatController(AbstractStorageFencer):
 
     def __init__(self, interval, max_attempts, ps_uuid, run_fencer_list):
         super(CbdHeartbeatController, self).__init__(interval, max_attempts, ps_uuid, run_fencer_list)
-        self.heartbeat_url = None
         self.heartbeat_path = None
         self.host_id = -1
         self.heartbeat_required_space = 1024 * 1024 # 1MiB
@@ -1975,7 +1979,8 @@ class HaPlugin(kvmagent.KvmAgent):
         self.setup_fencer(cmd.uuid, created_time)
 
         @thread.AsyncThread
-        def heartbeat_on_cbd(ps_uuid, covering_paths):
+        def heartbeat_on_cbd(fencer_key, hb_path, covering_paths):
+            ps_uuid = cmd.uuid
             fencer_list = []
             if cmd.fencers is not None:
                 fencer_list = cmd.fencers
@@ -1993,17 +1998,16 @@ class HaPlugin(kvmagent.KvmAgent):
             cbd_controller.host_uuid = cmd.hostUuid
             cbd_controller.host_id = cmd.hostId
             cbd_controller.heartbeat_required_space = cmd.heartbeatRequiredSpace
-            cbd_controller.heartbeat_path = cmd.heartbeatUrl
-            cbd_controller.heartbeat_url = cmd.heartbeatUrl
+            cbd_controller.heartbeat_path = hb_path
             cbd_controller.fencer_triggered_callback = self.report_self_fencer_triggered
             cbd_controller.report_storage_status_callback = self.report_storage_status
 
-            self.setup_fencer(ps_uuid, created_time)
+            self.setup_fencer(fencer_key, created_time, origin_uuid=ps_uuid)
             update_fencer = True
             try:
                 fencer_init = {cbd_controller.get_ha_fencer_name(): cbd_controller}
                 logger.debug("cbd start run fencer list :%s" % ",".join(fencer_list))
-                while self.run_fencer(ps_uuid, created_time):
+                while self.run_fencer(fencer_key, created_time):
                     time.sleep(cmd.interval)
                     cbd_controller.exec_fencer_list(fencer_init, update_fencer)
                     update_fencer = False
@@ -2015,31 +2019,44 @@ class HaPlugin(kvmagent.KvmAgent):
                 logger.warn(content)
                 self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
 
-        heartbeat_on_cbd(cmd.uuid, cmd.coveringPaths)
+        # TODO: support multiple covering path for one heartbeat path
+        new_fencer_keys = set()
+        for pool_name, heartbeat_vol in cmd.heartbeatPathByCoveringPaths.__dict__.items():
+            key = '%s-%s' % (cmd.uuid, pool_name)
+            new_fencer_keys.add(key)
+            heartbeat_on_cbd(key, heartbeat_vol, [pool_name])
+
+        self.cancel_partial_fencer(cmd.uuid, lambda k: k.startswith(cmd.uuid + '-') and k not in new_fencer_keys)
         return jsonobject.dumps(AgentRsp())
 
     @kvmagent.replyerror
     def cbd_check_vmstate(self, req):
-        rsp = CheckIscsiVmStateRsp()
-        rsp.result = {}
+        rsp = CheckCbdVmStateRsp()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = CheckIscsiVmStateRsp()
 
-        cbd_controller = CbdHeartbeatController(cmd.interval, cmd.times, cmd.primaryStorageUuid, None)
-        cbd_controller.heartbeat_path = cmd.heartbeatUrl
-        cbd_controller.host_uuid = cmd.hostUuid
-        cbd_controller.host_id = cmd.hostId
-        cbd_controller.storage_check_timeout = cmd.storageCheckerTimeout
-        cbd_controller.max_attempts = cmd.times
-        cbd_controller.interval = cmd.interval
-        cbd_controller.ps_uuid = cmd.primaryStorageUuid
+        result = dict()
+        running_vms = []
+        for pool_name, hb_path in cmd.heartbeatPathByCoveringPaths.__dict__.items():
+            cbd_controller = CbdHeartbeatController(cmd.interval, cmd.times, cmd.primaryStorageUuid, None)
+            cbd_controller.heartbeat_path = hb_path
+            cbd_controller.host_uuid = cmd.hostUuid
+            cbd_controller.host_id = cmd.hostId
+            cbd_controller.storage_check_timeout = cmd.storageCheckerTimeout
+            cbd_controller.max_attempts = cmd.times
+            cbd_controller.interval = cmd.interval
+            cbd_controller.ps_uuid = cmd.primaryStorageUuid
 
-        heartbeat_success, vm_uuids = cbd_controller.check_fencer_heartbeat(
-            cbd_controller.host_id, cbd_controller.storage_check_timeout, cbd_controller.interval,
-            cbd_controller.max_attempts, cmd.primaryStorageUuid)
+            heartbeat_success, vm_uuids = cbd_controller.check_fencer_heartbeat(
+                cbd_controller.host_id, cbd_controller.storage_check_timeout, cbd_controller.interval,
+                cbd_controller.max_attempts, cmd.primaryStorageUuid)
 
-        rsp.result = {cmd.primaryStorageUuid: heartbeat_success}
-        rsp.vmUuids = list(set(vm_uuids))
+            result[pool_name] = heartbeat_success
+            if heartbeat_success and vm_uuids:
+                running_vms.extend(vm_uuids)
+
+        rsp.result = result
+        rsp.vmUuids = list(set(running_vms))
+
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -2070,7 +2087,6 @@ class HaPlugin(kvmagent.KvmAgent):
             iscsi_controller.host_id = cmd.hostId
             iscsi_controller.heartbeat_required_space = cmd.heartbeatRequiredSpace
             iscsi_controller.heartbeat_path = heartbeat_path
-            iscsi_controller.heartbeat_url = cmd.heartbeatUrl
             iscsi_controller.fencer_triggered_callback = self.report_self_fencer_triggered
             iscsi_controller.report_storage_status_callback = self.report_storage_status
 
@@ -2853,10 +2869,17 @@ class HaPlugin(kvmagent.KvmAgent):
 
     def cancel_fencer(self, ps_uuid):
         with self.fencer_lock:
-            for key in self.run_fencer_timestamp.keys():
+            for key in list(self.run_fencer_timestamp.keys()):
                 if ps_uuid in key:
                     logger.debug('cancel fencer for ps: %s, with fencer key: %s' % (ps_uuid, key))
                     self.run_fencer_timestamp.pop(key, None)
                     self.sblk_health_checker.delvg(ps_uuid)  # ugly ...
             if ps_uuid in self.fencer_storage_list:
                 self.fencer_storage_list.remove(ps_uuid)
+
+    def cancel_partial_fencer(self, ps_uuid, fencer_key_matcher):
+        with self.fencer_lock:
+            for key in list(self.run_fencer_timestamp.keys()):
+                if fencer_key_matcher(key):
+                    logger.debug('cancel fencer for ps: %s, with fencer key: %s' % (ps_uuid, key))
+                    self.run_fencer_timestamp.pop(key, None)
