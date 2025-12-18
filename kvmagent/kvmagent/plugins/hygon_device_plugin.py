@@ -61,6 +61,7 @@ class GenerateHygonMdevDevicesRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(GenerateHygonMdevDevicesRsp, self).__init__()
         self.mdevBindings = []
+        self.generated = False
 
 
 class UngenerateHygonMdevDevicesRsp(kvmagent.AgentResponse):
@@ -458,10 +459,16 @@ class HygonDevicePlugin(kvmagent.KvmAgent):
     @in_bash
     def generate_hygon_mdev_devices(self, req):
         """
-        Generate Hygon mdev devices
+        Generate Hygon mdev devices (idempotent)
 
         This endpoint calls hctconfig to generate mdev (mediated device) instances
         from Hygon CCP physical devices for VM assignment.
+
+        Idempotency:
+            This method is idempotent. If the required number of mdev devices already
+            exist, it will skip the generation step and return the existing bindings.
+            This allows safe re-execution during host reconnection without destroying
+            existing mdev devices.
 
         Script Command:
             bash /opt/hygon/hct/hct/script/hctconfig start -p <maxProgress> -q <maxQemuNum>
@@ -534,6 +541,51 @@ class HygonDevicePlugin(kvmagent.KvmAgent):
         max_progress = cmd.maxProgress if hasattr(cmd, 'maxProgress') else 0
         max_qemu_num = cmd.maxQemuNum if hasattr(cmd, 'maxQemuNum') else 64
 
+        # Parse CCP devices first to build device_idx mapping
+        try:
+            ccp_devices = self._parse_ccp_devices()
+        except Exception as e:
+            logger.error("Failed to parse CCP devices list: %s" % e)
+            rsp.success = False
+            rsp.error = str(e)
+            return jsonobject.dumps(rsp)
+
+        if not ccp_devices:
+            logger.info("No CCP devices found, skip mdev generation")
+            rsp.mdevBindings = []
+            return jsonobject.dumps(rsp)
+
+        # Build device_index to pciBdf mapping
+        # Sort by pciBdf to ensure stable mapping
+        all_devices_sorted = sorted(ccp_devices, key=lambda x: x['pciBdf'])
+        device_idx_to_pci_bdf = {}
+        for idx, device_info in enumerate(all_devices_sorted):
+            device_idx_to_pci_bdf[idx] = device_info['pciBdf']
+
+        logger.debug("Built device_idx to pciBdf mapping: %s" % device_idx_to_pci_bdf)
+
+        num_ccp_devices = len(ccp_devices)
+
+        # Check existing mdev devices for idempotency
+        # Only generate mdev devices if NO mdev exists on host
+        # This prevents unnecessary regeneration when some mdevs are accidentally deleted
+        existing_mdev_bindings = self._collect_mdev_bindings(device_idx_to_pci_bdf)
+        existing_vm_mdev_count = len(existing_mdev_bindings)
+
+        logger.info("Idempotency check: existing VM mdev count=%d (maxQemuNum=%d)" %
+                   (existing_vm_mdev_count, max_qemu_num))
+
+        if existing_vm_mdev_count > 0:
+            # Mdev devices already exist, skip generation regardless of count
+            # This avoids disrupting existing mdevs that may be in use
+            logger.info("Mdev devices already exist (count=%d), skip regeneration" % existing_vm_mdev_count)
+            rsp.mdevBindings = existing_mdev_bindings
+            rsp.generated = False
+            return jsonobject.dumps(rsp)
+
+        # No mdev exists, generate new ones
+        logger.info("No mdev devices found, generating with maxQemuNum=%d" % max_qemu_num)
+
         # Call hctconfig start -p {maxProgress} -q {maxQemuNum}
         r, o, e = bash_roe("timeout 60 bash %s start -p %d -q %d" % (self.HCTCONFIG_SCRIPT, max_progress, max_qemu_num))
         if r == 124:
@@ -545,27 +597,12 @@ class HygonDevicePlugin(kvmagent.KvmAgent):
             rsp.error = "failed to start hctconfig: %s" % e
             return jsonobject.dumps(rsp)
 
-        # Parse CCP devices using helper method
-        try:
-            ccp_devices_by_idx = self._parse_ccp_devices()
-        except Exception as e:
-            logger.error("Failed to parse CCP devices list: %s" % e)
-            rsp.success = False
-            rsp.error = str(e)
-            return jsonobject.dumps(rsp)
-
-        # Build device_index to pciBdf mapping
-        # Sort by pciBdf to ensure stable mapping
-        all_devices_sorted = sorted(ccp_devices_by_idx, key=lambda x: x['pciBdf'])
-        device_idx_to_pci_bdf = {}
-        for idx, device_info in enumerate(all_devices_sorted):
-            device_idx_to_pci_bdf[idx] = device_info['pciBdf']
-
-        logger.debug("Built device_idx to pciBdf mapping: %s" % device_idx_to_pci_bdf)
-
-        # Collect mdev bindings
+        # Collect mdev bindings after generation
         mdev_bindings = self._collect_mdev_bindings(device_idx_to_pci_bdf)
         rsp.mdevBindings = mdev_bindings
+        rsp.generated = True
+
+        logger.info("Generated %d mdev bindings from %d CCP devices" % (len(mdev_bindings), num_ccp_devices))
 
         # Note: qemu.conf cgroup_device_acl configuration and libvirtd restart
         # are now handled by ansible (kvm.py) during host reconnection.
