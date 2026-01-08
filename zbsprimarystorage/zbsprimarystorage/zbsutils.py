@@ -105,6 +105,16 @@ def query_children_volume(logical_pool, volume, snapshot, is_snapshot=False):
 def is_support_get_volume_clients():
     return shell.run("%s list client --help | grep -E '\--path'" % ZBS_BIN_PATH) == 0
 
+def is_volume_exist(logical_pool, volume):
+    o = query_volume_info(logical_pool, volume)
+    ret = jsonobject.loads(o)
+    if ret.error.code != 0:
+        match = re.search(r"status code:\s*(\w+)", ret.error.message)
+        if match and match.group(1) == "kFileNotExists":
+            return False
+        raise Exception('failed to query volume[%s/%s] info, error[%s]' % (logical_pool, volume, ret.error.message))
+    return True
+        
 
 def get_volume_clients(logical_pool, volume):
     o = shell.call("%s list client --path %s/%s --format json" % (ZBS_BIN_PATH, logical_pool, volume))
