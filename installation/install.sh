@@ -230,6 +230,7 @@ declare -a upgrade_params_array=(
     '5.1.8,-DupgradeFlatDhcpServerIp=true'
     '5.3.28,-DupgradeLogLabelToLogServer=true'
     '5.3.52,-DupgradeModelServiceYaml5352=true'
+    "5.5.6,-DupgradeLoadBalancerRedirectRule=true"
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
