@@ -2567,6 +2567,7 @@ done
     def _collect_tianshu_gpu_info(self, to):
         if shell.run("which ixsmi") != 0:
             logger.debug("no ixsmi")
+            to.addonInfo["isDriverLoaded"] = False
             return
         r, o, e = bash_roe(gpu.get_tianshu_gpu_basic_info_cmd())
         if r != 0:
@@ -2589,6 +2590,7 @@ done
     def _collect_huawei_gpu_info(self, to):
         if shell.run("which npu-smi") != 0:
             logger.debug("no npu-smi")
+            to.addonInfo["isDriverLoaded"] = False
             return
 
         r, npu_ids_out = bash_ro(gpu.get_huawei_gpu_npu_id_cmd())
@@ -2619,6 +2621,7 @@ done
     def _collect_haiguang_gpu_info(self, to):
         if shell.run("which hy-smi") != 0:
             logger.debug("no hy-smi")
+            to.addonInfo["isDriverLoaded"] = False
             return
 
         r, o, e = bash_roe(gpu.get_hy_gpu_basic_info_cmd())
@@ -2632,6 +2635,7 @@ done
     def _collect_nvidia_gpu_info(self, to):
         if shell.run("which nvidia-smi") != 0:
             logger.debug("no nvidia-smi")
+            to.addonInfo["isDriverLoaded"] = False
             return
 
         r, o, e = bash_roe(gpu.get_nvidia_gpu_basic_info_cmd())
@@ -2655,6 +2659,7 @@ done
         #todo collect amd gpu info
         if shell.run("which rocm-smi") != 0:
             logger.debug("no rocm-smi")
+            to.addonInfo["isDriverLoaded"] = False
             return
 
         r, o, e = bash_roe(gpu.get_amd_gpu_basic_info_cmd())

@@ -371,6 +371,8 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             if vendor in vendor_method_map:
                 gpus = vendor_method_map[vendor](qga)
                 if any(gpus):
+                    for g in gpus:
+                        g["isDriverLoaded"] = True
                     gpuinfos.extend(gpus)
 
         return 0, gpuinfos
