@@ -874,10 +874,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             dirname = os.path.dirname(cmd.installUrl)
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
-            if cmd.backingFile:
-                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
-            else:
-                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+
+            if cmd.volumeFormat == "raw":
+                linux.raw_create(cmd.installUrl, cmd.size)
+            else:  # default: cmd.volumeFormat == "qcow2"
+                if cmd.backingFile:
+                    linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
+                else:
+                    linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
         try:
             _create_dir_and_file()
         except Exception as e:
@@ -888,6 +892,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         self.create_meta_file(cmd)
         self._set_capacity_to_response(cmd.uuid, rsp)
+
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         logger.debug('successfully create empty volume[uuid:%s, name:%s, size:%s] at %s' % (cmd.uuid, cmd.name, cmd.size, cmd.installUrl))
         return jsonobject.dumps(rsp)

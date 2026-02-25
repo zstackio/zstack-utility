@@ -888,9 +888,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installUrl))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
-        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         return jsonobject.dumps(rsp)
 
     def do_create_empty_volume(self, cmd):
@@ -898,10 +898,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname)
 
-        if cmd.backingFile:
-            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
-        else:
-            linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+        if cmd.volumeFormat == "raw":
+            linux.raw_create(cmd.installUrl, cmd.size)
+        else:  # default: cmd.volumeFormat == "qcow2"
+            if cmd.backingFile:
+                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
+            else:
+                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
 
     @kvmagent.replyerror
     def create_volume_with_backing(self, req):
