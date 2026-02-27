@@ -364,7 +364,7 @@ def install_kvm_pkg():
 
         distro_mapping = {
             'centos': 'vconfig iscsi-initiator-utils OpenIPMI-modalias OVMF mcelog MegaCli Arcconf python-pyudev kernel-devel libicu edac-utils',
-            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu edac-utils lldpd freeipmi tcpdump',
+            'kylin': 'vconfig open-iscsi python2-pyudev collectd-disk OpenIPMI libselinux-devel nettle tuned qemu-kvm libicu edac-utils lldpd freeipmi tcpdump key-manager',
             'uniontech': 'vconfig iscsi-initiator-utils OpenIPMI nettle qemu-kvm python-pyudev collectd-disk',
             'rocky': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf python-pyudev kernel-devel collectd-disk edac-utils',
             'alinux': 'iscsi-initiator-utils OpenIPMI-modalias mcelog MegaCli Arcconf kernel-devel edac-utils',
@@ -386,7 +386,7 @@ def install_kvm_pkg():
             'h79c': ('%s qemu-kvm libvirt-admin seabios-bin nping freeipmi '
                      'elfutils-libelf-devel vconfig OVMF libicu %s') % (helix_rhel_rpms, py3_rpms),
             'h84r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
-                     'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump %s') % (helix_rhel_rpms, py3_rpms),
+                     'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump key-manager %s') % (helix_rhel_rpms, py3_rpms),
             'uos20r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
                      'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump %s') % (helix_rhel_rpms, py3_rpms),
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel lldpd',
@@ -1258,6 +1258,16 @@ def set_gpu_blacklist():
         || echo \"install ${gpu_name} /bin/false\" >> /etc/modprobe.d/${gpu_name}-blacklist.conf; done" % gpu_name_list
     run_remote_command(command, host_post_info)
 
+def start_key_agent():
+    if chroot_env != 'false':
+        return
+    command = "if systemctl list-unit-files key-agent.service 2>/dev/null | grep -q '^key-agent\\.service'; then " \
+              "systemctl enable key-agent && systemctl start key-agent; " \
+              "fi"
+    host_post_info.post_label = "ansible.shell.start.key_agent"
+    host_post_info.post_label_param = "None"
+    run_remote_command(command, host_post_info)
+
 
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
@@ -1293,6 +1303,7 @@ modprobe_mpci_module()
 set_gpu_blacklist()
 configure_deploy_mode()
 configure_resource_assignment()
+start_key_agent()
 start_kvmagent()
 
 host_post_info.start_time = start_time
