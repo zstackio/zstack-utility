@@ -333,7 +333,11 @@ def rm_file_checked(fpath):
         return
 
     exception_on_opened_file(fpath)
-    os.remove(fpath)
+    try:
+        os.remove(fpath)
+    except OSError as e:
+        if e.errno != errno.ENOENT: # errno.ENOENT: file is already been deleted
+            raise
 
 def rm_dir_checked(dpath):
     if not os.path.exists(dpath):
