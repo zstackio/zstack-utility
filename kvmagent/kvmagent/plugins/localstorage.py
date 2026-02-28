@@ -7,6 +7,7 @@ import traceback
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
+from kvmagent.plugins.nvram import nvram_local
 from zstacklib.utils import jsonobject
 from zstacklib.utils import qcow2
 from zstacklib.utils import linux
@@ -947,6 +948,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
         if cmd.path:
             try:
+                nvram_local.cleanup_nvram_links_if_needed(cmd.path)
                 kvmagent.deleteImage(cmd.path)
             except linux.VolumeInUseError:
                 rsp.success = False
