@@ -59,7 +59,7 @@ from kvmagent.plugins import vm_artifact
 from kvmagent.plugins import zbs_storage_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
-from kvmagent.plugins.nvram import nvram_local
+from kvmagent.plugins.nvram import nvram
 from zstacklib.utils import bash, plugin, iscsi, gpu, traceable_shell
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import http
@@ -7527,7 +7527,7 @@ class Vm(object):
             if cmd.secureBoot:
                 loader_attribute['secureBoot'] = 'yes'
 
-            nvram_fd_path = nvram_local.build_nvram_fd_path(cmd.vmInstanceUuid)
+            nvram_fd_path = nvram.build_nvram_fd_path(cmd.vmInstanceUuid)
             if host_arch == "x86_64" and cmd.bootMode == "UEFI":
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 if yum_release in ("ky10sp3", "ky10sp3.2403"):
@@ -8902,15 +8902,15 @@ class Vm(object):
                 e(qcmd, "qemu:arg", attrib={"value": "{},vendor={}".format(cpuFlags, cmd.vmCpuVendorId)})
 
         def prepare_nvram():
-            extension = nvram_local.LocalNvRamVmExtensions()
+            extension = nvram.NvRamVmExtensions()
             extension.vm_uuid = cmd.vmInstanceUuid
 
             if cmd.nvRam is None:
-                extension.cleanup_nvram_after_vm_stop()
+                extension.cleanup()
                 return
 
             extension.nvram_volume = cmd.nvRam
-            extension.prepare_nvram_before_vm_start()
+            extension.prepare()
 
         prepare_nvram()
         make_root()
@@ -13457,9 +13457,9 @@ host side snapshot files chian:
                 vm._undefine_for_firmware_cleanup()
                 if get_vm_by_uuid_no_retry(vm_uuid, False):
                     raise kvmagent.KvmError('vm[uuid:%s] still has a libvirt domain; keep its firmware flash' % vm_uuid)
-            extension = nvram_local.LocalNvRamVmExtensions()
+            extension = nvram.NvRamVmExtensions()
             extension.vm_uuid = vm_uuid
-            extension.cleanup_nvram_after_vm_stop()
+            extension.cleanup()
             rsp.cleanupCompleted = True
 
         return jsonobject.dumps(rsp)
@@ -15105,9 +15105,9 @@ host side snapshot files chian:
             return
 
         vm_uuid = dom.name()
-        extension = nvram_local.LocalNvRamVmExtensions()
+        extension = nvram.NvRamVmExtensions()
         extension.vm_uuid = vm_uuid
-        extension.cleanup_nvram_after_vm_stop()
+        extension.cleanup()
 
     @bash.in_bash
     def _release_sharedblocks(self, conn, dom, event, detail, opaque):
