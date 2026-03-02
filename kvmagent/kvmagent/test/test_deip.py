@@ -184,6 +184,34 @@ class TestApplyEipChainNames(_ApplyEipTestBase):
         )
 
 
+class TestApplyEipPostroutingOrder(_ApplyEipTestBase):
+    def test_postrouting_arp_jumps_are_inserted_at_head(self):
+        expected = [
+            "-I POSTROUTING -p ARP -o vnic1.0 -j eip-vnic1.0-arp",
+            "-I POSTROUTING -p ARP -o 123456789_o -j eip-123456789_o-arp",
+            "-I POSTROUTING -p ARP -o 123456789_eo -j eip-123456789_eo-arp",
+        ]
+
+        for rule in expected:
+            self.assertTrue(
+                self._has_cmd(rule),
+                "Expected POSTROUTING ARP jump at head: %s" % rule,
+            )
+
+    def test_postrouting_arp_jumps_try_to_reorder_existing_rules(self):
+        expected = [
+            "-D POSTROUTING -p ARP -o vnic1.0 -j eip-vnic1.0-arp",
+            "-D POSTROUTING -p ARP -o 123456789_o -j eip-123456789_o-arp",
+            "-D POSTROUTING -p ARP -o 123456789_eo -j eip-123456789_eo-arp",
+        ]
+
+        for rule in expected:
+            self.assertTrue(
+                self._has_cmd(rule),
+                "Expected POSTROUTING ARP jump reorder path: %s" % rule,
+            )
+
+
 # ---------------------------------------------------------------------------
 # Test: ARP rules (arpreply source check, Reply DROP, gratuitous ARP)
 # ---------------------------------------------------------------------------
