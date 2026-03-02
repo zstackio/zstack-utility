@@ -15191,6 +15191,8 @@ host side snapshot files chian:
                     if volume.source.startswith("/dev/"):
                         deactivate_volume(event_str, volume.source, vm_uuid)
 
+                # Note: nvram volume deactivation is in nvram_sblk.py
+
             out = bash.bash_o('virsh dumpxml %s | grep -E "(active|hidden) file="' % vm_uuid).strip().splitlines()
             if len(out) != 0:
                 for cache_config in out:

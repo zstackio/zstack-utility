@@ -66,8 +66,13 @@ class NvRamVmExtensions(object):
             if os.path.exists(mount_folder): # double check after umount
                 bash.bash_r("rmdir %s" % pipes.quote(mount_folder))
 
+            if not source_path:
+                return
+            
             if source_path.startswith('/dev/loop'):
                 nvram_local.detach_loop_device(source_path)
+            elif nvram_sblk.is_sharedblock_device(source_path):
+                nvram_sblk.deactivate_sharedblock_nvram_volume_if_needed(source_path, self.vm_uuid)
 
 def cleanup_nvram_links_if_needed(install_path):
     # type: (str) -> None

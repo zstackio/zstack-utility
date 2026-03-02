@@ -1,7 +1,8 @@
+import pipes
 
 from kvmagent.plugins import shared_block_plugin
 from kvmagent.plugins.nvram import nvram_common
-from zstacklib.utils import log
+from zstacklib.utils import bash, log, linux, lvm
 
 logger = log.get_logger(__name__)
 
@@ -40,3 +41,22 @@ def find_vm_uuid_by_sharedblock_install_path(install_path):
     if not mount_folder:
         return ''
     return nvram_common.extract_vm_uuid_from_nvram_mount_folder_path(mount_folder)
+
+def is_sharedblock_device(dev_path):
+    # type: (str) -> bool
+    lock_type = bash.bash_o("lvs --noheading --nolocking -t %s -ovg_lock_type" % pipes.quote(dev_path)).strip()  # type: str
+    return "sanlock" in lock_type
+
+def deactivate_sharedblock_nvram_volume_if_needed(dev_path, vm_uuid):
+    # type: (str, str) -> None
+    logger.debug("deactivating sharedblock nvram volume %s" % dev_path)
+
+    used_process = linux.linux_lsof(dev_path)  # type: str
+    if not used_process:
+        try:
+            lvm.deactive_lv(dev_path, False)
+            logger.debug("deactivated sharedblock nvram volume %s for happened on vm %s success" % (dev_path, vm_uuid))
+        except Exception as e:
+            logger.warn("deactivate sharedblock nvram volume %s for happened on vm %s failed, %s" % (dev_path, vm_uuid, str(e)))
+    else:
+        logger.info("vm: %s, sharedblock nvram volume %s still used: %s, skip to deactivate" % (vm_uuid, dev_path, used_process))
