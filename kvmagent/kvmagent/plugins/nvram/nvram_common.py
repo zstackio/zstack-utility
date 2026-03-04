@@ -2,6 +2,7 @@
 import os
 import os.path
 import pipes
+import re
 
 from zstacklib.utils import bash, log
 
@@ -11,6 +12,27 @@ logger = log.get_logger(__name__)
 def build_nvram_mount_folder_path(vm_uuid):
     # type: (str) -> str
     return "/var/lib/libvirt/qemu/nvram/%s" % vm_uuid
+
+def build_nvram_vm_host_file_path(vm_uuid):
+    # type: (str) -> str
+    return "/var/lib/libvirt/qemu/nvram/%s-host-files/%s.fd" % (vm_uuid, vm_uuid)
+
+def extract_vm_uuid_from_nvram_vm_host_file_path(path):
+    # type: (str) -> str
+    if not path:
+        return ''
+    uuid_pattern = r'[a-fA-F0-9]{8}[a-fA-F0-9]{4}[a-fA-F0-9]{4}[a-fA-F0-9]{4}[a-fA-F0-9]{12}'
+    pattern = r'^/var/lib/libvirt/qemu/nvram/({0})-host-files/({0})\.fd$'.format(uuid_pattern)
+    match = re.match(pattern, path)
+    if not match:
+        return ''
+    uuid1 = match.group(1)
+    uuid2 = match.group(2)
+    return uuid1 if uuid1.lower() == uuid2.lower() else ''
+
+def check_nvram_vm_host_file_path_format(path):
+    # type: (str) -> bool
+    return bool(extract_vm_uuid_from_nvram_vm_host_file_path(path))
 
 def find_source_path_by_mount_folder(mount_folder):
     # type: (str) -> str
@@ -31,7 +53,7 @@ def find_source_path_by_mount_folder(mount_folder):
                 except (ValueError, IndexError):
                     continue
                 break
-    
+
     return device_node
 
 def find_mount_folder_by_source_path(source_path):

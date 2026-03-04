@@ -60,6 +60,7 @@ from kvmagent.plugins import zbs_storage_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
 from kvmagent.plugins.nvram import nvram
+from kvmagent.plugins.vms import vm_host_file, tpm
 from zstacklib.utils import bash, plugin, iscsi, gpu, traceable_shell
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import http
@@ -1438,6 +1439,28 @@ class ChangeVfNicHaStateCmd(kvmagent.AgentCommand):
 class ChangeVfNicHaStateRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(ChangeVfNicHaStateRsp, self).__init__()
+
+
+class ReadVmHostFileContentCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ReadVmHostFileContentCmd, self).__init__()
+        # without VmHostFileTO.contentBase64, VmHostFileTO.fileFormat
+        self.hostFiles = []  # type: list[vm_host_file.VmHostFileTO]
+
+class ReadVmHostFileContentResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ReadVmHostFileContentResponse, self).__init__()
+        self.hostFiles = []  # type: list[vm_host_file.VmHostFileTO]
+
+
+class WriteVmHostFileContentCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(WriteVmHostFileContentCmd, self).__init__()
+        self.hostFiles = []  # type: list[vm_host_file.VmHostFileTO]
+
+class WriteVmHostFileContentResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(WriteVmHostFileContentResponse, self).__init__()
 
 
 class VncPortIptableRule(object):
@@ -4259,8 +4282,6 @@ class Vm(object):
                     if pid:
                         # force to kill the VM
                         linux.kill_process(pid, is_exception=False)
-
-            logger.info("TODO: save NVRAM and TPM states to storage")
 
             try:
                 self.domain.undefineFlags(self._get_undefine_flags(keep_nvram))
@@ -9386,6 +9407,9 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_NOTIFY_TF_NIC_PATH = "/vm/nodifytfnic"
     TAKE_VM_CONSOLE_SCREENSHOT_PATH = "/vm/console/screenshot"
     FSTRIM_VM_PATH = "/vm/fstrim"
+    READ_VM_HOST_FILE_PATH = "/vm/hostfile/read"
+    WRITE_VM_HOST_FILE_PATH = "/vm/hostfile/write"
+
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
     SET_VM_IOTHREADPIN_PATH = "/vm/setiothreadpin"
@@ -14507,6 +14531,48 @@ host side snapshot files chian:
 
         return jsonobject.dumps(rsp)
 
+    @kvmagent.replyerror
+    def read_hostfile(self, req):
+        # type: (dict) -> object
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: ReadVmHostFileContentCmd
+        rsp = ReadVmHostFileContentResponse()
+
+        for host_file in cmd.hostFiles:
+            if host_file.type == 'NvRam':
+                rsp.hostFiles.append(nvram.NvRamHostFile().read_file(host_file))
+            elif host_file.type == 'TpmState':
+                rsp.hostFiles.append(tpm.TpmStateHostFile().read_file(host_file))
+            else:
+                result = vm_host_file.VmHostFileTO()
+                result.path = host_file.path
+                result.type = host_file.type
+                result.error = "invalid host file type: %s" % host_file.type
+                rsp.hostFiles.append(result)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def write_hostfile(self, req):
+        # type: (dict) -> None
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: WriteVmHostFileContentCmd
+        rsp = WriteVmHostFileContentResponse()
+        errors = [] # type: list[str]
+
+        for host_file in cmd.hostFiles:
+            try:
+                if host_file.type == 'NvRam':
+                    nvram.NvRamHostFile().write_file(host_file)
+                elif host_file.type == 'TpmState':
+                    tpm.TpmStateHostFile().write_file(host_file)
+                else:
+                    errors.append("invalid host file type: %s" % host_file.type)
+            except Exception as e:
+                errors.append(str(e))
+
+        if errors:
+            rsp.error = ','.join(errors)
+            rsp.success = False
+        return jsonobject.dumps(rsp)
+
     def start(self):
         http_server = kvmagent.get_http_server()
 
@@ -14625,6 +14691,8 @@ host side snapshot files chian:
         http_server.register_async_uri(self.DETACH_VIRTIO_DRIVER_PATH, self.detach_virtio_driver)
         http_server.register_async_uri(self.SET_VM_VF_NIC_STATE, self.set_vf_nic_state)
         http_server.register_async_uri(self.SET_VF_NIC_MAC_PATH, self.set_vf_nic_mac)
+        http_server.register_async_uri(self.READ_VM_HOST_FILE_PATH, self.read_hostfile, cmd=ReadVmHostFileContentCmd())
+        http_server.register_async_uri(self.WRITE_VM_HOST_FILE_PATH, self.write_hostfile, cmd=WriteVmHostFileContentCmd())
 
         # snapshot stale sshfs mounts before going async, so the background
         # thread won't accidentally unmount mounts created after startup
