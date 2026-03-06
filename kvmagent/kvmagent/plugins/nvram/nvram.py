@@ -101,17 +101,20 @@ class NvRamHostFile(object):
             if e.errno != errno.EEXIST:  # ignore folder already exists error
                 raise
 
+        token_path = nvram_common.build_nvram_delete_token_file_path(vm_uuid)
+        if os.path.isfile(token_path):
+            os.remove(token_path)
+            logger.debug('remove nvram delete token in %s' % token_path)
+
     def cleanup(self, vm_uuid):
-        nvram_install_path = nvram_common.build_nvram_vm_host_file_path(vm_uuid)
-        base_dir = os.path.dirname(nvram_install_path)
-
-        # double check before delete
-        safe_root = os.path.realpath('/var/lib/libvirt/qemu/nvram')
-        if not base_dir.startswith(safe_root + os.sep):
-            raise ValueError('unsafe cleanup path: %s' % base_dir)
-
-        if os.path.exists(base_dir):
-            shutil.rmtree(base_dir)
+        # add 'delete' token
+        token_path = nvram_common.build_nvram_delete_token_file_path(vm_uuid)
+        token_dir = os.path.dirname(token_path)
+        if not os.path.isdir(token_dir):
+            return
+        with open(token_path, 'w') as fs:
+            fs.write('true\n')
+            logger.debug('add nvram delete token in %s' % token_path)
 
     def read_file(self, to):
         # type: (vm_host_file.VmHostFileTO) -> vm_host_file.VmHostFileTO

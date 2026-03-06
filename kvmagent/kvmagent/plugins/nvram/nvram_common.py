@@ -17,6 +17,10 @@ def build_nvram_vm_host_file_path(vm_uuid):
     # type: (str) -> str
     return "/var/lib/libvirt/qemu/nvram/%s-host-files/%s.fd" % (vm_uuid, vm_uuid)
 
+def build_nvram_delete_token_file_path(vm_uuid):
+    # type: (str) -> str
+    return "/var/lib/libvirt/qemu/nvram/%s-host-files/delete" % (vm_uuid)
+
 def extract_vm_uuid_from_nvram_vm_host_file_path(path):
     # type: (str) -> str
     if not path:
