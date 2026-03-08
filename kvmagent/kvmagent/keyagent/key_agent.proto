@@ -1,7 +1,5 @@
 syntax = "proto3";
-package kvmagent.kvmagent.keyagent;
-
-option go_package = "key-manager/api/gen/v1/key-agent;keyagentv1";
+package keyagent.v1;
 
 service KeyAgentService {
   rpc CreateEnvelopeKey(CreateEnvelopeKeyRequest) returns (CreateEnvelopeKeyResponse);

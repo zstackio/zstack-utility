@@ -2171,8 +2171,18 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.success = False
             rsp.error = 'missing encryptedDek, vmUuid, purpose or providerName'
             return jsonobject.dumps(rsp)
+        normalized_b64 = encrypted_dek_b64.strip()
+        if not re.match(r'^[A-Za-z0-9+/]+={0,2}$', normalized_b64) or len(normalized_b64) % 4 != 0:
+            rsp.success = False
+            rsp.error = 'encryptedDek must be valid base64'
+            return jsonobject.dumps(rsp)
         try:
-            encrypted_dek = base64.b64decode(encrypted_dek_b64)
+            encrypted_dek = base64.b64decode(normalized_b64)
+            enc_again = base64.b64encode(encrypted_dek)
+            if not isinstance(enc_again, str):
+                enc_again = enc_again.decode('ascii')
+            if enc_again.rstrip('=') != normalized_b64.rstrip('='):
+                raise ValueError('non-canonical base64 input')
         except Exception as e:
             rsp.success = False
             rsp.error = 'encryptedDek must be base64: %s' % e
