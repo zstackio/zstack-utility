@@ -1,7 +1,16 @@
 from setuptools import setup, find_packages
 import sys, os
+import platform
 
 version = '5.7.0'
+
+install_requires = [
+    "prometheus_client==0.17.1",
+    "libvirt-python>=6.0.0,<=6.2.0",
+    "python-cephlibs",
+]
+if platform.machine() == 'x86_64':
+    install_requires.append("grpcio==1.27.2")
 
 setup(name='kvmagent',
       version=version,
@@ -17,13 +26,7 @@ ZStack KVM agent REST service""",
       packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
       include_package_data=True,
       zip_safe=True,
-      install_requires=[
-            # -*- Extra requirements: -*-
-            "prometheus_client==0.17.1",
-            "libvirt-python>=6.0.0,<=6.2.0",
-            "python-cephlibs",
-            "grpcio==1.27.2",
-      ],
+      install_requires=install_requires,
       entry_points="""
       # -*- Entry points: -*-
       """,
