@@ -15166,6 +15166,20 @@ host side snapshot files chian:
             content = traceback.format_exc()
             logger.warn("traceback: %s" % content)
 
+    def _prepare_nvram_after_vm_start(self, conn, dom, event, detail, opaque):
+        event = LibvirtEventManager.event_to_string(event)
+        if event not in (LibvirtEventManager.EVENT_STARTED,):
+            return
+        vm_uuid = dom.name()
+        try:
+            from kvmagent.plugins.nvram import nvram_common
+            token_path = nvram_common.build_nvram_delete_token_file_path(vm_uuid)
+            if os.path.isfile(token_path):
+                os.remove(token_path)
+                logger.debug('remove nvram delete token in %s for manually started VM' % token_path)
+        except Exception as e:
+            logger.warn('failed to remove nvram delete token for vm %s: %s' % (vm_uuid, str(e)))
+
     @bash.in_bash
     def _deactivate_nvram(self, conn, dom, event, detail, opaque):
         event_str = LibvirtEventManager.event_to_string(event)
@@ -15475,6 +15489,7 @@ host side snapshot files chian:
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_crashed_event)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._release_sharedblocks)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._deactivate_drbd)
+        LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._prepare_nvram_after_vm_start)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._deactivate_nvram)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._clean_colo_heartbeat)
         LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._extend_sharedblock)
