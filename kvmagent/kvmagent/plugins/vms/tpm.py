@@ -26,7 +26,12 @@ class TpmStateHostFile(object):
 
 def build_tpm_state_vm_host_folder_path(vm_uuid):
     # type: (str) -> str
-    return "/var/lib/libvirt/swtpm/%s" % (vm_uuid)
+    vm_uuid_with_hyphen = re.sub(
+        r'^([a-fA-F0-9]{8})([a-fA-F0-9]{4})([a-fA-F0-9]{4})([a-fA-F0-9]{4})([a-fA-F0-9]{12})$',
+        r'\1-\2-\3-\4-\5',
+        vm_uuid
+    )
+    return "/var/lib/libvirt/swtpm/%s/" % (vm_uuid_with_hyphen)
 
 def check_tpm_state_vm_host_file_path_format(path):
     # type: (str) -> bool
@@ -34,6 +39,6 @@ def check_tpm_state_vm_host_file_path_format(path):
         return False
 
     path = path.rstrip('/')
-    uuid_pattern = r'[a-fA-F0-9]{8}[a-fA-F0-9]{4}[a-fA-F0-9]{4}[a-fA-F0-9]{4}[a-fA-F0-9]{12}'
+    uuid_pattern = r'[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}'
     pattern = r'^/var/lib/libvirt/swtpm/({0})$'.format(uuid_pattern)
     return bool(re.match(pattern, path))

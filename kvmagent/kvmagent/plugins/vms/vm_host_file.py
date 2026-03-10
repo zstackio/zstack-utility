@@ -70,8 +70,9 @@ def read_vm_host_file_targz(to):
     tmp_tar_path = os.path.join(tmp_dir, "archive.tar.gz")
 
     try:
-        base_dir = os.path.dirname(to.path)
-        target_name = os.path.basename(to.path)
+        base_path = to.path.rstrip("/")
+        base_dir = os.path.dirname(base_path)
+        target_name = os.path.basename(base_path)
         cmd = "tar -czf %s -C %s %s" % (pipes.quote(tmp_tar_path), pipes.quote(base_dir), pipes.quote(target_name))
         r, _, e = bash.bash_roe(cmd)
         if r != 0:
