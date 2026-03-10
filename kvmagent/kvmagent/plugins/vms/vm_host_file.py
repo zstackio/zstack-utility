@@ -21,7 +21,7 @@ class VmHostFileTO(object):
         self.type = ''
         self.fileFormat = ''
         self.contentBase64 = ''
-        self.error = ''
+        self.error = None  # type: str
 
 def is_allowed_paths(path):
     # type: (str) -> bool
