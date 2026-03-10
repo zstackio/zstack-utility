@@ -1,7 +1,16 @@
 from setuptools import setup, find_packages
 import sys, os
+import platform
 
 version = '4.10.0'
+
+install_requires = [
+    "prometheus_client",
+    "typing",
+    "future",
+]
+if platform.machine() == 'x86_64':
+    install_requires.append("grpcio==1.27.2")
 
 setup(name='kvmagent',
       version=version,
@@ -17,13 +26,7 @@ ZStack KVM agent REST service""",
       packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
       include_package_data=True,
       zip_safe=True,
-      install_requires=[
-            # -*- Extra requirements: -*-
-            "prometheus_client",
-            "typing",
-            "future",
-            "grpcio==1.27.2",
-      ],
+      install_requires=install_requires,
       entry_points="""
       # -*- Entry points: -*-
       """,

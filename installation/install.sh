@@ -1466,6 +1466,7 @@ upgrade_zstack(){
     if [ x"$ZSV_INSTALL" = x"y" ];then
         zstack-ctl configure deploy_mode="zsv"
         [ $? -eq 0 ] && show_spinner iz_upgrade_zsphere_tools
+        show_spinner iz_install_key_manager
     fi
 
     # update consoleProxyCertFile if necessary
@@ -1780,6 +1781,32 @@ install_system_libs(){
         show_spinner ia_install_python_gcc_db
     fi
 }
+
+iz_install_key_manager(){
+    if [ "$BASEARCH" == 'x86_64' ]; then
+        return
+    fi
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    if [ ! -z $ZSTACK_YUM_REPOS ]; then
+        yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
+        echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y key-manager >>$ZSTACK_INSTALL_LOG
+        yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y key-manager >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -ne 0 ]; then
+            echo "WARNING: yum install key-manager failed, key-manager may not be available" >>$ZSTACK_INSTALL_LOG
+        fi
+    fi
+
+    if systemctl list-unit-files crypto-daemon.service 2>/dev/null | grep -q '^crypto-daemon.service'; then
+        systemctl enable crypto-daemon.service >>$ZSTACK_INSTALL_LOG 2>&1
+        systemctl start crypto-daemon.service >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    if systemctl list-unit-files key-tool.service 2>/dev/null | grep -q '^key-tool.service'; then
+        systemctl enable key-tool.service >>$ZSTACK_INSTALL_LOG 2>&1
+        systemctl start key-tool.service >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+    pass
+} >>$ZSTACK_INSTALL_LOG 2>&1
+
 
 is_enable_chronyd(){
     echo_subtitle "Enable chronyd"
@@ -2403,6 +2430,7 @@ install_zstack(){
     # zsphere is zsv env
     if [ x"$ZSV_INSTALL" = x"y" ]; then
         show_spinner iz_install_zsphere_tools
+        show_spinner iz_install_key_manager
     fi
 }
 
