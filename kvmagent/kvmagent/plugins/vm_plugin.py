@@ -9516,7 +9516,9 @@ class VmPlugin(kvmagent.KvmAgent):
                     logger.debug('vm[uuid:%s, name:%s] is already running' % (cmd.vmInstanceUuid, vm.get_name()))
                     return
                 else:
-                    vm.stop(strategy='cold')
+                    # Work Around: libvirt 8.0.0 is not support '--keep-swtpm' params (unless upgrade libvirt to 10.10)
+                    # We should keep TPM state file before start VM
+                    vm.stop(strategy='cold', undefine=False)
 
             vm = Vm.from_StartVmCmd(cmd)
             if getattr(cmd, 'HostMinimumFreeMemorySize', None):
