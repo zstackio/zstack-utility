@@ -11,6 +11,7 @@ install_requires = [
 ]
 if platform.machine() == 'x86_64':
     install_requires.append("grpcio==1.27.2")
+    install_requires.append("protobuf==3.12.4")
 
 setup(name='kvmagent',
       version=version,
