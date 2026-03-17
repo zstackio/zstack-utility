@@ -10,13 +10,13 @@ class Tianshu(GPUBase):
     VENDOR_IDS = {"1e3e"}
     PCI_NAME_KEYWORDS = {"1e3e"}
     CLI_TOOL = "ixsmi"
-    DEVICE_TYPES = {"3D controller", "VGA compatible controller"}
+    DEVICE_TYPES = {"3D controller", "VGA compatible controller", "Processing accelerators"}
 
     @classmethod
     def get_pci_only_candidates(cls, device_ids, device_names):
         """
         When ixsmi is not available, identify Tianshu GPU by PCI: vendor 1e3e,
-        class 3D controller or VGA compatible controller.
+        class 3D controller, VGA compatible controller, or Processing accelerators.
         """
         from zstacklib.utils.pci import normalize_pci_address
 

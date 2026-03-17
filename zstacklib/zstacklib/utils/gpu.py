@@ -820,7 +820,8 @@ def _gpu_device_processor(pci_device_to, context):
                 and is_valid_video_controller(pci_device_to.device)):
             pci_device_to.type = GPU_TYPE_VIDEO_CONTROLLER
         elif ((PCI_CLASS_PROCESSING_ACCEL in pci_device_to.type or (
-                pci_device_mapper.get(PCI_CLASS_PROCESSING_ACCEL) is not None))
+                pci_device_mapper.get(PCI_CLASS_PROCESSING_ACCEL) is not None
+                and pci_device_mapper.get(PCI_CLASS_PROCESSING_ACCEL) in pci_device_to.type))
               and is_valid_processing_accelerator(pci_device_to.device)):
             pci_device_to.type = GPU_TYPE_PROCESSING_ACCELERATORS
         elif ((PCI_CLASS_COPROCESSOR in pci_device_to.type or (
