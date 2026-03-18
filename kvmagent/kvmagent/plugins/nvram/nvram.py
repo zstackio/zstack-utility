@@ -3,7 +3,7 @@ import errno
 import os
 import os.path
 import pipes
-import shutil
+import time
 
 from kvmagent.plugins.nvram import nvram_common, nvram_sblk, nvram_local
 from kvmagent.plugins.vms import vm_host_file
@@ -107,14 +107,16 @@ class NvRamHostFile(object):
             logger.debug('remove nvram delete token in %s' % token_path)
 
     def cleanup(self, vm_uuid):
-        # add 'delete' token
+        # type: (str) -> None
+        # add 'delete' token with timestamp (milliseconds)
         token_path = nvram_common.build_nvram_delete_token_file_path(vm_uuid)
         token_dir = os.path.dirname(token_path)
         if not os.path.isdir(token_dir):
             return
+        timestamp_ms = int(time.time() * 1000)
         with open(token_path, 'w') as fs:
-            fs.write('true\n')
-            logger.debug('add nvram delete token in %s' % token_path)
+            fs.write('%d\n' % timestamp_ms)
+            logger.debug('add nvram delete token with timestamp %d in %s' % (timestamp_ms, token_path))
 
     def read_file(self, to):
         # type: (vm_host_file.VmHostFileTO) -> vm_host_file.VmHostFileTO
