@@ -4,3 +4,4 @@
 ** xref:ha_plugin/index.adoc[]
 *** xref:ha_plugin/sharedblock.adoc[]
 *** xref:ha_plugin/ceph.adoc[]
+** xref:network/flat_eip.adoc[]
