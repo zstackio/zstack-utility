@@ -104,9 +104,12 @@ def write_vm_host_file(to):
     if not is_allowed_paths(to.path):
         to.error = "%s is not in allowed path" % to.path
         return
-    if not to.contentBase64:
+    if to.fileFormat == 'PrepareOnly':
+        _prepare_vm_host_file(to.path)
         return
 
+    if not to.contentBase64:
+        raise ValueError("contentBase64 is required for fileFormat: %s" % to.fileFormat)
     try:
         # raw_data is str in python 2.7
         raw_data = base64.b64decode(to.contentBase64) # type: str
@@ -194,3 +197,13 @@ def _write_vm_host_file_with_targz_format(path, raw_data):
     finally:
         if os.path.exists(tmp_work_dir):
             shutil.rmtree(tmp_work_dir)
+
+def _prepare_vm_host_file(path):
+    # type: (str) -> None
+    # only create folder
+    target_dir = os.path.dirname(path)
+    try:
+        os.makedirs(target_dir)
+    except OSError as e:
+        if e.errno != errno.EEXIST:  # ignore folder already exists error
+            raise
