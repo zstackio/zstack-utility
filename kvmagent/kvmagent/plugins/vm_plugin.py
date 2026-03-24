@@ -244,6 +244,10 @@ def _check_tls_ready(dest_ip, vm_uuid):
     return True
 
 
+# libvirt.py is in old version, (since virsh has been upgrade) we should use these constants
+VIR_DOMAIN_UNDEFINE_TPM = 1 << 5
+VIR_DOMAIN_UNDEFINE_KEEP_TPM = 1 << 6
+
 class RetryException(Exception):
     pass
 
@@ -4198,7 +4202,7 @@ class Vm(object):
     @staticmethod
     def _get_undefine_flags(keep_nvram, include_cleanup_flags=True):
         nvram_flag_name = "VIR_DOMAIN_UNDEFINE_KEEP_NVRAM" if keep_nvram else "VIR_DOMAIN_UNDEFINE_NVRAM"
-        attrs = [nvram_flag_name]
+        attrs = [nvram_flag_name, "VIR_DOMAIN_UNDEFINE_KEEP_TPM"]
         if include_cleanup_flags:
             attrs = ["VIR_DOMAIN_UNDEFINE_MANAGED_SAVE", "VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA"] + attrs
 
