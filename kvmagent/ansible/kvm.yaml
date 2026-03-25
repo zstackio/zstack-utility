@@ -27,6 +27,23 @@
         - "{{kvm_root}}"
         - "{{virtenv_path}}"
 
+    # ZSTAC-83157: Install juicefs for Model Center storage mounting
+    - name: set juicefs binary name based on architecture
+      set_fact:
+        juicefs_binary: "{{ 'juicefs-arm64' if ansible_architecture == 'aarch64' else 'juicefs-amd64' }}"
+
+    - name: check if juicefs binary exists in package
+      stat: path="{{juicefs_binary}}"
+      register: juicefs_pkg_stat
+      delegate_to: localhost
+
+    - name: copy juicefs binary to host
+      copy: src="{{juicefs_binary}}" dest=/usr/local/bin/juicefs mode=755
+      when: juicefs_pkg_stat.stat.exists
+
+    - name: create juicefs cache directory
+      file: path=/var/cache/juicefs state=directory mode=755
+
     - name: install kvm related packages on RedHat based OS from user defined repo
       when: ansible_os_family == 'RedHat' and yum_repos != 'false'
       shell: "yum --disablerepo=* --enablerepo={{yum_repos}} --nogpgcheck install -y qemu-kvm bridge-utils wget qemu-img libvirt-python libvirt nfs-utils vconfig libvirt-client net-tools iscsi-initiator-utils lighttpd dnsmasq iproute sshpass rsync"
