@@ -27,7 +27,20 @@ def is_allowed_paths(path):
     # type: (str) -> bool
     if not path:
         return False
-    return path.startswith(tuple(ALLOWED_PATH_PREFIXS))
+    raw_segments = [seg for seg in path.split(os.sep) if seg]
+    if '..' in raw_segments:
+        return False
+
+    normalized = os.path.normpath(path)
+    real_path = os.path.realpath(normalized)
+    for prefix in ALLOWED_PATH_PREFIXS:
+        # normpath strips trailing slash, e.g. "/var/lib/" -> "/var/lib"
+        norm_prefix = os.path.normpath(prefix)
+        real_prefix = os.path.realpath(norm_prefix)
+        if real_path.startswith(real_prefix + os.sep):
+            return True
+
+    return False
 
 def read_vm_host_file_base64(to):
     # type: (VmHostFileTO) -> None
