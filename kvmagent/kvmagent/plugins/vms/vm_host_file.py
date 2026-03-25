@@ -7,6 +7,9 @@ import tarfile
 import tempfile
 
 from zstacklib.utils import bash
+from zstacklib.utils import log
+
+logger = log.get_logger(__name__)
 
 ALLOWED_PATH_PREFIXS = [
     '/var/lib/libvirt/qemu/nvram/',
@@ -15,11 +18,25 @@ ALLOWED_PATH_PREFIXS = [
 
 ALLOWED_FILE_MAX_SIZE_BYTES = 16777216 # 16MB
 
+class VmHostFileContentFormat(object):
+    """file format constants, mirrors org.zstack.header.vm.additions.VmHostFileContentFormat"""
+    RAW = 'Raw'
+    TARBALL_GZIP = 'TarballGzip'
+
+
+class VmHostFileOperation(object):
+    """operation constants, mirrors org.zstack.header.vm.additions.VmHostFileOperation"""
+    WRITE = 'Write'
+    PREPARE = 'Prepare'
+    DELETE = 'Delete'
+
+
 class VmHostFileTO(object):
     def __init__(self):
         self.path = ''
         self.type = ''
         self.fileFormat = ''
+        self.operation = ''
         self.contentBase64 = ''
         self.error = None  # type: str
 
@@ -112,15 +129,38 @@ def read_vm_host_file_targz(to):
         if os.path.exists(tmp_dir):
             shutil.rmtree(tmp_dir)
 
+def _resolve_operation(to):
+    # type: (VmHostFileTO) -> str
+    """Resolve the operation from the TO fields.
+
+    New MN sends ``operation`` explicitly (Write / Prepare / Delete).
+    """
+    if to.operation:
+        return to.operation
+
+    return VmHostFileOperation.WRITE
+
+
 def write_vm_host_file(to):
     # type: (VmHostFileTO) -> None
     if not is_allowed_paths(to.path):
         to.error = "%s is not in allowed path" % to.path
         return
-    if to.fileFormat == 'PrepareOnly':
-        _prepare_vm_host_file(to.path)
-        return
 
+    operation = _resolve_operation(to)
+
+    if operation == VmHostFileOperation.PREPARE:
+        _prepare_vm_host_file(to.path)
+    elif operation == VmHostFileOperation.DELETE:
+        _delete_vm_host_file(to.path)
+    elif operation == VmHostFileOperation.WRITE:
+        _write_vm_host_file(to)
+    else:
+        raise ValueError("Unsupported operation: %s" % operation)
+
+
+def _write_vm_host_file(to):
+    # type: (VmHostFileTO) -> None
     if not to.contentBase64:
         raise ValueError("contentBase64 is required for fileFormat: %s" % to.fileFormat)
     try:
@@ -129,9 +169,10 @@ def write_vm_host_file(to):
     except Exception as e:
         raise ValueError("Failed to decode base64 content: %s" % str(e))
 
-    if to.fileFormat == 'Raw':
+    file_format = to.fileFormat or VmHostFileContentFormat.RAW
+    if file_format == VmHostFileContentFormat.RAW:
         _write_vm_host_file_with_raw_format(to.path, raw_data)
-    elif to.fileFormat == 'TarballGzip':
+    elif file_format == VmHostFileContentFormat.TARBALL_GZIP:
         _write_vm_host_file_with_targz_format(to.path, raw_data)
     else:
         raise ValueError("Unsupported fileFormat: %s" % to.fileFormat)
@@ -210,6 +251,46 @@ def _write_vm_host_file_with_targz_format(path, raw_data):
     finally:
         if os.path.exists(tmp_work_dir):
             shutil.rmtree(tmp_work_dir)
+
+
+def _delete_vm_host_file(path):
+    # type: (str) -> None
+    """Delete a file or directory at *path*.
+
+    If *path* is a directory it is removed recursively.  If *path* does not
+    exist the call is a no-op so the operation is idempotent.
+
+    After removing the target, any empty ancestor directories that are still
+    inside the ALLOWED_PATH_PREFIXS are cleaned up as well.
+    """
+    if not os.path.exists(path):
+        logger.debug('delete vm host file skipped, path does not exist: %s' % path)
+        return
+
+    if os.path.isdir(path):
+        shutil.rmtree(path)
+        logger.debug('deleted vm host file directory: %s' % path)
+    else:
+        os.remove(path)
+        logger.debug('deleted vm host file: %s' % path)
+
+    parent = os.path.dirname(path.rstrip('/'))
+    for prefix in ALLOWED_PATH_PREFIXS:
+        prefix = prefix.rstrip('/')
+        if not parent.startswith(prefix):
+            continue
+        while parent != prefix and parent > prefix:
+            if not os.path.isdir(parent):
+                break
+            try:
+                os.rmdir(parent)
+                logger.debug('cleaned up empty ancestor directory: %s' % parent)
+            except OSError:
+                # directory not empty or other error: stop climbing
+                break
+            parent = os.path.dirname(parent)
+        break
+
 
 def _prepare_vm_host_file(path):
     # type: (str) -> None
