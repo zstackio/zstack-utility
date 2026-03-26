@@ -7844,7 +7844,15 @@ class Vm(object):
 
             if cmd.tpm is not None:
                 tpm_element = e(devices, 'tpm', None, {'model': 'tpm-crb'})
-                e(tpm_element, 'backend', None, {'type': 'emulator', 'version': '2.0'})
+                backend_element = e(tpm_element, 'backend', None, {'type': 'emulator', 'version': '2.0'})
+
+                secret = getattr(cmd.tpm, "secretUuid", '') # type: str
+                if secret:
+                    try:
+                        secret = str(uuid.UUID(secret))
+                    except (TypeError, ValueError):
+                        raise kvmagent.KvmError('invalid TPM secretUuid: %s' % secret)
+                    e(backend_element, 'encryption', None, {'secret': secret})
 
             elements['devices'] = devices
 
