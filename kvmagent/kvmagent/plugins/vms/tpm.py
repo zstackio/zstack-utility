@@ -2,6 +2,13 @@ import re
 
 from kvmagent.plugins.vms import vm_host_file
 
+from zstacklib.utils import shell
+
+def is_virsh_support_keep_tpm():
+    return shell.run("virsh undefine --help | grep -q '\\-\\-keep-tpm'") == 0
+
+VIRSH_SUPPORT_KEEP_TPM = is_virsh_support_keep_tpm()
+
 class TpmStateHostFile(object):
     def __init__(self):
         pass

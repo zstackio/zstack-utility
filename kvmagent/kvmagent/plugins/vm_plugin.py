@@ -4202,7 +4202,7 @@ class Vm(object):
     @staticmethod
     def _get_undefine_flags(keep_nvram, include_cleanup_flags=True):
         nvram_flag_name = "VIR_DOMAIN_UNDEFINE_KEEP_NVRAM" if keep_nvram else "VIR_DOMAIN_UNDEFINE_NVRAM"
-        attrs = [nvram_flag_name, "VIR_DOMAIN_UNDEFINE_KEEP_TPM"]
+        attrs = [nvram_flag_name]
         if include_cleanup_flags:
             attrs = ["VIR_DOMAIN_UNDEFINE_MANAGED_SAVE", "VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA"] + attrs
 
@@ -4210,6 +4210,8 @@ class Vm(object):
         for attr in attrs:
             if hasattr(libvirt, attr):
                 flags |= getattr(libvirt, attr)
+        if tpm.VIRSH_SUPPORT_KEEP_TPM:
+            flags |= getattr(libvirt, "VIR_DOMAIN_UNDEFINE_KEEP_TPM", VIR_DOMAIN_UNDEFINE_KEEP_TPM)
         return flags
 
     def _undefine_for_firmware_cleanup(self):
@@ -9518,6 +9520,19 @@ class VmPlugin(kvmagent.KvmAgent):
 
     def _start_vm(self, cmd):
         try:
+            if os.path.exists(os.path.join(LIBVIRT_DEFINED_XML_DIR, cmd.vmInstanceUuid + ".xml")) \
+                    and not linux.get_vm_pid(cmd.vmInstanceUuid):
+                @LibvirtAutoReconnect
+                def undefine_previous_domain(conn):
+                    flags = Vm._get_undefine_flags(keep_nvram=True)
+                    conn.lookupByName(cmd.vmInstanceUuid).undefineFlags(flags)
+
+                try:
+                    undefine_previous_domain()
+                except libvirt.libvirtError as ex:
+                    if ex.get_error_code() != libvirt.VIR_ERR_NO_DOMAIN:
+                        logger.warn('undefine previous domain[%s] before start failed: %s' % (cmd.vmInstanceUuid, str(ex)))
+
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
 
             if vm:
