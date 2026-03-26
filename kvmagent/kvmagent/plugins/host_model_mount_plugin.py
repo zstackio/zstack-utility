@@ -6,10 +6,9 @@ import re
 import uuid
 import shlex
 import traceback
-import jsonobject
 from urllib.parse import urlsplit, urlunsplit
 from kvmagent import kvmagent
-from zstacklib.utils import log, shell, jsonutils
+from zstacklib.utils import log, shell, jsonobject, http
 
 logger = log.get_logger(__name__)
 
@@ -176,7 +175,7 @@ class HostModelMountPlugin(kvmagent.KvmAgent):
             # Validate modelCenterUuid format to prevent path traversal
             if not cmd.modelCenterUuid or not UUID_RE.fullmatch(cmd.modelCenterUuid):
                 rsp.error = "invalid modelCenterUuid"
-                return jsonutils.dumps(rsp)
+                return jsonobject.dumps(rsp)
 
             # Ensure base directory exists
             ensure_mount_base_dir()
@@ -188,7 +187,7 @@ class HostModelMountPlugin(kvmagent.KvmAgent):
 
             if os.path.commonpath([base_real, target_real]) != base_real:
                 rsp.error = "invalid mount path"
-                return jsonutils.dumps(rsp)
+                return jsonobject.dumps(rsp)
 
             rsp.mountPoint = mount_point
 
@@ -206,7 +205,7 @@ class HostModelMountPlugin(kvmagent.KvmAgent):
                 str(e), traceback.format_exc()))
             rsp.error = str(e)
 
-        return jsonutils.dumps(rsp)
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def list_model_centers(self, req):
@@ -230,4 +229,4 @@ class HostModelMountPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
-        return jsonutils.dumps(rsp)
+        return jsonobject.dumps(rsp)

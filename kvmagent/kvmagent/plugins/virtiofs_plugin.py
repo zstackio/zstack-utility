@@ -242,10 +242,9 @@ def unmount_virtiofs_in_vm(domain, tag):
         # Find mount point by tag from /proc/mounts
         # /proc/mounts format: device mount_point fs_type options
         # For virtiofs: model-xxx /mnt/models/qwen virtiofs rw,...
-        # We need to match: ^{tag}\s+\S+\s+virtiofs
+        # Use awk -v to pass variable safely, avoiding nested quote issues
         safe_tag = shlex.quote(tag)
-        # Use awk to properly parse fields and match device name with virtiofs type
-        find_mount_cmd = "awk '$1==%s && $3==\"virtiofs\" {print $2}' /proc/mounts" % safe_tag
+        find_mount_cmd = "awk -v tag=%s '$1==tag && $3==\"virtiofs\" {print $2}' /proc/mounts" % safe_tag
         exitcode, mount_path, stderr = qga.guest_exec_bash(find_mount_cmd)
 
         if exitcode != 0 or not mount_path or not mount_path.strip():
