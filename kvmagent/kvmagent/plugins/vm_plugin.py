@@ -11496,6 +11496,12 @@ class VmPlugin(kvmagent.KvmAgent):
 
         vm = get_vm_by_uuid(cmd.snapshotJobs[0].vmInstanceUuid, exception_if_not_existing=False)
         try:
+            # backup vm host files (NvRam, TpmState, etc.) alongside snapshot
+            try:
+                vm_host_file.backup_vm_host_files(getattr(cmd, 'vmHostFileBackupJobs', None))
+            except Exception as e:
+                raise kvmagent.KvmError("failed to backup vm host files: %s" % str(e))
+
             vm_state = Vm.VM_STATE_SHUTDOWN if vm is None else vm.state
             expected_snapshot_state = LIVE_SNAPSHOT if cmd.snapshotJobs[0].live else OFFLINE_SNAPSHOT
             if vm_state not in Vm.SNAPSHOT_VM_STATE_DICT[expected_snapshot_state]:

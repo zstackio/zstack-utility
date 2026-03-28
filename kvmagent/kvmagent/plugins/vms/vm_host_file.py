@@ -301,3 +301,78 @@ def _prepare_vm_host_file(path):
     except OSError as e:
         if e.errno != errno.EEXIST:  # ignore folder already exists error
             raise
+
+
+def backup_vm_host_files(backup_jobs):
+    """Execute a list of VmHostFileBackupJob: copy srcPath -> destPath.
+
+    Each job copies a file or directory.  If destPath already exists it is
+    removed first so that the copy is always clean.  Both srcPath and destPath
+    must pass ``is_allowed_paths()`` security check.
+
+    :param backup_jobs: list of VmHostFileBackupJob (jsonobject or dict),
+                        may be None or empty.
+    """
+    if not backup_jobs:
+        return
+
+    for job in backup_jobs:
+        # compatible with both dict and jsonobject dynamic attribute access
+        if isinstance(job, dict):
+            src = job.get('srcPath')
+            dst = job.get('destPath')
+            file_type = job.get('type')
+        else:
+            src = getattr(job, 'srcPath', None)
+            dst = getattr(job, 'destPath', None)
+            file_type = getattr(job, 'type', None)
+
+        if not src or not dst:
+            raise Exception("VmHostFileBackupJob srcPath and destPath are required")
+
+        if not is_allowed_paths(src):
+            raise Exception("%s is not in allowed path" % src)
+        if not is_allowed_paths(dst):
+            raise Exception("%s is not in allowed path" % dst)
+
+        if not os.path.exists(src):
+            raise Exception("backup source %s does not exist" % src)
+
+        logger.debug("VmHostFileBackupJob[type=%s]: copy %s -> %s" % (file_type, src, dst))
+
+        # remove existing dest first to ensure a clean copy
+        dst_normalized = dst.rstrip('/')
+        src_normalized = src.rstrip('/')
+        src_real = os.path.realpath(src_normalized)
+        dst_real = os.path.realpath(dst_normalized)
+
+        if src_real == dst_real:
+            raise Exception("srcPath and destPath must not be the same: %s" % src)
+        if src_real.startswith(dst_real + os.sep) or dst_real.startswith(src_real + os.sep):
+            raise Exception("srcPath and destPath must not overlap: %s -> %s" % (src, dst))
+
+        if os.path.exists(dst_normalized):
+            if os.path.isdir(dst_normalized):
+                shutil.rmtree(dst_normalized)
+            else:
+                os.remove(dst_normalized)
+
+        # ensure parent directory exists
+        dst_parent = os.path.dirname(dst_normalized)
+        if dst_parent:
+            try:
+                os.makedirs(dst_parent, 0o755)
+            except OSError as e:
+                if e.errno != errno.EEXIST:
+                    raise
+
+        # copy file or directory
+        if os.path.isdir(src_normalized):
+            for root, dirs, files in os.walk(src_normalized):
+                for name in dirs + files:
+                    p = os.path.join(root, name)
+                    if os.path.islink(p):
+                        raise Exception("Symbolic link is not allowed in backup source: %s" % p)
+            shutil.copytree(src_normalized, dst_normalized)
+        else:
+            shutil.copy2(src_normalized, dst_normalized)
