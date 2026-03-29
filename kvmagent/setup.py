@@ -8,6 +8,7 @@ install_requires = [
     "prometheus_client==0.17.1",
     "libvirt-python>=6.0.0,<=6.2.0",
     "python-cephlibs",
+    "setuptools>=65.5.1",
 ]
 if platform.machine() == 'x86_64':
     install_requires.append("grpcio==1.27.2")
