@@ -8,6 +8,7 @@ install_requires = [
     "prometheus_client",
     "typing",
     "future",
+    "setuptools==21.0.0",   # Keep the same setuptools version as zstacklib
 ]
 if platform.machine() == 'x86_64':
     install_requires.append("grpcio==1.27.2")
