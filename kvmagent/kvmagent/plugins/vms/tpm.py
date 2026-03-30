@@ -47,5 +47,5 @@ def check_tpm_state_vm_host_file_path_format(path):
 
     path = path.rstrip('/')
     uuid_pattern = r'[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}'
-    pattern = r'^/var/lib/libvirt/swtpm/({0})$'.format(uuid_pattern)
+    pattern = r'^/var/lib/libvirt/swtpm/({0})(\.snapshot-backup)?$'.format(uuid_pattern)
     return bool(re.match(pattern, path))

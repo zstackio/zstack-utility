@@ -26,7 +26,7 @@ def extract_vm_uuid_from_nvram_vm_host_file_path(path):
     if not path:
         return ''
     uuid_pattern = r'[a-fA-F0-9]{8}[a-fA-F0-9]{4}[a-fA-F0-9]{4}[a-fA-F0-9]{4}[a-fA-F0-9]{12}'
-    pattern = r'^/var/lib/libvirt/qemu/nvram/({0})-host-files/({0})\.fd$'.format(uuid_pattern)
+    pattern = r'^/var/lib/libvirt/qemu/nvram/({0})-host-files/({0})\.fd(\.snapshot-backup)?$'.format(uuid_pattern)
     match = re.match(pattern, path)
     if not match:
         return ''
