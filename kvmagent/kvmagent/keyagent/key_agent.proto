@@ -7,6 +7,8 @@ service KeyAgentService {
   rpc GetPublicKey(GetPublicKeyRequest) returns (GetPublicKeyResponse);
   rpc CheckEnvelopeKey(CheckEnvelopeKeyRequest) returns (CheckEnvelopeKeyResponse);
   rpc EnsureSecret(EnsureSecretRequest) returns (EnsureSecretResponse);
+  rpc GetSecret(GetSecretRequest) returns (GetSecretResponse);
+  rpc DeleteSecret(DeleteSecretRequest) returns (DeleteSecretResponse);
 }
 
 message CreateEnvelopeKeyRequest {}
@@ -34,9 +36,29 @@ message EnsureSecretRequest {
   string description = 2;
   string vm_uuid = 3;
   string purpose = 4;
-  string provider_name = 5;
+  string key_version = 5;
 }
 
 message EnsureSecretResponse {
   string secret_uuid = 1;
 }
+
+message GetSecretRequest {
+  string vm_uuid = 1;
+  string key_version = 2;
+  // purpose distinguishes which libvirt secret namespace to query (e.g. vtpm, luks, ...).
+  string purpose = 3;
+}
+
+message GetSecretResponse {
+  string secret_uuid = 1;
+}
+
+message DeleteSecretRequest {
+  string vm_uuid = 1;
+  string key_version = 2;
+  // purpose distinguishes which libvirt secret namespace to delete.
+  string purpose = 3;
+}
+
+message DeleteSecretResponse {}
