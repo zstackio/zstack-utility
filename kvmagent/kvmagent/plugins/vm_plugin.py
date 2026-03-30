@@ -7715,6 +7715,10 @@ class Vm(object):
             e(qcmd, "qemu:arg", attrib={"value": "-qmp"})
             e(qcmd, "qemu:arg", attrib={"value": "unix:{}/{}.sock,server,nowait".format(QMP_SOCKET_PATH, cmd.vmInstanceUuid)})
 
+            if machine_type == 'q35' and HOST_ARCH == 'x86_64' and cmd.bootMode == "UEFI":
+                e(qcmd, "qemu:arg", attrib={"value": "-global"})
+                e(qcmd, "qemu:arg", attrib={"value": "mch.extended-tseg-mbytes=288"})
+
             args = cmd.addons['qemuCommandLine']
             if args is not None:
                 for arg in args:
