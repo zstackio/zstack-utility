@@ -40,6 +40,12 @@ class VmHostFileTO(object):
         self.contentBase64 = ''
         self.error = None  # type: str
 
+class VmHostFileBackupJob(object):
+    def __init__(self):
+        self.srcPath = None   # type: str
+        self.destPath = None  # type: str
+        self.type = None      # type: str
+
 def is_allowed_paths(path):
     # type: (str) -> bool
     if not path:
