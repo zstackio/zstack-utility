@@ -36,7 +36,9 @@ message EnsureSecretRequest {
   string description = 2;
   string vm_uuid = 3;
   string purpose = 4;
-  string key_version = 5;
+  int32 key_version = 5;
+  string usage_instance = 6;
+  string secret_uuid = 7;
 }
 
 message EnsureSecretResponse {
@@ -45,9 +47,9 @@ message EnsureSecretResponse {
 
 message GetSecretRequest {
   string vm_uuid = 1;
-  string key_version = 2;
-  // purpose distinguishes which libvirt secret namespace to query (e.g. vtpm, luks, ...).
+  int32 key_version = 2;
   string purpose = 3;
+  string usage_instance = 4;
 }
 
 message GetSecretResponse {
@@ -56,9 +58,9 @@ message GetSecretResponse {
 
 message DeleteSecretRequest {
   string vm_uuid = 1;
-  string key_version = 2;
-  // purpose distinguishes which libvirt secret namespace to delete.
+  int32 key_version = 2;
   string purpose = 3;
+  string usage_instance = 4;
 }
 
 message DeleteSecretResponse {}
