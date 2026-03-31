@@ -413,7 +413,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         self.imagestore_client = ImageStoreClient()
 
     def stop(self):
-        pass
+        """Stop shared block plugin."""
+        # no-op: no long-lived resources to clean up
+        return
 
     @kvmagent.replyerror
     def check_disks(self, req):
