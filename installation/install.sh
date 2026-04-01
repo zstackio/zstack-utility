@@ -2242,7 +2242,7 @@ install_system_libs(){
 }
 
 iz_install_key_manager(){
-    if [ "$BASEARCH" != 'x86_64' ]; then
+    if [ "$BASEARCH" != 'x86_64' ] && [ "$BASEARCH" != 'aarch64' ]; then
         return
     fi
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG

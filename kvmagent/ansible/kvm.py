@@ -429,8 +429,8 @@ def install_kvm_pkg():
         }
 
         releasever_arch_rpms = {
-            'ky10sp3': {'x86_64': 'key-manager'},
-            'ky10sp3.2403': {'x86_64': 'key-manager'}
+            'ky10sp3': {'x86_64': 'key-manager', 'aarch64': 'key-manager'},
+            'ky10sp3.2403': {'x86_64': 'key-manager', 'aarch64': 'key-manager'}
         }
 
         # handle zstack_repo
@@ -459,6 +459,11 @@ def install_kvm_pkg():
             dep_list = common_dep_list
             update_list = common_update_list
             no_update_list = common_no_update_list
+
+            arch_update_rpm_list = releasever_arch_rpms.get(releasever, {}).get(
+                host_info.host_arch, '')
+            if arch_update_rpm_list:
+                update_list = "%s %s" % (update_list, arch_update_rpm_list)
 
             # libvirt does not need to be updated
             command = "which virsh"
@@ -1265,7 +1270,7 @@ def set_gpu_blacklist():
     run_remote_command(command, host_post_info)
 
 def start_key_agent():
-    if host_info.host_arch != 'x86_64':
+    if host_info.host_arch not in ('x86_64', 'aarch64'):
         return
     if chroot_env != 'false':
         return
