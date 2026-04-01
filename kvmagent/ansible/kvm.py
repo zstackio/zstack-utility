@@ -694,6 +694,18 @@ def install_kvm_pkg():
     else:
         error("unsupported OS!")
 
+def initialize_keymanager():
+
+    # For MN-as-compute scenarios, the keymanager user is usually
+    # created during key-manager installation by Anaconda, but may
+    # still be missing from the libvirt supplementary group after
+    # the key-manager package transaction, because libvirt hasn't
+    # been installed yet. Now add again after libvirt installation.
+    command = "if getent group libvirt >/dev/null 2>&1 && id -u keymanager >/dev/null 2>&1; then usermod -a -G libvirt keymanager; fi"
+    host_post_info.post_label = "ansible.shell.user.mod"
+    host_post_info.post_label_param = "keymanager->libvirt"
+    run_remote_command(command, host_post_info)
+
 def copy_tools():
     """copy binary tools"""
     tool_list = ['collectd_exporter', 'node_exporter', 'ipmi_exporter', 'dnsmasq', 'zwatch-vm-agent', 'zwatch-vm-agent_freebsd_amd64', 'pushgateway', 'sas3ircu', 'zs-raid-heartbeat']
@@ -1283,6 +1295,7 @@ def start_key_agent():
 
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
+initialize_keymanager()
 copy_tools()
 copy_kvm_files()
 copy_exporter_tools()
