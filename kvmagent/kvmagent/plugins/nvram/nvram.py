@@ -146,8 +146,11 @@ def cleanup_nvram_links_if_needed(install_path):
     extension.cleanup()
 
 # use for libvirt
-def build_nvram_fd_path(vm_uuid):
+def build_nvram_fd_path(vm_uuid, need_register_nvram = False):
+    # type: (str, bool) -> str
     nvram_fd_path = '/var/lib/libvirt/qemu/nvram/%s.fd' % vm_uuid
+    if not need_register_nvram:
+        return nvram_fd_path
 
     nvram_host_file_path = nvram_common.build_nvram_vm_host_file_path(vm_uuid)
     if os.path.exists(os.path.dirname(nvram_host_file_path)):
