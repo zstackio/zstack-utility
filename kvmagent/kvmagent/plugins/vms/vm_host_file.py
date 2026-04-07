@@ -154,6 +154,7 @@ def write_vm_host_file(to):
         return
 
     operation = _resolve_operation(to)
+    logger.debug('try to %s VmHostFile %s' % (operation, to.path))
 
     if operation == VmHostFileOperation.PREPARE:
         _prepare_vm_host_file(to.path)

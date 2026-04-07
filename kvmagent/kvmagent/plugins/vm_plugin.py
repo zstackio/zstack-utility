@@ -1427,6 +1427,7 @@ class TakeVmConsoleScreenshotCmd(kvmagent.AgentCommand):
 
 
 class TakeVmConsoleScreenshotRsp(kvmagent.AgentResponse):
+    @log.sensitive_fields("imageData")
     def __init__(self):
         super(TakeVmConsoleScreenshotRsp, self).__init__()
         self.imageData = None
@@ -1452,12 +1453,14 @@ class ReadVmHostFileContentCmd(kvmagent.AgentCommand):
         self.hostFiles = []  # type: list[vm_host_file.VmHostFileTO]
 
 class ReadVmHostFileContentResponse(kvmagent.AgentResponse):
+    @log.sensitive_fields("hostFiles")
     def __init__(self):
         super(ReadVmHostFileContentResponse, self).__init__()
         self.hostFiles = []  # type: list[vm_host_file.VmHostFileTO]
 
 
 class WriteVmHostFileContentCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("hostFiles")
     def __init__(self):
         super(WriteVmHostFileContentCmd, self).__init__()
         self.hostFiles = []  # type: list[vm_host_file.VmHostFileTO]
