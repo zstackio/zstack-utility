@@ -407,6 +407,18 @@ class GPUBase(object):
     # Virtualization Capabilities Detection
     # ==========================================================================
 
+    @staticmethod
+    def set_capability_virt_metadata(
+            capability_info,
+            virt_status,
+            virt_state,
+            virt_mode=None,
+            virt_capabilities=None):
+        capability_info['virtStatus'] = virt_status
+        capability_info['virtState'] = virt_state
+        capability_info['virtMode'] = virt_mode
+        capability_info['virtCapabilities'] = list(virt_capabilities or [])
+
     @classmethod
     def detect_vfio_mdev_capability(cls, pci_device_to):
         """
@@ -441,6 +453,24 @@ class GPUBase(object):
             tuple: (bool, dict) - (is_supported, capability_info)
                 is_supported: True if sriov is supported
                 capability_info: dict with additional info (e.g., {'virtStatus': 'SRIOV_VIRTUALIZABLE', 'maxPartNum': '...'})
+        """
+        return False, {}
+
+    @classmethod
+    def detect_tensorfusion_capability(cls, pci_device_to):
+        """
+        Detect if the GPU device supports TensorFusion virtualization.
+
+        Override to implement vendor-specific TensorFusion detection logic.
+        This method is called by the GPU processor to detect capabilities (lowest priority).
+
+        Args:
+            pci_device_to: PciDeviceTO object representing the GPU device
+
+        Returns:
+            tuple: (bool, dict) - (is_supported, capability_info)
+                is_supported: True if TensorFusion is supported
+                capability_info: dict with additional info (e.g., {'virtStatus': 'TENSORFUSION_VIRTUALIZABLE'})
         """
         return False, {}
 

@@ -6627,6 +6627,13 @@ class Vm(object):
             if mdevDevices:
                 make_mdev_device(mdevDevices)
 
+            if isinstance(cmd.addons, dict):
+                shmemDevices = cmd.addons.get('pciDevice.dgpu')
+            else:
+                shmemDevices = cmd.addons['pciDevice.dgpu']
+            if shmemDevices:
+                make_shmem_device(shmemDevices)
+
             storageDevices = cmd.addons['storageDevice']
             if storageDevices:
                 make_storage_device(storageDevices)
@@ -6690,6 +6697,35 @@ class Vm(object):
                 source = e(hostdev, "source")
                 # convert mdevUuid to 8-4-4-4-12 format
                 e(source, "address", None, { "uuid": uuidhelper.to_full_uuid(mdevUuid) })
+
+        def make_shmem_device(shmemDevices):
+            devices = elements['devices']
+            for shmem in shmemDevices:
+                if isinstance(shmem, dict):
+                    mem_path = shmem.get('path')
+                    shmem_size = shmem.get('size')
+                else:
+                    mem_path = getattr(shmem, 'path', None)
+                    shmem_size = getattr(shmem, 'size', None)
+                if not mem_path:
+                    raise kvmagent.KvmError('dGPU shmem path is required but missing in StartVmCmd.addons[pciDevice.dgpu]')
+                normalized_mem_path = os.path.normpath(mem_path)
+                if not re.match(r'^/dev/shm/[a-zA-Z0-9_-]+$', normalized_mem_path):
+                    raise kvmagent.KvmError('invalid dGPU shmem path[%s], expected /dev/shm/*' % mem_path)
+                if normalized_mem_path != mem_path:
+                    raise kvmagent.KvmError('invalid dGPU shmem path[%s], path must be normalized under /dev/shm' % mem_path)
+                try:
+                    shmem_size = int(shmem_size)
+                except (TypeError, ValueError):
+                    raise kvmagent.KvmError('invalid dGPU shmem size[%s], must be an integer' % shmem_size)
+                if shmem_size <= 0:
+                    raise kvmagent.KvmError('invalid dGPU shmem size[%s], must be greater than 0' % shmem_size)
+                shmem_size_mb = (shmem_size + 1024 * 1024 - 1) // (1024 * 1024)
+
+                shmem_name = os.path.basename(normalized_mem_path)
+                shmem_el = e(devices, "shmem", attrib={"name": shmem_name})
+                e(shmem_el, "model", attrib={"type": "ivshmem-plain"})
+                e(shmem_el, "size", str(shmem_size_mb), attrib={"unit": "M"})
 
         def make_usb_device(usbDevices):
             def reserve_port(bus):

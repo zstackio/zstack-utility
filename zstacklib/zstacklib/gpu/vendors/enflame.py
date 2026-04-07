@@ -368,3 +368,6 @@ class Enflame(GPUBase):
             pci_device_to: The PCI device transfer object
         """
         pci_device_to.virtStatus = "UNVIRTUALIZABLE"
+        pci_device_to.virtState = "UNVIRTUALIZABLE"
+        pci_device_to.virtMode = ""
+        pci_device_to.virtCapabilities = []

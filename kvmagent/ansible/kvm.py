@@ -639,6 +639,18 @@ def copy_zs_scripts():
     _dst = '/usr/local/bin/'
     copy_to_remote(_src, _dst, "mode=755", host_post_info)
 
+@with_arch(todo_list=['x86_64'], host_arch=host_info.host_arch)
+def copy_tensor_fusion_worker():
+    """copy tensor-fusion-worker binary from mn_node to host_node"""
+    _src = '/opt/zstack-dvd/{}/{}/tensor-fusion-worker'.format(host_info.host_arch, releasever)
+    if os.path.exists(_src):
+        _dst = '/usr/local/bin/tensor-fusion-worker'
+        copy_to_remote(_src, _dst, "mode=755", host_post_info)
+    else:
+        handle_ansible_info("tensor-fusion-worker not found at {}, skipped copying to host".format(_src),
+                            host_post_info, "WARNING")
+
+
 @on_redhat_based(host_info.distro)
 def copy_grubaa64_efi():
     """copy grubaa64.efi from mn_node to bm2 gateway"""
@@ -976,6 +988,7 @@ copy_gpudriver()
 copy_ovmf_tools()
 copy_lsusb_scripts()
 copy_zs_scripts()
+copy_tensor_fusion_worker()
 copy_grubaa64_efi()
 copy_bond_conf()
 copy_i40e_driver()

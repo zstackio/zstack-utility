@@ -86,6 +86,7 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
             with mock.patch.object(plugin, '_get_sriov_info', return_value=False):
                 plugin._apply_virt_status_fallback([to], context)
         self.assertEqual(to.virtStatus, "UNVIRTUALIZABLE")
+        self.assertEqual(to.virtState, "UNVIRTUALIZABLE")
 
     def test_fallback_both_supported_virtualizable(self):
         """No virtStatus, both supported -> VFIO_MDEV_VIRTUALIZABLE."""
@@ -105,6 +106,8 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
             with mock.patch.object(plugin, '_get_sriov_info', side_effect=sriov):
                 plugin._apply_virt_status_fallback([to], context)
         self.assertEqual(to.virtStatus, "VFIO_MDEV_VIRTUALIZABLE")
+        self.assertEqual(to.virtState, "VIRTUALIZABLE")
+        self.assertEqual(to.virtCapabilities, ["VFIO_MDEV", "SRIOV"])
 
     def test_fallback_both_supported_already_virtualized(self):
         """Both supported but vfio_mdev_status is VFIO_MDEV_VIRTUALIZED -> keep it."""
@@ -124,6 +127,8 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
             with mock.patch.object(plugin, '_get_sriov_info', side_effect=sriov):
                 plugin._apply_virt_status_fallback([to], context)
         self.assertEqual(to.virtStatus, "SRIOV_VIRTUALIZABLE")
+        self.assertEqual(to.virtState, "VIRTUALIZABLE")
+        self.assertEqual(to.virtCapabilities, ["VFIO_MDEV", "SRIOV"])
 
     def test_fallback_only_sriov(self):
         """No virtStatus, only sriov (e.g. NIC) -> keep SRIOV_* from _get_sriov_info."""
@@ -139,6 +144,8 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
             with mock.patch.object(plugin, '_get_sriov_info', side_effect=sriov):
                 plugin._apply_virt_status_fallback([to], context)
         self.assertEqual(to.virtStatus, "SRIOV_VIRTUALIZABLE")
+        self.assertEqual(to.virtState, "VIRTUALIZABLE")
+        self.assertEqual(to.virtCapabilities, ["SRIOV"])
 
     def test_fallback_only_vfio_mdev(self):
         """No virtStatus, only vfio_mdev -> keep value from _get_vfio_mdev_info."""
@@ -154,6 +161,8 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
             with mock.patch.object(plugin, '_get_sriov_info', return_value=False):
                 plugin._apply_virt_status_fallback([to], context)
         self.assertEqual(to.virtStatus, "VFIO_MDEV_VIRTUALIZABLE")
+        self.assertEqual(to.virtState, "VIRTUALIZABLE")
+        self.assertEqual(to.virtCapabilities, ["VFIO_MDEV"])
 
     def test_fallback_already_has_virt_status(self):
         """Device already has virtStatus (e.g. from GPU ops) -> unchanged."""
@@ -164,6 +173,7 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
             with mock.patch.object(plugin, '_get_sriov_info', return_value=False):
                 plugin._apply_virt_status_fallback([to], context)
         self.assertEqual(to.virtStatus, "UNVIRTUALIZABLE")
+        self.assertEqual(to.virtState, "UNVIRTUALIZABLE")
 
     def test_fallback_empty_after_detection_gets_unvirtualizable(self):
         """virtStatus still empty after detection (e.g. detection didn't set it) -> UNVIRTUALIZABLE."""
@@ -182,3 +192,42 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
             with mock.patch.object(plugin, '_get_sriov_info', side_effect=sriov):
                 plugin._apply_virt_status_fallback([to], context)
         self.assertEqual(to.virtStatus, "UNVIRTUALIZABLE")
+        self.assertEqual(to.virtState, "UNVIRTUALIZABLE")
+
+    def test_existing_tensorfusion_status_fills_capability_and_state(self):
+        """Existing TensorFusion virtStatus should backfill capability/state."""
+        plugin = host_plugin.HostPlugin()
+        to = self._make_to(virt_status="TENSORFUSION_VIRTUALIZABLE")
+        context = self._make_context()
+        with mock.patch.object(plugin, '_get_vfio_mdev_info', return_value=False):
+            with mock.patch.object(plugin, '_get_sriov_info', return_value=False):
+                plugin._apply_virt_status_fallback([to], context)
+        self.assertEqual(to.virtStatus, "TENSORFUSION_VIRTUALIZABLE")
+        self.assertEqual(to.virtState, "VIRTUALIZABLE")
+        self.assertEqual(to.virtCapabilities, ["TENSORFUSION"])
+
+    def test_existing_hami_status_fills_capability_and_state(self):
+        """Existing HAMI virtStatus should backfill capability/state."""
+        plugin = host_plugin.HostPlugin()
+        to = self._make_to(virt_status="HAMI_VIRTUALIZED")
+        context = self._make_context()
+        with mock.patch.object(plugin, '_get_vfio_mdev_info', return_value=False):
+            with mock.patch.object(plugin, '_get_sriov_info', return_value=False):
+                plugin._apply_virt_status_fallback([to], context)
+        self.assertEqual(to.virtStatus, "HAMI_VIRTUALIZED")
+        self.assertEqual(to.virtState, "VIRTUALIZED")
+        self.assertEqual(to.virtCapabilities, ["HAMI"])
+
+    def test_existing_explicit_state_wins_over_status(self):
+        """Explicit virtState should be preserved when host_plugin already filled it."""
+        plugin = host_plugin.HostPlugin()
+        to = self._make_to(virt_status="UNVIRTUALIZABLE")
+        to.virtState = "VIRTUALIZABLE"
+        to.virtCapabilities = ["TENSORFUSION"]
+        context = self._make_context()
+        with mock.patch.object(plugin, '_get_vfio_mdev_info', return_value=False):
+            with mock.patch.object(plugin, '_get_sriov_info', return_value=False):
+                plugin._apply_virt_status_fallback([to], context)
+        self.assertEqual(to.virtStatus, "UNVIRTUALIZABLE")
+        self.assertEqual(to.virtState, "VIRTUALIZABLE")
+        self.assertEqual(to.virtCapabilities, ["TENSORFUSION"])

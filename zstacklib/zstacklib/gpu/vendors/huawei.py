@@ -610,12 +610,18 @@ class Huawei(GPUBase):
 
         r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
         if r != 0:
-            capability_info['virtStatus'] = "VFIO_MDEV_VIRTUALIZABLE"
+            cls.set_capability_virt_metadata(
+                capability_info, "VFIO_MDEV_VIRTUALIZABLE",
+                "VIRTUALIZABLE", None, ["VFIO_MDEV"])
         else:
             if addr.lower() in virtStatusOut.lower():
-                capability_info['virtStatus'] = "VFIO_MDEV_VIRTUALIZED"
+                cls.set_capability_virt_metadata(
+                    capability_info, "VFIO_MDEV_VIRTUALIZED",
+                    "VIRTUALIZED", "VFIO_MDEV", ["VFIO_MDEV"])
             else:
-                capability_info['virtStatus'] = "VFIO_MDEV_VIRTUALIZABLE"
+                cls.set_capability_virt_metadata(
+                    capability_info, "VFIO_MDEV_VIRTUALIZABLE",
+                    "VIRTUALIZABLE", None, ["VFIO_MDEV"])
 
         return True, capability_info
 
