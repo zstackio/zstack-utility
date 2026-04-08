@@ -6573,6 +6573,7 @@ class RestoreMysqlCmd(Command):
             shell_no_pipe(command)
 
         restorer.restore_other_node(args)
+        restorer.rebuild_replication(args)
         if args.skip_ui:
             if running:
                 info("Successfully restored database. Start management node now.")
@@ -6647,6 +6648,9 @@ class MysqlRestorer(object):
     def restore_other_node(self, args):
         raise Exception('function restore_other_node not be implemented')
 
+    def rebuild_replication(self, args):
+        pass
+
     def is_local_ip(self, db_hostname):
         raise Exception('function all_local_ip not be implemented')
  
@@ -6694,6 +6698,11 @@ class MultiMysqlRestorer(MysqlRestorer):
                 "zstack-ctl restore_mysql --mysql-root-password '%s' --skip-ui --skip-check -f %s --only-restore-self && rm -f %s"
                 % (args.mysql_root_password, slave_file_path, slave_file_path))
             info("Succeed to restore zstack peer node data")
+
+    def rebuild_replication(self, args):
+        if not args.only_restore_self:
+            info("Rebuilding database replication ...")
+            shell("/usr/local/bin/zsha2 update-db-rep -p %s" % shell_quote(args.mysql_root_password))
 
     def is_local_ip(self, db_hostname):
         return db_hostname in self.all_local_ip or db_hostname == self.utils.config['dbvip']
