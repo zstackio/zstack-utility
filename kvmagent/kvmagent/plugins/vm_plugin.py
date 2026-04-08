@@ -60,7 +60,7 @@ from kvmagent.plugins import zbs_storage_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
 from kvmagent.plugins.nvram import nvram
-from kvmagent.plugins.vms import vm_host_file, tpm
+from kvmagent.plugins.vms import vm_host_file, vm_host_file_monitor, tpm
 from zstacklib.utils import bash, plugin, iscsi, gpu, traceable_shell
 from zstacklib.utils.bash import in_bash
 from zstacklib.utils import http
@@ -2933,6 +2933,8 @@ def get_all_vm_states_with_process():
 
     return states
 
+# return all ACTIVE VMs !!! not only running VMs
+# include VIR_DOMAIN_RUNNING/VIR_DOMAIN_PAUSED/VIR_DOMAIN_SHUTTING_DOWN/VIR_DOMAIN_PMSUSPENDED VMs
 def get_running_vms():
     @LibvirtAutoReconnect
     def get_all_ids(conn):
@@ -9794,6 +9796,26 @@ class VmPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def _register_vm_host_file_monitor(self, cmd):
+        """Register vm host file monitoring for TPM/NvRam change detection."""
+        monitor_types = []
+        if cmd.tpm is not None:
+            monitor_types.append('TpmState')
+        if cmd.tpm is not None or cmd.secureBoot or cmd.nvRam is not None:
+            monitor_types.append('NvRam')
+        if not monitor_types:
+            return
+
+        try:
+            vm_host_file_monitor.add_monitor(
+                cmd.vmInstanceUuid,
+                self.config.get(kvmagent.HOST_UUID),
+                monitor_types,
+                report_url=self.config.get(kvmagent.SEND_COMMAND_URL))
+        except Exception as e:
+            logger.warn('cannot register vm host file monitor for vm %s: %s' % (
+                cmd.vmInstanceUuid, str(e)))
+
     @kvmagent.replyerror
     def start_vm(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -9843,6 +9865,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.vmXml = device_info_dict["vmXml"]
             rsp.edkRpm = device_info_dict["edkRpm"]
             self.collect_vm_virtualizer_info(cmd.vmInstanceUuid, rsp.virtualizerInfo)
+            self._register_vm_host_file_monitor(cmd)
 
         return jsonobject.dumps(rsp)
 
@@ -14791,6 +14814,13 @@ host side snapshot files chian:
         # libvirt won't create this directory when migrating a VR,
         # we have to do this otherwise VR migration may fail
         linux.mkdir('/var/lib/zstack/kvm/agentSocket/')
+
+        try:
+            # register and start vm host file change monitor
+            vm_host_file_monitor.register_get_active_vms(get_running_vms)
+            vm_host_file_monitor.start_monitor()
+        except Exception as e:
+            logger.warn('cannot start vm host file monitor: %s' % str(e))
 
         @thread.AsyncThread
         def wait_end_signal():
