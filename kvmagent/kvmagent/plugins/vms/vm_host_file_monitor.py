@@ -160,11 +160,12 @@ class VmHostFileMonitor(object):
 
     def _update_md5_cache(self, vm_uuid, entries):
         # type: (str, list[_VmHostFileChangeEntry]) -> None
-        entry = self._entries.get(vm_uuid)
-        if not entry:
-            return
-        for change_entry in entries:
-            entry.md5_cache[change_entry.path] = change_entry.current_md5
+        with self._lock:
+            entry = self._entries.get(vm_uuid)
+            if not entry:
+                return
+            for change_entry in entries:
+                entry.md5_cache[change_entry.path] = change_entry.current_md5
 
     def _resolve_path(self, vm_uuid, file_type):
         # type: (str, str) -> str | None
@@ -190,7 +191,7 @@ class VmHostFileMonitor(object):
 
             if path not in entry.md5_cache:
                 # first time: record baseline, do not report
-                self._update_md5_cache(entry.vm_uuid, _VmHostFileChangeEntry(t, path, current_md5))
+                self._update_md5_cache(entry.vm_uuid, [_VmHostFileChangeEntry(t, path, current_md5)])
                 continue
 
             prev_md5 = entry.md5_cache[path]
