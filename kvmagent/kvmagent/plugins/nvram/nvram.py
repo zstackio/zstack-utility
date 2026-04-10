@@ -1,4 +1,3 @@
-
 import errno
 import os
 import os.path
@@ -127,7 +126,19 @@ class NvRamHostFile(object):
         if not nvram_common.check_nvram_vm_host_file_path_format(result.path):
             result.error = 'invalid nvram vm host file path ' + result.path
             return result
-        vm_host_file.read_vm_host_file_base64(result)
+
+        # Check file size and choose appropriate reading method
+        # If file size > 10KB, use read_vm_host_file_targz, else read_vm_host_file_base64
+        try:
+            file_size = os.path.getsize(result.path)
+            if file_size > 10 * 1024:  # 10KB
+                vm_host_file.read_vm_host_file_targz(result)
+            else:
+                vm_host_file.read_vm_host_file_base64(result)
+        except OSError as e:
+            result.error = 'failed to read nvram file: ' + str(e)
+            logger.warning('failed to read nvram file %s: %s' % (result.path, str(e)))
+
         return result
 
     def write_file(self, to):
