@@ -80,7 +80,8 @@ class TestCheckJuicefsInstalled:
         mock_access.return_value = True
 
         installed, error = host_model_mount_plugin.check_juicefs_installed()
-        assert installed is True
+        # Returns path string (truthy) when found, not strictly True
+        assert installed is not None and installed  # path is truthy
         assert error is None
 
     @patch('os.path.isfile')
@@ -94,7 +95,7 @@ class TestCheckJuicefsInstalled:
             mock_shell.return_value = mock_instance
 
             installed, error = host_model_mount_plugin.check_juicefs_installed()
-            assert installed is False
+            assert installed is None  # Returns None when not found
             assert "juicefs binary not found" in error
 
 
@@ -104,15 +105,16 @@ class TestMountJuicefs:
     @patch('os.path.ismount')
     @patch('os.makedirs')
     def test_already_mounted(self, mock_makedirs, mock_ismount):
-        """Test that if already mounted, returns success."""
+        """Test that if already mounted, returns success with did_mount=False."""
         mock_ismount.return_value = True
 
-        success, error = host_model_mount_plugin.mount_juicefs(
+        success, error, did_mount = host_model_mount_plugin.mount_juicefs(
             "redis://localhost:6379/0",
             "/opt/zstack/models/test-uuid"
         )
         assert success is True
         assert error is None
+        assert did_mount is False  # Already mounted, not a new mount
         # Should not call makedirs if already mounted
         mock_makedirs.assert_not_called()
 
@@ -124,12 +126,13 @@ class TestMountJuicefs:
         mock_ismount.return_value = False
         mock_check.return_value = (False, "juicefs binary not found")
 
-        success, error = host_model_mount_plugin.mount_juicefs(
+        success, error, did_mount = host_model_mount_plugin.mount_juicefs(
             "redis://localhost:6379/0",
             "/opt/zstack/models/test-uuid"
         )
         assert success is False
         assert "juicefs binary not found" in error
+        assert did_mount is False
 
     @patch('os.path.ismount')
     @patch('os.makedirs')
@@ -138,18 +141,20 @@ class TestMountJuicefs:
     def test_mount_success(self, mock_shell, mock_check, mock_makedirs, mock_ismount):
         """Test successful juicefs mount."""
         mock_ismount.return_value = False
-        mock_check.return_value = (True, None)
+        # check_juicefs_installed returns (path, None) when found
+        mock_check.return_value = ("/usr/local/bin/juicefs", None)
 
         mock_cmd = MagicMock()
         mock_cmd.return_code = 0
         mock_shell.return_value = mock_cmd
 
-        success, error = host_model_mount_plugin.mount_juicefs(
+        success, error, did_mount = host_model_mount_plugin.mount_juicefs(
             "redis://localhost:6379/0",
             "/opt/zstack/models/test-uuid"
         )
         assert success is True
         assert error is None
+        assert did_mount is True  # New mount was performed
 
         # Verify shell command was called with correct arguments
         mock_shell.assert_called_once()
@@ -165,19 +170,21 @@ class TestMountJuicefs:
     def test_mount_failure(self, mock_shell, mock_check, mock_makedirs, mock_ismount):
         """Test juicefs mount failure."""
         mock_ismount.return_value = False
-        mock_check.return_value = (True, None)
+        # check_juicefs_installed returns (path, None) when found
+        mock_check.return_value = ("/usr/local/bin/juicefs", None)
 
         mock_cmd = MagicMock()
         mock_cmd.return_code = 1
         mock_cmd.stderr = "mount error: connection refused"
         mock_shell.return_value = mock_cmd
 
-        success, error = host_model_mount_plugin.mount_juicefs(
+        success, error, did_mount = host_model_mount_plugin.mount_juicefs(
             "redis://localhost:6379/0",
             "/opt/zstack/models/test-uuid"
         )
         assert success is False
         assert "connection refused" in error
+        assert did_mount is False
 
 
 @pytest.mark.kvmagent
@@ -199,7 +206,8 @@ class TestMountModelCenterHandler:
         )
         return plugin
 
-    def test_mount_with_non_empty_uuid_accepted(self):
+    @patch.object(host_model_mount_plugin, 'ensure_mount_base_dir')
+    def test_mount_with_non_empty_uuid_accepted(self, mock_ensure_dir):
         """Test that mount with any non-empty UUID is accepted (no format validation)."""
         # UUID format is no longer validated, any non-empty string is accepted
         req = self._make_req({
@@ -210,7 +218,7 @@ class TestMountModelCenterHandler:
         plugin = self._make_plugin()
 
         with patch.object(host_model_mount_plugin, 'mount_juicefs') as mock_mount:
-            mock_mount.return_value = (True, None)
+            mock_mount.return_value = (True, None, True)
 
             result = plugin.mount_model_center(req)
             rsp = json.loads(result)
@@ -247,7 +255,8 @@ class TestMountModelCenterHandler:
 
         assert rsp.get('success') is False
 
-    def test_mount_with_valid_uuid_format(self):
+    @patch.object(host_model_mount_plugin, 'ensure_mount_base_dir')
+    def test_mount_with_valid_uuid_format(self, mock_ensure_dir):
         """Test that mount with any non-empty UUID is accepted."""
         req = self._make_req({
             'modelCenterUuid': '2cc1f4d6b8014b44912f92bb242e9675',
@@ -257,7 +266,7 @@ class TestMountModelCenterHandler:
         plugin = self._make_plugin()
 
         with patch.object(host_model_mount_plugin, 'mount_juicefs') as mock_mount:
-            mock_mount.return_value = (True, None)
+            mock_mount.return_value = (True, None, True)
 
             result = plugin.mount_model_center(req)
             rsp = json.loads(result)
@@ -301,6 +310,84 @@ class TestMountModelCenterHandler:
         assert mounts['uuid2'] is False
         assert mounts['uuid3'] is True
 
+    @patch.object(host_model_mount_plugin, 'ensure_mount_base_dir')
+    def test_mount_already_mounted_registry_has_entry(self, mock_ensure_dir):
+        """Test that did_mount=False with existing registry entry skips update."""
+        req = self._make_req({
+            'modelCenterUuid': '2cc1f4d6-b801-4b44-912f-92bb242e9675',
+            'storageUrl': 'redis://localhost:6379/0',
+        })
+
+        plugin = self._make_plugin()
+
+        with patch.object(host_model_mount_plugin, 'mount_juicefs') as mock_mount, \
+             patch.object(host_model_mount_plugin, '_load_mount_registry') as mock_load, \
+             patch.object(host_model_mount_plugin, '_save_mount_registry_entry') as mock_save:
+            mock_mount.return_value = (True, None, False)  # did_mount=False
+            mock_load.return_value = {
+                '2cc1f4d6-b801-4b44-912f-92bb242e9675': {
+                    'storageUrl': 'redis://localhost:6379/0',
+                    'mountPoint': '/opt/zstack/models/2cc1f4d6-b801-4b44-912f-92bb242e9675'
+                }
+            }
+
+            result = plugin.mount_model_center(req)
+            rsp = json.loads(result)
+
+            assert rsp.get('success') is True
+            # Should NOT save registry since entry already exists
+            mock_save.assert_not_called()
+
+    @patch.object(host_model_mount_plugin, 'ensure_mount_base_dir')
+    def test_mount_already_mounted_no_registry_matching_source(self, mock_ensure_dir):
+        """Test that did_mount=False with no registry entry but matching source saves registry."""
+        req = self._make_req({
+            'modelCenterUuid': '2cc1f4d6-b801-4b44-912f-92bb242e9675',
+            'storageUrl': 'redis://localhost:6379/0',
+        })
+
+        plugin = self._make_plugin()
+
+        with patch.object(host_model_mount_plugin, 'mount_juicefs') as mock_mount, \
+             patch.object(host_model_mount_plugin, '_load_mount_registry') as mock_load, \
+             patch.object(host_model_mount_plugin, '_get_mount_source') as mock_source, \
+             patch.object(host_model_mount_plugin, '_save_mount_registry_entry') as mock_save:
+            mock_mount.return_value = (True, None, False)  # did_mount=False
+            mock_load.return_value = {}  # No registry entry
+            mock_source.return_value = 'redis://localhost:6379/0'  # Matching source
+
+            result = plugin.mount_model_center(req)
+            rsp = json.loads(result)
+
+            assert rsp.get('success') is True
+            # Should save registry since no entry and source matches
+            mock_save.assert_called_once()
+
+    @patch.object(host_model_mount_plugin, 'ensure_mount_base_dir')
+    def test_mount_already_mounted_no_registry_mismatch_source(self, mock_ensure_dir):
+        """Test that did_mount=False with no registry entry and mismatched source skips save."""
+        req = self._make_req({
+            'modelCenterUuid': '2cc1f4d6-b801-4b44-912f-92bb242e9675',
+            'storageUrl': 'redis://localhost:6379/0',
+        })
+
+        plugin = self._make_plugin()
+
+        with patch.object(host_model_mount_plugin, 'mount_juicefs') as mock_mount, \
+             patch.object(host_model_mount_plugin, '_load_mount_registry') as mock_load, \
+             patch.object(host_model_mount_plugin, '_get_mount_source') as mock_source, \
+             patch.object(host_model_mount_plugin, '_save_mount_registry_entry') as mock_save:
+            mock_mount.return_value = (True, None, False)  # did_mount=False
+            mock_load.return_value = {}  # No registry entry
+            mock_source.return_value = 'redis://other-host:6379/0'  # Different source
+
+            result = plugin.mount_model_center(req)
+            rsp = json.loads(result)
+
+            assert rsp.get('success') is True
+            # Should NOT save registry since source doesn't match
+            mock_save.assert_not_called()
+
 
 class TestEnsureMountBaseDir:
     """Test ensure_mount_base_dir() function."""
@@ -314,8 +401,7 @@ class TestEnsureMountBaseDir:
         host_model_mount_plugin.ensure_mount_base_dir()
 
         mock_makedirs.assert_called_once_with(
-            host_model_mount_plugin.MODEL_MOUNT_BASE,
-            exist_ok=True
+            host_model_mount_plugin.MODEL_MOUNT_BASE, exist_ok=True
         )
 
     @patch('os.path.exists')

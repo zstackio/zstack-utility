@@ -260,6 +260,76 @@ class TestVerifySourcePath:
                 link_path.unlink()
 
 
+class TestVerifySourcePathWithRecovery:
+    """Test _verify_source_path_with_recovery() on-demand mount recovery."""
+
+    @patch('kvmagent.plugins.virtiofs_plugin.remount_model_center')
+    @patch('kvmagent.plugins.virtiofs_plugin.get_model_center_uuid_from_path')
+    @patch('kvmagent.plugins.virtiofs_plugin.verify_source_path')
+    def test_recovery_succeeds_on_retry(self, mock_verify, mock_get_uuid, mock_remount):
+        """Test verify fails -> remount succeeds -> retry verify succeeds."""
+        mock_verify.side_effect = [
+            Exception("sourcePath does not exist"),  # first call fails
+            "/opt/zstack/models/test-uuid",           # retry succeeds
+        ]
+        mock_get_uuid.return_value = "test-uuid"
+        mock_remount.return_value = True  # recovery succeeded
+
+        result = virtiofs_plugin._verify_source_path_with_recovery(
+            "/opt/zstack/models/test-uuid"
+        )
+
+        assert result == "/opt/zstack/models/test-uuid"
+        assert mock_verify.call_count == 2
+        mock_remount.assert_called_once_with("test-uuid")
+
+    @patch('kvmagent.plugins.virtiofs_plugin.remount_model_center')
+    @patch('kvmagent.plugins.virtiofs_plugin.get_model_center_uuid_from_path')
+    @patch('kvmagent.plugins.virtiofs_plugin.verify_source_path')
+    def test_recovery_fails_raises_original_error(self, mock_verify, mock_get_uuid, mock_remount):
+        """Test verify fails -> remount fails -> raises original error."""
+        original_error = Exception("sourcePath does not exist")
+        mock_verify.side_effect = original_error
+        mock_get_uuid.return_value = "test-uuid"
+        mock_remount.return_value = False  # recovery failed
+
+        with pytest.raises(Exception) as exc_info:
+            virtiofs_plugin._verify_source_path_with_recovery(
+                "/opt/zstack/models/test-uuid"
+            )
+
+        assert exc_info.value is original_error
+
+    @patch('kvmagent.plugins.virtiofs_plugin.remount_model_center')
+    @patch('kvmagent.plugins.virtiofs_plugin.get_model_center_uuid_from_path')
+    @patch('kvmagent.plugins.virtiofs_plugin.verify_source_path')
+    def test_no_uuid_skips_recovery(self, mock_verify, mock_get_uuid, mock_remount):
+        """Test that verify failure without a valid UUID skips recovery."""
+        mock_verify.side_effect = Exception("sourcePath does not exist")
+        mock_get_uuid.return_value = None  # not a model center path
+
+        with pytest.raises(Exception) as exc_info:
+            virtiofs_plugin._verify_source_path_with_recovery("/some/random/path")
+
+        assert "sourcePath does not exist" in str(exc_info.value)
+        mock_remount.assert_not_called()
+
+    @patch('kvmagent.plugins.virtiofs_plugin.remount_model_center')
+    @patch('kvmagent.plugins.virtiofs_plugin.get_model_center_uuid_from_path')
+    @patch('kvmagent.plugins.virtiofs_plugin.verify_source_path')
+    def test_verify_passes_no_recovery(self, mock_verify, mock_get_uuid, mock_remount):
+        """Test that successful verify skips recovery entirely."""
+        mock_verify.return_value = "/opt/zstack/models/test-uuid"
+
+        result = virtiofs_plugin._verify_source_path_with_recovery(
+            "/opt/zstack/models/test-uuid"
+        )
+
+        assert result == "/opt/zstack/models/test-uuid"
+        mock_get_uuid.assert_not_called()
+        mock_remount.assert_not_called()
+
+
 @pytest.mark.kvmagent
 class TestVirtiofsAttachHandler:
     """Test virtiofs attach handler."""
@@ -278,9 +348,9 @@ class TestVirtiofsAttachHandler:
         return plugin
 
     @patch('kvmagent.plugins.virtiofs_plugin.get_vm_domain')
-    @patch('kvmagent.plugins.virtiofs_plugin.verify_source_path')
-    def test_attach_calls_verify_source_path(self, mock_verify, mock_get_domain, tmp_path):
-        """Test that attach handler calls verify_source_path."""
+    @patch('kvmagent.plugins.virtiofs_plugin._verify_source_path_with_recovery')
+    def test_attach_calls_verify_source_path_with_recovery(self, mock_verify, mock_get_domain, tmp_path):
+        """Test that attach handler calls _verify_source_path_with_recovery."""
         mock_verify.return_value = None  # Path validation passes
         mock_domain = MagicMock()
         mock_conn = MagicMock()
@@ -299,13 +369,13 @@ class TestVirtiofsAttachHandler:
         plugin = self._make_plugin()
 
         # Call the handler - it will fail at libvirt attach, but we just want to
-        # verify that verify_source_path was called
+        # verify that _verify_source_path_with_recovery was called
         try:
             plugin.attach_virtiofs(req)
         except Exception:
             pass  # Expected to fail at libvirt level
 
-        # Verify that verify_source_path was called with the source path
+        # Verify that _verify_source_path_with_recovery was called with the source path
         mock_verify.assert_called_once_with(str(safe_dir))
 
     @patch('kvmagent.plugins.virtiofs_plugin.verify_source_path')
@@ -664,7 +734,7 @@ class TestMountVirtiofsInVm:
         success, error = virtiofs_plugin.mount_virtiofs_in_vm(mock_domain, "test-tag", "/mnt/models")
 
         assert success is False
-        assert "VM guest agent is not connected" in error
+        assert "QGA not connected" in error
 
     @patch('kvmagent.plugins.virtiofs_plugin.VmQga')
     @patch('kvmagent.plugins.virtiofs_plugin.is_qga_connected', return_value=True)
@@ -679,6 +749,49 @@ class TestMountVirtiofsInVm:
 
         assert success is False
         assert "Windows VM does not support virtiofs mount" in error
+
+    @patch('kvmagent.plugins.virtiofs_plugin.VmQga')
+    @patch('kvmagent.plugins.virtiofs_plugin.is_qga_connected', return_value=True)
+    def test_mount_timeout_returns_timeout_error(self, mock_is_connected, mock_qga_class):
+        """Test that QGA timeout during mount returns timeout-specific error."""
+        mock_domain = self._create_mock_domain()
+        mock_qga = self._create_mock_qga()
+        mock_qga_class.QGA_STATE_RUNNING = self.QGA_STATE_RUNNING
+        mock_qga_class.return_value = mock_qga
+
+        # mkdir succeeds, mountpoint not mounted, then mount raises timeout
+        mock_qga.guest_exec_bash.side_effect = [
+            (0, "", ""),                    # mkdir succeeds
+            (1, "", ""),                    # mountpoint check (not mounted)
+            RuntimeError("command timeout after 30s"),  # mount times out
+        ]
+
+        success, error = virtiofs_plugin.mount_virtiofs_in_vm(mock_domain, "test-tag", "/mnt/models")
+
+        assert success is False
+        assert "timed out" in error
+
+    @patch('kvmagent.plugins.virtiofs_plugin.VmQga')
+    @patch('kvmagent.plugins.virtiofs_plugin.is_qga_connected', return_value=True)
+    def test_mount_generic_exception_returns_error(self, mock_is_connected, mock_qga_class):
+        """Test that unexpected QGA exception returns exception error message."""
+        mock_domain = self._create_mock_domain()
+        mock_qga = self._create_mock_qga()
+        mock_qga_class.QGA_STATE_RUNNING = self.QGA_STATE_RUNNING
+        mock_qga_class.return_value = mock_qga
+
+        # mkdir succeeds, mountpoint not mounted, then mount raises generic error
+        mock_qga.guest_exec_bash.side_effect = [
+            (0, "", ""),              # mkdir succeeds
+            (1, "", ""),              # mountpoint check (not mounted)
+            RuntimeError("connection lost"),  # unexpected exception
+        ]
+
+        success, error = virtiofs_plugin.mount_virtiofs_in_vm(mock_domain, "test-tag", "/mnt/models")
+
+        assert success is False
+        assert "Exception during QGA mount in VM" in error
+        assert "connection lost" in error
 
 
 class TestUnmountVirtiofsInVm:
