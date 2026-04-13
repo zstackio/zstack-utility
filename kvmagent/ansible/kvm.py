@@ -386,7 +386,7 @@ def install_kvm_pkg():
             'h79c': ('%s qemu-kvm libvirt-admin seabios-bin nping freeipmi '
                      'elfutils-libelf-devel vconfig OVMF libicu %s') % (helix_rhel_rpms, py3_rpms),
             'h84r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
-                     'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump key-manager %s') % (helix_rhel_rpms, py3_rpms),
+                     'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump %s') % (helix_rhel_rpms, py3_rpms),
             'uos20r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
                      'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump %s') % (helix_rhel_rpms, py3_rpms),
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel lldpd',
@@ -428,9 +428,20 @@ def install_kvm_pkg():
             'uos20r': "lm_sensors"
         }
 
+        tpm_stack_update_rpms = 'swtpm swtpm-libs swtpm-tools libtpms tpm2-tss'
         releasever_arch_rpms = {
-            'ky10sp3': {'x86_64': 'key-manager', 'aarch64': 'key-manager'},
-            'ky10sp3.2403': {'x86_64': 'key-manager', 'aarch64': 'key-manager'}
+            'ky10sp3': {
+                'x86_64': 'key-manager %s' % tpm_stack_update_rpms,
+                'aarch64': 'key-manager',
+            },
+            'ky10sp3.2403': {
+                'x86_64': 'key-manager %s' % tpm_stack_update_rpms,
+                'aarch64': 'key-manager',
+            },
+            'h84r': {
+                'x86_64': 'key-manager %s' % tpm_stack_update_rpms,
+                'aarch64': 'key-manager',
+            },
         }
 
         # handle zstack_repo
