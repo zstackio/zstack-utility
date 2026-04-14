@@ -1,3 +1,4 @@
+from contextlib import closing
 import socket
 
 
@@ -11,8 +12,7 @@ def check_remote_port_whether_open(remote_addr, remote_port):
     :return: A boolean value to decide the port whether open
     :rtype: boolean
     """
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    ret = s.connect_ex((remote_addr, remote_port))
-
-    return ret == 0
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.settimeout(3)
+        ret = s.connect_ex((remote_addr, remote_port))
+        return ret == 0

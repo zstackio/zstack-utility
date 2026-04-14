@@ -222,9 +222,9 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
     def physical_nic_monitor(self):
         time_lock_now = self.time_lock
         if self.state:
-            ip = iproute.get_iproute()
-            ip.bind()
-            while True:
-                if time_lock_now != self.time_lock:
-                    break
-                self.physical_nic_monitor_get(ip)
+            with iproute.get_iproute() as ip:
+                ip.bind()
+                while True:
+                    if time_lock_now != self.time_lock:
+                        break
+                    self.physical_nic_monitor_get(ip)
