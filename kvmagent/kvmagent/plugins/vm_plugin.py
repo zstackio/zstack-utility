@@ -7579,8 +7579,12 @@ class Vm(object):
             if host_arch == "x86_64" and cmd.bootMode == "UEFI":
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 if yum_release in ("ky10sp3", "ky10sp3.2403"):
-                    e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.fd', attrib=loader_attribute)
-                    e(os, 'nvram', nvram_fd_path, attrib={'template': '/usr/share/edk2/ovmf/OVMF_VARS.fd'})
+                    if need_register_nvram:
+                        e(os, 'loader', '/usr/share/edk2-20220126/ovmf/OVMF_CODE.secboot.fd', attrib=loader_attribute)
+                        e(os, 'nvram', nvram_fd_path, attrib={'template': '/usr/share/edk2-20220126/ovmf/OVMF_VARS.secboot.fd'})
+                    else:
+                        e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.fd', attrib=loader_attribute)
+                        e(os, 'nvram', nvram_fd_path, attrib={'template': '/usr/share/edk2/ovmf/OVMF_VARS.fd'})
                 else: # h84r ...
                     if need_register_nvram:
                         e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd', attrib=loader_attribute)

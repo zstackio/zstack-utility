@@ -431,11 +431,11 @@ def install_kvm_pkg():
         tpm_stack_update_rpms = 'swtpm swtpm-libs swtpm-tools libtpms tpm2-tss'
         releasever_arch_rpms = {
             'ky10sp3': {
-                'x86_64': 'key-manager %s' % tpm_stack_update_rpms,
+                'x86_64': 'key-manager edk2-ovmf-x64 %s' % tpm_stack_update_rpms,
                 'aarch64': 'key-manager',
             },
             'ky10sp3.2403': {
-                'x86_64': 'key-manager %s' % tpm_stack_update_rpms,
+                'x86_64': 'key-manager edk2-ovmf-x64 %s' % tpm_stack_update_rpms,
                 'aarch64': 'key-manager',
             },
             'h84r': {
