@@ -2002,9 +2002,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.ha_network_groups = {}
         self.ha_network_group_monitor_failures = {}
         self.ha_network_group_last_status = {}
-        self.ha_network_group_pending_status = None
-        self.ha_network_group_reporting_status = None
-        self.ha_network_group_report_worker_running = False
+        self.ha_network_group_reporting_in_flight = False
         self.ha_network_group_report_generation = 0
         self.ha_network_group_monitor_running = False
         self.ha_network_group_monitor_thread_started = False
@@ -3274,8 +3272,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     'vms': self.ha_network_group_vm_rules,
                     'networkGroups': self.ha_network_groups,
                     'lastReportedStatus': self.ha_network_group_last_status,
-                    'pendingStatus': self.ha_network_group_pending_status,
-                    'reportingStatus': self.ha_network_group_reporting_status
+                    'reportGeneration': self.ha_network_group_report_generation
                 }
 
             if down_monitors is not None:
@@ -3295,94 +3292,56 @@ class HaPlugin(kvmagent.KvmAgent):
         except Exception as e:
             logger.debug('failed to dump ha network group debug file, %s' % e)
 
-    def _do_report_ha_network_group_status(self, network_group_status):
-        url, host_uuid = self._get_report_url_and_host_uuid()
-        if not url:
-            logger.warn('cannot find SEND_COMMAND_URL, unable to report ha network group status')
-            return False
-
-        if not host_uuid:
-            logger.warn('cannot find HOST_UUID, unable to report ha network group status')
-            return False
-
-        cmd = ReportHaNetworkGroupStatusCmd()
-        cmd.hostUuid = host_uuid
-        cmd.networkGroupStatus = network_group_status
+    def _do_report_ha_network_group_status(self, network_group_status, report_generation):
         try:
+            url, host_uuid = self._get_report_url_and_host_uuid()
+            if not url:
+                logger.warn('cannot find SEND_COMMAND_URL, unable to report ha network group status')
+                return
+
+            if not host_uuid:
+                logger.warn('cannot find HOST_UUID, unable to report ha network group status')
+                return
+
+            cmd = ReportHaNetworkGroupStatusCmd()
+            cmd.hostUuid = host_uuid
+            cmd.networkGroupStatus = network_group_status
             http.json_dump_post(url, cmd, {'commandpath': self.REPORT_HA_NETWORK_GROUP_STATUS_PATH}, fail_soon=True)
+            with self.ha_network_group_lock:
+                if report_generation == self.ha_network_group_report_generation:
+                    self.ha_network_group_last_status = dict(network_group_status)
             logger.debug('reported ha network group status for host[%s], status:%s' % (host_uuid, network_group_status))
             self._dump_ha_network_group_debug('report-status', network_group_status=network_group_status)
-            return True
         except Exception as e:
             logger.warn('failed to report ha network group status to management node, %s' % e)
-            return False
+        finally:
+            with self.ha_network_group_lock:
+                self.ha_network_group_reporting_in_flight = False
 
     @thread.AsyncThread
-    def _ha_network_group_status_report_worker(self):
-        while True:
-            with self.ha_network_group_lock:
-                network_group_status = self.ha_network_group_pending_status
-                report_generation = self.ha_network_group_report_generation
-                self.ha_network_group_pending_status = None
-                self.ha_network_group_reporting_status = network_group_status
-
-            if not network_group_status:
-                with self.ha_network_group_lock:
-                    self.ha_network_group_reporting_status = None
-                    if self.ha_network_group_pending_status is None:
-                        self.ha_network_group_report_worker_running = False
-                        return
-                continue
-
-            report_succeeded = self._do_report_ha_network_group_status(network_group_status)
-            with self.ha_network_group_lock:
-                if report_succeeded and report_generation == self.ha_network_group_report_generation:
-                    self.ha_network_group_last_status = dict(network_group_status)
-                elif not report_succeeded and report_generation == self.ha_network_group_report_generation:
-                    # re-enqueue the failed status for retry if no newer status is pending
-                    if self.ha_network_group_pending_status is None:
-                        self.ha_network_group_pending_status = network_group_status
-                self.ha_network_group_reporting_status = None
-                if self.ha_network_group_pending_status is None:
-                    self.ha_network_group_report_worker_running = False
-                    return
-
-            if not report_succeeded:
-                time.sleep(1)
-
-    def _schedule_ha_network_group_status_report(self, network_group_status):
-        status_to_report = dict(network_group_status)
-        should_start_worker = False
-        with self.ha_network_group_lock:
-            has_inflight_status = (
-                self.ha_network_group_pending_status is not None or
-                self.ha_network_group_reporting_status is not None
-            )
-            if not has_inflight_status and status_to_report == self.ha_network_group_last_status:
-                return
-            if status_to_report == self.ha_network_group_pending_status:
-                return
-            if status_to_report == self.ha_network_group_reporting_status:
-                return
-
-            self.ha_network_group_pending_status = status_to_report
-            if not self.ha_network_group_report_worker_running:
-                self.ha_network_group_report_worker_running = True
-                should_start_worker = True
-
-        if should_start_worker:
-            self._ha_network_group_status_report_worker()
+    def _async_report_ha_network_group_status(self, network_group_status, report_generation):
+        self._do_report_ha_network_group_status(network_group_status, report_generation)
 
     def _report_ha_network_group_status(self, network_group_status):
         if not network_group_status:
             with self.ha_network_group_lock:
                 self.ha_network_group_last_status = {}
-                self.ha_network_group_pending_status = None
-                self.ha_network_group_reporting_status = None
                 self.ha_network_group_report_generation += 1
             return
 
-        self._schedule_ha_network_group_status_report(network_group_status)
+        status_to_report = dict(network_group_status)
+        with self.ha_network_group_lock:
+            if status_to_report == self.ha_network_group_last_status:
+                return
+            if self.ha_network_group_reporting_in_flight:
+                return
+            # Snapshot generation before releasing lock; if config resets between
+            # here and the HTTP call, the bumped generation will prevent stale
+            # status from overwriting last_status -- this is intentional.
+            report_generation = self.ha_network_group_report_generation
+            self.ha_network_group_reporting_in_flight = True
+
+        self._async_report_ha_network_group_status(status_to_report, report_generation)
 
     def _ha_network_group_monitor_loop(self):
         while True:
@@ -3507,8 +3466,6 @@ class HaPlugin(kvmagent.KvmAgent):
                 for nic in self.ha_network_group_monitors
             }
             self.ha_network_group_last_status = {}
-            self.ha_network_group_pending_status = None
-            self.ha_network_group_reporting_status = None
             self.ha_network_group_report_generation += 1
             set_ha_network_group_vm_uuids(vm_rules.keys())
 
