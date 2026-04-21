@@ -140,6 +140,8 @@ class VmStruct(object):
                         path = e.attrib["file"]
                     elif "dev" in e.attrib:
                         path = e.attrib["dev"]
+                    elif "protocol" in e.attrib and "name" in e.attrib:
+                        path = "%s:%s" % (e.attrib["protocol"], e.attrib["name"])
                     if path and path.startswith("/dev/"):
                         self.volumes.append(path)
 

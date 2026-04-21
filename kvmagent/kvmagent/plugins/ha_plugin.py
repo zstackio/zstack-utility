@@ -902,17 +902,10 @@ class FileSystemHeartbeatController(AbstractStorageFencer):
                          (current_read_heartbeat_time[0], current_vm_uuids[0]))
             return current_read_heartbeat_time[0], current_vm_uuids[0]
 
-    def kill_vm(self):
-        r = bash.bash_r("timeout 5 virsh list")
-        if r == 0:
-            return kill_vm(self.max_attempts, self.strategy, [self.mount_path], True)
-        else:
-            return kill_vm_by_xml(self.max_attempts, self.strategy, self.mount_path, True)
-
     def check_storage_heartbeat(self):
         if self.write_fencer_heartbeat() is False:
             self.fencer_triggered_callback([self.ps_uuid], 'Disconnected')
-            killed_vms, on_storage_vm_uuids = self.kill_vm()
+            killed_vms, on_storage_vm_uuids = kill_vm_by_xml(self.max_attempts, self.strategy, self.mount_path, True)
 
             if len(killed_vms) != 0:
                 self.fencer_triggered_callback([self.ps_uuid], ','.join(killed_vms.keys()))
@@ -1001,7 +994,7 @@ class CephHeartbeatController(AbstractStorageFencer):
                 # for example, pool name is aaa
                 # add slash to confirm kill_vm matches vm with volume aaa/volume_path
                 # but not aaa_suffix/volume_path
-                vm_uuids, _ = kill_vm(self.max_attempts, self.strategy, ['%s/' % self.pool_name], False)
+                vm_uuids, _ = kill_vm_by_xml(self.max_attempts, self.strategy, '%s/' % self.pool_name, False)
                 if self.strategy == 'Permissive':
                     self.reset_failure_count()
 
@@ -1528,6 +1521,7 @@ def get_runnning_vm_root_volume_on_ps(maxAttempts, strategy, mountPath, isFlushb
 
         vm = linux.VmStruct()
         vm.uuid = xs[0]
+        vm.load_from_xml(xml)
         if not vm.root_volume:
             logger.warn("found strange vm[pid: %s, uuid: %s], can not find boot volume" % (vm.pid, vm.uuid))
             continue
