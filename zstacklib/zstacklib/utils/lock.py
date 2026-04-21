@@ -6,15 +6,23 @@
 import weakref
 import threading
 import functools
+import time
 import log
 import os
 import fcntl
-#import typing
+import errno
 
 _internal_lock = threading.RLock()
 _locks = weakref.WeakValueDictionary()
 
 logger = log.get_logger(__name__)
+
+_LOCK_TIMEOUT = int(os.environ.get('KVMAGENT_LOCK_TIMEOUT', 1800))
+_FILE_LOCK_TIMEOUT = int(os.environ.get('KVMAGENT_FILE_LOCK_TIMEOUT', 1800))
+
+
+class LockTimeoutError(Exception):
+    '''lock acquire timeout'''
 
 def _get_lock(name):
     with _internal_lock:
@@ -24,25 +32,35 @@ def _get_lock(name):
         return lock
 
 class NamedLock(object):
-    def __init__(self, name):
+    def __init__(self, name, acquire_timeout=None):
         self.name = name
         self.lock = None
+        self.acquire_timeout = acquire_timeout if acquire_timeout is not None else _LOCK_TIMEOUT
 
     def __enter__(self):
         self.lock = _get_lock(self.name)
-        self.lock.acquire()
-        #logger.debug('%s got lock %s' % (threading.current_thread().name, self.name))
+        # acquire_timeout == 0 means infinite wait (no deadline)
+        if self.acquire_timeout == 0:
+            self.lock.acquire(True)
+            return
+        deadline = time.time() + self.acquire_timeout
+        while not self.lock.acquire(False):
+            if time.time() >= deadline:
+                raise LockTimeoutError(
+                    'failed to acquire lock [%s] within %ss, '
+                    'possible deadlock or hung thread holding the lock'
+                    % (self.name, self.acquire_timeout))
+            time.sleep(0.2)
 
     def __exit__(self, type, value, traceback):
         self.lock.release()
-        #logger.debug('%s released lock %s' % (threading.current_thread().name, self.name))
 
 
-def lock(name='defaultLock'):
+def lock(name='defaultLock', acquire_timeout=None):
     def wrap(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
-            with NamedLock(name):
+            with NamedLock(name, acquire_timeout):
                 retval = f(*args, **kwargs)
             return retval
         return inner
@@ -58,16 +76,48 @@ class Locker(object):
 
 
 class Flock(Locker):
-    def lock(self, lock_file):
-        fcntl.flock(lock_file, fcntl.LOCK_EX)
+    def lock(self, lock_file, acquire_timeout=None):
+        if acquire_timeout is None:
+            acquire_timeout = _FILE_LOCK_TIMEOUT
+        if acquire_timeout == 0:
+            fcntl.flock(lock_file, fcntl.LOCK_EX)
+            return
+        deadline = time.time() + acquire_timeout
+        while True:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except IOError as e:
+                if e.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                if time.time() >= deadline:
+                    raise LockTimeoutError(
+                        'failed to acquire flock within %ss' % acquire_timeout)
+                time.sleep(0.5)
 
     def unlock(self, lock_file):
         fcntl.flock(lock_file, fcntl.LOCK_UN)
 
 
 class Lockf(Locker):
-    def lock(self, lock_file):
-        fcntl.lockf(lock_file, fcntl.LOCK_EX)
+    def lock(self, lock_file, acquire_timeout=None):
+        if acquire_timeout is None:
+            acquire_timeout = _FILE_LOCK_TIMEOUT
+        if acquire_timeout == 0:
+            fcntl.lockf(lock_file, fcntl.LOCK_EX)
+            return
+        deadline = time.time() + acquire_timeout
+        while True:
+            try:
+                fcntl.lockf(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except IOError as e:
+                if e.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                if time.time() >= deadline:
+                    raise LockTimeoutError(
+                        'failed to acquire lockf within %ss' % acquire_timeout)
+                time.sleep(0.5)
 
     def unlock(self, lock_file):
         fcntl.lockf(lock_file, fcntl.LOCK_UN)
