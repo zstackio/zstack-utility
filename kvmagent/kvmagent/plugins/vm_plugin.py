@@ -9458,6 +9458,7 @@ class VmPlugin(kvmagent.KvmAgent):
     READ_VM_HOST_FILE_PATH = "/vm/hostfile/read"
     WRITE_VM_HOST_FILE_PATH = "/vm/hostfile/write"
     BACKUP_VM_HOST_FILE_PATH = "/vm/hostfile/backup"
+    VTPM_RESOLVE_LIBVIRT_SECRET_UUID_PATH = '/vm/vtpm/resolveLibvirtSecretUuid'
 
     VM_CONSOLE_LOGROTATE_PATH = "/etc/logrotate.d/vm-console-log"
 
@@ -14623,6 +14624,37 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def resolve_vtpm_libvirt_secret_uuid(self, req):
+        rsp = kvmagent.AgentResponse()
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        vm_uuid = getattr(cmd, 'vmUuid', None)
+        vm = get_vm_by_uuid(str(vm_uuid), False)
+        if vm is None:
+            rsp.success = False
+            rsp.error = 'vm not found on this host'
+            return jsonobject.dumps(rsp)
+        domain_xml = vm.domain_xml
+        if not domain_xml and vm.domain is not None:
+            try:
+                domain_xml = vm.domain.XMLDesc(0)
+            except Exception as e:
+                rsp.success = False
+                rsp.error = 'failed to get domain XML from libvirt: %s' % e
+                return jsonobject.dumps(rsp)
+        if not domain_xml:
+            rsp.success = False
+            rsp.error = 'empty domain xml for vm'
+            return jsonobject.dumps(rsp)
+        suuid, err = tpm.get_vtpm_libvirt_secret_uuid_from_domain_xml(domain_xml)
+        if suuid:
+            rsp.success = True
+            rsp.secretUuid = suuid
+        else:
+            rsp.success = False
+            rsp.error = err or 'failed to resolve vTPM libvirt secret uuid'
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def read_hostfile(self, req):
         # type: (dict) -> object
         cmd = jsonobject.loads(req[http.REQUEST_BODY])  # type: ReadVmHostFileContentCmd
@@ -14796,6 +14828,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.READ_VM_HOST_FILE_PATH, self.read_hostfile, cmd=ReadVmHostFileContentCmd())
         http_server.register_async_uri(self.WRITE_VM_HOST_FILE_PATH, self.write_hostfile, cmd=WriteVmHostFileContentCmd())
         http_server.register_async_uri(self.BACKUP_VM_HOST_FILE_PATH, self.backup_hostfile, cmd=BackupVmHostFileCmd())
+        http_server.register_async_uri(self.VTPM_RESOLVE_LIBVIRT_SECRET_UUID_PATH, self.resolve_vtpm_libvirt_secret_uuid)
 
         # snapshot stale sshfs mounts before going async, so the background
         # thread won't accidentally unmount mounts created after startup

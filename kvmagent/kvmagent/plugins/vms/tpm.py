@@ -1,5 +1,7 @@
 import os
 import re
+import uuid
+import xml.etree.ElementTree as etree
 
 from kvmagent.plugins.vms import vm_host_file
 
@@ -60,3 +62,26 @@ def check_tpm_state_vm_host_file_path_format(path):
     uuid_pattern = r'[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}'
     pattern = r'^%s/({0})(\.snapshot-backup)?$'.format(uuid_pattern) % re.escape(SWTPM_BASE)
     return bool(re.match(pattern, path))
+
+
+def get_vtpm_libvirt_secret_uuid_from_domain_xml(domain_xml):
+    # type: (str) -> tuple
+    """
+    Read libvirt secret UUID from domain XML only: devices/tpm/backend/encryption/@secret.
+    Returns (secret_uuid, None) or (None, error_message).
+    """
+    err_missing = 'no devices/tpm/backend/encryption/@secret in domain XML'
+    try:
+        root = etree.fromstring(domain_xml)
+    except Exception as e:
+        return None, 'invalid domain XML: %s' % e
+    encryption = root.find('./devices/tpm/backend/encryption')
+    if encryption is None:
+        return None, err_missing
+    raw = encryption.attrib.get('secret')
+    if not raw:
+        return None, err_missing
+    try:
+        return str(uuid.UUID(str(raw).strip())), None
+    except (ValueError, TypeError, AttributeError):
+        return None, err_missing
