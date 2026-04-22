@@ -22,7 +22,7 @@ from zstacklib.utils import thread
 
 logger = log.get_logger(__name__)
 
-KVM_REPORT_VM_HOST_FILE_CHANGED = '/vm/hostfile/changed'
+KVM_REPORT_VM_HOST_FILE_CHANGED = '/kvm/reporthostfilechanged'
 
 # Number of consecutive scan misses before removing a VM from the watch list.
 MISS_COUNT_THRESHOLD = 10
