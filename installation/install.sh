@@ -2248,9 +2248,16 @@ iz_install_key_manager(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ ! -z "$ZSTACK_YUM_REPOS" ]; then
         yum --disablerepo="*" --enablerepo="$ZSTACK_YUM_REPOS" clean metadata >/dev/null 2>&1
+        yum --disablerepo="*" --enablerepo="$ZSTACK_YUM_REPOS" list key-manager >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo "key-manager check failed or package not found in repo $ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
+            return
+        fi
         echo yum install --disablerepo="*" --enablerepo="$ZSTACK_YUM_REPOS" -y key-manager >>$ZSTACK_INSTALL_LOG
         yum install --disablerepo="*" --enablerepo="$ZSTACK_YUM_REPOS" -y key-manager >>$ZSTACK_INSTALL_LOG 2>&1
-        [ $? -ne 0 ] && fail "failed to install key-manager from repo(s) $ZSTACK_YUM_REPOS"
+        if [ $? -ne 0 ]; then
+            fail "failed to install key-manager from repo(s) $ZSTACK_YUM_REPOS"
+        fi
     fi
 
     if systemctl list-unit-files crypto-daemon.service 2>/dev/null | grep -q '^crypto-daemon.service'; then
