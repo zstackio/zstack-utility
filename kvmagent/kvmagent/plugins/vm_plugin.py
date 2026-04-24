@@ -2788,7 +2788,7 @@ class Vm(object):
             cpu_index = list(root).index(current_cpu)
             root.remove(current_cpu)
             root.insert(cpu_index, saved_cpu)
-            self.domain_xml = etree.tostring(root, encoding='unicode')
+            self.domain_xml = etree.tostring(root, encoding='utf-8').decode('utf-8')
 
             logger.debug('patched CPU xml from saved image for host-model restore')
         except Exception as ex:
