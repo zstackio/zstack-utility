@@ -42,6 +42,14 @@ from distutils.version import LooseVersion
 log.configure_log('/var/log/zstack/ceph-primarystorage.log')
 logger = log.get_logger(__name__)
 
+CROSS_PS_COPY_ERROR_CODES = {
+    "UNSUPPORTED": 1,
+    "IO_ERROR": 2,
+    "CANCELED": 3,
+    "TIMEOUT": 4,
+    "MIGRATE_SEGMENT_CHECKSUM_MISMATCH": 100,
+}
+
 
 class CephPoolCapacity(object):
     def __init__(self, name, available, used, total, replicated_size, security_policy, disk_utilization, related_osds, related_osd_capacity):
@@ -336,6 +344,7 @@ class CephAgent(plugin.TaskManager):
     DOWNLOAD_BITS_FROM_NBD_EXPT_PATH = "/ceph/primarystorage/nbd/download"
     CLAEN_TRASH_PATH = "/ceph/primarystorage/trash/clean"
     DOWNLOAD_BITS_FROM_REMOTE_TARGET_PATH = "/ceph/primarystorage/remotetarget/download"
+    CROSS_PS_COPY_CAPABILITY_PATH = "/ceph/primarystorage/crossps/capability"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/ceph/primarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/ceph/primarystorage/kvmhost/download/progress"
     JOB_CANCEL = "/job/cancel"
@@ -414,6 +423,7 @@ class CephAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_NBD_EXPT_PATH, self.download_from_nbd)
         self.http_server.register_async_uri(self.CLAEN_TRASH_PATH, self.clean_trash)
         self.http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_REMOTE_TARGET_PATH, self.download_from_remote_target)
+        self.http_server.register_sync_uri(self.CROSS_PS_COPY_CAPABILITY_PATH, self.cross_ps_copy_capability)
 
         self.http_server.register_async_uri(self.XSKY_GET_BLOCK_VOLUME_ACCESS_PATH, self.get_block_volume_access)
         self.http_server.register_async_uri(self.XSKY_RESIZE_BLOCK_VOLUME, self.resize_block_volume)
@@ -1034,6 +1044,13 @@ class CephAgent(plugin.TaskManager):
         return ''
 
     @replyerror
+    def cross_ps_copy_capability(self, req):
+        rsp = AgentResponse()
+        rsp.success = True
+        rsp.crossPsCopyErrorCodes = CROSS_PS_COPY_ERROR_CODES
+        return jsonobject.dumps(rsp)
+
+    @replyerror
     def add_pool(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         existing_pools = shell.call('ceph osd pool ls')
@@ -1109,6 +1126,10 @@ class CephAgent(plugin.TaskManager):
 
     def _parse_install_path(self, path):
         return self._normalize_install_path(path).split('/')
+
+    @staticmethod
+    def _build_rbd_image_opts(pool, image_name, conf_path):
+        return "file.driver=rbd,file.pool=%s,file.image=%s,file.conf=%s" % (pool, image_name, conf_path)
 
     @replyerror
     def create(self, req):
@@ -1200,18 +1221,52 @@ class CephAgent(plugin.TaskManager):
         rbd_check_rm(pool, image_name)
         if file_format == 'qcow2':
             conf_path = None
+            src_secret_file = None
+            dst_secret_file = None
             try:
                 with open('/etc/ceph/ceph.conf', 'r') as fd:
                     conf = fd.read()
                     conf = '%s\n%s\n' % (conf, 'rbd default format = 2')
                     conf_path = linux.write_to_temp_file(conf)
 
-                shell.call('%s -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
-                    qemu_img.subcmd('convert'), pool, tmp_image_name, pool, image_name, conf_path))
+                src_secret = getattr(cmd, 'srcQcow2EncryptSecret', None)
+                dst_secret = getattr(cmd, 'dstRbdEncryptSecret', None)
+                dst_encrypt_format = getattr(cmd, 'dstRbdEncryptFormat', None) or 'luks'
+
+                if src_secret:
+                    src_secret_file = linux.write_to_temp_file(src_secret)
+                if dst_secret:
+                    dst_secret_file = linux.write_to_temp_file(dst_secret)
+
+                src_rbd_opts = self._build_rbd_image_opts(pool, tmp_image_name, conf_path)
+                dst_rbd_opts = self._build_rbd_image_opts(pool, image_name, conf_path)
+
+                if dst_secret:
+                    # Re-encrypt converted payload into a LUKS block node on top of target RBD.
+                    src_encrypt_opts = ",encrypt.key-secret=src_luks_sec" if src_secret else ""
+                    shell.call('%s %s %s -n --image-opts driver=qcow2,%s%s --target-image-opts driver=%s,%s,key-secret=dst_luks_sec' % (
+                        qemu_img.subcmd('convert'),
+                        '--object secret,id=src_luks_sec,format=raw,file=%s' % src_secret_file if src_secret else '',
+                        '--object secret,id=dst_luks_sec,format=raw,file=%s' % dst_secret_file,
+                        src_rbd_opts,
+                        src_encrypt_opts,
+                        dst_encrypt_format,
+                        dst_rbd_opts))
+                elif src_secret:
+                    shell.call('%s --object secret,id=src_luks_sec,format=raw,file=%s --image-opts driver=qcow2,%s,encrypt.key-secret=src_luks_sec -O rbd rbd:%s/%s:conf=%s' % (
+                        qemu_img.subcmd('convert'), src_secret_file, src_rbd_opts, pool, image_name, conf_path))
+                else:
+                    shell.call('%s -f qcow2 -O rbd rbd:%s/%s rbd:%s/%s:conf=%s' % (
+                        qemu_img.subcmd('convert'), pool, tmp_image_name, pool, image_name, conf_path))
+
                 shell.call('rbd rm %s/%s' % (pool, tmp_image_name))
             finally:
                 if conf_path:
                     os.remove(conf_path)
+                if src_secret_file:
+                    os.remove(src_secret_file)
+                if dst_secret_file:
+                    os.remove(dst_secret_file)
         else:
             shell.call('rbd mv %s/%s %s/%s' % (pool, tmp_image_name, pool, image_name))
 
@@ -1330,6 +1385,14 @@ class CephAgent(plugin.TaskManager):
         rsp = AgentResponse()
         src_install_path = self._normalize_install_path(cmd.srcInstallPath)
         dst_install_path = self._normalize_install_path(cmd.dstInstallPath)
+        try:
+            sp = self._parse_install_path(cmd.srcInstallPath)
+            dp = self._parse_install_path(cmd.dstInstallPath)
+            if len(sp) >= 1 and len(dp) >= 1 and sp[0] != dp[0]:
+                logger.info("ceph migrate_volume_segment: cross-pool src_pool=%s dst_pool=%s segment=%s" % (
+                    sp[0], dp[0], cmd.resourceUuid))
+        except Exception:
+            logger.debug("ceph migrate_volume_segment: could not parse pools for logging", exc_info=True)
         src_size = self._get_file_size(src_install_path)
         dst_size = self._get_dst_volume_size(dst_install_path, cmd.dstMonHostname, cmd.dstMonSshUsername, cmd.dstMonSshPassword, cmd.dstMonSshPort)
         if dst_size > src_size:

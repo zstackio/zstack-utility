@@ -1892,6 +1892,7 @@ class BlkCeph(object):
         e(disk, 'target', None, {'dev': dev_format % self.dev_letter, 'bus': self.bus_type})
         if self.volume.physicalBlockSize:
             e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
+        Vm._add_volume_encryption_element(disk, self.volume)
         return disk
 
 
@@ -1919,6 +1920,7 @@ class VirtioCeph(object):
         e(disk, 'target', None, {'dev': 'vd%s' % self.dev_letter, 'bus': 'virtio'})
         if self.volume.physicalBlockSize:
             e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
+        Vm._add_volume_encryption_element(disk, self.volume)
         return disk
 
 
@@ -1943,6 +1945,7 @@ class SCSICeph(object):
             e(disk, 'shareable')
         if self.volume.physicalBlockSize:
             e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
+        Vm._add_volume_encryption_element(disk, self.volume)
         return disk
 
 class VirtioIscsi(object):
@@ -3162,7 +3165,58 @@ class Vm(object):
             return
         e(volume_xml_obj, 'serial', vol_uuid)
 
+    @staticmethod
+    def _find_libvirt_volume_secret_uuid(volume_install_path):
+        # For local encrypted qcow2, libvirt secret is often associated by
+        # usage type='volume' and volume path.
+        try:
+            conn = LibvirtAutoReconnect.conn
+            if conn is None:
+                conn = LibvirtSingleton().conn
+            if conn is None:
+                return None
+            for secret in conn.listAllSecrets():
+                xml = secret.XMLDesc(0)
+                root = etree.fromstring(xml)
+                usage = root.find('usage')
+                if usage is None or usage.get('type') != 'volume':
+                    continue
+                volume = usage.find('volume')
+                if volume is not None and volume.text == volume_install_path:
+                    return secret.UUIDString()
+        except Exception as ex:
+            logger.debug('failed to lookup libvirt volume secret for %s, %s'
+                         % (volume_install_path, str(ex)))
+
+        return None
+
+    @staticmethod
+    def _add_volume_encryption_element(volume_xml_obj, volume):
+        if not (volume.hasattr('installPath') and volume.installPath):
+            return
+
+        # explicit fields from management plane have higher priority
+        secret_uuid = getattr(volume, 'encryptSecretUuid', None) or getattr(volume, 'luksSecretUuid', None)
+        encrypt_format = getattr(volume, 'encryptFormat', None) or 'luks'
+
+        if not secret_uuid and volume.installPath.startswith('/'):
+            secret_uuid = Vm._find_libvirt_volume_secret_uuid(volume.installPath)
+
+        if not secret_uuid:
+            return
+
+        encryption = e(volume_xml_obj, 'encryption', None, {'format': encrypt_format})
+        e(encryption, 'secret', None, {'type': 'passphrase', 'uuid': secret_uuid})
+
     def _attach_data_volume(self, volume, addons):
+        if addons and addons.get('volume_luks_secrets'):
+            enc_uuid = getattr(volume, 'encryptSecretUuid', None) or getattr(volume, 'luksSecretUuid', None)
+            if enc_uuid:
+                for ent in addons['volume_luks_secrets']:
+                    if ent.uuid == enc_uuid:
+                        VmPlugin._ensure_volume_luks_passphrase_secret(ent.uuid, ent.passphraseBase64)
+                        break
+
         Vm.check_device_exceed_limit(volume.deviceId)
 
         def volume_native_aio(vol_uuid, volume_xml_obj):
@@ -3191,6 +3245,7 @@ class Vm(object):
                 driver_elements["iothread"] = str(volume.ioThreadId)
             e(disk, 'driver', None, driver_elements)
             e(disk, 'source', None, {'file': volume.installPath})
+            Vm._add_volume_encryption_element(disk, volume)
 
             if volume.shareable:
                 e(disk, 'shareable')
@@ -5913,6 +5968,7 @@ class Vm(object):
                 # else:
                 #     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
                 e(disk, 'source', None, {'file': _v.installPath})
+                Vm._add_volume_encryption_element(disk, _v)
 
                 if _v.shareable:
                     e(disk, 'shareable')
@@ -6486,6 +6542,11 @@ class Vm(object):
             cephSecretUuid = cmd.addons['ceph_secret_uuid']
             if cephSecretKey and cephSecretUuid:
                 VmPlugin._create_ceph_secret_key(cephSecretKey, cephSecretUuid)
+
+            volume_luks = cmd.addons.get('volume_luks_secrets')
+            if volume_luks:
+                for ent in volume_luks:
+                    VmPlugin._ensure_volume_luks_passphrase_secret(ent.uuid, ent.passphraseBase64)
 
             pciDevices = cmd.addons['pciDevice']
             if pciDevices:
@@ -7202,6 +7263,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_ATTACH_VOLUME = "/vm/attachdatavolume"
     KVM_DETACH_VOLUME = "/vm/detachdatavolume"
     KVM_MIGRATE_VM_PATH = "/vm/migrate"
+    KVM_ENSURE_VOLUME_LUKS_SECRETS_PATH = "/vm/ensurevolumeluksecrets"
     KVM_GET_CPU_XML_PATH = "/vm/get/cpu/xml"
     KVM_COMPARE_CPU_FUNCTION_PATH = "/vm/compare/cpu/function"
     KVM_BLOCK_LIVE_MIGRATION_PATH = "/vm/blklivemigration"
@@ -8626,6 +8688,7 @@ class VmPlugin(kvmagent.KvmAgent):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': driver_type, 'cache': _v.cacheMode, 'discard': 'unmap'})
             e(disk, 'source', None, {'file': _v.installPath})
+            Vm._add_volume_encryption_element(disk, _v)
             return disk
 
         def ceph_volume(_v):
@@ -8695,6 +8758,7 @@ class VmPlugin(kvmagent.KvmAgent):
             ele = filebased_volume(volume)
         elif volume.deviceType == 'ceph':
             ele = ceph_volume(volume)
+            Vm._add_volume_encryption_element(ele, volume)
         elif volume.deviceType == 'cbd':
             ele = cbd_volume(volume)
         elif volume.deviceType == 'block':
@@ -9933,10 +9997,48 @@ host side snapshot files chian:
         VmPlugin._create_ceph_secret_key(cmd.userKey, cmd.uuid)
         return jsonobject.dumps(kvmagent.AgentResponse())
 
+    @kvmagent.replyerror
+    def ensure_volume_luks_secrets(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        try:
+            for ent in cmd.secrets:
+                VmPlugin._ensure_volume_luks_passphrase_secret(ent.uuid, ent.passphraseBase64)
+        except Exception as ex:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.success = False
+            rsp.error = str(ex)
+        return jsonobject.dumps(rsp)
+
     @staticmethod
     def _reload_ceph_secret_keys():
         for u, k in VmPlugin.secret_keys.items():
             VmPlugin._create_ceph_secret_key(k, u)
+
+    @staticmethod
+    def _ensure_volume_luks_passphrase_secret(secret_uuid, passphrase_base64):
+        # type: (str, str) -> None
+        """
+        Persist libvirt type=passphrase secret for LUKS (ephemeral=no) so value survives libvirtd restart;
+        management also refreshes via secret-set-value on each start when addons carry passphrase.
+        """
+        if not secret_uuid or not passphrase_base64:
+            return
+        secret_uuid = secret_uuid.strip()
+        b64 = passphrase_base64.strip()
+        dump = shell.ShellCmd('virsh secret-dumpxml %s' % secret_uuid)
+        dump(False)
+        if dump.return_code != 0:
+            content = '''<secret ephemeral='no' private='yes'>
+    <uuid>%s</uuid>
+    <description>ZStack volume LUKS encryption passphrase</description>
+</secret>''' % secret_uuid
+            path = linux.write_to_temp_file(content)
+            try:
+                shell.call('virsh secret-define %s' % path)
+            finally:
+                os.remove(path)
+        shell.call('virsh secret-set-value %s --base64 %s' % (secret_uuid, b64))
 
     @staticmethod
     def _create_ceph_secret_key(userKey, uuid):
@@ -11751,6 +11853,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_ATTACH_ISO_PATH, self.attach_iso)
         http_server.register_async_uri(self.KVM_DETACH_ISO_PATH, self.detach_iso)
         http_server.register_async_uri(self.KVM_MIGRATE_VM_PATH, self.migrate_vm)
+        http_server.register_async_uri(self.KVM_ENSURE_VOLUME_LUKS_SECRETS_PATH, self.ensure_volume_luks_secrets)
         http_server.register_async_uri(self.KVM_GET_CPU_XML_PATH, self.get_cpu_xml)
         http_server.register_async_uri(self.KVM_COMPARE_CPU_FUNCTION_PATH, self.compare_cpu_function)
         http_server.register_async_uri(self.KVM_BLOCK_LIVE_MIGRATION_PATH, self.block_migrate)

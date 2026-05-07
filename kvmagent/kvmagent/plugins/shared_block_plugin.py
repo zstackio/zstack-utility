@@ -22,6 +22,14 @@ from zstacklib.utils import secret
 from zstacklib.utils.misc import IgnoreError
 
 logger = log.get_logger(__name__)
+
+CROSS_PS_COPY_ERROR_CODES = {
+    "UNSUPPORTED": 1,
+    "IO_ERROR": 2,
+    "CANCELED": 3,
+    "TIMEOUT": 4,
+}
+
 LOCK_FILE = "/var/run/zstack/sharedblock.lock"
 INIT_TAG = "zs::sharedblock::init"
 HEARTBEAT_TAG = "zs::sharedblock::heartbeat"
@@ -404,6 +412,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     MIGRATE_DATA_PATH = "/sharedblock/volume/migrate"
     GET_BLOCK_DEVICES_PATH = "/sharedblock/blockdevices"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download"
+    CROSS_PS_COPY_CAPABILITY_PATH = "/sharedblock/crossps/capability"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/sharedblock/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/sharedblock/kvmhost/download/progress"
     GET_BACKING_CHAIN_PATH = "/sharedblock/volume/backingchain"
@@ -466,6 +475,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.MIGRATE_DATA_PATH, self.migrate_volumes)
         http_server.register_async_uri(self.GET_BLOCK_DEVICES_PATH, self.get_block_devices)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        http_server.register_sync_uri(self.CROSS_PS_COPY_CAPABILITY_PATH, self.cross_ps_copy_capability)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_BACKING_CHAIN_PATH, self.get_backing_chain)
         http_server.register_async_uri(self.CONVERT_VOLUME_PROVISIONING_PATH, self.convert_volume_provisioning)
@@ -1100,6 +1110,13 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         shell.run("pkill -9 -f '%s'" % install_abs_path)
 
         self.do_delete_bits(cmd.primaryStorageInstallPath)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def cross_ps_copy_capability(self, req):
+        rsp = AgentRsp()
+        rsp.success = True
+        rsp.crossPsCopyErrorCodes = CROSS_PS_COPY_ERROR_CODES
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

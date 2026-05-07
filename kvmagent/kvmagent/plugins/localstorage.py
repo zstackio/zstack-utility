@@ -3,6 +3,8 @@ __author__ = 'frank'
 import os
 import os.path
 import traceback
+import base64
+import re
 
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
@@ -12,6 +14,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import qcow2
 from zstacklib.utils import linux
 from zstacklib.utils import shell
+from zstacklib.utils import qemu_img
 from zstacklib.utils import traceable_shell
 from zstacklib.utils import rollback
 from zstacklib.utils.bash import *
@@ -22,6 +25,21 @@ from zstacklib.utils import secret
 from zstacklib.utils.misc import IgnoreError
 
 logger = log.get_logger(__name__)
+
+# Test-mode defaults: force local qcow2 volumes to be LUKS-encrypted.
+FORCE_LOCAL_QCOW2_ENCRYPTION = True
+FORCE_LOCAL_QCOW2_ENCRYPTION_FORMAT = "luks"
+FORCE_LOCAL_QCOW2_ENCRYPTION_PASSPHRASE = os.environ.get(
+    "ZS_LOCAL_QCOW2_TEST_PASSPHRASE",
+    "6c2366d121b9494aabc8bf01f99f5bf0"
+)
+
+CROSS_PS_COPY_ERROR_CODES = {
+    "UNSUPPORTED": 1,
+    "IO_ERROR": 2,
+    "CANCELED": 3,
+    "TIMEOUT": 4,
+}
 
 
 class AgentCommand(object):
@@ -274,6 +292,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     CHECK_INITIALIZED_FILE = "/localstorage/check/initializedfile"
     CREATE_INITIALIZED_FILE = "/localstorage/create/initializedfile"
     DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download"
+    # Cross primary-storage copy primitive (MN orchestration); reserved for extended qemu-img/rbd pipelines.
+    CROSS_PS_COPY_CAPABILITY_PATH = "/localstorage/crossps/capability"
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/localstorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/localstorage/kvmhost/download/progress"
     GET_QCOW2_HASH_VALUE_PATH = "/localstorage/getqcow2hash"
@@ -331,6 +351,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CHECK_INITIALIZED_FILE, self.check_initialized_file)
         http_server.register_async_uri(self.CREATE_INITIALIZED_FILE, self.create_initialized_file)
         http_server.register_async_uri(self.DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.download_from_kvmhost)
+        http_server.register_sync_uri(self.CROSS_PS_COPY_CAPABILITY_PATH, self.cross_ps_copy_capability)
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
@@ -344,6 +365,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
     def stop(self):
         pass
+
+    @kvmagent.replyerror
+    def cross_ps_copy_capability(self, req):
+        rsp = AgentResponse()
+        rsp.success = True
+        rsp.crossPsCopyErrorCodes = CROSS_PS_COPY_ERROR_CODES
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def cancel_download_from_kvmhost(self, req):
@@ -938,6 +966,69 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
         return jsonobject.dumps(rsp)
 
+    @staticmethod
+    def _list_secret_uuids():
+        out = shell.call("virsh secret-list --all | awk 'NR>2 {print $1}'")
+        return [u.strip() for u in out.splitlines() if u.strip()]
+
+    @staticmethod
+    def _find_volume_secret_uuid(volume_path):
+        for suuid in LocalStoragePlugin._list_secret_uuids():
+            try:
+                xml = shell.call("virsh secret-dumpxml %s" % suuid)
+                if re.search(r"<usage\\s+type=['\\\"]volume['\\\"]>.*?<volume>%s</volume>" % re.escape(volume_path),
+                             xml, re.S):
+                    return suuid
+            except Exception:
+                continue
+
+        return None
+
+    @staticmethod
+    def _ensure_volume_secret(volume_path):
+        suuid = LocalStoragePlugin._find_volume_secret_uuid(volume_path)
+        if suuid is None:
+            suuid = str(uuidhelper.uuid())
+            xml = """<secret ephemeral='no' private='no'>
+  <uuid>%s</uuid>
+  <usage type='volume'>
+    <volume>%s</volume>
+  </usage>
+</secret>""" % (suuid, volume_path)
+            xml_file = linux.write_to_temp_file(xml)
+            try:
+                shell.call("virsh secret-define %s" % xml_file)
+            finally:
+                linux.rm_file_force(xml_file)
+
+        b64_passphrase = base64.b64encode(FORCE_LOCAL_QCOW2_ENCRYPTION_PASSPHRASE)
+        shell.call("virsh secret-set-value --secret %s --base64 %s" % (suuid, b64_passphrase))
+        return suuid
+
+    @staticmethod
+    def _encrypt_qcow2_inplace(install_path):
+        LocalStoragePlugin._ensure_volume_secret(install_path)
+        tmp_path = "%s.encrypting.%s" % (install_path, uuidhelper.uuid())
+        sec_file = linux.write_to_temp_file(FORCE_LOCAL_QCOW2_ENCRYPTION_PASSPHRASE)
+        qemu_cmd = ("%s -f qcow2 -O qcow2 "
+                    "--object secret,id=local_luks_sec,format=raw,file=%s "
+                    "-o encrypt.format=%s,encrypt.key-secret=local_luks_sec "
+                    "%s %s") % (
+            qemu_img.subcmd('convert'),
+            sec_file,
+            FORCE_LOCAL_QCOW2_ENCRYPTION_FORMAT,
+            install_path,
+            tmp_path
+        )
+
+        try:
+            shell.call(qemu_cmd)
+            shell.call("mv %s %s" % (tmp_path, install_path))
+        finally:
+            linux.rm_file_force(sec_file)
+            if os.path.exists(tmp_path):
+                linux.rm_file_force(tmp_path)
+
     def do_create_empty_volume(self, cmd):
         dirname = os.path.dirname(cmd.installUrl)
         if not os.path.exists(dirname):
@@ -950,6 +1041,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
             else:
                 linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+            if FORCE_LOCAL_QCOW2_ENCRYPTION:
+                self._encrypt_qcow2_inplace(cmd.installUrl)
 
     @kvmagent.replyerror
     def create_volume_with_backing(self, req):
@@ -985,6 +1078,8 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname, 0775)
 
         linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
+        if FORCE_LOCAL_QCOW2_ENCRYPTION:
+            LocalStoragePlugin._encrypt_qcow2_inplace(vol_path)
 
     @kvmagent.replyerror
     def delete(self, req):
