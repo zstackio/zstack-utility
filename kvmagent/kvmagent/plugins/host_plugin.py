@@ -81,7 +81,7 @@ KEY_AGENT_ERR_KEYS_NOT_ON_DISK = 'KEY_AGENT_KEYS_NOT_ON_DISK'
 KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH = 'KEY_AGENT_KEY_FILES_INTEGRITY_MISMATCH'
 KEY_AGENT_ERR_SECRET_NOT_FOUND = 'KEY_AGENT_SECRET_NOT_FOUND'
 
-KEY_AGENT_SUPPORTED_SECRET_PURPOSES = ('vtpm',)
+KEY_AGENT_SUPPORTED_SECRET_PURPOSES = ('vtpm', 'volume')
 
 
 def is_valid_key_agent_secret_purpose(purpose):
@@ -1086,6 +1086,7 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_ENVELOPE_PUBLIC_KEY_PATH = '/host/key/envelope/getEnvelopePublicKey'
     CHECK_ENVELOPE_KEY_PATH = '/host/key/envelope/checkEnvelopeKey'
     ENSURE_SECRET_PATH = '/host/key/envelope/ensureSecret'
+    WRITE_SECRET_MATERIAL_FILE_PATH = '/host/key/envelope/writeSecretMaterialFile'
     GET_SECRET_PATH = '/host/key/envelope/getSecret'
     DELETE_SECRET_PATH = '/host/key/envelope/deleteSecret'
     CHECK_FILE_ON_HOST_PATH = '/host/checkfile'
@@ -1345,6 +1346,39 @@ class HostPlugin(kvmagent.KvmAgent):
             return (None, None, details or str(e))
         except Exception as e:
             logger.debug('key-agent EnsureSecret failed: %s' % e)
+            return (None, None, str(e))
+
+    def _prepare_luks_secret_material_channel(self, encrypted_dek):
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            return (None, None, 'key_agent grpc not available')
+        if not encrypted_dek:
+            return (None, None, 'encrypted_dek is required')
+        try:
+            if not os.path.exists('/var/run/key-agent/key-agent.sock'):
+                logger.debug('key-agent unix socket not found, skip PrepareLuksSecretMaterialChannel')
+                return (None, None, 'key-agent socket not found')
+            channel = grpc.insecure_channel(KEY_AGENT_UNIX_SOCKET)
+            try:
+                stub = key_agent_pb2_grpc.KeyAgentServiceStub(channel)
+                req = key_agent_pb2.PrepareLuksSecretMaterialChannelRequest(encrypted_dek=encrypted_dek)
+                resp = stub.PrepareLuksSecretMaterialChannel(req, timeout=60)
+                path = getattr(resp, 'channel_path', None) if resp else None
+                path = str(path).strip() if path else ''
+                if path:
+                    return (path, None, None)
+                return (None, None, 'key-agent PrepareLuksSecretMaterialChannel returned empty channel_path')
+            finally:
+                channel.close()
+        except grpc.RpcError as e:
+            details = e.details() if hasattr(e, 'details') and callable(getattr(e, 'details')) else str(e)
+            logger.debug('key-agent PrepareLuksSecretMaterialChannel gRPC error: %s' % details)
+            if KEY_AGENT_ERR_KEYS_NOT_ON_DISK in details:
+                return (None, KEY_AGENT_ERR_KEYS_NOT_ON_DISK, details)
+            if KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH in details:
+                return (None, KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH, details)
+            return (None, None, details or str(e))
+        except Exception as e:
+            logger.debug('key-agent PrepareLuksSecretMaterialChannel failed: %s' % e)
             return (None, None, str(e))
 
     def _get_secret_via_key_agent(self, vm_uuid, key_version, purpose, usage_instance=''):
@@ -1667,6 +1701,57 @@ class HostPlugin(kvmagent.KvmAgent):
                 rsp.error = err_msg or err_code
             else:
                 rsp.error = err_msg or 'key-agent EnsureSecret failed or no secret_uuid'
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def write_secret_material_file(self, req):
+        """
+        MN → kvmagent: HPKE-sealed encryptedDek (base64); kvmagent → key-agent PrepareLuksSecretMaterialChannel.
+        Response secFilePath is a FIFO under /tmp for qemu-img --object secret,...,file= (MN filePath on cmd is ignored).
+        """
+        rsp = kvmagent.AgentResponse()
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            rsp.success = False
+            rsp.error = 'key_agent grpc not available'
+            return jsonobject.dumps(rsp)
+        try:
+            cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        except Exception as e:
+            rsp.success = False
+            rsp.error = 'invalid request body: %s' % e
+            return jsonobject.dumps(rsp)
+        encrypted_dek_b64 = getattr(cmd, 'encryptedDek', None)
+        if not encrypted_dek_b64:
+            rsp.success = False
+            rsp.error = 'missing encryptedDek (non-empty)'
+            return jsonobject.dumps(rsp)
+        normalized_b64 = encrypted_dek_b64.strip()
+        if not re.match(r'^[A-Za-z0-9+/]+={0,2}$', normalized_b64) or len(normalized_b64) % 4 != 0:
+            rsp.success = False
+            rsp.error = 'encryptedDek must be valid base64'
+            return jsonobject.dumps(rsp)
+        try:
+            encrypted_dek = base64.b64decode(normalized_b64)
+            enc_again = base64.b64encode(encrypted_dek)
+            if not isinstance(enc_again, str):
+                enc_again = enc_again.decode('ascii')
+            if enc_again.rstrip('=') != normalized_b64.rstrip('='):
+                raise ValueError('non-canonical base64 input')
+        except Exception as e:
+            rsp.success = False
+            rsp.error = 'encryptedDek must be base64: %s' % e
+            return jsonobject.dumps(rsp)
+        channel_path, err_code, err_msg = self._prepare_luks_secret_material_channel(encrypted_dek)
+        if channel_path:
+            rsp.success = True
+            rsp.secFilePath = channel_path
+        else:
+            rsp.success = False
+            if err_code:
+                rsp.errorCode = err_code
+                rsp.error = err_msg or err_code
+            else:
+                rsp.error = err_msg or 'key-agent PrepareLuksSecretMaterialChannel failed'
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -4654,6 +4739,7 @@ done
         http_server.register_async_uri(self.GET_ENVELOPE_PUBLIC_KEY_PATH, self.get_envelope_public_key)
         http_server.register_async_uri(self.CHECK_ENVELOPE_KEY_PATH, self.check_envelope_key)
         http_server.register_async_uri(self.ENSURE_SECRET_PATH, self.ensure_secret)
+        http_server.register_async_uri(self.WRITE_SECRET_MATERIAL_FILE_PATH, self.write_secret_material_file)
         http_server.register_async_uri(self.GET_SECRET_PATH, self.get_secret)
         http_server.register_async_uri(self.DELETE_SECRET_PATH, self.delete_secret)
 

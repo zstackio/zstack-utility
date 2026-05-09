@@ -1871,6 +1871,49 @@ class IsoCeph(object):
         return disk
 
 
+def _add_luks_encryption(disk, volume, allow_legacy_secret=True):
+    secret_uuid = getattr(volume, 'luksSecretUuid', None)
+    if not secret_uuid and allow_legacy_secret and getattr(volume, 'deviceType', None) != 'ceph':
+        secret_uuid = getattr(volume, 'secretUuid', None)
+    if secret_uuid:
+        enc = e(disk, 'encryption', None, {'format': 'luks'})
+        e(enc, 'secret', None, {'type': 'passphrase', 'uuid': secret_uuid})
+
+
+def _add_luks_encryption_to_source(source, volume, allow_legacy_secret=True):
+    secret_uuid = getattr(volume, 'luksSecretUuid', None)
+    if not secret_uuid and allow_legacy_secret and getattr(volume, 'deviceType', None) != 'ceph':
+        secret_uuid = getattr(volume, 'secretUuid', None)
+    if secret_uuid:
+        enc = e(source, 'encryption', None, {'format': 'luks'})
+        e(enc, 'secret', None, {'type': 'passphrase', 'uuid': secret_uuid})
+
+
+def _add_luks_backing_chain_if_needed(disk, volume, disk_type):
+    if not getattr(volume, 'luksSecretUuid', None):
+        return False
+
+    backing_chain = Vm._get_backfile_chain(volume.installPath)
+    if not backing_chain:
+        return False
+
+    encrypted_backing_paths = set([p for p in backing_chain if linux.is_luks_encrypted_image(p)])
+    if not encrypted_backing_paths:
+        return False
+
+    source_attr = Vm.disk_source_attrname.get(disk_type)
+    backing = disk
+    for backing_path in backing_chain:
+        backing = e(backing, 'backingStore', None, {'type': disk_type})
+        e(backing, 'format', None, {'type': linux.get_img_fmt(backing_path)})
+        source = e(backing, 'source', None, {source_attr: backing_path})
+        if backing_path in encrypted_backing_paths:
+            _add_luks_encryption_to_source(source, volume)
+
+    e(backing, 'backingStore')
+    return True
+
+
 class BlkCeph(object):
     def __init__(self):
         self.volume = None
@@ -1887,6 +1930,7 @@ class BlkCeph(object):
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
+        _add_luks_encryption(disk, self.volume, allow_legacy_secret=False)
 
         dev_format = Vm._get_disk_target_dev_format(self.bus_type)
         e(disk, 'target', None, {'dev': dev_format % self.dev_letter, 'bus': self.bus_type})
@@ -1916,6 +1960,7 @@ class VirtioCeph(object):
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
+        _add_luks_encryption(disk, self.volume, allow_legacy_secret=False)
         e(disk, 'target', None, {'dev': 'vd%s' % self.dev_letter, 'bus': 'virtio'})
         if self.volume.physicalBlockSize:
             e(disk, 'blockio', None, {'physical_block_size': str(self.volume.physicalBlockSize)})
@@ -1937,6 +1982,7 @@ class SCSICeph(object):
             e(auth, 'secret', attrib={'type': 'ceph', 'uuid': self.volume.secretUuid})
         for minfo in self.volume.monInfo:
             e(source, 'host', None, {'name': minfo.hostname, 'port': str(minfo.port)})
+        _add_luks_encryption(disk, self.volume, allow_legacy_secret=False)
         e(disk, 'target', None, {'dev': 'sd%s' % self.dev_letter, 'bus': 'scsi'})
         e(disk, 'wwn', self.volume.wwn)
         if self.volume.shareable:
@@ -3190,7 +3236,14 @@ class Vm(object):
             if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
                 driver_elements["iothread"] = str(volume.ioThreadId)
             e(disk, 'driver', None, driver_elements)
-            e(disk, 'source', None, {'file': volume.installPath})
+            source = e(disk, 'source', None, {'file': volume.installPath})
+
+            # qcow2 with LUKS header needs <encryption> + secret ref, else
+            # qemu aborts: "Parameter 'encrypt.key-secret' is required for cipher".
+            if _add_luks_backing_chain_if_needed(disk, volume, 'file'):
+                _add_luks_encryption_to_source(source, volume)
+            else:
+                _add_luks_encryption(disk, volume)
 
             if volume.shareable:
                 e(disk, 'shareable')
@@ -3285,7 +3338,12 @@ class Vm(object):
                 if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
                     driver_elements["iothread"] = str(volume.ioThreadId)
                 e(disk, 'driver', None, driver_elements)
-                e(disk, 'source', None, {'dev': volume.installPath})
+                source = e(disk, 'source', None, {'dev': volume.installPath})
+
+                if _add_luks_backing_chain_if_needed(disk, volume, 'block'):
+                    _add_luks_encryption_to_source(source, volume)
+                else:
+                    _add_luks_encryption(disk, volume)
 
                 if volume.shareable:
                     e(disk, 'shareable')
@@ -3806,6 +3864,7 @@ class Vm(object):
 
         logger.debug(vs_structs)
         memory_snapshot_required = False
+        reuse_ext = any(getattr(s, 'encryptLuksSecretMaterialFilePath', None) for s in vs_structs)
         for vs_struct in vs_structs:
             if vs_struct.live is False or vs_struct.full is True:
                 raise kvmagent.KvmError("volume %s is not live or full snapshot specified, "
@@ -3845,8 +3904,15 @@ class Vm(object):
 
             disk_names.append(disk_name)
             source_file = VmPlugin.get_source_file_by_disk(target_disk)
+            if getattr(vs_struct, 'encryptLuksSecretMaterialFilePath', None):
+                linux.qcow2_clone_encrypted(
+                    source_file, vs_struct.installPath, vs_struct.encryptLuksSecretMaterialFilePath,
+                    size=linux.qcow2_virtualsize(source_file))
+            elif reuse_ext:
+                linux.qcow2_clone(source_file, vs_struct.installPath)
             d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
-            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': vs_struct.installPath})
+            source = e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': vs_struct.installPath})
+            _add_luks_encryption_to_source(source, vs_struct.volume)
             e(d, 'driver', None, attrib={'type': 'qcow2'})
             return_structs.append(VolumeSnapshotResultStruct(
                 vs_struct.volumeUuid,
@@ -3866,6 +3932,8 @@ class Vm(object):
         snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_ATOMIC
         if not memory_snapshot_required:
             snap_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY
+        if reuse_ext:
+            snap_flags |= libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_REUSE_EXT
 
         try:
             self.domain.snapshotCreateXML(xml, snap_flags)
@@ -4004,7 +4072,8 @@ class Vm(object):
             snapshot = etree.Element('domainsnapshot')
             disks = e(snapshot, 'disks')
             d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': backing_store_type})
-            e(d, 'source', None, attrib={source_type: install_path})
+            source = e(d, 'source', None, attrib={source_type: install_path})
+            _add_luks_encryption_to_source(source, volume)
             e(d, 'driver', None, attrib={'type': 'qcow2'})
 
             # QEMU 2.3 default create snapshots on all devices
@@ -5912,7 +5981,24 @@ class Vm(object):
                 #     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode, 'queues':'1', 'dataplane': 'on'})
                 # else:
                 #     e(disk, 'driver', None, {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': _v.cacheMode})
-                e(disk, 'source', None, {'file': _v.installPath})
+                source = e(disk, 'source', None, {'file': _v.installPath})
+
+                # qcow2 with LUKS header needs <encryption> + secret ref, else
+                # qemu aborts: "Parameter 'encrypt.key-secret' is required for cipher".
+                vol_secret_uuid = getattr(_v, 'luksSecretUuid', None) or getattr(_v, 'secretUuid', None)
+                try:
+                    _v_kind = type(_v).__name__
+                    _v_keys = sorted(_v.__dict__.keys()) if hasattr(_v, '__dict__') else 'no __dict__'
+                except Exception as _e:
+                    _v_kind = 'ERR(%s)' % _e
+                    _v_keys = 'ERR'
+                logger.debug("FILEBASED-VOL volUuid=%s installPath=%s secretUuid=%r kind=%s keys=%s"
+                             % (getattr(_v, 'volumeUuid', None), getattr(_v, 'installPath', None),
+                                vol_secret_uuid, _v_kind, _v_keys))
+                if _add_luks_backing_chain_if_needed(disk, _v, 'file'):
+                    _add_luks_encryption_to_source(source, _v)
+                else:
+                    _add_luks_encryption(disk, _v)
 
                 if _v.shareable:
                     e(disk, 'shareable')
@@ -6055,8 +6141,13 @@ class Vm(object):
                 if (not _v.useVirtioSCSI) and _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
                     driver_elements["iothread"] = str(_v.ioThreadId)
                 e(disk, 'driver', None, driver_elements)
-                e(disk, 'source', None, {'dev': _v.installPath})
-                
+                source = e(disk, 'source', None, {'dev': _v.installPath})
+
+                if _add_luks_backing_chain_if_needed(disk, _v, 'block'):
+                    _add_luks_encryption_to_source(source, _v)
+                else:
+                    _add_luks_encryption(disk, _v)
+
                 if _v.shareable:
                     e(disk, 'shareable')
 
@@ -8982,7 +9073,11 @@ class VmPlugin(kvmagent.KvmAgent):
             :rtype: (str, str, long)
             """
             makedir_if_need(install_path)
-            linux.create_template(previous_install_path, install_path)
+            if getattr(cmd, 'fullSnapshotLuksSecretMaterialFilePath', None):
+                linux.create_encrypted_template_with_secret(
+                    previous_install_path, install_path, cmd.fullSnapshotLuksSecretMaterialFilePath)
+            else:
+                linux.create_template(previous_install_path, install_path)
             new_volume_path = new_volume_install_path if new_volume_install_path is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
@@ -9137,10 +9232,17 @@ host side snapshot files chian:
 
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path):
             makedir_if_need(install_path)
-            linux.create_template(previous_install_path, install_path)
+            # FIXME: this an untested code path
+            if getattr(cmd, 'fullSnapshotLuksSecretMaterialFilePath', None):
+                linux.create_encrypted_template_with_secret(
+                    previous_install_path, install_path, cmd.fullSnapshotLuksSecretMaterialFilePath)
+            else:
+                linux.create_template(previous_install_path, install_path)
             new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             self.active_volume_if_need(new_volume_path)
+            if getattr(cmd, 'encryptLuksSecretMaterialFilePath', None):
+                cmd.virtualSize = linux.qcow2_virtualsize(install_path)
             linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
             return install_path, new_volume_path
 

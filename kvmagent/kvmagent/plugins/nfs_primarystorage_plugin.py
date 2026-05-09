@@ -289,6 +289,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH = "/nfsprimarystorage/kvmhost/download/cancel"
     GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH = "/nfsprimarystorage/kvmhost/download/progress"
     GET_QCOW2_HASH_VALUE_PATH = "/nfsprimarystorage/getqcow2hash"
+    ENCRYPT_VOLUME_BITS_PATH = "/nfsprimarystorage/volume/encryptinplace"
     WRITE_VM_METADATA_PATH = "/nfsprimarystorage/vm/metadata/write"
     GET_VM_INSTANCE_METADATA_PATH = "/nfsprimarystorage/vm/metadata/get"
     SCAN_VM_METADATA_PATH = "/nfsprimarystorage/vm/metadata/scan"
@@ -341,6 +342,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.CANCEL_DOWNLOAD_BITS_FROM_KVM_HOST_PATH, self.cancel_download_from_kvmhost)
         http_server.register_async_uri(self.GET_DOWNLOAD_BITS_FROM_KVM_HOST_PROGRESS_PATH, self.get_download_bits_from_kvmhost_progress)
         http_server.register_async_uri(self.GET_QCOW2_HASH_VALUE_PATH, self.get_qcow2_hashvalue)
+        http_server.register_async_uri(self.ENCRYPT_VOLUME_BITS_PATH, self.encrypt_volume_bits)
         http_server.register_async_uri(self.WRITE_VM_METADATA_PATH, self.write_vm_metadata)
         http_server.register_async_uri(self.GET_VM_INSTANCE_METADATA_PATH, self.get_vm_instance_metadata)
         http_server.register_async_uri(self.SCAN_VM_METADATA_PATH, self.scan_vm_metadata)
@@ -697,10 +699,15 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         try:
             if cmd.incremental:
-                return linux.qcow2_create_with_backing_file_and_option(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+                linux.qcow2_create_with_backing_file_and_cmd(cmd.snapshotInstallPath, cmd.workspaceInstallPath, cmd)
             else:
                 t_shell = traceable_shell.get_shell(cmd)
-                linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
+                if getattr(cmd, 'encryptLuksSecretMaterialFilePath', None):
+                    linux.create_encrypted_template_with_secret(
+                        cmd.snapshotInstallPath, cmd.workspaceInstallPath,
+                        cmd.encryptLuksSecretMaterialFilePath, shell=t_shell)
+                else:
+                    linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
             rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
@@ -938,6 +945,25 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def encrypt_volume_bits(self, req):
+        """
+        In-place LUKS encryption of a plain volume file on NFS primary storage.
+        Used by the data-volume-from-template path: after the plain template bits
+        have been downloaded into the volume's install path, this handler converts
+        them into a self-contained LUKS-encrypted qcow2 at the same path.
+        """
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = kvmagent.AgentResponse()
+        try:
+            linux.encrypt_plain_volume_in_place(cmd.installPath, cmd.encryptLuksSecretMaterialFilePath)
+            logger.debug('successfully LUKS-encrypted volume bits at %s' % cmd.installPath)
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.success = False
+            rsp.error = 'failed to LUKS-encrypt volume bits at %s: %s' % (cmd.installPath, str(e))
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def create_template_from_root_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateTemplateFromRootVolumeRsp()
@@ -947,7 +973,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 os.makedirs(dirname, 0755)
 
             t_shell = traceable_shell.get_shell(cmd)
-            linux.create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
+            if getattr(cmd, 'encryptLuksSecretMaterialFilePath', None):
+                linux.create_encrypted_template_with_secret(
+                    cmd.rootVolumePath, cmd.installPath,
+                    cmd.encryptLuksSecretMaterialFilePath, shell=t_shell)
+            else:
+                linux.create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
             rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         except linux.LinuxError as e:
             linux.rm_file_force(cmd.installPath)

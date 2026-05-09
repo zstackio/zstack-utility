@@ -3,6 +3,8 @@ __author__ = 'frank'
 import os
 import os.path
 import traceback
+import base64
+from xml.sax.saxutils import escape as xml_escape
 
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
@@ -282,6 +284,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     SCAN_VM_METADATA_PATH = "/localstorage/vm/metadata/scan"
     CLEANUP_VM_METADATA_PATH = "/localstorage/vm/metadata/cleanup"
     PREFIX_REBASE_BACKING_FILES_PATH = "/localstorage/snapshot/prefixrebasebackingfiles"
+    ENCRYPT_VOLUME_BITS_PATH = "/localstorage/volume/encryptinplace"
 
     _metadata_handler = FileBasedMetadataHandler()
 
@@ -339,6 +342,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.SCAN_VM_METADATA_PATH, self.scan_vm_metadata)
         http_server.register_async_uri(self.CLEANUP_VM_METADATA_PATH, self.cleanup_vm_metadata)
         http_server.register_async_uri(self.PREFIX_REBASE_BACKING_FILES_PATH, self.prefix_rebase_backing_files)
+        http_server.register_async_uri(self.ENCRYPT_VOLUME_BITS_PATH, self.encrypt_volume_bits)
 
         self.imagestore_client = ImageStoreClient()
 
@@ -748,7 +752,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         _0()
 
         t_shell = traceable_shell.get_shell(cmd)
-        linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
+        if getattr(cmd, 'encryptLuksSecretMaterialFilePath', None):
+            linux.create_encrypted_template_with_secret(
+                cmd.volumePath, cmd.installPath,
+                cmd.encryptLuksSecretMaterialFilePath, shell=t_shell)
+        else:
+            linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
@@ -802,7 +811,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         t_shell = traceable_shell.get_shell(cmd)
-        linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
+        if getattr(cmd, 'encryptLuksSecretMaterialFilePath', None):
+            linux.create_encrypted_template_with_secret(
+                cmd.snapshotInstallPath, cmd.workspaceInstallPath,
+                cmd.encryptLuksSecretMaterialFilePath, shell=t_shell)
+        else:
+            linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -945,11 +959,33 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         if cmd.volumeFormat == "raw":
             linux.raw_create(cmd.installUrl, cmd.size)
-        else:  # default: cmd.volumeFormat == "qcow2"
-            if cmd.backingFile:
-                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
-            else:
-                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+            return
+
+        # default: cmd.volumeFormat == "qcow2". qcow2_create_*_with_cmd dispatch to a
+        # LUKS-encrypted variant when cmd carries encryptLuksSecretMaterialFilePath.
+        if cmd.backingFile:
+            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
+        else:
+            linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+
+    @kvmagent.replyerror
+    def encrypt_volume_bits(self, req):
+        """
+        In-place LUKS encryption of a plain volume file on local storage.
+        Used by the data-volume-from-template path: after the plain template bits
+        have been downloaded into the volume's install path, this handler converts
+        them into a self-contained LUKS-encrypted qcow2 at the same path.
+        """
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentResponse()
+        try:
+            linux.encrypt_plain_volume_in_place(cmd.installPath, cmd.encryptLuksSecretMaterialFilePath)
+            logger.debug('successfully LUKS-encrypted volume bits at %s' % cmd.installPath)
+        except Exception as e:
+            logger.warn(linux.get_exception_stacktrace())
+            rsp.success = False
+            rsp.error = 'failed to LUKS-encrypt volume bits at %s: %s' % (cmd.installPath, str(e))
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def create_volume_with_backing(self, req):

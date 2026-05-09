@@ -9,6 +9,7 @@ service KeyAgentService {
   rpc EnsureSecret(EnsureSecretRequest) returns (EnsureSecretResponse);
   rpc GetSecret(GetSecretRequest) returns (GetSecretResponse);
   rpc DeleteSecret(DeleteSecretRequest) returns (DeleteSecretResponse);
+  rpc PrepareLuksSecretMaterialChannel(PrepareLuksSecretMaterialChannelRequest) returns (PrepareLuksSecretMaterialChannelResponse);
 }
 
 message CreateEnvelopeKeyRequest {}
@@ -64,3 +65,11 @@ message DeleteSecretRequest {
 }
 
 message DeleteSecretResponse {}
+
+message PrepareLuksSecretMaterialChannelRequest {
+  bytes encrypted_dek = 1;
+}
+
+message PrepareLuksSecretMaterialChannelResponse {
+  string channel_path = 1;
+}
