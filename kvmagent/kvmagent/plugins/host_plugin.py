@@ -15,6 +15,8 @@ import uuid
 import string
 import socket
 import sys
+import yaml
+from zstacklib.utils.compat import subprocess
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin

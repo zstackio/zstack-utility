@@ -2,6 +2,8 @@ import functools
 import inspect
 import json
 import re
+import sys
+from zstacklib.utils.compat import subprocess
 import time
 
 from jinja2 import Template

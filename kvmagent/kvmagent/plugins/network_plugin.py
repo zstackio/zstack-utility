@@ -16,6 +16,7 @@ from zstacklib.utils import ovs
 import os
 import traceback
 import netaddr
+from zstacklib.utils.compat import subprocess
 
 CHECK_PHYSICAL_NETWORK_INTERFACE_PATH = '/network/checkphysicalnetworkinterface'
 ADD_INTERFACE_TO_BRIDGE_PATH = '/network/bridge/addif'

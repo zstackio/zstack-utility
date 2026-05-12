@@ -7,7 +7,7 @@ import shell
 import ssh
 import os.path
 import log
-import subprocess
+from zstacklib.utils.compat import subprocess
 import lock
 import time
 import json
