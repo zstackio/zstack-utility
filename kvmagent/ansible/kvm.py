@@ -257,47 +257,62 @@ def deploy_libvirt_tls_certs(host_post_info):
 
     handle_ansible_info("Deployed TLS certs for libvirt on host %s (SAN: %s)" % (host_ip, san_entries), host_post_info, "INFO")
 
+def modprobe_present(name, host_post_info):
+    modprobe_arg = ModProbeArg()
+    modprobe_arg.name = name
+    modprobe_arg.state = 'present'
+    modprobe(modprobe_arg, host_post_info)
+
+
 @with_arch(todo_list=['x86_64'], host_arch=host_info.host_arch)
 def check_nested_kvm(host_post_info):
     """aarch64 does not need to modprobe kvm"""
-    enabled_nested_flag = False
-    # enable nested kvm
-    command = "cat /sys/module/kvm_intel/parameters/nested"
-    (status, stdout) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
-    if "Y" in stdout or "1" in stdout:
-        enabled_nested_flag = True
-
     #add kvm module and tun module
-    modprobe_arg = ModProbeArg()
-    modprobe_arg.name = 'kvm'
-    modprobe_arg.state = 'present'
-    modprobe(modprobe_arg, host_post_info)
+    modprobe_present('kvm', host_post_info)
 
-    modprobe_arg = ModProbeArg()
     if 'intel' in host_info.cpu_info or 'zhaoxin' in host_info.cpu_info:
-        # reload kvm_intel for enable nested kvm
-        if enabled_nested_flag is False:
-            command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_intel nested=1' >  /etc/modprobe.d/kvm-nested.conf"
-            run_remote_command(command, host_post_info)
-            command = "modprobe -r kvm_intel"
-            run_remote_command(command, host_post_info, return_status=True)
-        modprobe_arg.name = 'kvm_intel'
+        kvm_module = 'kvm_intel'
     elif 'amd' in host_info.cpu_info or 'hygon' in host_info.cpu_info:
-        if enabled_nested_flag is False:
-            command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_amd nested=1' >  /etc/modprobe.d/kvm-nested.conf"
-            run_remote_command(command, host_post_info)
-            command = "modprobe -r kvm_amd"
-            run_remote_command(command, host_post_info, return_status=True)
-        modprobe_arg.name = 'kvm_amd'
+        kvm_module = 'kvm_amd'
     else:
         handle_ansible_info("Unknown CPU type detected when modprobe kvm", host_post_info, "WARNING")
-    modprobe_arg.state = 'present'
-    modprobe(modprobe_arg, host_post_info)
+        kvm_module = None
 
-    modprobe_arg = ModProbeArg()
-    modprobe_arg.name = 'tun'
-    modprobe_arg.state = 'present'
-    modprobe(modprobe_arg, host_post_info)
+    if kvm_module is None:
+        modprobe_present('tun', host_post_info)
+        return
+
+    enabled_nested_flag = False
+    command = "cat /sys/module/%s/parameters/nested" % kvm_module
+    (nested_param_status, stdout) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
+    stdout = (stdout or "").strip()
+    if nested_param_status is True and stdout in ["Y", "1"]:
+        enabled_nested_flag = True
+
+    command = ("conf=/etc/modprobe.d/kvm-nested.conf; tmp=${conf}.zstack.tmp; "
+               "mkdir -p /etc/modprobe.d/ && "
+               "if [ -f ${conf} ]; then cp -f ${conf} ${conf}.bak; fi && "
+               "printf 'options %s nested=1\\n' > ${tmp} && mv -f ${tmp} ${conf}") % kvm_module
+    run_remote_command(command, host_post_info)
+    unload_status = None
+    if nested_param_status is True and enabled_nested_flag is False:
+        command = "modprobe -r %s" % kvm_module
+        unload_status = run_remote_command(command, host_post_info, return_status=True)
+        if unload_status not in [0, True]:
+            handle_ansible_info("Failed to unload %s, nested may take effect after reboot only, unload status: %s"
+                                % (kvm_module, unload_status), host_post_info, "WARNING")
+
+    modprobe_present(kvm_module, host_post_info)
+
+    command = "cat /sys/module/%s/parameters/nested" % kvm_module
+    (nested_status, nested_out) = run_remote_command(command, host_post_info, return_status=True, return_output=True)
+    nested_out = (nested_out or "").strip()
+    if nested_out not in ["Y", "1"]:
+        handle_ansible_info("Nested KVM is not active now for %s, but persisted in /etc/modprobe.d/kvm-nested.conf, "
+                            "unload status: %s, nested status: %s, nested output: %s"
+                            % (kvm_module, unload_status, nested_status, nested_out), host_post_info, "WARNING")
+
+    modprobe_present('tun', host_post_info)
 
 
 def load_zstacklib():
