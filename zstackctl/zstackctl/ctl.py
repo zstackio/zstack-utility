@@ -999,12 +999,6 @@ class Ctl(object):
     ZS_RELEASE = os.popen("awk '{print $3}' /etc/zstack-release").read().strip()
 
     def __init__(self):
-        versionFile = os.path.join(self.ZSTACK_UI_HOME,'VERSION')
-        if os.path.exists(versionFile):
-            with open(versionFile, 'r') as fd2:
-                self.uiVersion = fd2.readline()
-                self.uiVersion = self.uiVersion.strip(' \t\n\r')
-                self.uiPrimaryVersion = self.uiVersion[0]
         self.commands = {}
         self.command_list = []
         self.main_parser = CtlParser(prog='zstack-ctl', description="ZStack management tool", formatter_class=argparse.RawTextHelpFormatter)
