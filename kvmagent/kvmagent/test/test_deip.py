@@ -423,6 +423,9 @@ class _DeleteEipTestBase(unittest.TestCase):
 
         self.patcher_iproute = mock.patch("kvmagent.plugins.deip.iproute")
         self.mock_iproute = self.patcher_iproute.start()
+        self.mock_iproute.IpNetnsShell.list_netns.return_value = [
+            "br_eth0_192_168_1_100"
+        ]
 
         self.patcher_linux = mock.patch("kvmagent.plugins.deip.linux")
         self.mock_linux = self.patcher_linux.start()
@@ -517,6 +520,37 @@ class TestDeleteIpv6RulesLegacyCleanup(_DeleteEipTestBase):
             len(legacy_cmds) > 0,
             "Expected cleanup for legacy 'vnic1.0-gw' in IPv6 delete path",
         )
+
+
+class TestDeleteEipWithMissingNamespace(unittest.TestCase):
+    def test_missing_namespace_is_idempotent(self):
+        patchers = [
+            mock.patch("kvmagent.plugins.deip.iproute"),
+            mock.patch("kvmagent.plugins.deip.linux"),
+            mock.patch("zstacklib.utils.shell.get_process"),
+        ]
+        mock_iproute = patchers[0].start()
+        mock_linux = patchers[1].start()
+        mock_get_process = patchers[2].start()
+        try:
+            mock_iproute.IpNetnsShell.list_netns.return_value = []
+            mock_linux.is_network_device_existing.return_value = False
+            mock_get_process.side_effect = _make_fake_process([])
+
+            eip_cmd = Eip()
+            method = getattr(type(eip_cmd), "delete_eip_with_ns")
+            inspect.unwrap(method)(
+                eip_cmd,
+                ns="br_eth0_192_168_1_100",
+                eip_uuid="abcdef123456789",
+                version=4,
+                nic_name="vnic1.0",
+            )
+
+            mock_iproute.IpNetnsShell.return_value.del_netns.assert_not_called()
+        finally:
+            for patcher in patchers:
+                patcher.stop()
 
 
 if __name__ == "__main__":

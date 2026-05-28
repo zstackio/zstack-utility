@@ -109,6 +109,8 @@ class Eip(object):
 
         @bash.in_bash
         def delete_namespace():
+            if NS_NAME not in iproute.IpNetnsShell.list_netns():
+                return
             iproute.IpNetnsShell(NS_NAME).del_netns()
 
         @bash.in_bash
@@ -124,8 +126,8 @@ class Eip(object):
                 RULE_ARP = "-p ARP -i {{NIC_NAME}} -j {{CHAIN_NAME}}"
                 bash_r(get_ebtables_cmd() + " -t nat -D PREROUTING {{RULE_ARP}}")
 
-                bash_errorout(get_ebtables_cmd() + ' -t nat -F {{CHAIN_NAME}}')
-                bash_errorout(get_ebtables_cmd() + ' -t nat -X {{CHAIN_NAME}}')
+                bash_r(get_ebtables_cmd() + ' -t nat -F {{CHAIN_NAME}}')
+                bash_r(get_ebtables_cmd() + ' -t nat -X {{CHAIN_NAME}}')
 
             PRI_ODEV_CHAIN = "eip-{{PRI_ODEV}}-gw"
             if bash_r(get_ebtables_cmd() + ' -t nat -L {{PRI_ODEV_CHAIN}} >/dev/null 2>&1') == 0:
@@ -134,8 +136,8 @@ class Eip(object):
                 RULE_ARP = "-p ARP -i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}"
                 bash_r(get_ebtables_cmd() + " -t nat -D PREROUTING {{RULE_ARP}}")
 
-                bash_errorout(get_ebtables_cmd() + ' -t nat -F {{PRI_ODEV_CHAIN}}')
-                bash_errorout(get_ebtables_cmd() + ' -t nat -X {{PRI_ODEV_CHAIN}}')
+                bash_r(get_ebtables_cmd() + ' -t nat -F {{PRI_ODEV_CHAIN}}')
+                bash_r(get_ebtables_cmd() + ' -t nat -X {{PRI_ODEV_CHAIN}}')
 
             for BLOCK_DEV in [PRI_ODEV, PUB_ODEV, NIC_NAME]:
                 BLOCK_CHAIN_NAME = 'eip-{{BLOCK_DEV}}-arp'
@@ -143,10 +145,10 @@ class Eip(object):
                 if bash_r(get_ebtables_cmd() + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
                     RULE = '-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}'
                     if bash_r(get_ebtables_cmd() + " -t nat -L POSTROUTING | grep -- '{{RULE}}' > /dev/null") == 0:
-                        bash_errorout(get_ebtables_cmd() + ' -t nat -D POSTROUTING {{RULE}}')
+                        bash_r(get_ebtables_cmd() + ' -t nat -D POSTROUTING {{RULE}}')
 
-                    bash_errorout(get_ebtables_cmd() + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
-                    bash_errorout(get_ebtables_cmd() + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
+                    bash_r(get_ebtables_cmd() + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
+                    bash_r(get_ebtables_cmd() + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
 
             # cleanup legacy chain names (without eip- prefix)
             OLD_CHAIN_NAME = '{{NIC_NAME}}-gw'
@@ -180,8 +182,8 @@ class Eip(object):
                 RULE = "-i {{NIC_NAME}} -j {{CHAIN_NAME}}"
                 bash_r(get_ebtables_cmd() + ' -t nat -D PREROUTING {{RULE}}')
 
-                bash_errorout(get_ebtables_cmd() + ' -t nat -F {{CHAIN_NAME}}')
-                bash_errorout(get_ebtables_cmd() + ' -t nat -X {{CHAIN_NAME}}')
+                bash_r(get_ebtables_cmd() + ' -t nat -F {{CHAIN_NAME}}')
+                bash_r(get_ebtables_cmd() + ' -t nat -X {{CHAIN_NAME}}')
             # cleanup legacy chain name (without eip- prefix)
             OLD_CHAIN_NAME = '{{NIC_NAME}}-gw'
             if bash_r(get_ebtables_cmd() + ' -t nat -L {{OLD_CHAIN_NAME}} >/dev/null 2>&1') == 0:
