@@ -134,6 +134,25 @@ MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_s
 MIPS64EL_CPU_MODEL = "Loongson-3A4000-COMP"
 LOONGARCH64_CPU_MODEL = "Loongson-3A5000"
 
+def _detect_host_hardware_virtualization_feature():
+    if HOST_ARCH != "x86_64":
+        return None
+    try:
+        # x86 host has either vmx (Intel) or svm (AMD/Hygon), never both.
+        if shell.run('grep -qw vmx /proc/cpuinfo') == 0:
+            return 'vmx'
+        if shell.run('grep -qw svm /proc/cpuinfo') == 0:
+            return 'svm'
+        logger.warn('host is x86_64 but neither vmx nor svm found in /proc/cpuinfo; '
+                    'cpuHardwareVirtualization disable will be a no-op')
+    except Exception as ex:
+        logger.warn('failed to detect host hardware virtualization feature from /proc/cpuinfo; '
+                    'cpuHardwareVirtualization disable will be a no-op, %s' % str(ex))
+
+    return None
+
+_HOST_HARDWARE_VIRT_FEATURE = _detect_host_hardware_virtualization_feature()
+
 LINUX_SCRIPT_LIB_PATH = "/var/lib/zstack/script/"
 WINDOWS_SCRIPT_LIB_PATH = "C:/Program Files/Qemu-ga/script/"
 
@@ -496,6 +515,7 @@ class StartVmCmd(kvmagent.AgentCommand):
         self.useBootMenu = True
         self.bootMenuSplashTimeout = None
         self.vmCpuModel = None
+        self.cpuHardwareVirtualization = None
         self.emulateHyperV = False
         self.additionalQmp = True
         self.isApplianceVm = False
@@ -5952,6 +5972,7 @@ class Vm(object):
                 e(tune, 'emulatorpin', attrib={'cpuset': str(cmd.addons.emulatorPinning)})
 
             def make_cpu_features():
+                # This field carries vm.cpuMode from the management node; cpuMode=none skips all CPU feature edits.
                 if cmd.nestedVirtualization == 'none':
                     return
 
@@ -5964,6 +5985,9 @@ class Vm(object):
 
                 if cmd.cpuHypervisorFeature is False:
                     e(cpu, 'feature', attrib={'name': 'hypervisor', 'policy': 'disable'})
+
+                if cmd.cpuHardwareVirtualization is False and _HOST_HARDWARE_VIRT_FEATURE:
+                    e(cpu, 'feature', attrib={'name': _HOST_HARDWARE_VIRT_FEATURE, 'policy': 'disable'})
 
             def make_cpu_vendor():
                 if HOST_ARCH != "x86_64":
