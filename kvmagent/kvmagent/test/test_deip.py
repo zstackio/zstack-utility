@@ -976,5 +976,62 @@ class TestDeleteIpv6RulesLegacyCleanup(_DeleteEipTestBase):
         )
 
 
+class TestDeleteEipWithMissingNamespace(unittest.TestCase):
+    def _call_delete_eip_with_ns(self, del_netns_side_effect=None):
+        patchers = [
+            mock.patch("kvmagent.plugins.deip.iproute"),
+            mock.patch("kvmagent.plugins.deip.linux"),
+            mock.patch("zstacklib.utils.shell.get_process"),
+        ]
+        mock_iproute = patchers[0].start()
+        mock_linux = patchers[1].start()
+        mock_get_process = patchers[2].start()
+        try:
+            mock_linux.is_network_device_existing.return_value = False
+            mock_get_process.side_effect = _make_fake_process([])
+            mock_iproute.IpNetnsShell.return_value.del_netns.side_effect = (
+                del_netns_side_effect
+            )
+
+            eip_cmd = Eip()
+            method = type(eip_cmd).delete_eip_with_ns
+            method(
+                eip_cmd,
+                ns="br_eth0_192_168_1_100",
+                eip_uuid="abcdef123456789",
+                version=4,
+                nic_name="vnic1.0",
+            )
+
+            mock_iproute.IpNetnsShell.return_value.del_netns.assert_called_once()
+        finally:
+            for patcher in patchers:
+                patcher.stop()
+
+    def test_missing_namespace_is_idempotent(self):
+        self._call_delete_eip_with_ns(
+            del_netns_side_effect=Exception(
+                'Cannot remove namespace file "/run/netns/br_eth0_192_168_1_100": '
+                "No such file or directory"
+            )
+        )
+
+    def test_missing_namespace_exception_is_idempotent(self):
+        self._call_delete_eip_with_ns(
+            del_netns_side_effect=Exception(
+                "Network namespace : br_eth0_192_168_1_100 could not be found."
+            )
+        )
+
+    def test_unexpected_namespace_delete_error_is_raised(self):
+        with self.assertRaisesRegexp(Exception, "Permission denied"):
+            self._call_delete_eip_with_ns(
+                del_netns_side_effect=Exception(
+                    'Cannot remove namespace file "/run/netns/br_eth0_192_168_1_100": '
+                    "Permission denied"
+                )
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
