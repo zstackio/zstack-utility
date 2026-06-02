@@ -538,7 +538,7 @@ class TestDeleteEipWithMissingNamespace(unittest.TestCase):
             mock_get_process.side_effect = _make_fake_process([])
 
             eip_cmd = Eip()
-            method = getattr(type(eip_cmd), "delete_eip_with_ns")
+            method = type(eip_cmd).delete_eip_with_ns
             inspect.unwrap(method)(
                 eip_cmd,
                 ns="br_eth0_192_168_1_100",
