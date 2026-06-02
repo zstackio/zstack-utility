@@ -4,6 +4,7 @@ from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import ip
 from zstacklib.utils import iproute
+from zstacklib.utils.iproute import NoSuchNamespace
 from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
@@ -109,9 +110,23 @@ class Eip(object):
 
         @bash.in_bash
         def delete_namespace():
-            if NS_NAME not in iproute.IpNetnsShell.list_netns():
-                return
-            iproute.IpNetnsShell(NS_NAME).del_netns()
+            def is_missing_namespace_error(err):
+                err_msg = str(err)
+                return (
+                    isinstance(err, NoSuchNamespace) or
+                    "No such file" in err_msg or
+                    "No such file or directory" in err_msg or
+                    "Cannot remove namespace" in err_msg or
+                    "could not be found" in err_msg or
+                    "does not exist" in err_msg
+                )
+
+            try:
+                iproute.IpNetnsShell(NS_NAME).del_netns()
+            except Exception as err:
+                if is_missing_namespace_error(err):
+                    return
+                raise
 
         @bash.in_bash
         def delete_outer_dev():
