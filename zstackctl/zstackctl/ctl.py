@@ -8425,7 +8425,7 @@ class CollectLogCmd(Command):
             for mn_ip in mn_list:
                 host_post_info = HostPostInfo()
                 host_post_info.remote_user = 'root'
-                # this will be changed in the future
+                # this can be changed later
                 host_post_info.remote_port = '22'
                 host_post_info.host = mn_ip
                 host_post_info.host_inventory = InstallHACmd.conf_dir + 'host'
@@ -13220,6 +13220,11 @@ class IamService(ExtraService):
     SUPPORTED_OS = ['h84r', 'ky10sp3']
     SUPPORTED_ARCH = ['x86_64', 'aarch64']
 
+    @classmethod
+    def is_supported_os(cls, os_name):
+        return any(os_name == supported_os or os_name.startswith("%s." % supported_os)
+                   for supported_os in cls.SUPPORTED_OS)
+
     def service_name(self):
         return "keycloak"
 
@@ -13235,7 +13240,7 @@ class IamService(ExtraService):
             raise CtlError("IAM service does not support architecture '%s'. Supported architectures: %s"
                            % (current_arch, ', '.join(self.SUPPORTED_ARCH)))
 
-        if current_os not in self.SUPPORTED_OS:
+        if not self.is_supported_os(current_os):
             raise CtlError("IAM service does not support OS '%s'. Supported OS: %s"
                            % (current_os, ', '.join(self.SUPPORTED_OS)))
 
