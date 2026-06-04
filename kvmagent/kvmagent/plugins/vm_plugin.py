@@ -3690,6 +3690,7 @@ class Vm(object):
         self.start(cmd.timeout)
 
     def restore(self, path):
+        self._patch_disk_xml_order_from_saved_image(path)
         self._patch_cpu_xml_from_saved_image(path)
 
         @LibvirtAutoReconnect
@@ -3705,6 +3706,94 @@ class Vm(object):
         logger.debug('restoring vm:\n%s' % self.domain_xml)
         define_xml()
         restore_from_file()
+
+    @staticmethod
+    def _disk_matches(current, saved):
+        if current.get('device') != saved.get('device'):
+            return False
+
+        current_serial = (current.findtext('serial') or '').strip()
+        saved_serial = (saved.findtext('serial') or '').strip()
+        if current_serial and saved_serial:
+            return current_serial == saved_serial
+
+        current_target = current.find('target')
+        saved_target = saved.find('target')
+        if current_target is not None and saved_target is not None:
+            return bool(current_target.get('dev')) and all(
+                current_target.get(attr) == saved_target.get(attr) for attr in ['dev', 'bus'])
+
+        current_source = current.find('source')
+        saved_source = saved.find('source')
+        if current_source is not None and saved_source is not None:
+            return current_source.get('protocol') == saved_source.get('protocol') and any(
+                current_source.get(attr) and current_source.get(attr) == saved_source.get(attr)
+                for attr in ['file', 'dev', 'name'])
+
+        return False
+
+    @staticmethod
+    def _reorder_disk_xml_by_saved_image(current_xml, saved_xml):
+        current_tree = etree.fromstring(current_xml)
+        saved_tree = etree.fromstring(saved_xml)
+        current_devices = current_tree.find('devices')
+        saved_devices = saved_tree.find('devices')
+
+        if current_devices is None or saved_devices is None:
+            return current_xml
+
+        current_disks = [dev for dev in list(current_devices) if dev.tag == 'disk']
+        saved_disks = [dev for dev in list(saved_devices) if dev.tag == 'disk']
+        if len(current_disks) < 2 or len(saved_disks) < 2:
+            return current_xml
+
+        ordered_disks = []
+        used_disk_ids = set()
+        for saved_disk in saved_disks:
+            matched_disks = [disk for disk in current_disks if id(disk) not in used_disk_ids
+                             and Vm._disk_matches(disk, saved_disk)]
+            if len(matched_disks) != 1:
+                continue
+
+            disk = matched_disks[0]
+            ordered_disks.append(disk)
+            used_disk_ids.add(id(disk))
+
+        if not ordered_disks:
+            return current_xml
+
+        for disk in current_disks:
+            if id(disk) not in used_disk_ids:
+                ordered_disks.append(disk)
+
+        if [id(disk) for disk in ordered_disks] == [id(disk) for disk in current_disks]:
+            return current_xml
+
+        first_disk_index = list(current_devices).index(current_disks[0])
+        for disk in current_disks:
+            current_devices.remove(disk)
+
+        for index, disk in enumerate(ordered_disks):
+            current_devices.insert(first_disk_index + index, disk)
+
+        return etree.tostring(current_tree, encoding='unicode')
+
+    def _patch_disk_xml_order_from_saved_image(self, path):
+        try:
+            @LibvirtAutoReconnect
+            def get_saved_xml(conn):
+                return conn.saveImageGetXMLDesc(path, 0)
+
+            saved_xml = get_saved_xml()
+            patched_xml = Vm._reorder_disk_xml_by_saved_image(self.domain_xml, saved_xml)
+            if patched_xml == self.domain_xml:
+                return
+
+            self.domain_xml = patched_xml
+            logger.debug('patched disk xml order from saved image for memory snapshot restore')
+        except Exception as ex:
+            logger.warn('failed to patch disk xml order from saved image, '
+                        'falling back to original xml: %s' % str(ex))
 
     def _patch_cpu_xml_from_saved_image(self, path):
         """Patch CPU XML for host-model VMs restoring from memory snapshot.
