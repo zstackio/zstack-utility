@@ -972,6 +972,11 @@ def e(parent, tag, value=None, attrib=None, usenamesapce = False):
     return el
 
 
+def make_pmu_feature(cmd, features):
+    if hasattr(cmd, 'pmu') and cmd.pmu is False:
+        e(features, "pmu", attrib={'state': 'off'})
+
+
 def find_namespace_node(root, path, name):
     ns = {'zs': ZS_XML_NAMESPACE}
 
@@ -4413,6 +4418,7 @@ class Vm(object):
 
             if get_gic_version(cmd.cpuNum) == 2:
                 e(features, "gic", attrib={'version': '2'})
+            make_pmu_feature(cmd, features)
 
         def make_qemu_commandline():
             if not os.path.exists(QMP_SOCKET_PATH):
