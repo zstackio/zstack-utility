@@ -11,6 +11,12 @@ from kvmagent.plugins import vm_artifact_plugin
 from kvmagent.plugins import vm_artifact
 
 
+class Statvfs(object):
+    def __init__(self, available_bytes):
+        self.f_frsize = 1
+        self.f_bavail = available_bytes
+
+
 def _set_roots(monkeypatch, tmp_path):
     source_root = tmp_path / 'virtiofs-sources'
     view_root = tmp_path / 'vm-views'
@@ -86,6 +92,42 @@ class TestVmArtifactViewSpec:
         assert views[0].cache == 'always'
         assert views[0].queue == 2048
         assert views[0].read_only is False
+        assert views[0].resolve_source_path() == str(source)
+
+    def test_source_path_accepts_view_source_root(self, tmp_path):
+        source_root = tmp_path / 'large-disk' / 'virtiofs-sources'
+        source = source_root / 'model-centers' / 'mc' / 'root' / 'models' / 'qwen'
+        source.mkdir(parents=True)
+        addons = {
+            vm_artifact.ADDON_VM_ARTIFACT_VIEWS: [{
+                'vmInstanceUuid': 'vm-uuid',
+                'tag': 'model',
+                'sourcePath': str(source),
+                'sourceRootPath': str(source_root),
+            }]
+        }
+
+        views = vm_artifact.parse_vm_artifact_views(addons)
+
+        assert views[0].resolve_source_path() == str(source)
+
+    def test_source_path_capacity_error_is_not_hidden_by_vm_view_fallback(self, tmp_path, monkeypatch):
+        source_root = tmp_path / 'large-disk' / 'virtiofs-sources'
+        source = source_root / 'model-centers' / 'mc' / 'root' / 'models' / 'qwen'
+        source.mkdir(parents=True)
+        monkeypatch.setattr(vm_artifact.virtiofs_source.os, 'statvfs', lambda path: Statvfs(512))
+        view = vm_artifact.VmArtifactViewSpec.from_raw({
+            'vmInstanceUuid': 'vm-uuid',
+            'tag': 'model',
+            'sourcePath': str(source),
+            'sourceRootPath': str(source_root),
+            'requiredCapacityBytes': 1024,
+        })
+
+        with pytest.raises(Exception) as exc_info:
+            view.resolve_source_path()
+
+        assert 'available capacity[512 bytes] is less than required capacity[1024 bytes]' in str(exc_info.value)
 
     def test_parse_vm_artifact_views_rejects_missing_vm_uuid(self):
         addons = {
