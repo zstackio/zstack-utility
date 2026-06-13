@@ -2588,11 +2588,12 @@ license_server_installer_bin() {
     echo "$installer_bin"
 }
 
-license_server_database_exists() {
+license_server_installed() {
     local admin_password="$MYSQL_NEW_ROOT_PASSWORD"
     local query_output=''
     local query_ret=0
 
+    [ -f "$LICENSE_SERVER_SERVICE_PATH" ] || return 1
     [ -n "$MYSQL_ROOT_PASSWORD" ] && admin_password="$MYSQL_ROOT_PASSWORD"
     query_output=`mysql -uroot --password="$admin_password" --host="$MANAGEMENT_IP" --port="$MYSQL_PORT" \
         --batch --skip-column-names -e "SHOW DATABASES LIKE '$LICENSE_SERVER_DB_NAME'" 2>&1`
@@ -2667,7 +2668,7 @@ install_license_server() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     LICENSE_SERVER_INSTALL_OUTPUT=`mktemp`
-    if [ x"$UPGRADE" = x"y" ] && [ -z "$NEED_DROP_DB" ] && license_server_database_exists; then
+    if [ x"$UPGRADE" = x"y" ] && [ -z "$NEED_DROP_DB" ] && license_server_installed; then
         show_spinner is_upgrade_license_server "$installer_bin"
     else
         install_config=`mktemp`
