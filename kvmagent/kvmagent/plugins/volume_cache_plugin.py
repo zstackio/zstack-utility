@@ -1204,5 +1204,5 @@ class VolumeCachePlugin(kvmagent.KvmAgent):
     @ensure_pool(initialized=True)
     def get_cache_capacity(self, cmd, pool):
         # type: (GetCacheCapacityCmd, PoolProcessor) -> CacheRsp
-        cache = pool.init_cache(volume=cmd.volume)
+        cache = CacheProcessor(pool, cmd.volume, auto_create=False)
         return self._to_cache_rsp(cache)
