@@ -7,6 +7,7 @@ import simplejson
 import os.path
 
 from kvmagent import kvmagent
+from kvmagent.plugins import volume_secret
 from kvmagent.plugins import vm_plugin
 from zstacklib.utils import multipath
 from zstacklib.utils import lock
@@ -256,6 +257,14 @@ class IscsiLogoutCmd(AgentCmd):
         self.iscsiTargets = []
 
 
+class EncryptScsiLunCmd(AgentCmd):
+    @log.sensitive_fields("encryptedDek")
+    def __init__(self):
+        super(EncryptScsiLunCmd, self).__init__()
+        self.installPath = None
+        self.encryptedDek = None
+
+
 class StorageDevicePlugin(kvmagent.KvmAgent):
 
     ISCSI_LOGIN_PATH = "/storagedevice/iscsi/login"
@@ -270,6 +279,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     ATTACH_SCSI_LUN_PATH = "/storagedevice/scsilun/attach"
     DETACH_SCSI_LUN_PATH = "/storagedevice/scsilun/detach"
     DETACH_SCSI_DEV_PATH = "/storagedevice/scsilun/detachdev"
+    ENCRYPT_SCSI_LUN_PATH = "/storagedevice/scsilun/encrypt"
     RAID_SCAN_PATH = "/storagedevice/raid/scan"
     RAID_SMART_PATH = "/storagedevice/raid/smart"
     RAID_LOCATE_PATH = "/storagedevice/raid/locate"
@@ -289,6 +299,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.ATTACH_SCSI_LUN_PATH, self.attach_scsi_lun)
         http_server.register_async_uri(self.DETACH_SCSI_LUN_PATH, self.detach_scsi_lun)
         http_server.register_async_uri(self.DETACH_SCSI_DEV_PATH, self.detach_scsi_dev)
+        http_server.register_async_uri(self.ENCRYPT_SCSI_LUN_PATH, self.encrypt_scsi_lun, cmd=EncryptScsiLunCmd())
         http_server.register_async_uri(self.RAID_SCAN_PATH, self.raid_scan)
         http_server.register_async_uri(self.RAID_SMART_PATH, self.raid_smart)
         http_server.register_async_uri(self.RAID_LOCATE_PATH, self.raid_locate)
@@ -348,6 +359,26 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 h.supportedClasses = supported_classes_
                 ret.append(h)
         return ret
+
+    @kvmagent.replyerror
+    @bash.in_bash
+    def encrypt_scsi_lun(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = AgentRsp()
+        if not cmd.installPath:
+            raise Exception("installPath is required")
+        if not cmd.encryptedDek:
+            raise Exception("encryptedDek is required")
+        if not os.path.exists(cmd.installPath):
+            raise Exception("scsi lun installPath %s does not exist" % cmd.installPath)
+        if linux.is_luks_encrypted_image(cmd.installPath) or \
+                bash.bash_r("cryptsetup isLuks %s" % linux.shellquote(cmd.installPath)) == 0:
+            return jsonobject.dumps(rsp)
+
+        with volume_secret.luks_secret_channel(cmd.encryptedDek) as secret_file:
+            shell.call("cryptsetup luksFormat --type luks1 --batch-mode --key-file %s %s" % (
+                linux.shellquote(secret_file), linux.shellquote(cmd.installPath)))
+        return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     @bash.in_bash

@@ -48,7 +48,7 @@ from kvmagent.plugins.baremetal_v2_gateway_agent import \
 from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.nvram import nvram
-from kvmagent.plugins import volume_secret
+from kvmagent.plugins import luks_xml, volume_secret
 from kvmagent.plugins.vms import vm_host_file, vm_host_file_monitor, tpm
 from zstacklib.utils import bash, plugin, iscsi, qemu_nbd
 from zstacklib.utils.bash import in_bash
@@ -1879,21 +1879,11 @@ class IsoCeph(object):
 
 
 def _add_luks_encryption(disk, volume, allow_legacy_secret=True):
-    secret_uuid = getattr(volume, 'luksSecretUuid', None)
-    if not secret_uuid and allow_legacy_secret and getattr(volume, 'deviceType', None) != 'ceph':
-        secret_uuid = getattr(volume, 'secretUuid', None)
-    if secret_uuid:
-        enc = e(disk, 'encryption', None, {'format': 'luks'})
-        e(enc, 'secret', None, {'type': 'passphrase', 'uuid': secret_uuid})
+    luks_xml.add_luks_encryption(e, disk, volume, allow_legacy_secret)
 
 
 def _add_luks_encryption_to_source(source, volume, allow_legacy_secret=True):
-    secret_uuid = getattr(volume, 'luksSecretUuid', None)
-    if not secret_uuid and allow_legacy_secret and getattr(volume, 'deviceType', None) != 'ceph':
-        secret_uuid = getattr(volume, 'secretUuid', None)
-    if secret_uuid:
-        enc = e(source, 'encryption', None, {'format': 'luks'})
-        e(enc, 'secret', None, {'type': 'passphrase', 'uuid': secret_uuid})
+    luks_xml.add_luks_encryption(e, source, volume, allow_legacy_secret)
 
 
 def _add_luks_backing_chain_if_needed(disk, volume, disk_type):
@@ -3273,6 +3263,7 @@ class Vm(object):
             disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': volume.cacheMode})
             e(disk, 'source', None, {'dev': volume.installPath})
+            _add_luks_encryption(disk, volume)
             e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
             return disk
 
@@ -6630,6 +6621,7 @@ class Vm(object):
                     disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
                     e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
                     e(disk, 'source', None, {'dev': volume.installPath})
+                    _add_luks_encryption(disk, volume)
                     e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
                     Vm.set_device_address(disk, volume)
 
