@@ -1081,6 +1081,23 @@ def backup_super_block(disk_path):
 
 
 @bash.in_bash
+def is_running_vm_using_lun_passthrough():
+    return bash.bash_r('''grep -rlF "<disk type='block' device='lun'" %s/*''' % LIVE_LIBVIRT_XML_DIR) == 0
+
+
+@bash.in_bash
+def flush_mpath(disk):
+    wwid = get_dm_wwid(disk)
+    bash.bash_roe("multipath -f %s" % disk)
+    if is_running_vm_using_lun_passthrough() and wwid:
+        # re-create only this disk's map; a host-wide multipathd reload would
+        # suspend in-use maps and abort in-flight IO on LUN-passthrough guests
+        bash.bash_roe("multipath %s && sleep 1" % wwid)
+    else:
+        bash.bash_roe("systemctl reload multipathd.service && sleep 1")
+
+
+@bash.in_bash
 def wipe_fs(disks, expected_vg=None, with_lock=True):
     @bash.in_bash
     def clear_lvmlock(vg_name):
@@ -1119,7 +1136,7 @@ def wipe_fs(disks, expected_vg=None, with_lock=True):
             bash.bash_roe("dmsetup remove /dev/%s" % holder)
 
         if need_flush_mpath:
-            bash.bash_roe("multipath -f %s && systemctl reload multipathd.service && sleep 1" % disk)
+            flush_mpath(disk)
 
         if exists_vg is not None:
             bash.bash_r("grep -l %s /etc/drbd.d/* | xargs rm" % exists_vg)

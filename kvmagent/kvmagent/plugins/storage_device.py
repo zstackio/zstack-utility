@@ -1108,8 +1108,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return sum(filter(None, luns), [])
 
     def multipath_conf_cannot_change(self):
-        r, o, e = bash.bash_roe('''grep -rF "<disk type='block' device='lun'" /var/run/libvirt/qemu/* ''')
-        return r == 0
+        return lvm.is_running_vm_using_lun_passthrough()
 
     @kvmagent.replyerror
     @bash.in_bash
