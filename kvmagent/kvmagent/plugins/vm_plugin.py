@@ -8885,6 +8885,8 @@ class VmPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def _get_new_disk(old_disk, volume=None):
+        old_driver = old_disk.find('driver')
+        source_queues = old_driver.get('queues') if old_driver is not None else None
         def filebased_volume(_v):
             disk = etree.Element('disk', {'type': 'file', 'device': 'disk', 'snapshot': 'external'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': driver_type, 'cache': _v.cacheMode, 'discard': 'unmap'})
@@ -8964,6 +8966,11 @@ class VmPlugin(kvmagent.KvmAgent):
             ele = block_iso(volume) if volume.is_cdrom else block_volume(volume)
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
+
+        driver = ele.find('driver')
+        driver.attrib.pop('queues', None)
+        if source_queues:
+            driver.set('queues', source_queues)
 
         tags_to_keep = [ 'target', 'boot', 'alias', 'address', 'wwn', 'serial']
         for c in old_disk.getchildren():
