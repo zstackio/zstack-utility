@@ -219,6 +219,79 @@ def test_default_ui_db_url_brackets_ipv6_host():
         'jdbc:mysql://172.24.246.95:3306'
 
 
+def test_ui_webhook_urls_bracket_ipv6_vip():
+    assert ctl.build_ui_webhook_urls('fd00:5:5:28::54:cccc', '5000') == (
+        'http://[fd00:5:5:28::54:cccc]:5000/webhook/ticket',
+        'http://[fd00:5:5:28::54:cccc]:5000/webhook/zwatch',
+    )
+
+
+def test_ui_webhook_urls_keep_ipv4_and_hostname():
+    assert ctl.build_ui_webhook_urls('172.24.246.95', '5000') == (
+        'http://172.24.246.95:5000/webhook/ticket',
+        'http://172.24.246.95:5000/webhook/zwatch',
+    )
+    assert ctl.build_ui_webhook_urls('localhost', '5000') == (
+        'http://localhost:5000/webhook/ticket',
+        'http://localhost:5000/webhook/zwatch',
+    )
+
+
+def test_ui_webhook_urls_use_https_for_ipv6_vip():
+    assert ctl.build_ui_webhook_urls('fd00:5:5:28::54:cccc', '5443', True) == (
+        'https://[fd00:5:5:28::54:cccc]:5443/webhook/ticket',
+        'https://[fd00:5:5:28::54:cccc]:5443/webhook/zwatch',
+    )
+
+
+def test_mn_sendcommand_url_brackets_ipv6_host():
+    assert ctl.build_mn_sendcommand_url('fd00:5:5:28::54:cccc', '8080') == \
+        'http://[fd00:5:5:28::54:cccc]:8080/zstack/asyncrest/sendcommand'
+    assert ctl.build_mn_sendcommand_url('172.24.246.95', '8080') == \
+        'http://172.24.246.95:8080/zstack/asyncrest/sendcommand'
+
+
+def test_mn_api_url_brackets_ipv6_host():
+    assert ctl.build_mn_api_url('fd00:5:5:28::54:cccc', '8080') == \
+        'http://[fd00:5:5:28::54:cccc]:8080/zstack/api'
+    assert ctl.build_mn_api_url('172.24.246.95', '8080') == \
+        'http://172.24.246.95:8080/zstack/api'
+
+
+def test_http_call_cmd_quotes_ipv6_sendcommand_url():
+    command = ctl.ctl.http_call_cmd % (
+        '/report',
+        '{}',
+        '[fd00:5:5:28::54:cccc]',
+        '8080',
+    )
+    assert '"http://[fd00:5:5:28::54:cccc]:8080/zstack/asyncrest/sendcommand"' in command
+
+
+def test_check_mgmt_node_command_quotes_ipv6_api_url(monkeypatch):
+    class FakeShellCmd(object):
+        def __init__(self, command):
+            self.command = command
+            self.return_code = 1
+
+        def __call__(self, is_exception=True):
+            if self.command == 'which curl':
+                self.return_code = 0
+            if self.command.startswith("grep '^\\s*127.0.0.1\\s'"):
+                self.return_code = 0
+            return self
+
+    monkeypatch.setattr(ctl, 'ShellCmd', FakeShellCmd)
+    monkeypatch.setattr(ctl, 'get_mn_port', lambda: '8080')
+
+    command = ctl.create_check_mgmt_node_command(
+        timeout=3,
+        mn_node='fd00:5:5:28::54:cccc',
+    )
+
+    assert '"http://[fd00:5:5:28::54:cccc]:8080/zstack/api"' in command.command
+
+
 def test_change_ip_firewall_commands_keep_ipv4_iptables():
     assert ctl.build_change_ip_ipv4_firewall_delete_commands('172.24.246.1', {'3306'}) == [
         'iptables -D INPUT -p tcp --dport 3306 -d 172.24.246.1 -j ACCEPT',

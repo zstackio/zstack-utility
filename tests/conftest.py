@@ -233,6 +233,8 @@ _mock_linux.rm_file_checked = MagicMock()
 _mock_linux.rm_file_force = MagicMock()
 _mock_linux.rmdir_if_empty = MagicMock()
 _mock_linux.write_file = MagicMock()
+_mock_linux.shellquote = lambda s: "'" + s.replace("'", "'\\''") + "'"
+_mock_linux.retry = lambda *a, **kw: (lambda f: f)
 sys.modules['zstacklib.utils.linux'] = _mock_linux
 # real bash.py does `from zstacklib.utils import linux`, so agents using
 # `from zstacklib.utils.bash import *` get `linux` in their namespace

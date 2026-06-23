@@ -135,6 +135,27 @@ def build_default_ui_db_url(db_host):
     return 'jdbc:mysql://%s:%s' % (format_jdbc_host(db_host), DEFAULT_MYSQL_PORT)
 
 
+def build_url_host_port(host, port):
+    return '%s:%s' % (format_url_host(host), port)
+
+
+def build_ui_webhook_urls(webhook_ip, server_port, enable_ssl=False):
+    protocol = 'https' if enable_ssl else 'http'
+    endpoint = '%s://%s' % (protocol, build_url_host_port(webhook_ip, server_port))
+    return (
+        '%s/webhook/ticket' % endpoint,
+        '%s/webhook/zwatch' % endpoint,
+    )
+
+
+def build_mn_sendcommand_url(mn_ip, mn_port):
+    return 'http://%s/zstack/asyncrest/sendcommand' % build_url_host_port(mn_ip, mn_port)
+
+
+def build_mn_api_url(mn_ip, mn_port):
+    return 'http://%s/zstack/api' % build_url_host_port(mn_ip, mn_port)
+
+
 def is_ui_nginx_ipv6_listen_line(line, server_port):
     pattern = r'^\s*listen\s+\[[0-9A-Fa-f:]+\]:%s(?:\s+[^;]+)?;\s*$' % re.escape(str(server_port))
     return re.match(pattern, line) is not None
@@ -1352,7 +1373,10 @@ class Ctl(object):
         self.tomcat_xml_file_path = None
         self.verbose = False
         self.extra_arguments = None
-        self.http_call_cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:%s" -d \'%s\' --retry 5 http://%s:%s/zstack/asyncrest/sendcommand'
+        self.http_call_cmd = \
+            'curl -X POST -H "Content-Type:application/json" ' \
+            '-H "commandpath:%s" -d \'%s\' --retry 5 ' \
+            '"http://%s:%s/zstack/asyncrest/sendcommand"'
 
     def register_command(self, cmd):
         assert cmd.name, "command name cannot be None"
@@ -1918,11 +1942,22 @@ def create_check_mgmt_node_command(timeout=10, mn_node='127.0.0.1'):
     check_hosts()
     what_tool = use_tool()
     mn_port = get_mn_port()
+    mn_api_url = build_mn_api_url(mn_node, mn_port)
     # tag::get_zstack_status[]
     if what_tool == USE_CURL:
-        return ShellCmd('''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 --retry-max-time %s --max-time %s -H "Content-Type: application/json" -d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:%s/zstack/api''' % (timeout, timeout, timeout, mn_node, mn_port))
+        return ShellCmd(
+            '''curl --noproxy --connect-timeout=1 --retry %s --retry-delay 0 '''
+            '''--retry-max-time %s --max-time %s -H "Content-Type: application/json" '''
+            '''-d '{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' "%s"''' %
+            (timeout, timeout, timeout, mn_api_url)
+        )
     elif what_tool == USE_WGET:
-        return ShellCmd('''wget --no-proxy -O- --tries=%s --timeout=1  --header=Content-Type:application/json --post-data='{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' http://%s:%s/zstack/api''' % (timeout, mn_node, mn_port))
+        return ShellCmd(
+            '''wget --no-proxy -O- --tries=%s --timeout=1  '''
+            '''--header=Content-Type:application/json '''
+            '''--post-data='{"org.zstack.header.apimediator.APIIsReadyToGoMsg": {}}' "%s"''' %
+            (timeout, mn_api_url)
+        )
         # end::get_zstack_status[]
     else:
         return None
@@ -2759,7 +2794,12 @@ EOF
         mn_port = ctl.read_property('RESTFacade.port')
         if not mn_port:
             mn_port = 8080
-        ShellCmd(ctl.http_call_cmd % (self.reportPath, simplejson.dumps(config_cmd), config_cmd.mnIp, mn_port))
+        ShellCmd(ctl.http_call_cmd % (
+            self.reportPath,
+            simplejson.dumps(config_cmd),
+            format_url_host(config_cmd.mnIp),
+            mn_port,
+        ))
         logger.debug('report properties updated, propertiesDigestValue: %s, mnIp: %s' % (config_cmd.propertiesDigestValue, config_cmd.mnIp))
 
     def run(self, args):
@@ -11340,7 +11380,12 @@ class StartUiCmd(Command):
         if not mn_port:
             mn_port = 8080
         content_json = simplejson.dumps(sns_cmd)
-        http_cmd = 'curl -X POST -H "Content-Type:application/json" -H "commandpath:/sns/globalpropertyupdated" -d \'%s\' --retry 5 http://%s:%s/zstack/asyncrest/sendcommand' % (content_json, mn_ip, mn_port)
+        http_cmd = 'curl -X POST -H "Content-Type:application/json" ' \
+                   '-H "commandpath:/sns/globalpropertyupdated" ' \
+                   '-d \'%s\' --retry 5 "%s"' % (
+                       content_json,
+                       build_mn_sendcommand_url(mn_ip, mn_port),
+                   )
         logger.debug('report sns global property updated')
         ShellCmd(http_cmd)
 
@@ -11425,14 +11470,7 @@ class StartUiCmd(Command):
         webhook_ip = ctl.read_property('management.server.vip')
         if not webhook_ip:
             webhook_ip = 'localhost'
-        system_webhook_url = '%s:%s/webhook/zwatch' % (webhook_ip, args.server_port)
-        ticket_webhook_url = '%s:%s/webhook/ticket' % (webhook_ip, args.server_port)
-        if args.enable_ssl:
-            system_webhook_url = 'https://' + system_webhook_url
-            ticket_webhook_url = 'https://' + ticket_webhook_url
-        else:
-            system_webhook_url = 'http://' + system_webhook_url
-            ticket_webhook_url = 'http://' + ticket_webhook_url
+        ticket_webhook_url, system_webhook_url = build_ui_webhook_urls(webhook_ip, args.server_port, args.enable_ssl)
 
         ctl.write_property('ticket.sns.topic.http.url', ticket_webhook_url)
         ctl.write_property('sns.systemTopic.endpoints.http.url', system_webhook_url)
