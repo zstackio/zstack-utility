@@ -1301,23 +1301,24 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for line in o.splitlines():
             discovered_nqns.add(line.strip().split()[1])
 
-        wwids = set()
-        any_nqn_connected = False
+        connected_nqns = set()
         error = ""
         for nqn in discovered_nqns:
             r, o, e = bash.bash_roe("timeout 60 nvme connect -a %s -s %s -t %s --nqn %s" % (cmd.ip, cmd.port, cmd.transport, nqn))
             for controller in self.get_nvme_subsystem_controllers(nqn):
                 if controller.transport == cmd.transport and controller.address == "traddr=%s,trsvcid=%s" % (cmd.ip, cmd.port):
-                    any_nqn_connected = True
-                    wwids = wwids.union(controller.wwids)
+                    connected_nqns.add(nqn)
                     break
-            if not any_nqn_connected:
+            if nqn not in connected_nqns:
                 error = e
 
-        if not any_nqn_connected:
+        if not connected_nqns:
             raise Exception("unable connect any nqn on server[%s:%s, transport:%s], error: %s" % (cmd.ip, cmd.port, cmd.transport, str(error)))
 
-        return filter(lambda l: l.nqn in discovered_nqns and set(l.wwids).intersection(wwids), self.get_nvme_luns(rescan=True))
+        luns = linux.wait_callback_success(
+            lambda _: [l for l in self.get_nvme_luns(rescan=True) if l.nqn in connected_nqns],
+            timeout=30)
+        return luns or []
 
     @bash.in_bash
     def disconnect_nvme_controller(self, cmd):
