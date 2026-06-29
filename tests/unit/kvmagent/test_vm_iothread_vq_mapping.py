@@ -165,6 +165,15 @@ def fake_wait_callback_success(callback, callback_data=None, timeout=60, interva
     return False
 
 
+def record_wait_calls(calls):
+    def wait(callback, callback_data=None, timeout=60, interval=1,
+             ignore_exception_in_callback=False):
+        calls.append((callback.__name__, timeout))
+        return fake_wait_callback_success(callback, callback_data, timeout, interval,
+                                          ignore_exception_in_callback)
+    return wait
+
+
 def stub_detach_volume_dependencies(monkeypatch, vm, disk_xml, current_xmls,
                                     detached_aliases, deleted_iothreads,
                                     wait_callback_success=None,
@@ -813,15 +822,34 @@ def test_detach_data_volume_keeps_controller_with_attached_disk(monkeypatch):
 @pytest.mark.kvmagent
 def test_detach_data_volume_retries_iothread_cleanup_after_stale_reference(monkeypatch):
     controller_xml = scsi_controller_domain_xml([101])
+    wait_calls = []
     ctx = setup_detach_volume_cleanup(
         monkeypatch, controller_xml, scsi_disk_xml([101]),
         [CLEAN_DOMAIN_XML, controller_xml, controller_xml, CLEAN_DOMAIN_XML],
-        fake_wait_callback_success)
+        record_wait_calls(wait_calls))
 
     ctx.vm._detach_data_volume(ctx.volume)
 
     assert ctx.detached_aliases == ['scsi1']
     assert ctx.deleted_iothreads == [101]
+    assert wait_calls == [('wait_for_detach', 5), ('wait_for_controller_removed', 15)]
+
+
+@pytest.mark.kvmagent
+def test_detach_data_volume_does_not_wait_after_controller_removed_while_iothread_is_referenced(monkeypatch):
+    controller_xml = scsi_controller_domain_xml([101])
+    referenced_xml = domain_xml_with_iothread_disk([101])
+    wait_calls = []
+    ctx = setup_detach_volume_cleanup(
+        monkeypatch, controller_xml, scsi_disk_xml([101]),
+        [CLEAN_DOMAIN_XML, controller_xml, CLEAN_DOMAIN_XML, referenced_xml],
+        record_wait_calls(wait_calls))
+
+    ctx.vm._detach_data_volume(ctx.volume)
+
+    assert ctx.detached_aliases == ['scsi1']
+    assert ctx.deleted_iothreads == []
+    assert wait_calls == [('wait_for_detach', 5), ('wait_for_controller_removed', 15)]
 
 
 @pytest.mark.kvmagent

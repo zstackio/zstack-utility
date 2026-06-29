@@ -4102,15 +4102,14 @@ class Vm(object):
 
             remaining_iothread_ids = set(automatic_iothread_ids_to_cleanup)
 
-            def cleanup_unreferenced_iothreads(_):
+            def wait_for_controller_removed(_):
                 current_vm = get_vm_by_uuid(self.uuid)
                 current_root = etree.fromstring(current_vm.domain_xml)
-                if scsi_controller_cleanup_attempted:
-                    for controller in current_root.findall("./devices/controller"):
-                        if controller.get('type') == 'scsi' and \
-                                scsi_controller_alias(controller) == scsi_controller_alias_to_cleanup:
-                            return False
+                return scsi_controller_xml(current_root, scsi_controller_index_to_cleanup) is None
 
+            def cleanup_unreferenced_iothreads():
+                current_vm = get_vm_by_uuid(self.uuid)
+                current_root = etree.fromstring(current_vm.domain_xml)
                 referenced_iothread_ids = IothreadVqMappingAllocator.automatic_ids_from_xml(current_root)
                 for iothread_id in list(remaining_iothread_ids):
                     if iothread_id in referenced_iothread_ids:
@@ -4121,15 +4120,18 @@ class Vm(object):
                                     (iothread_id, self.uuid, err_info))
                         continue
                     remaining_iothread_ids.remove(iothread_id)
-                return remaining_iothread_ids.issubset(referenced_iothread_ids)
+                return not remaining_iothread_ids
 
             if scsi_controller_cleanup_attempted:
-                if not linux.wait_callback_success(cleanup_unreferenced_iothreads, None, 5, 1):
-                    logger.warn('failed to cleanup automatic iothreads%s after detaching volume[%s] '
-                                'from vm[uuid:%s]: still referenced' %
-                                (sorted(remaining_iothread_ids), volume.volumeUuid, self.uuid))
-            else:
-                cleanup_unreferenced_iothreads(None)
+                if not linux.wait_callback_success(wait_for_controller_removed, None, 15, 1):
+                    logger.warn('failed to cleanup scsi controller[%s] after detaching volume[%s] '
+                                'from vm[uuid:%s]: still present' %
+                                (scsi_controller_alias_to_cleanup, volume.volumeUuid, self.uuid))
+                    return
+            if remaining_iothread_ids and not cleanup_unreferenced_iothreads():
+                logger.warn('failed to cleanup automatic iothreads%s after detaching volume[%s] '
+                            'from vm[uuid:%s]: still referenced' %
+                            (sorted(remaining_iothread_ids), volume.volumeUuid, self.uuid))
 
         logger.debug('detaching volume from vm[uuid:%s]:\n%s' % (self.uuid, xmlstr))
         try:
