@@ -5,8 +5,8 @@ See ZSTAC-76375: Kunpeng-920 7270Z kernel panic due to PMMIR_EL1.
 Tests verify the PMU feature element generation logic used in
 vm_plugin.py make_features(). Since make_features() is a nested
 function that cannot be imported directly, we test the core logic
-(hasattr + cmd.pmu is False) with realistic cmd objects, and also
-verify the XML structure matches what libvirt expects.
+with realistic cmd objects, and also verify the XML structure matches
+what libvirt expects.
 """
 
 import unittest
@@ -15,6 +15,10 @@ from xml.etree import ElementTree as ET
 
 class TestVmPmuConfig(unittest.TestCase):
     """Test that PMU feature is correctly added to VM XML."""
+
+    PMU_OFF_UNSUPPORTED_DIST = {
+        'alinux': ('4',),
+    }
 
     @staticmethod
     def _new_domain_with_features():
@@ -27,14 +31,19 @@ class TestVmPmuConfig(unittest.TestCase):
         return root, features
 
     @staticmethod
-    def _apply_pmu_logic(cmd, features):
+    def is_pmu_off_unsupported_dist(dist_name, version_id):
+        version_prefixes = TestVmPmuConfig.PMU_OFF_UNSUPPORTED_DIST.get(dist_name, ())
+        return any(version_id.startswith(prefix) for prefix in version_prefixes)
+
+    @classmethod
+    def _apply_pmu_logic(cls, cmd, features, dist_name='kylin', version_id='4.19'):
         """Apply the exact same PMU logic as vm_plugin.py make_features().
 
         This mirrors the production code at vm_plugin.py:
-            if hasattr(cmd, 'pmu') and cmd.pmu is False:
+            if hasattr(cmd, 'pmu') and cmd.pmu is False and not is_pmu_off_unsupported_dist():
                 e(features, "pmu", attrib={'state': 'off'})
         """
-        if hasattr(cmd, 'pmu') and cmd.pmu is False:
+        if hasattr(cmd, 'pmu') and cmd.pmu is False and not cls.is_pmu_off_unsupported_dist(dist_name, version_id):
             ET.SubElement(features, "pmu", attrib={'state': 'off'})
 
     def test_pmu_off_generates_xml(self):
@@ -59,6 +68,17 @@ class TestVmPmuConfig(unittest.TestCase):
         self._apply_pmu_logic(Cmd(), features)
         pmu = root.find('./features/pmu')
         self.assertIsNone(pmu, "PMU element should NOT exist when pmu=True")
+
+    def test_pmu_off_skips_unsupported_dist(self):
+        """On PMU-off unsupported dist, pmu=False should not generate <pmu state='off'/>."""
+        root, features = self._new_domain_with_features()
+
+        class Cmd:
+            pmu = False
+
+        self._apply_pmu_logic(Cmd(), features, dist_name='alinux', version_id='4')
+        pmu = root.find('./features/pmu')
+        self.assertIsNone(pmu, "PMU element should NOT exist on PMU-off unsupported dist")
 
     def test_pmu_none_no_pmu_element(self):
         """When cmd.pmu is None, no <pmu> element should be added."""

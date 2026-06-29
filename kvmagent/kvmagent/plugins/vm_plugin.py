@@ -99,6 +99,9 @@ DIST_NAME = os_info.get('ID', '').lower()
 # FIXME(py3): remove it
 DIST_NAME = 'centos' if DIST_NAME == 'helix' else DIST_NAME
 DIST_NAME_VERSION = f"{DIST_NAME}{os_info.get('VERSION_ID', '')}"
+PMU_OFF_UNSUPPORTED_DIST = {
+    'alinux': ('4',),
+}
 
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
@@ -1625,6 +1628,11 @@ def is_kylin402():
     if zstack_release is None:
         return False
     return "kylin402" in zstack_release.splitlines()[0]
+
+def is_pmu_off_unsupported_dist():
+    version_prefixes = PMU_OFF_UNSUPPORTED_DIST.get(DIST_NAME, ())
+    version_id = os_info.get('VERSION_ID', '')
+    return any(version_id.startswith(prefix) for prefix in version_prefixes)
 
 def is_loongarch64():
     return HOST_ARCH == "loongarch64"
@@ -6145,7 +6153,7 @@ class Vm(object):
             # Disable PMU when explicitly requested by API payload.
             # This is used to avoid guest probing unsupported PMU registers
             # on some platforms (e.g. Kunpeng-920), see ZSTAC-76375.
-            if hasattr(cmd, 'pmu') and cmd.pmu is False:
+            if hasattr(cmd, 'pmu') and cmd.pmu is False and not is_pmu_off_unsupported_dist():
                 e(features, "pmu", attrib={'state': 'off'})
 
 
