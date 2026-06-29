@@ -3052,30 +3052,68 @@ class Vm(object):
 
         target = disk_element.find('target')
         bus = target.get('bus') if target is not None else None
+        persisted_address = vol.deviceAddress
 
-        if vol.deviceAddress and vol.deviceAddress.type == 'pci' and Vm._get_disk_address_type(bus) == 'pci':
-            attributes = {}
-            if vol.deviceAddress.domain:
-                attributes['domain'] = vol.deviceAddress.domain
-            if vol.deviceAddress.bus:
-                attributes['bus'] = vol.deviceAddress.bus
-            if vol.deviceAddress.slot:
-                attributes['slot'] = vol.deviceAddress.slot
-            if vol.deviceAddress.function:
-                attributes['function'] = vol.deviceAddress.function
+        def has_persisted_address_type(address_type):
+            return bool(persisted_address and persisted_address.type == address_type)
 
-            attributes['type'] = vol.deviceAddress.type
-            e(disk_element, 'address', None, attributes)
-        elif vol.deviceAddress and vol.deviceAddress.type == 'drive' and Vm._get_disk_address_type(bus) == 'drive':
-            e(disk_element, 'address', None, {'type': 'drive', 'controller': vol.deviceAddress.controller, 'unit': str(vol.deviceAddress.unit)})
-        elif bus == 'scsi':
-            occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=0) if vm_to_attach else []
-            default_unit = Vm.get_device_unit(vol.deviceId)
-            unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
-            controller = '0'
-            if vol.useVirtioSCSI and vol.hasattr("controllerIndex") and vol.controllerIndex:
-               controller = str(vol.controllerIndex)
+        def set_drive_address(controller, unit):
             e(disk_element, 'address', None, {'type': 'drive', 'controller': controller, 'unit': str(unit)})
+
+        match bus:
+            case 'virtio':
+                if not has_persisted_address_type('pci'):
+                    return
+
+                attributes = {}
+                if persisted_address.domain:
+                    attributes['domain'] = persisted_address.domain
+                if persisted_address.bus:
+                    attributes['bus'] = persisted_address.bus
+                if persisted_address.slot:
+                    attributes['slot'] = persisted_address.slot
+                if persisted_address.function:
+                    attributes['function'] = persisted_address.function
+
+                attributes['type'] = persisted_address.type
+                e(disk_element, 'address', None, attributes)
+                return
+
+            case 'scsi':
+                has_persisted_drive_address = has_persisted_address_type('drive')
+                if has_persisted_drive_address and Vm._can_reuse_persisted_scsi_drive_address(vol):
+                    set_drive_address(persisted_address.controller, persisted_address.unit)
+                    return
+
+                if has_persisted_drive_address:
+                    logger.debug('discard stale drive address controller=%s for volume[%s], replan to scsi topology' %
+                                 (persisted_address.controller, vol.volumeUuid))
+                controller = Vm._planned_scsi_controller(vol) or 0
+                occupied_units = vm_to_attach.get_occupied_disk_address_units(bus='scsi', controller=controller) if vm_to_attach else []
+                default_unit = Vm.get_device_unit(vol.deviceId)
+                unit = default_unit if default_unit not in occupied_units else max(occupied_units) + 1
+                set_drive_address(str(controller), unit)
+
+            case 'sata' | 'ide':
+                if has_persisted_address_type('drive'):
+                    set_drive_address(persisted_address.controller, persisted_address.unit)
+
+    @staticmethod
+    def _can_reuse_persisted_scsi_drive_address(vol):
+        controller = vol.deviceAddress.controller
+        unit = vol.deviceAddress.unit
+
+        if controller in (None, '') or unit in (None, ''):
+            return False
+
+        return IothreadVqMappingAllocator.to_int(controller) == Vm._planned_scsi_controller(vol)
+
+    @staticmethod
+    def _planned_scsi_controller(vol):
+        if not IothreadVqMappingAllocator.needs_dedicated_scsi_controller(vol):
+            return 0
+        controller_index = IothreadVqMappingAllocator.to_int(vol.controllerIndex)
+        return controller_index if controller_index else None
 
     def __init__(self):
         self.uuid = None

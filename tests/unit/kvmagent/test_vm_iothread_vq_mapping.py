@@ -31,6 +31,28 @@ def cbd_volume(**kwargs):
     return Volume(**values)
 
 
+def drive_address(controller, unit):
+    return Volume(type='drive', controller=str(controller), unit=str(unit))
+
+
+def pci_address(**kwargs):
+    values = {
+        'type': 'pci',
+        'domain': '0x0000',
+        'bus': '0x00',
+        'slot': '0x05',
+        'function': '0x0',
+    }
+    values.update(kwargs)
+    return Volume(**values)
+
+
+def disk_with_target(bus):
+    disk = vm_plugin.etree.Element('disk')
+    vm_plugin.e(disk, 'target', None, {'dev': 'sd%s' % vm_plugin.Vm.DEVICE_LETTERS[1], 'bus': bus})
+    return disk
+
+
 class EmptyAddons(object):
     def __init__(self):
         self.attachedDataVolumes = []
@@ -282,6 +304,227 @@ def test_non_cbd_volume_can_use_dedicated_scsi_controller_without_automatic_mapp
 
 
 @pytest.mark.kvmagent
+def test_set_device_address_ignores_conflicting_virtio_scsi_persisted_controller():
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=True,
+        multiQueues='0',
+        ioThreads=0,
+        ioThreadId=0,
+        controllerIndex=1,
+        deviceAddress=drive_address(1, 1),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '0'
+    assert address.get('unit') == str(vm_plugin.Vm.get_device_unit(volume.deviceId))
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_ignores_non_virtio_scsi_persisted_controller():
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=False,
+        multiQueues='0',
+        ioThreads=0,
+        ioThreadId=0,
+        controllerIndex=1,
+        deviceAddress=drive_address(1, 1),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '0'
+    assert address.get('unit') == str(vm_plugin.Vm.get_device_unit(volume.deviceId))
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_reuses_matching_virtio_scsi_persisted_controller():
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=True,
+        multiQueues='4',
+        ioThreads=4,
+        ioThreadId=0,
+        controllerIndex=1,
+        deviceAddress=drive_address(1, 7),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '1'
+    assert address.get('unit') == '7'
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_ignores_default_controller_when_dedicated_plan_exists():
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=True,
+        multiQueues='4',
+        ioThreads=4,
+        ioThreadId=0,
+        controllerIndex=1,
+        deviceAddress=drive_address(0, 5),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '1'
+    assert address.get('unit') == str(vm_plugin.Vm.get_device_unit(volume.deviceId))
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_ignores_mismatched_dedicated_persisted_controller():
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=True,
+        multiQueues='4',
+        ioThreads=4,
+        ioThreadId=0,
+        controllerIndex=2,
+        deviceAddress=drive_address(1, 7),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '2'
+    assert address.get('unit') == str(vm_plugin.Vm.get_device_unit(volume.deviceId))
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_checks_occupied_units_on_dedicated_controller():
+    class FakeAttachVm(object):
+        def get_occupied_disk_address_units(self, bus, controller):
+            assert bus == 'scsi'
+            assert controller == 2
+            return [vm_plugin.Vm.get_device_unit(1)]
+
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=True,
+        multiQueues='4',
+        ioThreads=4,
+        ioThreadId=0,
+        controllerIndex=2,
+        deviceAddress=drive_address(1, 7),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume, FakeAttachVm())
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '2'
+    assert address.get('unit') == str(vm_plugin.Vm.get_device_unit(1) + 1)
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_falls_back_to_default_controller_and_bumps_occupied_unit():
+    class FakeAttachVm(object):
+        def get_occupied_disk_address_units(self, bus, controller):
+            assert bus == 'scsi'
+            assert controller == 0
+            return [vm_plugin.Vm.get_device_unit(1)]
+
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=True,
+        multiQueues='0',
+        ioThreads=0,
+        ioThreadId=0,
+        controllerIndex=1,
+        deviceAddress=drive_address(1, 1),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume, FakeAttachVm())
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '0'
+    assert address.get('unit') == str(vm_plugin.Vm.get_device_unit(1) + 1)
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_keeps_default_virtio_scsi_persisted_controller():
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=True,
+        multiQueues='0',
+        ioThreads=0,
+        ioThreadId=0,
+        deviceAddress=drive_address(0, 5),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '0'
+    assert address.get('unit') == '5'
+
+
+@pytest.mark.kvmagent
+@pytest.mark.parametrize('controller, unit', [
+    (None, 5),
+    ('', 5),
+    (0, None),
+    (0, ''),
+])
+def test_set_device_address_replans_incomplete_virtio_scsi_persisted_drive_address(controller, unit):
+    disk = disk_with_target('scsi')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=True,
+        multiQueues='0',
+        ioThreads=0,
+        ioThreadId=0,
+        deviceAddress=Volume(type='drive', controller=controller, unit=unit),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    address = disk.find('address')
+    assert address.get('type') == 'drive'
+    assert address.get('controller') == '0'
+    assert address.get('unit') == str(vm_plugin.Vm.get_device_unit(volume.deviceId))
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_keeps_virtio_blk_pci_address():
+    disk = disk_with_target('virtio')
+    volume = cbd_volume(
+        useVirtio=True,
+        useVirtioSCSI=False,
+        deviceAddress=pci_address(slot='0x09'),
+    )
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    address = disk.find('address')
+    assert address.get('type') == 'pci'
+    assert address.get('slot') == '0x09'
+
+
+@pytest.mark.kvmagent
 def test_iothread_vq_mapping_allocator_writes_individual_queues():
     volume = cbd_volume(ioThreads=7)
     allocator = vm_plugin.IothreadVqMappingAllocator.allocate(volume, set())
@@ -488,14 +731,16 @@ def test_add_scsi_controller_records_alias_before_attach(monkeypatch):
 
 @pytest.mark.kvmagent
 def test_attach_data_volume_failure_cleans_created_mapping(monkeypatch):
+    attached_disk_xml = []
+
     class FakeDomain(object):
         def attachDeviceFlags(self, xml, flags):
+            attached_disk_xml.append(xml)
             raise RuntimeError('disk attach failed')
 
     vm = vm_plugin.Vm()
     vm.uuid = 'vm-uuid'
     vm.domain = FakeDomain()
-    attached_disk_xml = []
     volume = cbd_volume(
         useVirtio=True,
         useVirtioSCSI=True,
@@ -507,15 +752,10 @@ def test_attach_data_volume_failure_cleans_created_mapping(monkeypatch):
     deleted_iothreads = []
     detached_aliases = []
 
-    def fake_attach_device(xml, flags):
-        attached_disk_xml.append(xml)
-        raise RuntimeError('disk attach failed')
-
     def fake_add_controller(vm_uuid, io_thread_id=None, queues=None, mapping_allocator=None, created_aliases=None):
         created_aliases.append('scsi5')
         return 5
 
-    vm.domain.attachDeviceFlags = fake_attach_device
     monkeypatch.setattr(vm_plugin.linux, 'retry', no_retry)
     monkeypatch.setattr(vm_plugin.linux, 'wait_callback_success', lambda callback, *args: callback(None))
     monkeypatch.setattr(vm_plugin.libvirt, 'libvirtError', RuntimeError)
