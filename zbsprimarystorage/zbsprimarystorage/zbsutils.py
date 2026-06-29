@@ -81,15 +81,16 @@ def deploy_client(ip, port, username, password):
         ZBSADM_BIN_PATH, ip, port, username, linux.shellquote(password)))
 
 
-def vhost_auto_cpuset():
-    n = linux.get_cpu_num()
-    core = n - 1 if n and n > 1 else 0
+def vhost_auto_cpuset(ip, port, username, password):
+    _, o, _ = linux.sshpass_run(ip, password, "grep -c processor /proc/cpuinfo", user=username, port=int(port))
+    n = int(o.strip()) if o and o.strip().isdigit() else 0
+    core = n - 1 if n > 1 else 0
     return "[%d]" % core
 
 
 def deploy_vhost(ip, port, username, password, cpuset=None, hugepage_size=None, hugepage_dir=None):
     if not cpuset:
-        cpuset = vhost_auto_cpuset()
+        cpuset = vhost_auto_cpuset(ip, port, username, password)
     cmd = "%s vhost deploy --host %s --port %s -u %s -p %s --cpuset %s --silent" % (
         ZBSADM_BIN_PATH, ip, port, username, linux.shellquote(password),
         linux.shellquote(cpuset))

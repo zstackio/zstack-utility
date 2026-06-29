@@ -63,28 +63,37 @@ class TestDeleteVhostBdev:
 class TestDeployVhost:
     # cpuset uses bracket notation ([1-4]) and must be shell-quoted or bash globs
     # it against cwd filenames, so shellquote is the real impl in these tests.
-    def test_auto_cpuset_pins_last_core_from_host_cpu_count(self):
+    def test_auto_cpuset_pins_last_core_from_target_host_cpu_count(self):
         with patch.object(zbsutils.shell, 'call'), \
              patch.object(zbsutils.linux, 'shellquote', side_effect=_real_quote), \
-             patch.object(zbsutils.linux, 'get_cpu_num', return_value=8):
+             patch.object(zbsutils.linux, 'sshpass_run', return_value=(0, "8\n", "")):
             zbsutils.deploy_vhost("10.0.0.9", 22, "root", "pwd")
             cmd = _last_cmd()
             assert cmd.startswith(zbsutils.ZBSADM_BIN_PATH + " vhost deploy")
             assert "--host 10.0.0.9" in cmd
-            # dedicate the last core (cpu_num-1), avoiding core 0 (OS/IRQ load)
+            # dedicate the last core (cpu_num-1), avoiding core 0 (OS/IRQ load).
+            # count comes from the target host over SSH, not the zbs server.
             assert "--cpuset '[7]'" in cmd
+
+    def test_cpuset_is_inferred_on_target_not_local(self):
+        with patch.object(zbsutils.shell, 'call'), \
+             patch.object(zbsutils.linux, 'shellquote', side_effect=_real_quote), \
+             patch.object(zbsutils.linux, 'sshpass_run', return_value=(0, "8\n", "")) as ssh:
+            zbsutils.deploy_vhost("10.0.0.9", 2222, "root", "pwd")
+            ssh.assert_called_once_with("10.0.0.9", "pwd", "grep -c processor /proc/cpuinfo",
+                                        user="root", port=2222)
 
     def test_single_cpu_host_falls_back_to_core0(self):
         with patch.object(zbsutils.shell, 'call'), \
              patch.object(zbsutils.linux, 'shellquote', side_effect=_real_quote), \
-             patch.object(zbsutils.linux, 'get_cpu_num', return_value=1):
+             patch.object(zbsutils.linux, 'sshpass_run', return_value=(0, "1\n", "")):
             zbsutils.deploy_vhost("10.0.0.9", 22, "root", "pwd")
             assert "--cpuset '[0]'" in _last_cmd()
 
     def test_omits_hugepage_args_so_zbsadm_defaults_apply(self):
         with patch.object(zbsutils.shell, 'call'), \
              patch.object(zbsutils.linux, 'shellquote', side_effect=_real_quote), \
-             patch.object(zbsutils.linux, 'get_cpu_num', return_value=8):
+             patch.object(zbsutils.linux, 'sshpass_run', return_value=(0, "8\n", "")):
             zbsutils.deploy_vhost("10.0.0.9", 22, "root", "pwd")
             cmd = _last_cmd()
             assert "--hugepage-size" not in cmd
@@ -93,7 +102,7 @@ class TestDeployVhost:
     def test_explicit_cpuset_overrides_auto(self):
         with patch.object(zbsutils.shell, 'call'), \
              patch.object(zbsutils.linux, 'shellquote', side_effect=_real_quote), \
-             patch.object(zbsutils.linux, 'get_cpu_num', return_value=8):
+             patch.object(zbsutils.linux, 'sshpass_run', return_value=(0, "8\n", "")):
             zbsutils.deploy_vhost("10.0.0.9", 22, "root", "pwd", cpuset="[1-4]")
             cmd = _last_cmd()
             assert "--cpuset '[1-4]'" in cmd
@@ -102,7 +111,7 @@ class TestDeployVhost:
     def test_includes_hugepage_args_when_explicitly_set(self):
         with patch.object(zbsutils.shell, 'call'), \
              patch.object(zbsutils.linux, 'shellquote', side_effect=_real_quote), \
-             patch.object(zbsutils.linux, 'get_cpu_num', return_value=8):
+             patch.object(zbsutils.linux, 'sshpass_run', return_value=(0, "8\n", "")):
             zbsutils.deploy_vhost("10.0.0.9", 22, "root", "pwd",
                                   hugepage_size=2048, hugepage_dir="/dev/hugepages2m")
             cmd = _last_cmd()
