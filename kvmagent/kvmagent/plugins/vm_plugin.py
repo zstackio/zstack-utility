@@ -3405,6 +3405,7 @@ class Vm(object):
             disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
             e(disk, 'source', None, {'protocol': 'cbd', 'name': make_cbd_conf(volume.installPath)})
+            _add_luks_encryption(disk, volume, allow_legacy_secret=False)
             if volume.useVirtioSCSI or volume.useSCSI:
                 e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
                 e(disk, 'wwn', volume.wwn)
@@ -6215,6 +6216,7 @@ class Vm(object):
                 disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
                 e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
                 e(disk, 'source', None, {'protocol': 'cbd', 'name': make_cbd_conf(_v.installPath)})
+                _add_luks_encryption(disk, _v, allow_legacy_secret=False)
                 if _v.useVirtioSCSI or _v.useSCSI:
                     e(disk, 'target', None, {'dev': 'sd%s' % _dev_letter, 'bus': 'scsi'})
                     e(disk, 'wwn', _v.wwn)
@@ -8851,6 +8853,7 @@ class VmPlugin(kvmagent.KvmAgent):
             disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
             e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'})
             e(disk, 'source', None, {'protocol': 'cbd', 'name': make_cbd_conf(_v.installPath)})
+            _add_luks_encryption(disk, _v, allow_legacy_secret=False)
             e(disk, 'target', None, {'dev': 'vd%s' % _v.dev_letter, 'bus': 'virtio'})
             if _v.physicalBlockSize:
                 e(disk, 'blockio', None, {'physical_block_size': str(_v.physicalBlockSize)})
@@ -8904,7 +8907,8 @@ class VmPlugin(kvmagent.KvmAgent):
         if block_backing_store is not None:
             ele.append(block_backing_store)
 
-        _add_luks_encryption(ele, volume)
+        if volume.deviceType not in ['ceph', 'cbd']:
+            _add_luks_encryption(ele, volume)
 
         logger.info("updated disk XML: " + etree.tostring(ele))
         return ele

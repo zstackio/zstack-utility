@@ -101,6 +101,13 @@ class CreateSnapshotRsp(AgentResponse):
         self.actualSize = 0
 
 
+class QuerySnapshotRsp(AgentResponse):
+    def __init__(self):
+        super(QuerySnapshotRsp, self).__init__()
+        self.hasSnapshot = False
+        self.installPath = None
+
+
 class CreateVolumeRsp(AgentResponse):
     def __init__(self):
         super(CreateVolumeRsp, self).__init__()
@@ -198,6 +205,7 @@ class ZbsAgent(plugin.TaskManager):
     CLEAN_NBD_PATH = "/zbs/primarystorage/volume/cleannbd"
     CREATE_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/create"
     DELETE_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/delete"
+    QUERY_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/query"
     ROLLBACK_SNAPSHOT_PATH = "/zbs/primarystorage/snapshot/rollback"
     EXPAND_VOLUME_PATH = "/zbs/primarystorage/volume/expand"
     FLATTEN_VOLUME_PATH = "/zbs/primarystorage/volume/flatten"
@@ -228,6 +236,7 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.CLEAN_NBD_PATH, self.clean_nbd)
         self.http_server.register_async_uri(self.CREATE_SNAPSHOT_PATH, self.create_snapshot)
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
+        self.http_server.register_async_uri(self.QUERY_SNAPSHOT_PATH, self.query_snapshot)
         self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
         self.http_server.register_sync_uri(self.GET_VOLUME_CLIENTS_PATH, self.get_volume_clients)
 
@@ -448,6 +457,33 @@ class ZbsAgent(plugin.TaskManager):
         zbsutils.delete_snapshots(logical_pool, volume, file_infos)
 
         return jsonobject.dumps(rsp)
+
+    @replyerror
+    def query_snapshot(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = QuerySnapshotRsp()
+
+        physical_pool, logical_pool, volume, snapshot = zbsutils.parse_cbd_path(cmd.path)
+
+        o = zbsutils.query_snapshot_info(logical_pool, volume)
+        ret = jsonobject.loads(o)
+        if ret.error.code != 0:
+            raise Exception(
+                'cannot found snapshot for volume[%s/%s], error[%s]' % (logical_pool, volume, ret.error.message))
+
+        file_infos = ret.result.fileInfo if ret.result and ret.result.hasattr('fileInfo') else []
+        rsp.hasSnapshot = bool(file_infos)
+        if snapshot is None:
+            rsp.installPath = cmd.path
+            return jsonobject.dumps(rsp)
+
+        for info in file_infos:
+            if info.fileName == snapshot or (info.hasattr('seqNum') and str(info.seqNum) == snapshot):
+                rsp.installPath = zbsutils.CBD_SNAPSHOT_PATH.format(
+                    physical_pool, logical_pool, volume, str(info.seqNum))
+                return jsonobject.dumps(rsp)
+
+        raise Exception('cannot found snapshot[%s] for volume[%s/%s]' % (snapshot, logical_pool, volume))
 
     @replyerror
     def query_volume(self, req):
