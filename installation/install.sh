@@ -2881,13 +2881,14 @@ license_server_installer_bin() {
 }
 
 license_server_installed() {
+    local management_ip="$1"
     local admin_password="$MYSQL_NEW_ROOT_PASSWORD"
     local query_output=''
     local query_ret=0
 
     [ -f "$LICENSE_SERVER_SERVICE_PATH" ] || return 1
     [ -n "$MYSQL_ROOT_PASSWORD" ] && admin_password="$MYSQL_ROOT_PASSWORD"
-    query_output=`mysql -uroot --password="$admin_password" --host="$MANAGEMENT_IP" --port="$MYSQL_PORT" \
+    query_output=`mysql -uroot --password="$admin_password" --host="$management_ip" --port="$MYSQL_PORT" \
         --batch --skip-column-names -e "SHOW DATABASES LIKE '$LICENSE_SERVER_DB_NAME'" 2>&1`
     query_ret=$?
     if [ $query_ret -ne 0 ]; then
@@ -2908,6 +2909,7 @@ license_server_yaml_escape() {
 
 render_license_server_install_config() {
     local config_file="$1"
+    local management_ip="$2"
     local admin_password="$MYSQL_NEW_ROOT_PASSWORD"
     local reset_database='false'
 
@@ -2924,7 +2926,7 @@ install:
   start: false
 database:
   driver: "mysql"
-  url: "${MANAGEMENT_IP}:${MYSQL_PORT}"
+  url: "${management_ip}:${MYSQL_PORT}"
   name: "${LICENSE_SERVER_DB_NAME}"
   user: "${LICENSE_SERVER_DB_USER}"
   password: "${LICENSE_SERVER_DEFAULT_DB_PASSWORD}"
@@ -2933,7 +2935,7 @@ database:
   admin_password: "${admin_password}"
   reset_database: ${reset_database}
 server:
-  management_ip: "${MANAGEMENT_IP}"
+  management_ip: "${management_ip}"
 EOF
     [ $? -ne 0 ] && fail "failed to render license server install config"
     chmod 600 "$config_file" || fail "failed to protect license server install config"
@@ -2949,8 +2951,18 @@ append_license_server_installer_output() {
 }
 
 install_license_server() {
+    local management_ip=''
     local installer_bin=`license_server_installer_bin`
     local install_config=''
+
+    if is_ipv6_address "$MANAGEMENT_IP"; then
+        echo_title "Skip License Server"
+        echo ""
+        echo "License Server does not support IPv6 management network yet. Skip License Server installation and continue ${PRODUCT_NAME} installation." | tee -a "$ZSTACK_INSTALL_LOG"
+        return 0
+    fi
+    management_ip="$MANAGEMENT_IP"
+
     if [ -z "$installer_bin" ]; then
         fail "license server installer package for $BASEARCH not found"
     fi
@@ -2960,11 +2972,11 @@ install_license_server() {
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     LICENSE_SERVER_INSTALL_OUTPUT=`mktemp`
-    if [ x"$UPGRADE" = x"y" ] && [ -z "$NEED_DROP_DB" ] && license_server_installed; then
+    if [ x"$UPGRADE" = x"y" ] && [ -z "$NEED_DROP_DB" ] && license_server_installed "$management_ip"; then
         show_spinner is_upgrade_license_server "$installer_bin"
     else
         install_config=`mktemp`
-        render_license_server_install_config "$install_config"
+        render_license_server_install_config "$install_config" "$management_ip"
         show_spinner is_install_license_server "$installer_bin" "$install_config"
     fi
     append_license_server_installer_output "$LICENSE_SERVER_INSTALL_OUTPUT"
