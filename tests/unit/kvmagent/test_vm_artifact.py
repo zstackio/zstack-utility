@@ -111,6 +111,25 @@ class TestVmArtifactViewSpec:
 
         assert views[0].resolve_source_path() == str(source)
 
+    def test_source_path_copies_remote_source_before_resolving_target(self, tmp_path):
+        source_root = tmp_path / 'virtiofs-sources'
+        remote = source_root / 'model-centers' / 'mc' / 'root' / 'models' / 'qwen'
+        remote.mkdir(parents=True)
+        (remote / 'config.json').write_text('{}')
+        ps_root = tmp_path / 'primary-storage'
+        target = ps_root / 'ai-model-cache' / 'models' / 'model-uuid' / 'v1'
+        view = vm_artifact.VmArtifactViewSpec.from_raw({
+            'vmInstanceUuid': 'vm-uuid',
+            'tag': 'model',
+            'sourcePath': str(target),
+            'sourceRootPath': str(ps_root),
+            'remoteSourcePath': str(remote),
+            'remoteSourceRootPath': str(source_root),
+        })
+
+        assert view.resolve_source_path() == str(target)
+        assert (target / 'config.json').read_text() == '{}'
+
     def test_source_path_capacity_error_is_not_hidden_by_vm_view_fallback(self, tmp_path, monkeypatch):
         source_root = tmp_path / 'large-disk' / 'virtiofs-sources'
         source = source_root / 'model-centers' / 'mc' / 'root' / 'models' / 'qwen'

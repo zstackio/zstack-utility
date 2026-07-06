@@ -71,6 +71,13 @@ def source_roots_from_view(view):
     return None
 
 
+def remote_source_roots_from_view(view):
+    remote_root = get_attr(view, 'remoteSourceRootPath')
+    if remote_root is None:
+        return None
+    return virtiofs_source.source_roots_from_raw({'sourceRootPath': remote_root}, include_vm_view=False)
+
+
 def safe_uuid(value, field_name):
     if not value or not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.-]*$', value):
         raise Exception('invalid %s: %s' % (field_name, value))
@@ -157,7 +164,8 @@ def make_view_bind_specs(vm_uuid, artifacts):
 class VmArtifactViewSpec(object):
     def __init__(self, vm_uuid, tag=None, artifacts=None, source_path=None,
                  cache=None, queue=None, binary_path=None, read_only=True,
-                 source_roots=None, required_capacity_bytes=None):
+                 source_roots=None, required_capacity_bytes=None, remote_source_path=None,
+                 remote_source_roots=None):
         self.vm_uuid = safe_uuid(vm_uuid, 'vmInstanceUuid')
         self.tag = sanitize_tag(tag or self.vm_uuid)
         self.artifacts = as_list(artifacts)
@@ -168,6 +176,8 @@ class VmArtifactViewSpec(object):
         self.read_only = read_only is not False
         self.source_roots = source_roots
         self.required_capacity_bytes = required_capacity_bytes
+        self.remote_source_path = remote_source_path
+        self.remote_source_roots = remote_source_roots
 
         if self.artifacts and self.source_path:
             raise Exception('vmArtifactView cannot specify both artifacts and sourcePath')
@@ -190,6 +200,8 @@ class VmArtifactViewSpec(object):
             source_roots=source_roots_from_view(view),
             required_capacity_bytes=virtiofs_source._parse_required_capacity(
                 get_attr(view, 'requiredCapacityBytes', get_attr(view, 'requiredBytes'))),
+            remote_source_path=get_attr(view, 'remoteSourcePath'),
+            remote_source_roots=remote_source_roots_from_view(view),
         )
 
     def resolve_source_path(self):
@@ -197,6 +209,13 @@ class VmArtifactViewSpec(object):
             source_path, _ = sync_artifact_view(self.vm_uuid, self.artifacts)
             return source_path
         if self.source_path:
+            if self.remote_source_path:
+                virtiofs_source.prepare_copy_source(
+                    self.source_path,
+                    self.source_roots or (HOST_SOURCE_ROOT,),
+                    self.remote_source_path,
+                    self.remote_source_roots or (HOST_SOURCE_ROOT,),
+                    self.required_capacity_bytes)
             try:
                 source_path = virtiofs_source.ensure_under_any(
                     self.source_path, self.source_roots or (HOST_SOURCE_ROOT,), 'sourcePath', allow_root=False)
