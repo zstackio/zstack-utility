@@ -853,9 +853,16 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         src_path = self._normalize_install_path(cmd.srcPath)
         dst_path = self._normalize_install_path(cmd.dstPath)
+        rsp = CpRsp()
 
         if cmd.sendCommandUrl:
             Report.url = cmd.sendCommandUrl
+
+        if cmd.skipIfExisting and shell.run("rbd info %s" % dst_path) == 0:
+            rsp.size = self._get_file_size(dst_path)
+            rsp.installPath = cmd.dstPath
+            self._set_capacity_to_response(rsp)
+            return jsonobject.dumps(rsp)
 
         report = Report(cmd.threadContext, cmd.threadContextStack)
         report.processType = "CephCpVolume"
@@ -888,7 +895,6 @@ class CephAgent(plugin.TaskManager):
             shell.run('rbd rm %s' % dst_path)
             raise err
 
-        rsp = CpRsp()
         rsp.size = self._get_file_size(dst_path)
         rsp.installPath = cmd.dstPath
         self._set_capacity_to_response(rsp)
