@@ -92,7 +92,7 @@ else:
 
 
 # name: install dependencies
-install_rpm_list = "libcbd"
+install_rpm_list = "libcbd nmap"
 qemu_installed = yum_check_package("qemu-kvm", host_post_info)
 if not qemu_installed:
     install_rpm_list += " %s" % qemu_alias.get(releasever, 'qemu-kvm')
