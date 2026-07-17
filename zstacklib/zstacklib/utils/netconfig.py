@@ -34,6 +34,8 @@ NET_CONFIG_NO = 'no'
 network_manager_status = None
 
 zsha2_vip = None
+sds_vip = None
+
 
 class NetConfigError(Exception):
     '''net config error'''
@@ -81,6 +83,10 @@ class NetConfig(object):
         # exclude zsha2 vip to avoid gateway configuration failure
         if ip == zsha2_vip:
             logger.debug('exclude zsha2 vip[%s] from ip config' % ip)
+            return
+
+        if ip == sds_vip:
+            logger.debug('exclude sds vip[%s] from ip config' % ip)
             return
 
         ip_config = None
@@ -593,6 +599,25 @@ def is_use_network_manager():
 def save_zsha2_vip(vip):
     global zsha2_vip
     zsha2_vip = vip
+
+
+def save_sds_vip(vip):
+    global sds_vip
+    sds_vip = vip
+
+
+def get_sds_vip_from_conf():
+    config_path = '/etc/sds/manager/config.yml'
+    if not os.path.exists(config_path):
+        save_sds_vip(None)
+        return
+    try:
+        with open(config_path, 'r') as f:
+            content = f.read()
+        m = re.search(r'^\s+public_vip\s*:\s*([0-9a-fA-F:.]+)\s*$', content, re.MULTILINE)
+        save_sds_vip(m.group(1).strip() if m else None)
+    except Exception as e:
+        logger.warn('read sds public_vip from %s failed: %s' % (config_path, e))
 
 
 if __name__ == '__main__':

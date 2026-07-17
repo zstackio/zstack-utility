@@ -1088,6 +1088,7 @@ def _get_used_memory():
 
 @linux.ignoreerror
 def _update_global_variables_for_net_config():
+    netconfig.get_sds_vip_from_conf()
     if not os.path.exists('/usr/local/bin/zsha2'):
         return
 
