@@ -140,6 +140,27 @@ def make_luks_secret_file(encrypted_dek_b64):
     return prepare_luks_secret_material_channel(encrypted_dek_b64)
 
 
+def nbd_target_image_options(nbd_host, nbd_port, export_name, encrypted):
+    options = [
+        'driver=qcow2',
+        'file.driver=nbd',
+        'file.server.type=inet',
+        'file.server.host=%s' % nbd_host,
+        'file.server.port=%s' % nbd_port,
+        'file.export=%s' % export_name,
+    ]
+    if encrypted:
+        options.extend([
+            'encrypt.format=luks',
+            'encrypt.key-secret=target_luks_sec',
+        ])
+    return ','.join(options)
+
+
+def target_secret_option(secret_file):
+    return '--object secret,id=target_luks_sec,format=raw,file=%s' % linux.shellquote(secret_file)
+
+
 @contextlib.contextmanager
 def luks_secret_channel(encrypted_dek_b64):
     if not encrypted_dek_b64:

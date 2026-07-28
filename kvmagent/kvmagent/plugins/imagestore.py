@@ -50,6 +50,44 @@ class ImageStoreClient(object):
     def _build_install_path(self, name, imgid):
         return "{0}{1}/{2}".format(self.ZSTORE_PROTOSTR, name, imgid)
 
+    def _call_backup_forest(self, hostname, port, action, request):
+        args_file = self._write_json_temp_file(request)
+        try:
+            cmdstr = '%s -url %s:%s forest %s -args-json-file %s' % (
+                self.ZSTORE_CLI_BIN, hostname, port, action, linux.shellquote(args_file))
+            output = shell.call(cmdstr)
+        finally:
+            linux.rm_file_force(args_file)
+
+        return json.loads(output)
+
+    def prepare_backup_forest_export(self, hostname, port, task_uuid, leaf_install_paths):
+        return self._call_backup_forest(hostname, port, 'export-prepare', {
+            'taskUuid': task_uuid,
+            'leafInstallPaths': leaf_install_paths,
+        })
+
+    def prepare_backup_forest_import(self, hostname, port, task_uuid, nodes):
+        return self._call_backup_forest(hostname, port, 'import-prepare', {
+            'taskUuid': task_uuid,
+            'nodes': nodes,
+        })
+
+    def commit_backup_forest_import(self, hostname, port, task_uuid, upload_concurrency,
+                                    nodes, image_end_offsets):
+        return self._call_backup_forest(hostname, port, 'import-commit', {
+            'taskUuid': task_uuid,
+            'uploadConcurrency': upload_concurrency,
+            'nodes': nodes,
+            'imageEndOffsets': image_end_offsets,
+        })
+
+    def abort_backup_forest_import(self, hostname, port, task_uuid, install_paths):
+        return self._call_backup_forest(hostname, port, 'import-abort', {
+            'taskUuid': task_uuid,
+            'installPaths': install_paths,
+        })
+
     def upload_image(self, hostname, fpath, concurrency=None, encryption_spec=None):
         imf = self.commit_image(fpath, encryption_spec)
 

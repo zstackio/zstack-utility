@@ -50,6 +50,7 @@ from kvmagent.plugins import host_pushgateway
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.nvram import nvram
 from kvmagent.plugins import volume_secret
+from kvmagent.plugins import volume_backup_nbd_conversion
 from kvmagent.plugins.vms import vm_host_file, vm_host_file_monitor, tpm
 from zstacklib.utils import bash, plugin, iscsi, qemu_nbd
 from zstacklib.utils.bash import in_bash
@@ -7441,6 +7442,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_BLOCK_PULL_VOLUME_PATH = "/vm/volume/blockpull"
     KVM_TAKE_VOLUMES_SNAPSHOT_PATH = "/vm/volumes/takesnapshot"
     KVM_TAKE_VOLUMES_BACKUP_PATH = "/vm/volumes/takebackup"
+    KVM_CONVERT_VOLUME_BACKUP_NBD_FOREST_PATH = "/vm/volumes/backup/nbdconversion/forest"
     KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH = "/vm/volume/cancel/backupjobs"
     KVM_CANCEL_VOLUME_BACKUP_JOB_PATH = "/vm/volume/cancel/backupjob"
     KVM_MERGE_SNAPSHOT_PATH = "/vm/volume/mergesnapshot"
@@ -9727,6 +9729,13 @@ host side snapshot files chian:
         finally:
             storage.disconnect()
 
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def convert_volume_backup_nbd_forest(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = volume_backup_nbd_conversion.ConvertVolumeBackupNbdForestRsp()
+        rsp.installPaths = volume_backup_nbd_conversion.convert_volume_backup_nbd_forest(cmd)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -12136,6 +12145,9 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_QUERY_BLOCKJOB_STATUS, self.query_block_job_status)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_SNAPSHOT_PATH, self.take_volumes_snapshots)
         http_server.register_async_uri(self.KVM_TAKE_VOLUMES_BACKUP_PATH, self.take_volumes_backups, cmd=TakeVolumesBackupsCommand())
+        http_server.register_async_uri(self.KVM_CONVERT_VOLUME_BACKUP_NBD_FOREST_PATH,
+                                       self.convert_volume_backup_nbd_forest,
+                                       cmd=volume_backup_nbd_conversion.ConvertVolumeBackupNbdForestCmd())
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOBS_PATH, self.cancel_backup_jobs)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_BACKUP_JOB_PATH, self.cancel_backup_job)
         http_server.register_async_uri(self.KVM_BLOCK_STREAM_VOLUME_PATH, self.block_stream)
