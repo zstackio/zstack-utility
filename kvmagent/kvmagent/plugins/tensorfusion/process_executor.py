@@ -367,15 +367,43 @@ class ProcessExecutor(WorkerExecutor):
             return
         proc = self._get_proc(pid)
         if proc is not None:
+            if proc.poll() is None:
+                logger.warning('skip reaping worker %s pid %d: process is still running' %
+                               (worker.device_uuid, pid))
+                return False
             self._reap_process(proc)
         else:
             # No Popen object tracked — try os.waitpid directly as fallback.
             try:
-                os.waitpid(pid, os.WNOHANG)
-            except (OSError, ChildProcessError):
-                pass
+                reaped_pid, _ = os.waitpid(pid, os.WNOHANG)
+                if reaped_pid == 0:
+                    logger.warning('skip reaping worker %s pid %d: process is still running' %
+                                   (worker.device_uuid, pid))
+                    return False
+            except (OSError, ChildProcessError) as e:
+                wait_errno = getattr(e, 'errno', None)
+                if wait_errno == errno.ESRCH:
+                    wait_errno = None
+                elif wait_errno not in (None, errno.ECHILD):
+                    raise
+                if wait_errno == errno.ECHILD or wait_errno is None:
+                    try:
+                        os.kill(pid, 0)
+                    except OSError as kill_error:
+                        if kill_error.errno != errno.ESRCH:
+                            logger.warning('skip reaping worker %s pid %d: cannot confirm process exit: %s' %
+                                           (worker.device_uuid, pid, kill_error))
+                            return False
+                    else:
+                        if not self._is_linux_zombie(pid):
+                            verified, reason = self._verify_worker_pid(pid, worker)
+                            if verified or not self._is_worker_process_gone_or_replaced(reason):
+                                logger.warning('skip reaping worker %s pid %d: %s' %
+                                               (worker.device_uuid, pid, reason))
+                                return False
         self._forget_proc(pid)
         logger.debug('reaped dead worker process pid=%d' % pid)
+        return True
 
     def scan_running(self):
         # type: () -> list

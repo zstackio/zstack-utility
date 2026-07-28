@@ -925,12 +925,23 @@ def _gpu_device_processor(pci_device_to, context):
                         return False, {}
 
                 # Detect all capabilities independently (no short-circuit)
-                vfio_mdev_supported, vfio_mdev_info = _safe_detect(
-                    "vfio_mdev", vendor_class.detect_vfio_mdev_capability, pci_device_to)
+                vendor_context = (getattr(context, 'gpu_vendor_context', None) or {}).get(vendor_name)
+                if vendor_context is not None:
+                    vfio_mdev_supported, vfio_mdev_info = _safe_detect(
+                        "vfio_mdev", vendor_class.detect_vfio_mdev_capability,
+                        pci_device_to, vendor_context)
+                else:
+                    vfio_mdev_supported, vfio_mdev_info = _safe_detect(
+                        "vfio_mdev", vendor_class.detect_vfio_mdev_capability, pci_device_to)
                 sriov_supported, sriov_info = _safe_detect(
                     "sriov", vendor_class.detect_sriov_capability, pci_device_to, gpu_info_map)
-                tensorfusion_supported, tensorfusion_info = _safe_detect(
-                    "tensorfusion", vendor_class.detect_tensorfusion_capability, pci_device_to)
+                if vendor_context is not None:
+                    tensorfusion_supported, tensorfusion_info = _safe_detect(
+                        "tensorfusion", vendor_class.detect_tensorfusion_capability,
+                        pci_device_to, vendor_context)
+                else:
+                    tensorfusion_supported, tensorfusion_info = _safe_detect(
+                        "tensorfusion", vendor_class.detect_tensorfusion_capability, pci_device_to)
 
                 # Apply non-virtStatus attributes
                 if vfio_mdev_supported and 'mdevSpecifications' in vfio_mdev_info:
@@ -980,7 +991,8 @@ def _gpu_device_processor(pci_device_to, context):
     vendor_name = pci_device_to.vendor if hasattr(
         pci_device_to, 'vendor') else None
     if vendor_name and normalized_pci and normalized_pci in gpu_info_map:
-        info = gpu_info_map[normalized_pci].copy()
+        info = dict((key, value) for key, value in gpu_info_map[normalized_pci].items()
+                    if not key.startswith('_'))
         pci_device_to.addonInfo = info
 
         # Set ramSize from gpu_info_map when present (e.g. Alibaba ppu-smi memory)
@@ -1419,7 +1431,7 @@ def get_info(pci_address=None, pci_device=None, vendor_name=None):
     Automatically handles:
     - Auto-identify vendor (if not provided)
     - Prioritize plugin (no environment variable check, try directly)
-    - Auto fallback to legacy when plugin fails
+    - Use legacy fallback when it is safe to retry
     - Handle all vendor-specific fields (Huawei npuId, product name, etc.)
 
     Args:
@@ -1465,6 +1477,7 @@ def get_info(pci_address=None, pci_device=None, vendor_name=None):
     pci_address = normalized_pci
 
     # 2. Try using plugin (no environment variable check, try directly)
+    nvidia_plugin_attempted = False
     try:
         from zstacklib.gpu import (
             get_gpu_vendor,
@@ -1479,6 +1492,7 @@ def get_info(pci_address=None, pci_device=None, vendor_name=None):
         if plugin_vendor_name:
             plugin = get_gpu_vendor(plugin_vendor_name)
             if plugin and plugin.is_available():
+                nvidia_plugin_attempted = vendor_name == VendorEnum.NVIDIA
                 # Use plugin to collect information
                 gpu_infos = plugin.get_basic_info()
                 for gpu_info in gpu_infos:
@@ -1550,11 +1564,12 @@ def get_info(pci_address=None, pci_device=None, vendor_name=None):
                                     "Failed to get Alibaba product name: %s" % str(e))
 
                         return result
-                # Plugin ran but no matching GPU found (e.g. hy-smi "No device available" in VM)
-                # Fall through to legacy so vendor can return minimal addon and device still recognized as GPU
     except Exception as e:
-        logger.debug("Plugin failed for %s, fallback to legacy: %s" %
+        logger.debug("Plugin failed for %s: %s" %
                      (pci_address, str(e)))
+
+    if nvidia_plugin_attempted:
+        return None
 
     # 3. Fallback to legacy (error tolerance mechanism)
     return _get_info_legacy(pci_address, vendor_name)
@@ -1600,7 +1615,10 @@ def _collect_nvidia_legacy(pci_address):
     if r != 0:
         return None
 
-    r, o, e = bash_roe(get_nvidia_gpu_basic_info_cmd())
+    from zstacklib.gpu.vendors.nvidia import NVIDIA
+    r, o, e = NVIDIA._run_critical_command(
+        "timeout %s %s" %
+        (NVIDIA.QUERY_TIMEOUT_SECONDS, get_nvidia_gpu_basic_info_cmd()))
     if r != 0:
         return None
 
@@ -2014,6 +2032,7 @@ def get_all_gpu_infos_by_pci():
                             if normalized_pci.endswith('.0'):
                                 result = gpu_info.to_addon_dict()
                                 result.update(gpu_info.extra)
+                                result['_vendor'] = vendor_class.VENDOR_NAME
                                 gpu_info_map[normalized_pci] = result
                             else:
                                 logger.debug("Skipping non-function-0 GPU device: %s (vendor: %s)" %
@@ -2216,6 +2235,17 @@ def _gpu_device_prepare(context):
 
     # Store in context for use by device ops and other components (e.g., sriov detection)
     context.gpu_info_map = gpu_info_map
+    context.gpu_vendor_context = {}
+
+    from zstacklib.gpu import get_all_gpu_vendors
+    for vendor_class in get_all_gpu_vendors():
+        prepare = getattr(vendor_class, 'prepare_capability_context', None)
+        if not prepare:
+            continue
+        if not any(info.get('_vendor') == vendor_class.VENDOR_NAME
+                   for info in gpu_info_map.values()):
+            continue
+        context.gpu_vendor_context[vendor_class.VENDOR_NAME] = prepare(gpu_info_map)
 
     # No post-prepare hook needed anymore
     # SR-IOV detection is now handled by vendor methods in GPU device ops

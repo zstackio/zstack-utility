@@ -120,28 +120,27 @@ def enrich_gpu_info_map(gpu_info_map):
     _log = log.get_logger(__name__)
 
     pci_to_vendor = {}
-    for vendor_class in get_all_gpu_vendors():
-        if not vendor_class.is_available():
-            continue
-        try:
-            for gpu_info in vendor_class.get_basic_info():
-                if gpu_info.pci_address:
-                    norm = normalize_pci_address(gpu_info.pci_address)
-                    if norm and norm in gpu_info_map:
-                        pci_to_vendor[norm] = vendor_class.VENDOR_NAME
-        except Exception as e:
-            _log.debug("enrich_gpu_info_map: get_basic_info from %s: %s" %
-                       (vendor_class.VENDOR_NAME, str(e)))
+    for pci, info in gpu_info_map.items():
+        if isinstance(info, dict) and info.get('_vendor'):
+            pci_to_vendor[pci] = info['_vendor']
+
+    if len(pci_to_vendor) < len(gpu_info_map):
+        for vendor_class in get_all_gpu_vendors():
+            if not vendor_class.is_available():
+                continue
+            try:
+                for gpu_info in vendor_class.get_basic_info():
+                    if gpu_info.pci_address:
+                        norm = normalize_pci_address(gpu_info.pci_address)
+                        if norm and norm in gpu_info_map and norm not in pci_to_vendor:
+                            pci_to_vendor[norm] = vendor_class.VENDOR_NAME
+            except Exception as e:
+                _log.debug("enrich_gpu_info_map: get_basic_info from %s: %s" %
+                           (vendor_class.VENDOR_NAME, str(e)))
 
     vendor_to_pcis = {}
     for pci, vendor in pci_to_vendor.items():
         vendor_to_pcis.setdefault(vendor, []).append(pci)
-
-    # Include PCI-only candidates (passthrough'd devices tagged with _vendor
-    # by _supplement_gpu_info_map_from_pci) so they participate in enrich_addon_info
-    for pci, info in gpu_info_map.items():
-        if pci not in pci_to_vendor and isinstance(info, dict) and '_vendor' in info:
-            vendor_to_pcis.setdefault(info['_vendor'], []).append(pci)
 
     for vendor_name, pcis in vendor_to_pcis.items():
         vendor_class = get_gpu_vendor(vendor_name)

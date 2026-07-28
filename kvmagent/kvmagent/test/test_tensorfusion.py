@@ -4,6 +4,8 @@ Unit tests for TensorFusion plugin components.
 Run: python -m pytest kvmagent/kvmagent/test/test_tensorfusion.py -v
 '''
 
+import errno
+import json
 import os
 import re
 import sys
@@ -12,6 +14,7 @@ import time
 import types
 import unittest
 import importlib
+from contextlib import contextmanager
 
 try:
     import builtins
@@ -90,6 +93,17 @@ class _MockNVIDIA(object):
 
 _mock_nvidia_mod.NVIDIA = _MockNVIDIA
 
+_mock_operation_gate_mod = types.ModuleType('zstacklib.gpu.operation_gate')
+
+
+class _MockGPUOperationGate(object):
+    @contextmanager
+    def critical(self):
+        yield
+
+
+_mock_operation_gate_mod.gpu_operation_gate = _MockGPUOperationGate()
+
 def _build_mock_modules():
     zstacklib_mod = types.ModuleType('zstacklib')
     zstacklib_utils_mod = types.ModuleType('zstacklib.utils')
@@ -112,19 +126,28 @@ def _build_mock_modules():
         'zstacklib.gpu': zstacklib_gpu_mod,
         'zstacklib.gpu.vendors': zstacklib_gpu_vendors_mod,
         'zstacklib.gpu.vendors.nvidia': _mock_nvidia_mod,
+        'zstacklib.gpu.operation_gate': _mock_operation_gate_mod,
         'libvirt': libvirt_mod,
     }
 
 
 def _preload_tensorfusion_modules():
+    loaded_modules = {}
     with mock.patch.dict(sys.modules, _build_mock_modules()):
         importlib.import_module('kvmagent.plugins.tensorfusion.models')
         importlib.import_module('kvmagent.plugins.tensorfusion.store')
         importlib.import_module('kvmagent.plugins.tensorfusion.tracker')
         importlib.import_module('kvmagent.plugins.tensorfusion.process_executor')
+        importlib.import_module('kvmagent.plugins.tensorfusion.container_executor')
         importlib.import_module('kvmagent.plugins.tensorfusion.monitor')
         importlib.import_module('kvmagent.plugins.tensorfusion.utils')
         importlib.import_module('kvmagent.plugins.tensorfusion.service')
+        loaded_modules.update({
+            name: module for name, module in sys.modules.items()
+            if name == 'kvmagent.plugins.tensorfusion' or
+            name.startswith('kvmagent.plugins.tensorfusion.')
+        })
+    sys.modules.update(loaded_modules)
 
 
 _preload_tensorfusion_modules()
@@ -172,6 +195,17 @@ def _make_gpu_details():
             'driver_version': '535.129.03',
         },
     }
+
+
+def _new_real_gpu_operation_gate():
+    module_path = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), '..', '..', '..',
+        'zstacklib', 'zstacklib', 'gpu', 'operation_gate.py'))
+    spec = importlib.util.spec_from_file_location(
+        '_tensorfusion_test_operation_gate', module_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.GPUOperationGate()
 
 
 # =============================================================================
@@ -737,7 +771,8 @@ class TestTensorFusionService(unittest.TestCase):
         count = svc.destroy_workers_by_vm('vm-001')
         self.assertEqual(count, 2)
         self.assertEqual(len(svc.list_workers()), 0)
-        mock_executor.cleanup_residual_workers_by_vm.assert_called_once_with('vm-001', known_pids=[1001, 1002])
+        mock_executor.cleanup_residual_workers_by_vm.assert_called_once_with(
+            'vm-001', known_workers=[])
 
     @mock.patch('kvmagent.plugins.tensorfusion.service.NVIDIA')
     @mock.patch('kvmagent.plugins.tensorfusion.service.ProcessExecutor')
@@ -791,7 +826,8 @@ class TestTensorFusionService(unittest.TestCase):
         count = svc.destroy_workers_by_vm('vm-001')
 
         self.assertEqual(1, count)
-        mock_executor.cleanup_residual_workers_by_vm.assert_called_once_with('vm-001', known_pids=[])
+        mock_executor.cleanup_residual_workers_by_vm.assert_called_once_with(
+            'vm-001', known_workers=[])
 
     @mock.patch('kvmagent.plugins.tensorfusion.service.NVIDIA')
     @mock.patch('kvmagent.plugins.tensorfusion.service.ProcessExecutor')
@@ -1044,6 +1080,912 @@ class TestTensorFusionService(unittest.TestCase):
         mock_executor.start.assert_not_called()
 
 
+class TestTensorFusionGPUOperationGate(unittest.TestCase):
+
+    def _assert_monitoring_blocked(self, gate):
+        with gate.monitoring() as acquired:
+            self.assertFalse(acquired)
+
+    @contextmanager
+    def _service_with_gate(self, executor, gate):
+        from kvmagent.plugins.tensorfusion import service as service_module
+
+        with mock.patch.object(service_module, 'gpu_operation_gate', gate), \
+                mock.patch.object(service_module.NVIDIA, 'query_gpu_details',
+                                  return_value=_make_gpu_details()):
+            yield service_module.TensorFusionService(executor=executor)
+
+    def test_destroy_serializes_stop_and_state_finalize(self):
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+        worker = _make_worker()
+        events = []
+
+        def _record_teardown(name):
+            self._assert_monitoring_blocked(gate)
+            events.append(name)
+
+        executor.stop.side_effect = lambda _worker: _record_teardown('stop')
+
+        with self._service_with_gate(executor, gate) as service:
+            service._store.add(worker)
+            service._tracker.allocate(
+                worker.pci_address, worker.device_uuid, worker.allocated_memory_mb)
+            service._tracker.release = mock.MagicMock(
+                side_effect=lambda _pci, _device: _record_teardown('release'))
+            self.assertTrue(service.destroy_worker(worker.device_uuid))
+
+        self.assertEqual(['stop', 'release'], events)
+        executor.reap_dead.assert_not_called()
+
+    def test_remove_state_preserves_worker_when_reap_reports_running(self):
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+        executor.reap_dead.return_value = False
+        worker = _make_worker()
+
+        with self._service_with_gate(executor, gate) as service:
+            service._store.add(worker)
+            service._tracker.allocate(
+                worker.pci_address, worker.device_uuid, worker.allocated_memory_mb)
+            self.assertIsNone(service._remove_worker_state(worker))
+
+            self.assertIs(worker, service._store.get(worker.device_uuid))
+            self.assertEqual(
+                worker.allocated_memory_mb,
+                service.get_gpu_usage(worker.pci_address).allocated_memory_mb)
+
+    def test_destroy_restores_monitoring_when_reap_rechecks_running(self):
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+        executor.stop.side_effect = Exception('stop failed')
+        executor.is_alive.return_value = False
+        executor.reap_dead.return_value = False
+        worker = _make_worker()
+
+        with self._service_with_gate(executor, gate) as service:
+            service._store.add(worker)
+            service._tracker.allocate(
+                worker.pci_address, worker.device_uuid, worker.allocated_memory_mb)
+            with self.assertRaises(Exception):
+                service.destroy_worker(worker.device_uuid)
+
+            self.assertIs(worker, service._store.get(worker.device_uuid))
+            self.assertFalse(worker.restarting)
+
+    def test_start_failure_reconciles_labeled_residual_under_gate(self):
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+        executor.start.side_effect = Exception('start failed')
+        request = WorkerCreateRequest()
+        request.vm_uuid = 'vm-001'
+
+        def _cleanup(vm_uuid, known_workers=None):
+            self._assert_monitoring_blocked(gate)
+            self.assertEqual('vm-001', vm_uuid)
+            self.assertEqual([], known_workers)
+
+        executor.cleanup_residual_workers_by_vm.side_effect = _cleanup
+
+        with self._service_with_gate(executor, gate) as service:
+            with self.assertRaises(Exception):
+                service._start_worker_runtime(request)
+
+        executor.cleanup_residual_workers_by_vm.assert_called_once_with(
+            'vm-001', known_workers=[])
+
+    def test_initialize_and_periodic_orphan_stop_are_serialized(self):
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+        initialized_orphan = _make_worker(device_uuid='init-orphan')
+        periodic_orphan = _make_worker(device_uuid='periodic-orphan')
+        executor.scan_running.side_effect = [[initialized_orphan], [periodic_orphan]]
+        stopped = []
+
+        def _stop(worker):
+            self._assert_monitoring_blocked(gate)
+            stopped.append(worker.device_uuid)
+
+        executor.stop.side_effect = _stop
+
+        with self._service_with_gate(executor, gate) as service, \
+                mock.patch('kvmagent.plugins.tensorfusion.service._is_vm_running',
+                           return_value=False), \
+                mock.patch.object(service._monitor, 'start'), \
+                mock.patch.object(service, '_start_orphan_scan_timer'):
+            service.initialize()
+            service._scan_and_cleanup_orphans()
+
+        self.assertEqual(['init-orphan', 'periodic-orphan'], stopped)
+
+    def test_orphan_scan_does_not_remove_replaced_runtime(self):
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+        scanned = _make_worker(device_uuid='dev-orphan')
+        scanned.container_id = 'old-container-id'
+        replacement = _make_worker(device_uuid='dev-orphan', pid=4321)
+        replacement.container_id = 'new-container-id'
+        executor.scan_running.return_value = [scanned]
+
+        with self._service_with_gate(executor, gate) as service:
+            service._store.add(scanned)
+
+            def _replace_during_stop(_worker):
+                self._assert_monitoring_blocked(gate)
+                service._store.remove(scanned.device_uuid,
+                                      expected_worker=scanned)
+                service._store.add(replacement)
+
+            executor.stop.side_effect = _replace_during_stop
+            with mock.patch(
+                    'kvmagent.plugins.tensorfusion.service._is_vm_running',
+                    return_value=False):
+                service._scan_and_cleanup_orphans()
+
+            self.assertIs(replacement, service._store.get(scanned.device_uuid))
+            executor.reap_dead.assert_not_called()
+
+    def test_residual_cleanup_is_serialized(self):
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+
+        def _cleanup(_vm_uuid, known_workers=None):
+            self._assert_monitoring_blocked(gate)
+            self.assertEqual([], known_workers)
+            return 1
+
+        executor.cleanup_residual_workers_by_vm.side_effect = _cleanup
+
+        with self._service_with_gate(executor, gate) as service:
+            self.assertEqual(1, service.destroy_workers_by_vm('vm-001'))
+
+    def test_docker_timeout_releases_gate_after_bounded_reap(self):
+        import subprocess
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        gate = _new_real_gpu_operation_gate()
+        executor = ContainerExecutor(_make_gpu_details())
+        proc = mock.MagicMock()
+        proc.communicate.side_effect = subprocess.TimeoutExpired(
+            ['docker', 'run'], 30)
+        proc.kill.side_effect = RuntimeError('kill failed')
+        wait_started = threading.Event()
+        release_wait = threading.Event()
+        wait_timeouts = []
+        errors = []
+
+        def _wait(timeout=None):
+            wait_timeouts.append(timeout)
+            wait_started.set()
+            release_wait.wait(1)
+            raise subprocess.TimeoutExpired(['docker', 'run'], timeout)
+
+        def _run():
+            try:
+                with gate.critical():
+                    executor._docker(['run'], timeout=30)
+            except Exception as e:
+                errors.append(e)
+
+        proc.wait.side_effect = _wait
+        with mock.patch(
+                'kvmagent.plugins.tensorfusion.container_executor.subprocess.Popen',
+                return_value=proc):
+            thread = threading.Thread(target=_run)
+            thread.start()
+            self.assertTrue(wait_started.wait(1))
+            self._assert_monitoring_blocked(gate)
+            release_wait.set()
+            thread.join(1)
+
+        self.assertFalse(thread.is_alive())
+        self.assertEqual([5], wait_timeouts)
+        self.assertEqual(1, len(errors))
+        with gate.monitoring() as acquired:
+            self.assertTrue(acquired)
+
+    def test_monitor_serializes_reap_and_releases_gate_before_restart(self):
+        from kvmagent.plugins.tensorfusion import monitor as monitor_module
+
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+        store = StateStore()
+        tracker = mock.MagicMock()
+        worker = _make_worker()
+        restarted = _make_worker(pid=4321)
+        events = []
+        store.add(worker)
+
+        def _reap(_worker):
+            self._assert_monitoring_blocked(gate)
+            events.append('reap')
+
+        def _restart(_worker):
+            with gate.monitoring() as acquired:
+                self.assertTrue(acquired)
+            events.append('restart')
+            return restarted
+
+        executor.reap_dead.side_effect = _reap
+        monitor = monitor_module.WorkerRestartMonitor(
+            store, executor, tracker, restart_worker=_restart)
+        store.set_restarting(worker.device_uuid, True, expected_worker=worker)
+
+        with mock.patch.object(monitor_module, 'gpu_operation_gate', gate), \
+                mock.patch('kvmagent.plugins.tensorfusion.utils.is_vm_running',
+                           return_value=True):
+            monitor._do_restart(worker, 0)
+            monitor._give_up(worker)
+
+        self.assertEqual(['reap', 'restart', 'reap'], events)
+        tracker.release.assert_called_once_with(worker.pci_address, worker.device_uuid)
+
+    def test_monitor_clears_false_crash_episode_when_reap_reports_running(self):
+        from kvmagent.plugins.tensorfusion import monitor as monitor_module
+        from kvmagent.plugins.tensorfusion.monitor import CrashState
+
+        gate = _new_real_gpu_operation_gate()
+        executor = mock.MagicMock()
+        executor.reap_dead.return_value = False
+        restart = mock.MagicMock()
+        store = StateStore()
+        tracker = mock.MagicMock()
+        worker = _make_worker()
+        store.add(worker)
+        monitor = monitor_module.WorkerRestartMonitor(
+            store, executor, tracker, restart_worker=restart)
+        store.set_restarting(worker.device_uuid, True, expected_worker=worker)
+        monitor._states[worker.device_uuid] = CrashState()
+        monitor._notified_events.add(worker.device_uuid)
+
+        with mock.patch.object(monitor_module, 'gpu_operation_gate', gate), \
+                mock.patch('kvmagent.plugins.tensorfusion.utils.is_vm_running',
+                           return_value=True):
+            monitor._do_restart(worker, 0)
+            self.assertIs(worker, store.get(worker.device_uuid))
+            self.assertFalse(worker.restarting)
+            restart.assert_not_called()
+            self.assertNotIn(worker.device_uuid, monitor._states)
+            self.assertNotIn(worker.device_uuid, monitor._notified_events)
+
+            store.set_restarting(worker.device_uuid, True, expected_worker=worker)
+            monitor._states[worker.device_uuid] = CrashState()
+            monitor._notified_events.add(worker.device_uuid)
+            self.assertFalse(monitor._give_up(worker))
+
+        self.assertIs(worker, store.get(worker.device_uuid))
+        self.assertFalse(worker.restarting)
+        self.assertNotIn(worker.device_uuid, monitor._states)
+        self.assertNotIn(worker.device_uuid, monitor._notified_events)
+        tracker.release.assert_not_called()
+
+
+class TestContainerExecutor(unittest.TestCase):
+
+    @staticmethod
+    def _make_request(protocol='shmem'):
+        request = WorkerCreateRequest()
+        request.vm_uuid = 'vm-001'
+        request.pci_address = '0000:3b:00.0'
+        request.memory_mb = 8192
+        request.shmem_size = 268435456
+        request.license = TEST_LICENSE
+        request.license_sign = TEST_LICENSE_SIGN
+        request.device_uuid = 'dev-001'
+        request.sm_percent_limit = 33
+        request.protocol = protocol
+        return request
+
+    def test_start_uses_extended_docker_run_timeout(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker_quiet'), \
+                mock.patch.object(executor, '_inspect_container', return_value={'State': {'Running': True}}), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove'), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.path.getsize',
+                           return_value=268435456), \
+                mock.patch.object(executor, '_docker', return_value='container-id') as mock_docker:
+            worker = executor.start(self._make_request())
+
+        self.assertEqual('container-id', worker.container_id)
+        self.assertEqual(90, mock_docker.call_args[1]['timeout'])
+        run_cmd = mock_docker.call_args[0][0]
+        docker_env = mock_docker.call_args[1]['env']
+        self.assertIn('TF_LICENSE', run_cmd)
+        self.assertIn('TF_LICENSE_SIGN', run_cmd)
+        self.assertNotIn(TEST_LICENSE, ' '.join(run_cmd))
+        self.assertNotIn(TEST_LICENSE_SIGN, ' '.join(run_cmd))
+        self.assertEqual(TEST_LICENSE, docker_env['TF_LICENSE'])
+        self.assertEqual(TEST_LICENSE_SIGN, docker_env['TF_LICENSE_SIGN'])
+
+    def test_start_waits_for_shared_memory_readiness(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker_quiet'), \
+                mock.patch.object(executor, '_inspect_container', return_value={'State': {'Running': True}}), \
+                mock.patch.object(executor, '_docker', return_value='container-id'), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove'), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.path.getsize',
+                           side_effect=[OSError(), 0, 268435456, 268435456]), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.time.sleep') as mock_sleep:
+            worker = executor.start(self._make_request())
+
+        self.assertEqual('/dev/shm/tf_dev-001', worker.shared_memory_path)
+        self.assertEqual(2, mock_sleep.call_count)
+
+    def test_start_removes_stale_shared_memory_before_docker_run(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        events = []
+        executor = ContainerExecutor(_make_gpu_details())
+
+        def remove_shm(path):
+            events.append(('remove_shm', path))
+
+        def docker_run(args, timeout=None, env=None):
+            events.append(('docker_run', args[0], timeout, env))
+            return 'container-id'
+
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker_quiet'), \
+                mock.patch.object(executor, '_inspect_container', return_value={'State': {'Running': True}}), \
+                mock.patch.object(executor, '_docker', side_effect=docker_run), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove', side_effect=remove_shm), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.path.getsize',
+                           return_value=268435456):
+            executor.start(self._make_request())
+
+        self.assertEqual(('docker_run', 'rm', None, None), events[0])
+        self.assertEqual(('remove_shm', '/dev/shm/tf_dev-001'), events[1])
+        self.assertEqual('docker_run', events[2][0])
+        self.assertEqual('run', events[2][1])
+        self.assertEqual(90, events[2][2])
+        self.assertEqual(TEST_LICENSE, events[2][3]['TF_LICENSE'])
+
+    def test_native_start_does_not_wait_for_shared_memory(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker_quiet'), \
+                mock.patch.object(executor, '_inspect_container', return_value={'State': {'Running': True}}), \
+                mock.patch.object(executor, '_docker', return_value='container-id'), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove'), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.path.getsize') as mock_getsize:
+            worker = executor.start(self._make_request(protocol='native'))
+
+        self.assertEqual('native', worker.protocol)
+        mock_getsize.assert_not_called()
+
+    def test_shared_memory_timeout_cleans_container_and_file(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        executor.STARTUP_WAIT_SEC = 0
+        executor.ROLLBACK_RETRY_WINDOW_SEC = 0
+        missing = OSError(2, 'No such file')
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker_quiet', return_value='') as mock_quiet, \
+                mock.patch.object(executor, '_inspect_container', return_value={'State': {'Running': True}}), \
+                mock.patch.object(executor, '_docker', return_value='container-id') as mock_docker, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.path.getsize',
+                           side_effect=missing), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove',
+                           side_effect=[missing, None]) as mock_remove:
+            with self.assertRaises(Exception) as ctx:
+                executor.start(self._make_request())
+
+        self.assertIn('did not create shared memory', str(ctx.exception))
+        self.assertEqual(2, sum(
+            1 for call in mock_docker.call_args_list
+            if call[0][0] == ['rm', '-f', 'tf-worker-vm-001']))
+        mock_quiet.assert_called_once_with(['logs', '--tail', '20', 'tf-worker-vm-001'])
+        mock_remove.assert_has_calls([
+            mock.call('/dev/shm/tf_dev-001'),
+            mock.call('/dev/shm/tf_dev-001'),
+        ])
+
+    def test_first_inspect_failure_cleans_container_and_shared_memory(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        executor.ROLLBACK_RETRY_WINDOW_SEC = 0
+
+        def docker_command(args, timeout=None, env=None):
+            if args[0] == 'run':
+                return 'container-id'
+            if args[:2] == ['rm', '-f']:
+                return args[2]
+            raise AssertionError('unexpected docker command: %s' % args)
+
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker_quiet'), \
+                mock.patch.object(executor, '_inspect_container', return_value=None), \
+                mock.patch.object(executor, '_docker', side_effect=docker_command), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            with self.assertRaises(Exception) as ctx:
+                executor.start(self._make_request())
+
+        self.assertIn('inspect failed', str(ctx.exception))
+        self.assertEqual([
+            mock.call('/dev/shm/tf_dev-001'),
+            mock.call('/dev/shm/tf_dev-001'),
+        ], mock_remove.call_args_list)
+
+    def test_immediate_exit_cleans_container_and_shared_memory(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        executor.ROLLBACK_RETRY_WINDOW_SEC = 0
+
+        def docker_command(args, timeout=None, env=None):
+            if args[0] == 'run':
+                return 'container-id'
+            if args[:2] == ['rm', '-f']:
+                return args[2]
+            raise AssertionError('unexpected docker command: %s' % args)
+
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker_quiet', return_value='worker failed'), \
+                mock.patch.object(executor, '_inspect_container', return_value={
+                    'State': {'Running': False, 'ExitCode': 1},
+                }), \
+                mock.patch.object(executor, '_docker', side_effect=docker_command), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.path.isfile',
+                           return_value=False), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            with self.assertRaises(Exception) as ctx:
+                executor.start(self._make_request())
+
+        self.assertIn('exited immediately', str(ctx.exception))
+        self.assertEqual([
+            mock.call('/dev/shm/tf_dev-001'),
+            mock.call('/dev/shm/tf_dev-001'),
+        ], mock_remove.call_args_list)
+
+    def test_docker_run_failure_cleans_container_and_shared_memory(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        executor.ROLLBACK_RETRY_WINDOW_SEC = 0
+        remove_attempts = []
+
+        def docker_command(args, timeout=None, env=None):
+            if args[0] == 'run':
+                raise Exception('launch rejected %s' % TEST_LICENSE)
+            remove_attempts.append(args)
+            return args[2]
+
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker', side_effect=docker_command), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            with self.assertRaises(Exception) as ctx:
+                executor.start(self._make_request())
+
+        self.assertNotIn(TEST_LICENSE, str(ctx.exception))
+        self.assertIsNone(ctx.exception.__context__)
+        self.assertEqual(2, len(remove_attempts))
+        self.assertEqual([
+            mock.call('/dev/shm/tf_dev-001'),
+            mock.call('/dev/shm/tf_dev-001'),
+        ], mock_remove.call_args_list)
+
+    def test_stale_container_removal_failure_blocks_start_and_retains_shared_memory(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker', side_effect=Exception('docker unavailable')) as mock_docker, \
+                mock.patch.object(executor, '_inspect_container',
+                                  return_value={'State': {'Running': True}}), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            with self.assertRaises(Exception) as ctx:
+                executor.start(self._make_request())
+
+        self.assertIn('failed to remove existing worker container', str(ctx.exception))
+        mock_docker.assert_called_once_with(['rm', '-f', 'tf-worker-vm-001'])
+        mock_remove.assert_not_called()
+
+    def test_failed_start_retains_shared_memory_when_container_may_be_running(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        executor.ROLLBACK_RETRY_WINDOW_SEC = 0
+        remove_attempts = []
+
+        def docker_command(args, timeout=None, env=None):
+            if args[0] == 'run':
+                return 'container-id'
+            remove_attempts.append(args)
+            if len(remove_attempts) == 1:
+                return args[2]
+            raise Exception('docker daemon unavailable')
+
+        with mock.patch.object(executor, '_image_exists', return_value=True), \
+                mock.patch.object(executor, '_docker_quiet'), \
+                mock.patch.object(executor, '_inspect_container',
+                                  side_effect=[None, {'State': {'Running': True}}]), \
+                mock.patch.object(executor, '_docker', side_effect=docker_command), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            with self.assertRaises(Exception):
+                executor.start(self._make_request())
+
+        mock_remove.assert_called_once_with('/dev/shm/tf_dev-001')
+
+    def test_reap_dead_removes_shared_memory(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        worker = _make_worker()
+        worker.container_id = 'container-id'
+        worker.container_name = 'tf-worker-vm-001'
+        worker.shared_memory_path = '/dev/shm/tf_dev-001'
+        executor = ContainerExecutor(_make_gpu_details())
+
+        with mock.patch.object(executor, 'is_alive', return_value=False), \
+                mock.patch.object(executor, '_docker') as mock_docker, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            executor.reap_dead(worker)
+
+        mock_docker.assert_called_once_with(['rm', '-f', 'container-id'])
+        mock_remove.assert_called_once_with('/dev/shm/tf_dev-001')
+
+    def test_stop_raises_and_retains_shared_memory_when_removal_is_unconfirmed(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        worker = _make_worker()
+        worker.container_id = 'container-id'
+        worker.container_name = 'tf-worker-vm-001'
+        worker.shared_memory_path = '/dev/shm/tf_dev-001'
+        executor = ContainerExecutor(_make_gpu_details())
+
+        with mock.patch.object(executor, '_docker', side_effect=Exception('docker unavailable')), \
+                mock.patch.object(executor, '_inspect_container',
+                                  return_value={'State': {'Running': True}}), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            with self.assertRaises(Exception) as ctx:
+                executor.stop(worker)
+
+        self.assertIn('failed to remove worker container', str(ctx.exception))
+        mock_remove.assert_not_called()
+
+    def test_stop_targets_container_id_before_reusable_name(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        worker = _make_worker()
+        worker.container_id = 'old-container-id'
+        worker.container_name = 'tf-worker-vm-001'
+        worker.shared_memory_path = '/dev/shm/tf_dev-001'
+        executor = ContainerExecutor(_make_gpu_details())
+
+        with mock.patch.object(executor, '_docker', return_value='') as mock_docker, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove'):
+            executor.stop(worker)
+
+        self.assertEqual([
+            mock.call(['stop', '-t', '5', 'old-container-id']),
+            mock.call(['rm', '-f', 'old-container-id']),
+        ], mock_docker.call_args_list)
+
+    def test_failed_start_retains_shared_memory_when_removal_is_unconfirmed(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        executor = ContainerExecutor(_make_gpu_details())
+        executor.ROLLBACK_RETRY_WINDOW_SEC = 1
+        now = [10.0]
+
+        def _time():
+            return now[0]
+
+        def _sleep(seconds):
+            now[0] += seconds
+
+        with mock.patch.object(executor, '_docker',
+                               side_effect=Exception('permission denied')) as mock_docker, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.time.time',
+                           side_effect=_time), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.time.sleep',
+                           side_effect=_sleep) as mock_sleep, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            removed = executor._rollback_failed_start(
+                'container-id', '/dev/shm/tf_dev-001')
+
+        self.assertFalse(removed)
+        self.assertEqual([
+            mock.call(['rm', '-f', 'container-id'], timeout=1),
+            mock.call(['rm', '-f', 'container-id'], timeout=1),
+            mock.call(['rm', '-f', 'container-id'], timeout=1),
+        ], mock_docker.call_args_list)
+        self.assertEqual([
+            mock.call(0.5),
+            mock.call(0.5),
+        ], mock_sleep.call_args_list)
+        mock_remove.assert_not_called()
+
+    def test_failed_start_rollback_retries_for_delayed_container_creation(self):
+        from kvmagent.plugins.tensorfusion.container_executor import (
+            ContainerExecutor, DockerCommandError)
+
+        executor = ContainerExecutor(_make_gpu_details())
+        executor.ROLLBACK_RETRY_WINDOW_SEC = 1
+        now = [10.0]
+
+        def _time():
+            return now[0]
+
+        def _sleep(seconds):
+            now[0] += seconds
+
+        not_found = DockerCommandError(
+            1, 'docker rm -f tf-worker-vm-001',
+            'Error: No such container: tf-worker-vm-001')
+
+        with mock.patch.object(
+                executor, '_docker',
+                side_effect=[not_found, 'tf-worker-vm-001', not_found]) as mock_docker, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.time.time',
+                           side_effect=_time), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.time.sleep',
+                           side_effect=_sleep) as mock_sleep, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            removed = executor._rollback_failed_start(
+                'tf-worker-vm-001', '/dev/shm/tf_dev-001')
+
+        self.assertTrue(removed)
+        self.assertEqual([
+            mock.call(['rm', '-f', 'tf-worker-vm-001'], timeout=1),
+            mock.call(['rm', '-f', 'tf-worker-vm-001'], timeout=1),
+            mock.call(['rm', '-f', 'tf-worker-vm-001'], timeout=1),
+        ], mock_docker.call_args_list)
+        self.assertEqual([
+            mock.call(0.5),
+            mock.call(0.5),
+        ], mock_sleep.call_args_list)
+        mock_remove.assert_called_once_with('/dev/shm/tf_dev-001')
+
+    def test_stop_succeeds_when_shared_memory_cleanup_fails(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        worker = _make_worker()
+        worker.container_id = 'container-id'
+        worker.container_name = 'tf-worker-vm-001'
+        worker.shared_memory_path = '/dev/shm/tf_dev-001'
+        executor = ContainerExecutor(_make_gpu_details())
+
+        with mock.patch.object(executor, '_docker', return_value='') as mock_docker, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove',
+                           side_effect=OSError(errno.EPERM, 'permission denied')) as mock_remove:
+            executor.stop(worker)
+
+        self.assertEqual([
+            mock.call(['stop', '-t', '5', 'container-id']),
+            mock.call(['rm', '-f', 'container-id']),
+        ], mock_docker.call_args_list)
+        mock_remove.assert_called_once_with('/dev/shm/tf_dev-001')
+
+    def test_reap_dead_preserves_container_that_is_running_again(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        worker = _make_worker()
+        worker.container_id = 'container-id'
+        worker.container_name = 'tf-worker-vm-001'
+        worker.shared_memory_path = '/dev/shm/tf_dev-001'
+        executor = ContainerExecutor(_make_gpu_details())
+
+        with mock.patch.object(executor, 'is_alive', return_value=True), \
+                mock.patch.object(executor, '_docker') as mock_docker, \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            self.assertFalse(executor.reap_dead(worker))
+
+        mock_docker.assert_not_called()
+        mock_remove.assert_not_called()
+
+    def test_reap_dead_uses_deterministic_shared_memory_fallback(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        worker = _make_worker(device_uuid='dev-fallback')
+        worker.container_id = 'container-id'
+        worker.container_name = 'tf-worker-vm-001'
+        worker.shared_memory_path = None
+        executor = ContainerExecutor(_make_gpu_details())
+
+        with mock.patch.object(executor, 'is_alive', return_value=False), \
+                mock.patch.object(executor, '_docker'), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            self.assertTrue(executor.reap_dead(worker))
+
+        mock_remove.assert_called_once_with('/dev/shm/tf_dev-fallback')
+
+    def test_residual_cleanup_does_not_trust_reused_container_name(self):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        known = _make_worker()
+        known.container_id = 'old-container-id'
+        known.container_name = 'tf-worker-vm-001'
+        executor = ContainerExecutor(_make_gpu_details())
+
+        info = {
+            'Id': 'new-container-id',
+            'Name': '/tf-worker-vm-001',
+            'Config': {'Env': ['TF_DEVICE_UUID=dev-residual']},
+        }
+
+        def _docker(args, timeout=None, env=None):
+            if args[0:2] == ['ps', '-aq']:
+                return 'new-container-id'
+            return ''
+
+        with mock.patch.object(executor, '_docker', side_effect=_docker) as mock_docker, \
+                mock.patch.object(executor, '_inspect_container', return_value=info), \
+                mock.patch('kvmagent.plugins.tensorfusion.container_executor.os.remove') as mock_remove:
+            self.assertEqual(
+                1, executor.cleanup_residual_workers_by_vm('vm-001', known_workers=[known]))
+
+        self.assertIn(
+            mock.call(['rm', '-f', 'new-container-id']), mock_docker.call_args_list)
+        mock_remove.assert_called_once_with('/dev/shm/tf_dev-residual')
+
+    def test_command_for_log_masks_license_values(self):
+        from kvmagent.plugins.tensorfusion.container_executor import _command_for_log, _redact_sensitive_values
+
+        args = [
+            'docker', 'run',
+            '-e', 'TF_LICENSE=secret-license',
+            '-e', 'TF_LICENSE_SIGN=secret-signature',
+            '-e', 'TF_GPU_MEMORY_LIMIT=8192',
+            'tf-worker:latest',
+        ]
+        command = _command_for_log(args)
+        stderr = _redact_sensitive_values(
+            'invalid secret-license and secret-signature', args)
+        overlapping = _redact_sensitive_values(
+            'prefix-and-prefix-suffix',
+            ['TF_LICENSE=prefix', 'TF_LICENSE_SIGN=prefix-suffix'])
+
+        self.assertNotIn('secret-license', command)
+        self.assertNotIn('secret-signature', command)
+        self.assertNotIn('secret-license', stderr)
+        self.assertNotIn('secret-signature', stderr)
+        self.assertEqual('*****-and-*****', overlapping)
+        self.assertIn('TF_LICENSE=*****', command)
+        self.assertIn('TF_LICENSE_SIGN=*****', command)
+        self.assertIn('TF_GPU_MEMORY_LIMIT=8192', command)
+
+    @mock.patch('kvmagent.plugins.tensorfusion.container_executor.subprocess.Popen')
+    def test_timeout_error_has_no_sensitive_context(self, mock_popen):
+        import subprocess
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        proc = mock_popen.return_value
+        proc.communicate.side_effect = subprocess.TimeoutExpired(
+            ['docker', 'run', '-e', 'TF_LICENSE'], 30)
+        proc.kill.side_effect = RuntimeError('kill failed')
+        proc.wait.side_effect = RuntimeError('wait failed')
+
+        executor = ContainerExecutor(_make_gpu_details())
+        with self.assertRaises(Exception) as ctx:
+            executor._docker(
+                ['run', '-e', 'TF_LICENSE'], timeout=30,
+                env={'TF_LICENSE': 'secret-license'})
+
+        self.assertNotIn('secret-license', str(ctx.exception))
+        self.assertIsNone(ctx.exception.__context__)
+        proc.kill.assert_called_once_with()
+        proc.wait.assert_called_once_with(timeout=5)
+        self.assertNotIn('secret-license', ' '.join(mock_popen.call_args[0][0]))
+        self.assertEqual(
+            'secret-license', mock_popen.call_args[1]['env']['TF_LICENSE'])
+
+    @mock.patch('kvmagent.plugins.tensorfusion.container_executor.subprocess.Popen')
+    def test_nonzero_error_redacts_command_and_stderr(self, mock_popen):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        proc = mock_popen.return_value
+        proc.communicate.return_value = (b'', b'invalid secret-license')
+        proc.returncode = 1
+
+        executor = ContainerExecutor(_make_gpu_details())
+        with self.assertRaises(Exception) as ctx:
+            executor._docker(
+                ['run', '-e', 'TF_LICENSE'],
+                env={'TF_LICENSE': 'secret-license'})
+
+        self.assertNotIn('secret-license', str(ctx.exception))
+        self.assertNotIn('secret-license', ' '.join(mock_popen.call_args[0][0]))
+        self.assertEqual(
+            'secret-license', mock_popen.call_args[1]['env']['TF_LICENSE'])
+
+    @mock.patch('kvmagent.plugins.tensorfusion.container_executor.subprocess.Popen')
+    def test_docker_env_does_not_mutate_process_environment(self, mock_popen):
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        proc = mock_popen.return_value
+        proc.communicate.return_value = (b'container-id', b'')
+        proc.returncode = 0
+        executor = ContainerExecutor(_make_gpu_details())
+
+        with mock.patch.dict(os.environ, {'EXISTING': 'unchanged'}, clear=True):
+            result = executor._docker(
+                ['run', '-e', 'TF_LICENSE', '-e', 'TF_LICENSE_SIGN'],
+                env={
+                    'TF_LICENSE': 'secret-license',
+                    'TF_LICENSE_SIGN': 'secret-signature',
+                })
+            self.assertEqual({'EXISTING': 'unchanged'}, dict(os.environ))
+
+        self.assertEqual('container-id', result)
+        popen_cmd = mock_popen.call_args[0][0]
+        popen_env = mock_popen.call_args[1]['env']
+        self.assertNotIn('secret-license', ' '.join(popen_cmd))
+        self.assertNotIn('secret-signature', ' '.join(popen_cmd))
+        self.assertEqual('unchanged', popen_env['EXISTING'])
+        self.assertEqual('secret-license', popen_env['TF_LICENSE'])
+        self.assertEqual('secret-signature', popen_env['TF_LICENSE_SIGN'])
+
+    @mock.patch('kvmagent.plugins.tensorfusion.container_executor.subprocess.Popen')
+    def test_class_timeout_error_has_no_sensitive_context(self, mock_popen):
+        import subprocess
+        from kvmagent.plugins.tensorfusion.container_executor import ContainerExecutor
+
+        proc = mock_popen.return_value
+        proc.communicate.side_effect = subprocess.TimeoutExpired(
+            ['docker', 'run', '-e', 'TF_LICENSE'], 30)
+        proc.kill.side_effect = RuntimeError('kill failed')
+        proc.wait.side_effect = RuntimeError('wait failed')
+
+        with self.assertRaises(Exception) as ctx:
+            ContainerExecutor._docker_class(
+                ['run', '-e', 'TF_LICENSE'], timeout=30,
+                env={'TF_LICENSE': 'secret-license'})
+
+        self.assertNotIn('secret-license', str(ctx.exception))
+        self.assertIsNone(ctx.exception.__context__)
+        proc.kill.assert_called_once_with()
+        proc.wait.assert_called_once_with(timeout=5)
+
+
+class TestTensorFusionPluginSensitiveLogging(unittest.TestCase):
+
+    def test_create_worker_masks_request_and_error_credentials(self):
+        from zstacklib.utils import http, log
+        from kvmagent.plugins.tensorfusion import plugin as plugin_module
+
+        body = json.dumps({
+            'vmUuid': 'vm-test',
+            'pciAddress': '0000:3b:00.0',
+            'memoryMb': 8192,
+            'shmemSize': 268435456,
+            'license': 'secret-license',
+            'licenseSign': 'secret-signature',
+            'enableLog': False,
+            'logLevel': 'error',
+            'deviceUuid': 'dev-test',
+            'protocol': 'shmem',
+            'smPercentLimit': 33,
+        })
+        masked_request = log.mask_sensitive_field(plugin_module.CreateWorkerCmd(), body)
+
+        tensorfusion_plugin = plugin_module.TensorFusionPlugin()
+        tensorfusion_plugin._service = mock.MagicMock()
+        tensorfusion_plugin._service.create_worker.side_effect = Exception(
+            'failed secret-license / secret-signature')
+
+        with mock.patch.object(plugin_module, 'logger') as mock_logger:
+            response = tensorfusion_plugin.create_worker({http.REQUEST_BODY: body})
+
+        warning = mock_logger.warn.call_args[0][0]
+        self.assertNotIn('secret-license', masked_request)
+        self.assertNotIn('secret-signature', masked_request)
+        self.assertNotIn('secret-license', response)
+        self.assertNotIn('secret-signature', response)
+        self.assertNotIn('secret-license', warning)
+        self.assertNotIn('secret-signature', warning)
+        self.assertFalse(json.loads(response)['success'])
+
+
 class TestProcessExecutor(unittest.TestCase):
 
     def _import_without_psutil(self, name, *args, **kwargs):
@@ -1086,6 +2028,44 @@ class TestProcessExecutor(unittest.TestCase):
         proc.wait.assert_called_once_with()
         self.assertIsNone(executor._get_proc(5678))
         mock_killpg.assert_called_once_with(1234, mock.ANY)
+
+    def test_reap_dead_keeps_running_tracked_process(self):
+        from kvmagent.plugins.tensorfusion.process_executor import ProcessExecutor
+
+        proc = mock.MagicMock()
+        proc.pid = 5678
+        proc.poll.return_value = None
+        executor = ProcessExecutor(_make_gpu_details())
+        executor._track_proc(proc)
+
+        self.assertFalse(executor.reap_dead(_make_worker(pid=5678)))
+        proc.wait.assert_not_called()
+        self.assertIs(proc, executor._get_proc(5678))
+
+    @mock.patch('kvmagent.plugins.tensorfusion.process_executor.os.waitpid',
+                return_value=(0, 0))
+    def test_reap_dead_keeps_running_untracked_child(self, mock_waitpid):
+        from kvmagent.plugins.tensorfusion.process_executor import ProcessExecutor
+
+        executor = ProcessExecutor(_make_gpu_details())
+
+        self.assertFalse(executor.reap_dead(_make_worker(pid=5678)))
+        mock_waitpid.assert_called_once_with(5678, os.WNOHANG)
+
+    @mock.patch('kvmagent.plugins.tensorfusion.process_executor.os.waitpid',
+                side_effect=OSError(errno.ECHILD, 'not a child'))
+    @mock.patch('kvmagent.plugins.tensorfusion.process_executor.os.kill')
+    def test_reap_dead_accepts_untracked_zombie(self, mock_kill, mock_waitpid):
+        from kvmagent.plugins.tensorfusion.process_executor import ProcessExecutor
+
+        executor = ProcessExecutor(_make_gpu_details())
+        with mock.patch.object(executor, '_is_linux_zombie', return_value=True), \
+                mock.patch.object(executor, '_verify_worker_pid') as mock_verify:
+            self.assertTrue(executor.reap_dead(_make_worker(pid=5678)))
+
+        mock_waitpid.assert_called_once_with(5678, os.WNOHANG)
+        mock_kill.assert_called_once_with(5678, 0)
+        mock_verify.assert_not_called()
 
     @mock.patch('kvmagent.plugins.tensorfusion.process_executor.time.sleep')
     @mock.patch('kvmagent.plugins.tensorfusion.process_executor.time.time')
@@ -1347,7 +2327,8 @@ class TestProcessExecutor(unittest.TestCase):
 
         with mock.patch.dict(sys.modules, {'psutil': fake_psutil}):
             executor = ProcessExecutor(_make_gpu_details())
-            cleaned = executor.cleanup_residual_workers_by_vm('vm-001', known_pids=[1234])
+            cleaned = executor.cleanup_residual_workers_by_vm(
+                'vm-001', known_workers=[_make_worker(pid=1234)])
 
         self.assertEqual(1, cleaned)
         mock_killpg.assert_called_once_with(9001, mock.ANY)
@@ -1541,28 +2522,19 @@ class TestOrphanScan(unittest.TestCase):
 
         mock_executor.stop.assert_called_with(orphan_worker)
 
-    @mock.patch('kvmagent.plugins.tensorfusion.service.NVIDIA')
-    @mock.patch('kvmagent.plugins.tensorfusion.service.ProcessExecutor')
-    def test_orphan_scan_keeps_untracked_worker_when_vm_check_fails(self, MockExecutor, MockNVIDIA):
-        """When libvirt query fails (returns None), untracked worker should be kept alive."""
-        MockNVIDIA.query_gpu_details.return_value = _make_gpu_details()
-
-        mock_executor = MockExecutor.return_value
-        mock_executor.cleanup_residual_workers_by_vm.return_value = 0
-        mock_executor.is_alive.return_value = True
-
-        from kvmagent.plugins.tensorfusion.service import TensorFusionService
-        svc = TensorFusionService()
-
-        mock_executor.scan_running.return_value = []
-        with mock.patch('kvmagent.plugins.tensorfusion.service._is_vm_running', return_value=True):
-            svc.initialize()
-
+    def test_orphan_scan_keeps_untracked_worker_when_vm_running_or_unknown(self):
+        """Untracked runtimes are not killed without a definitive absent VM."""
+        mock_executor = mock.MagicMock()
         orphan_worker = _make_worker(device_uuid='orphan-002', vm_uuid='vm-unknown', pid=8888)
         mock_executor.scan_running.return_value = [orphan_worker]
 
-        # is_vm_running returns None (libvirt query failed)
-        with mock.patch('kvmagent.plugins.tensorfusion.service._is_vm_running', return_value=None):
+        from kvmagent.plugins.tensorfusion.service import TensorFusionService
+        svc = TensorFusionService(executor=mock_executor)
+
+        with mock.patch(
+                'kvmagent.plugins.tensorfusion.service._is_vm_running',
+                side_effect=[True, None]):
+            svc._scan_and_cleanup_orphans()
             svc._scan_and_cleanup_orphans()
 
         mock_executor.stop.assert_not_called()

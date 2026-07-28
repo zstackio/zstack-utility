@@ -15,6 +15,7 @@ from zstacklib.gpu.base import (
     PCI_CLASS_VGA,
     PCI_CLASS_PROCESSING_ACCEL,
 )
+from zstacklib.gpu.vendors.nvidia import NVIDIA
 from zstacklib.utils import gpu
 import unittest
 import sys
@@ -108,18 +109,19 @@ class TestGetInfo(unittest.TestCase):
             # Product name should be collected
             # Note: This requires actual implementation of get_huawei_product_type
 
+    @patch.object(NVIDIA, '_run_critical_command')
     @patch('zstacklib.utils.gpu.bash_roe')
-    def test_get_info_legacy_nvidia(self, mock_bash):
+    def test_get_info_legacy_nvidia(self, mock_bash, mock_run_critical):
         """Test get_info legacy fallback for NVIDIA"""
-        mock_bash.side_effect = [
-            (0, "/usr/bin/nvidia-smi", ""),  # which nvidia-smi
-            # nvidia-smi query
-            (0, "00000000:3B:00.0, 15360 MiB, 70.00 W, 1322519087621", ""),
-        ]
+        mock_bash.return_value = (0, "/usr/bin/nvidia-smi", "")
+        mock_run_critical.return_value = (
+            0, "00000000:3B:00.0, 15360 MiB, 70.00 W, 1322519087621", "")
 
         result = gpu._get_info_legacy("0000:3b:00.0", VendorEnum.NVIDIA)
         self.assertIsNotNone(result)
         self.assertTrue(result.get("isDriverLoaded", False))
+        mock_run_critical.assert_called_once_with(
+            "timeout 12 nvidia-smi --query-gpu=gpu_bus_id,memory.total,power.limit,gpu_serial --format=csv,noheader")
 
     @patch('zstacklib.utils.gpu.bash_roe')
     def test_get_info_legacy_amd(self, mock_bash):
@@ -236,22 +238,42 @@ class TestGetInfo(unittest.TestCase):
 
             result = gpu.get_info("0000:3b:00.0", vendor_name=VendorEnum.NVIDIA)
             self.assertIsNone(result)
+            mock_bash.assert_not_called()
+
+    @patch('zstacklib.utils.gpu.bash_roe')
+    def test_get_info_does_not_retry_nvidia_legacy_after_plugin_failure(
+            self, mock_bash):
+        with patch('zstacklib.gpu.get_gpu_vendor') as mock_get_vendor, \
+                patch('zstacklib.gpu.get_vendor_enum_mapping') as mock_mapping:
+            mock_plugin = MagicMock()
+            mock_plugin.is_available.return_value = True
+            mock_plugin.get_basic_info.side_effect = RuntimeError("NVML busy")
+            mock_get_vendor.return_value = mock_plugin
+            mock_mapping.return_value = {"NVIDIA": "NVIDIA"}
+
+            result = gpu.get_info(
+                "0000:3b:00.0", vendor_name=VendorEnum.NVIDIA)
+
+        self.assertIsNone(result)
+        mock_bash.assert_not_called()
 
 
 class TestLegacyCollectors(unittest.TestCase):
     """Test legacy collection functions for each vendor"""
 
+    @patch.object(NVIDIA, '_run_critical_command')
     @patch('zstacklib.utils.gpu.bash_roe')
-    def test_collect_nvidia_legacy(self, mock_bash):
+    def test_collect_nvidia_legacy(self, mock_bash, mock_run_critical):
         """Test _collect_nvidia_legacy"""
-        mock_bash.side_effect = [
-            (0, "/usr/bin/nvidia-smi", ""),  # which
-            (0, "00000000:3B:00.0, 15360 MiB, 70.00 W, SN001", ""),  # nvidia-smi
-        ]
+        mock_bash.return_value = (0, "/usr/bin/nvidia-smi", "")
+        mock_run_critical.return_value = (
+            0, "00000000:3B:00.0, 15360 MiB, 70.00 W, SN001", "")
 
         result = gpu._collect_nvidia_legacy("0000:3b:00.0")
         self.assertIsNotNone(result)
         self.assertTrue(result.get("isDriverLoaded", False))
+        mock_run_critical.assert_called_once_with(
+            "timeout 12 nvidia-smi --query-gpu=gpu_bus_id,memory.total,power.limit,gpu_serial --format=csv,noheader")
 
     @patch('zstacklib.utils.gpu.bash_roe')
     def test_collect_nvidia_legacy_no_tool(self, mock_bash):
@@ -261,13 +283,14 @@ class TestLegacyCollectors(unittest.TestCase):
         result = gpu._collect_nvidia_legacy("0000:3b:00.0")
         self.assertIsNone(result)
 
+    @patch.object(NVIDIA, '_run_critical_command')
     @patch('zstacklib.utils.gpu.bash_roe')
-    def test_collect_nvidia_legacy_returns_none_when_no_matching_pci(self, mock_bash):
+    def test_collect_nvidia_legacy_returns_none_when_no_matching_pci(
+            self, mock_bash, mock_run_critical):
         """Test _collect_nvidia_legacy returns None when no GPU in output matches PCI (ZSTAC-81489)"""
-        mock_bash.side_effect = [
-            (0, "/usr/bin/nvidia-smi", ""),
-            (0, "00000000:86:00.0, 16384 MiB, 75.00 W, SN_OTHER", ""),
-        ]
+        mock_bash.return_value = (0, "/usr/bin/nvidia-smi", "")
+        mock_run_critical.return_value = (
+            0, "00000000:86:00.0, 16384 MiB, 75.00 W, SN_OTHER", "")
         result = gpu._collect_nvidia_legacy("0000:3b:00.0")
         self.assertIsNone(result)
 
