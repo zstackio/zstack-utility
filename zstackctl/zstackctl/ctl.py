@@ -8475,8 +8475,8 @@ class UpgradeDbCmd(Command):
             db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime()), 'backup.sql')
             shell('mkdir -p %s' % os.path.dirname(db_backup_path))
             if db_password:
-                shell('mysqldump -u %s -p%s --host %s --port %s -d zstack > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
-                shell('mysqldump -u %s -p%s --host %s --port %s zstack %s >> %s' % (db_user, db_password, db_hostname, db_port, mysqldump_skip_tables, db_backup_path))
+                shell('mysqldump -u %s -p%s --host %s --port %s -d zstack > %s' % (db_user, shell_quote(db_password), db_hostname, db_port, db_backup_path))
+                shell('mysqldump -u %s -p%s --host %s --port %s zstack %s >> %s' % (db_user, shell_quote(db_password), db_hostname, db_port, mysqldump_skip_tables, db_backup_path))
             else:
                 shell('mysqldump -u %s --host %s --port %s -d zstack > %s' % (db_user, db_hostname, db_port, db_backup_path))
                 shell('mysqldump -u %s --host %s --port %s zstack %s >> %s' % (db_user, db_hostname, db_port, mysqldump_skip_tables, db_backup_path))
@@ -8486,7 +8486,7 @@ class UpgradeDbCmd(Command):
         def create_schema_version_table_if_needed():
             if db_password:
                 out = shell('''mysql -u %s -p%s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
-                            (db_user, db_password, db_hostname, db_port))
+                            (db_user, shell_quote(db_password), db_hostname, db_port))
             else:
                 out = shell('''mysql -u %s --host %s --port %s -t zstack -e "show tables like 'schema_version'"''' %
                             (db_user, db_hostname, db_port))
@@ -8498,7 +8498,7 @@ class UpgradeDbCmd(Command):
 
             if db_password:
                 shell_no_pipe('bash %s baseline -baselineVersion=0.6 -baselineDescription="0.6 version" -user=%s -password=%s -url=%s' %
-                      (flyway_path, db_user, db_password, db_url))
+                      (flyway_path, db_user, shell_quote(db_password), db_url))
             else:
                 shell_no_pipe('bash %s baseline -baselineVersion=0.6 -baselineDescription="0.6 version" -user=%s -url=%s' %
                       (flyway_path, db_user, db_url))
@@ -8506,7 +8506,7 @@ class UpgradeDbCmd(Command):
         def execute_sql(sql):
             if db_password:
                 shell('''mysql -u %s -p%s --host %s --port %s -t zstack -e "%s"''' %
-                            (db_user, db_password, db_hostname, db_port, sql))
+                            (db_user, shell_quote(db_password), db_hostname, db_port, sql))
             else:
                 shell('''mysql -u %s --host %s --port %s -t zstack -e "%s"''' %
                             (db_user, db_hostname, db_port, sql))
@@ -8521,7 +8521,7 @@ class UpgradeDbCmd(Command):
 
                 if db_password:
                     shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s -initSql="%s"' % (
-                    flyway_path, db_user, db_password, db_url, schema_path, init_sql))
+                    flyway_path, db_user, shell_quote(db_password), db_url, schema_path, init_sql))
                 else:
                     shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s -initSql=%s' % (
                     flyway_path, db_user, db_url, schema_path, init_sql))
@@ -8599,7 +8599,7 @@ class UpgradeUIDbCmd(Command):
             db_backup_path = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'db_backup', time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime()), 'ui_backup.sql')
             shell('mkdir -p %s' % os.path.dirname(db_backup_path))
             if db_password:
-                shell('mysqldump -u %s -p%s --host %s --port %s zstack_ui > %s' % (db_user, db_password, db_hostname, db_port, db_backup_path))
+                shell('mysqldump -u %s -p%s --host %s --port %s zstack_ui > %s' % (db_user, shell_quote(db_password), db_hostname, db_port, db_backup_path))
             else:
                 shell('mysqldump -u %s --host %s --port %s zstack_ui > %s' % (db_user, db_hostname, db_port, db_backup_path))
 
@@ -8608,7 +8608,7 @@ class UpgradeUIDbCmd(Command):
         def create_schema_version_table_if_needed():
             if db_password:
                 out = shell('''mysql -u %s -p%s --host %s --port %s -t zstack_ui -e "show tables like 'schema_version'"''' %
-                            (db_user, db_password, db_hostname, db_port))
+                            (db_user, shell_quote(db_password), db_hostname, db_port))
             else:
                 out = shell('''mysql -u %s --host %s --port %s -t zstack_ui -e "show tables like 'schema_version'"''' %
                             (db_user, db_hostname, db_port))
@@ -8620,7 +8620,7 @@ class UpgradeUIDbCmd(Command):
 
             if db_password:
                 shell_no_pipe('bash %s baseline -baselineVersion=2.3.1 -baselineDescription="2.3.1 version" -user=%s -password=%s -url=%s' %
-                      (flyway_path, db_user, db_password, db_url))
+                      (flyway_path, db_user, shell_quote(db_password), db_url))
             else:
                 shell_no_pipe('bash %s baseline -baselineVersion=2.3.1 -baselineDescription="2.3.1 version" -user=%s -url=%s' %
                       (flyway_path, db_user, db_url))
@@ -8629,8 +8629,8 @@ class UpgradeUIDbCmd(Command):
             schema_path = 'filesystem:%s' % upgrading_schema_dir
 
             if db_password:
-                shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (flyway_path, db_user, db_password, db_url, schema_path))
-                shell_no_pipe('bash %s %s %s %s %s' % (ctl.ZSTACK_UI_DB_MIGRATE_SH,db_user,db_password, db_hostname,db_port))
+                shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (flyway_path, db_user, shell_quote(db_password), db_url, schema_path))
+                shell_no_pipe('bash %s %s %s %s %s' % (ctl.ZSTACK_UI_DB_MIGRATE_SH,db_user,shell_quote(db_password), db_hostname,db_port))
             else:
                 shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s' % (flyway_path, db_user, db_url, schema_path))
                 shell_no_pipe('bash %s %s %s %s %s' % (ctl.ZSTACK_UI_DB_MIGRATE_SH,db_user,'zstack.ui.password', db_hostname,db_port))
