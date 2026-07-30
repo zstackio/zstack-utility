@@ -108,6 +108,8 @@ if host_info.distro in RPM_BASED_OS:
     qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace"
 
     releasever_mapping = {
+        'c76': ' collectd-disk pyparted',
+        'c79': ' collectd-disk pyparted',
         'h84r': ' collectd-disk pyparted',
         'h2203sp1o': ' collectd-disk python2-pyparted',
     }
