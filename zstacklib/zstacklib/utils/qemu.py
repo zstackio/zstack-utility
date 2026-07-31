@@ -43,13 +43,7 @@ def get_bin_dir():
 
 
 def get_version():
-    version = shell.call("virsh version | awk '/hypervisor.*QEMU/{print $4}'", False).strip()
-
-    # failed to get qemu version, fallback to get its version from path
-    if version == "":
-        return get_version_from_exe_file2(get_path())
-
-    return version
+    return get_version_from_exe_file2(get_path())
 
 def get_exact_version():
     return get_version_from_exe_file(get_path())
