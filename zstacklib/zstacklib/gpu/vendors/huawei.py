@@ -172,6 +172,77 @@ class Huawei(GPUBase):
         return gpu_infos
 
     @classmethod
+    def parse_chip_info_summary(cls, output):
+        """Parse healthy chip PCI addresses from the ``npu-smi info`` table.
+
+        On dual-chip devices such as Ascend 910C, ``info -t board`` only
+        reports the PCI address of chip 0.  The summary table reports both
+        chips, so use it to discover the secondary PCI function without
+        treating Warning or otherwise unhealthy chips as nominal.
+        """
+        gpu_infos = []
+        npu_id = None
+        health = None
+        power = None
+
+        for raw_line in output.splitlines():
+            line = raw_line.strip()
+            if not line.startswith("|"):
+                continue
+
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) < 3:
+                continue
+
+            pci_match = re.match(
+                r"^(?:[0-9a-fA-F]{4}:)?[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$",
+                cells[1])
+            if pci_match:
+                chip_fields = cells[0].split()
+                current_npu_id, current_health, current_power = (
+                    npu_id, health, power)
+                npu_id, health, power = None, None, None
+
+                if (current_npu_id is None or current_health is None
+                        or len(chip_fields) < 2):
+                    continue
+
+                chip_id, physical_id = chip_fields[0], chip_fields[1]
+                if current_health.upper() == "OK":
+                    memory = None
+                    memory_usages = re.findall(r"(\d+)\s*/\s*(\d+)", cells[2])
+                    if memory_usages:
+                        memory = "%s MB" % memory_usages[-1][1]
+
+                    gpu_infos.append(GPUInfo(
+                        pci_address=cls.normalize_pci_address(cells[1]),
+                        memory=memory,
+                        power=current_power,
+                        extra={
+                            "npuId": current_npu_id,
+                            "chipId": chip_id,
+                            "physicalId": physical_id,
+                        }))
+
+                continue
+
+            npu_fields = cells[0].split()
+            if not npu_fields or not npu_fields[0].isdigit():
+                continue
+
+            health_fields = cells[1].split()
+            if not health_fields:
+                continue
+
+            npu_id = npu_fields[0]
+            health = health_fields[0]
+            power_fields = cells[2].split()
+            power = "%s W" % power_fields[0] if power_fields and re.match(
+                r"^[0-9]+(?:\.[0-9]+)?$", power_fields[0]) else None
+
+        return gpu_infos
+
+    @classmethod
     def get_basic_info(cls):
         """
         Override to handle multi-device enumeration.
@@ -191,6 +262,8 @@ class Huawei(GPUBase):
 
         all_gpu_infos = []
         npu_id_map = {}  # pci_address -> npu_id
+        npu_board_info = {}
+        isolation_by_npu = {}
 
         for npu_id in npu_ids:
             cmd = cls.get_basic_info_cmd_for_npu(npu_id)
@@ -212,12 +285,44 @@ class Huawei(GPUBase):
                     try:
                         is_isolated = cls.check_npu_isolation(npu_id, npu_ids)
                         info.extra["isIsolated"] = is_isolated
+                        isolation_by_npu[npu_id] = is_isolated
                     except Exception as ex:
                         logger.debug(
                             "Failed to check isolation for NPU %s: %s" % (npu_id, ex))
                         info.extra["isIsolated"] = False
 
+                    npu_board_info[npu_id] = info
+
             all_gpu_infos.extend(gpu_infos)
+
+        # ``info -t board`` exposes only chip 0 on dual-chip 910C boards.  Add
+        # every secondary chip that the summary reports as healthy.  Keep the
+        # detailed board data for chip 0 and use per-chip memory from the
+        # summary for newly discovered PCI functions.
+        r, o, e = bash_roe("npu-smi info")
+        if r != 0:
+            logger.debug("Failed to get Huawei NPU summary info: %s" % e)
+            return all_gpu_infos
+
+        summary_infos = cls.parse_chip_info_summary(o)
+        existing_by_pci = {
+            info.pci_address.lower(): info for info in all_gpu_infos
+            if info.pci_address
+        }
+        for summary_info in summary_infos:
+            pci_address = summary_info.pci_address.lower()
+            npu_id = summary_info.extra.get("npuId")
+            if pci_address in existing_by_pci:
+                existing_by_pci[pci_address].extra.update(summary_info.extra)
+                continue
+
+            board_info = npu_board_info.get(npu_id)
+            if board_info is not None:
+                summary_info.serial_number = board_info.serial_number
+            summary_info.extra["isIsolated"] = isolation_by_npu.get(
+                npu_id, False)
+            all_gpu_infos.append(summary_info)
+            existing_by_pci[pci_address] = summary_info
 
         return all_gpu_infos
 

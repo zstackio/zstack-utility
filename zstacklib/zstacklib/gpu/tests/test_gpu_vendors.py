@@ -468,6 +468,92 @@ Power Dissipation : 150 W
         self.assertEqual(infos[0].pci_address, "0000:3b:00.0")
         self.assertEqual(infos[0].serial_number, "ABC123456")
         self.assertEqual(infos[0].memory, "32768 MB")
+        self.assertEqual(infos[0].power, "150 W")
+
+    def test_parse_chip_info_summary_returns_only_healthy_chips(self):
+        """Ascend 910C secondary chips are discovered without accepting Warning chips."""
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        output = """
+| 0     Ascend910           | OK            | 161.9                32                      0    / 0                |
+| 0     0                   | 0000:9D:00.0  | 0                    0    / 0                3101 / 65536            |
+| 0     Ascend910           | Warning       | -                    32                      0    / 0                |
+| 1     1                   | 0000:9F:00.0  | 0                    0    / 0                2887 / 65536            |
+| 1     Ascend910           | OK            | 164.2                32                      0    / 0                |
+| 0     2                   | 0000:99:00.0  | 0                    0    / 0                3101 / 65536            |
+| 1     Ascend910           | OK            | -                    32                      0    / 0                |
+| 1     3                   | 0000:9B:00.0  | 0                    0    / 0                2887 / 65536            |
+"""
+
+        infos = Huawei.parse_chip_info_summary(output)
+
+        self.assertEqual(
+            [info.pci_address for info in infos],
+            ["0000:9d:00.0", "0000:99:00.0", "0000:9b:00.0"])
+        self.assertEqual(infos[0].power, "161.9 W")
+        self.assertEqual(infos[1].power, "164.2 W")
+        self.assertIsNone(infos[2].power)
+        self.assertEqual(infos[2].memory, "65536 MB")
+        self.assertEqual(infos[2].extra["npuId"], "1")
+        self.assertEqual(infos[2].extra["chipId"], "1")
+        self.assertEqual(infos[2].extra["physicalId"], "3")
+
+    def test_parse_chip_info_summary_resets_state_after_malformed_chip(self):
+        """A malformed chip row must not leak its NPU state to the next row."""
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        output = """
+| 0     Ascend910           | OK            | 161.9                32                      0    / 0                |
+| 0                         | 0000:9D:00.0  | 0                    0    / 0                3101 / 65536            |
+| 1     1                   | 0000:9B:00.0  | 0                    0    / 0                2887 / 65536            |
+| 1     Ascend910           | OK            | 164.2                32                      0    / 0                |
+| 0     2                   | 0000:99:00.0  | 0                    0    / 0                3101 / 65536            |
+"""
+
+        infos = Huawei.parse_chip_info_summary(output)
+
+        self.assertEqual(
+            [info.pci_address for info in infos], ["0000:99:00.0"])
+        self.assertEqual(infos[0].extra["npuId"], "1")
+
+    def test_get_basic_info_adds_healthy_secondary_chip(self):
+        """Board output identifies chip 0; summary output supplies chip 1."""
+        try:
+            from unittest.mock import patch
+        except ImportError:
+            from mock import patch
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        board_output = """
+Serial Number : BOARD001
+PCIe Bus Info : 0000:99:00.0
+Total DDR Capacity(MB) : 131072
+Power Dissipation : 164.2 W
+"""
+        summary_output = """
+| 1     Ascend910           | OK            | 164.2                32                      0    / 0                |
+| 0     2                   | 0000:99:00.0  | 0                    0    / 0                3101 / 65536            |
+| 1     Ascend910           | OK            | -                    32                      0    / 0                |
+| 1     3                   | 0000:9B:00.0  | 0                    0    / 0                2887 / 65536            |
+"""
+
+        def mock_bash_roe(cmd):
+            if cmd == "npu-smi info":
+                return 0, summary_output, ""
+            return 0, board_output, ""
+
+        with patch.object(Huawei, "is_available", return_value=True), \
+                patch.object(Huawei, "get_npu_ids", return_value=["1"]), \
+                patch.object(Huawei, "check_npu_isolation", return_value=False), \
+                patch("zstacklib.gpu.vendors.huawei.bash_roe", side_effect=mock_bash_roe):
+            infos = Huawei.get_basic_info()
+
+        self.assertEqual(
+            [info.pci_address for info in infos],
+            ["0000:99:00.0", "0000:9b:00.0"])
+        self.assertEqual(infos[1].serial_number, "BOARD001")
+        self.assertTrue(infos[1].driver_loaded)
+        self.assertFalse(infos[1].extra["isIsolated"])
 
     def test_get_pci_only_candidates_processing_accelerators(self):
         """Huawei get_pci_only_candidates returns 19e5 + Processing accelerators when device name is valid."""
