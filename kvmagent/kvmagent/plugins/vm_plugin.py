@@ -3953,7 +3953,8 @@ class Vm(object):
 
         flag = (libvirt.VIR_MIGRATE_LIVE |
                 libvirt.VIR_MIGRATE_PEER2PEER |
-                libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
+                libvirt.VIR_MIGRATE_UNDEFINE_SOURCE |
+                libvirt.VIR_MIGRATE_PERSIST_DEST)
 
         if cmd.downTime:
             self.domain.migrateSetMaxDowntime(cmd.downTime)
@@ -3981,8 +3982,6 @@ class Vm(object):
             if is_external_shared_storage():
                 flag |= libvirt.VIR_MIGRATE_UNSAFE
 
-        if cmd.useNuma or storage_migration_required:
-            flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         stage = get_task_stage(cmd)
         timeout = get_timeout(cmd)
