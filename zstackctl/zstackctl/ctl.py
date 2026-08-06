@@ -46,6 +46,9 @@ from hashlib import md5
 from string import Template
 from collections import OrderedDict
 from .timeline import TaskTimeline, __doc__ as timeline_doc
+from zstackctl.keycloak_config import KeycloakAdminClient, KeycloakAdminError, read_admin_password
+from zstackctl.keycloak_config import restore_file, rotate_admin_password, snapshot_file
+from zstackctl.keycloak_config import validate_admin_password, write_admin_password
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
 
@@ -2398,6 +2401,35 @@ class Zsha2Utils(object):
         shell("sudo -u %s scp -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s %s:%s" % (
             self.ssh_exec_user, src_path, format_url_host(self.config['peerip']), "/tmp/dst_path"))
         self.execute_on_peer("mv %s %s" % ("/tmp/dst_path", dst_path), True)
+
+    def copy_sensitive_file_to_peer(self, src_path, dst_path, owner, mode):
+        remote_path = os.path.join(
+            os.path.dirname(dst_path), '.%s.tmp' % uuid.uuid4())
+        peer_port = self.config.get('peerport', 22)
+        if peer_port == '':
+            peer_port = 22
+        remote_command = "sudo install -m 600 /dev/null %s && sudo tee %s > /dev/null" % (
+            shell_quote(remote_path), shell_quote(remote_path))
+        try:
+            scmd = ShellCmd(
+                "sudo -u %s ssh -p %s -o BatchMode=yes -o StrictHostKeyChecking=no "
+                "-o UserKnownHostsFile=/dev/null %s %s < %s" % (
+                    self.ssh_exec_user, peer_port, self.config['peerip'],
+                    shell_quote(remote_command), shell_quote(src_path)))
+            scmd(False)
+            if scmd.return_code != 0:
+                scmd.raise_error()
+
+            self.execute_on_peer(
+                "chown %s %s && chmod %s %s && mv -f %s %s" % (
+                    shell_quote(owner), shell_quote(remote_path), shell_quote(mode),
+                    shell_quote(remote_path), shell_quote(remote_path), shell_quote(dst_path)), True)
+        except Exception:
+            try:
+                self.execute_on_peer("rm -f %s" % shell_quote(remote_path), True)
+            except Exception:
+                pass
+            raise
 
 
 
@@ -13216,6 +13248,9 @@ class IamService(ExtraService):
     default_port = 18181
     default_nginx_port = 18182
     base_init_path = "/var/lib/zstack/keycloak/init.sh"
+    admin_password_path = "/var/lib/zstack/keycloak/conf/admin-password"
+    legacy_admin_password = "password"
+    admin_username = "admin"
 
     SUPPORTED_OS = ['h84r', 'ky10sp3']
     SUPPORTED_ARCH = ['x86_64', 'aarch64']
@@ -13263,9 +13298,62 @@ class IamService(ExtraService):
         self.zsha2_utils.execute_on_peer("systemctl restart zstack-ui-nginx")
         info_and_debug("Rendered keycloak.upstream.nginx.conf with MN1: %s, MN2: %s" % (self.zsha2_utils.config['nodeip'], self.zsha2_utils.config['peerip']))
 
+    def _persist_admin_password(self, password, zstack_group_gid):
+        write_admin_password(
+            self.admin_password_path, password, 0, zstack_group_gid)
+        if self.zsha2_utils:
+            self.zsha2_utils.copy_sensitive_file_to_peer(
+                self.admin_password_path, self.admin_password_path, 'root:zstack', '640')
+
+    def _restore_admin_password(self, snapshot):
+        restore_file(self.admin_password_path, snapshot)
+        if not self.zsha2_utils:
+            return
+
+        if snapshot is None:
+            self.zsha2_utils.execute_on_peer(
+                "rm -f %s" % shell_quote(self.admin_password_path), True)
+        else:
+            self.zsha2_utils.copy_sensitive_file_to_peer(
+                self.admin_password_path, self.admin_password_path, 'root:zstack', '640')
+
+    @lock.file_lock('/run/zstack.keycloak.admin-password.lock')
+    def change_admin_password(self, new_password, current_password=None):
+        try:
+            new_password = validate_admin_password(new_password)
+            if current_password is None:
+                current_password = read_admin_password(
+                    self.admin_password_path, self.legacy_admin_password)
+            else:
+                current_password = validate_admin_password(current_password)
+
+            if not os.path.isdir(os.path.dirname(self.admin_password_path)):
+                raise ValueError('Keycloak configuration directory does not exist')
+            snapshot = snapshot_file(self.admin_password_path)
+
+            zstack_group_gid = grp.getgrnam('zstack').gr_gid
+            client = KeycloakAdminClient("http://localhost:%d" % self.default_port)
+            rotate_admin_password(
+                client,
+                self.admin_username,
+                current_password,
+                new_password,
+                lambda password: self._persist_admin_password(password, zstack_group_gid),
+                lambda: self._restore_admin_password(snapshot))
+        except KeycloakAdminError as e:
+            raise CtlError("Failed to change Keycloak admin password: %s" % str(e))
+        except (IOError, OSError, KeyError, ValueError) as e:
+            raise CtlError("Failed to change Keycloak admin password: %s" % str(e))
+
+        info_and_debug("Changed the Keycloak admin password and updated dependent services")
+        try:
+            self._restart_morph_if_running()
+        except Exception:
+            warn("Keycloak admin password was changed, but Morph could not be restarted automatically")
+
     def start(self, do_init=False):
-        shell_no_pipe("systemctl restart %s" % self.service_name())
-        shell_no_pipe("systemctl enable %s" % self.service_name())
+        shell_no_pipe("systemctl restart %s; result=$?; exit $result" % self.service_name())
+        shell_no_pipe("systemctl enable %s; result=$?; exit $result" % self.service_name())
         self._wait_for_keycloak(
             "http://localhost:%d/realms/master/.well-known/openid-configuration" % self.default_port)
         if do_init:
@@ -13273,6 +13361,13 @@ class IamService(ExtraService):
         if self.zsha2_utils:
             self.zsha2_utils.execute_on_peer("systemctl enable %s" % self.service_name())
             self.zsha2_utils.execute_on_peer("systemctl restart %s" % self.service_name())
+
+    def _restart_morph_if_running(self):
+        if shell_return("systemctl is-active --quiet morph; result=$?; exit $result") == 0:
+            shell_no_pipe("systemctl restart morph; result=$?; exit $result")
+        if self.zsha2_utils:
+            self.zsha2_utils.execute_on_peer(
+                "if systemctl is-active --quiet morph; then systemctl restart morph; fi", True)
 
     def post_start_log(self):
         if self.zsha2_utils:
@@ -13519,15 +13614,28 @@ class StartExtraServicesCmd(Command):
         super(StartExtraServicesCmd, self).__init__()
         self.name = 'start-extra-service'
         self.description = 'Start extra services like iam, morph, license-server, etc.'
+        self.sensitive_args = ['--change_admin_password', '--current_admin_password']
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
         parser.add_argument('--name', required=True, help='Specify a single service to start, e.g. --name iam')
         parser.add_argument('--init', action='store_true', default=False, help='Initialize configuration before starting the service')
+        parser.add_argument(
+            '--change_admin_password', required=False,
+            help='Change the existing Keycloak admin password after starting IAM')
+        parser.add_argument(
+            '--current_admin_password', required=False,
+            help='Current Keycloak admin password; use the saved password or legacy default when omitted')
 
     def run(self, args):
         if args.name not in self.EXTRA_SERVICE_REGISTRY:
             error("Unknown service '%s'. Available services: %s" % (args.name, ", ".join(self.EXTRA_SERVICE_REGISTRY)))
+            return
+        if args.change_admin_password is not None and args.name != 'iam':
+            error("--change_admin_password is only supported when --name iam")
+            return
+        if args.current_admin_password is not None and args.change_admin_password is None:
+            error("--current_admin_password requires --change_admin_password")
             return
 
         try:
@@ -13536,6 +13644,9 @@ class StartExtraServicesCmd(Command):
             if args.init:
                 service_instance.init()
             service_instance.start(args.init)
+            if args.change_admin_password is not None:
+                service_instance.change_admin_password(
+                    args.change_admin_password, args.current_admin_password)
             service_instance.status()
             service_instance.post_start_log()
         except Exception as e:
