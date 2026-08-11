@@ -740,21 +740,34 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
                     artifact_relative_path,
                     required_capacity,
                     storage_subdir,
-                    register_cache)
+                    register_cache,
+                    _get_cmd_attr(cmd, 'contentVersion', None))
             else:
                 entry = virtiofs_source.prepare_host_model_cache(source_root, source_path, required_capacity)
             rsp.cacheEntry = entry
+            if isinstance(entry, dict):
+                rsp.prepareDecision = entry.get('prepareDecision')
+                rsp.prepareReason = entry.get('prepareReason')
             rsp.success = True
-            logger.info("Prepared host model cache path[%s], size=%s" % (
-                entry.get('sourcePath'), entry.get('sizeBytes')))
+            logger.info(
+                "[host-model-cache-prepare] path=%s size=%s decision=%s reason=%s "
+                "contentVersion=%s actions=%s" % (
+                    entry.get('sourcePath') if isinstance(entry, dict) else None,
+                    entry.get('sizeBytes') if isinstance(entry, dict) else None,
+                    entry.get('prepareDecision') if isinstance(entry, dict) else None,
+                    entry.get('prepareReason') if isinstance(entry, dict) else None,
+                    entry.get('contentVersion') if isinstance(entry, dict) else None,
+                    entry.get('prepareActions') if isinstance(entry, dict) else None,
+                ))
         except Exception as e:
             phase, code = _classify_host_model_cache_failure(e)
             rsp.failurePhase = phase
             rsp.failureCode = code
             rsp.failureMessage = str(e)
             rsp.error = str(e)
-            logger.warning("Failed to prepare host model cache, phase=%s code=%s error=%s" % (
-                phase, code, str(e)))
+            logger.warning(
+                "[host-model-cache-prepare] failed phase=%s code=%s path=%s error=%s" % (
+                    phase, code, _get_cmd_attr(cmd, 'sourcePath', None), str(e)))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
