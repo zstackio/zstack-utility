@@ -61,7 +61,7 @@ def test_move_dev_route_moves_ipv6_address_and_routes():
     assert ("ip addr del 2026:3:3:1::4b:3364/64 dev ens4", False) in calls
     assert ("ip -6 route del 2026:3:3:1::/64 dev ens4 proto kernel metric 101 pref medium", False) in calls
     assert ("ip addr add 2026:3:3:1::4b:3364/64 dev br_ens4", True) in calls
-    assert ("ip -6 route add default via 2026:3:3:1::1 dev br_ens4 proto static metric 101", True) in calls
+    assert ("ip -6 route replace default via 2026:3:3:1::1 dev br_ens4 proto static metric 101", True) in calls
 
 
 def test_move_dev_route_moves_ipv6_direct_static_route():
@@ -93,7 +93,7 @@ def test_move_dev_route_moves_ipv6_direct_static_route():
     assert ("ip -6 route del fd00:5:5:28::/64 dev ens4 proto static metric 101 pref medium", True) in calls
     assert ("ip addr del fd00:5:5:28::62:d0e5/128 dev ens4", False) in calls
     assert ("ip addr add fd00:5:5:28::62:d0e5/128 dev br_ens4", True) in calls
-    assert ("ip -6 route add fd00:5:5:28::/64 dev br_ens4 proto static metric 101 pref medium", True) in calls
+    assert ("ip -6 route replace fd00:5:5:28::/64 dev br_ens4 proto static metric 101 pref medium", True) in calls
 
 
 def test_move_dev_route_restores_ipv6_gateway_route_before_default_route():
@@ -124,8 +124,8 @@ def test_move_dev_route_restores_ipv6_gateway_route_before_default_route():
 
     linux.move_dev_route("ens3", "br_ens3")
 
-    direct_route = "ip -6 route add 2026:6:2:1::1 dev br_ens3 proto static metric 100 pref medium"
-    default_route = "ip -6 route add default via 2026:6:2:1::1 dev br_ens3 proto static metric 100"
+    direct_route = "ip -6 route replace 2026:6:2:1::1 dev br_ens3 proto static metric 100 pref medium"
+    default_route = "ip -6 route replace default via 2026:6:2:1::1 dev br_ens3 proto static metric 100"
 
     assert (direct_route, True) in calls
     assert (default_route, True) in calls
@@ -159,8 +159,8 @@ def test_move_dev_route_restores_ipv4_routes_on_bridge():
 
     linux.move_dev_route("ens3", "br_ens3")
 
-    assert ("ip route add default via 172.26.0.1 dev br_ens3 proto static metric 100", True) in calls
-    assert ("ip route add 169.254.169.254 via 172.26.115.192 dev br_ens3 proto static", True) in calls
+    assert ("ip route replace default via 172.26.0.1 dev br_ens3 proto static metric 100", True) in calls
+    assert ("ip route replace 169.254.169.254 via 172.26.115.192 dev br_ens3 proto static", True) in calls
 
 
 def test_move_dev_route_ignores_missing_source_ipv6_address():
@@ -192,8 +192,35 @@ def test_move_dev_route_ignores_missing_source_ipv6_address():
     assert ("ip addr del 2026:6:3:1::100/64 dev ens3", False) in calls
     assert ("ip addr add 2026:6:3:1::100/64 dev br_ens3", True) in calls
     assert ("ip -6 route del 2026:6:3:1::/64 dev ens3 proto kernel metric 100 pref medium", False) in calls
-    assert ("ip -6 route add 2026:6:2:1::1 dev br_ens3 proto static metric 100 pref medium", True) in calls
-    assert ("ip -6 route add default via 2026:6:2:1::1 dev br_ens3 proto static metric 100", True) in calls
+    assert ("ip -6 route replace 2026:6:2:1::1 dev br_ens3 proto static metric 100 pref medium", True) in calls
+    assert ("ip -6 route replace default via 2026:6:2:1::1 dev br_ens3 proto static metric 100", True) in calls
+
+
+def test_zstac_87140_restore_existing_ipv6_ra_default_route_without_eexist():
+    linux = _load_linux_module()
+    calls = []
+    route = "default via fe80::1 proto ra metric 1024 expires 1799sec pref medium"
+    add_cmd = "ip -6 route add default via fe80::1 dev br_zsn0 proto ra metric 1024 expires 1799sec pref medium"
+    replace_cmd = "ip -6 route replace default via fe80::1 dev br_zsn0 proto ra metric 1024 expires 1799sec pref medium"
+
+    def shell_call(cmd, exception=True):
+        calls.append((cmd, exception))
+        if cmd == add_cmd:
+            raise RuntimeError("RTNETLINK answers: File exists")
+        return ""
+
+    linux.shell.call = MagicMock(side_effect=shell_call)
+    linux._restore_dev_route("br_zsn0", {
+        "ipv4_addresses": [],
+        "ipv6_addresses": [],
+        "routes": [],
+        "routes6": [route],
+        "direct_routes6": [],
+        "connected_routes6": [],
+    })
+
+    assert (replace_cmd, True) in calls
+    assert (add_cmd, True) not in calls
 
 
 def test_move_dev_route_migrates_resolved_dns_to_bridge():
@@ -280,7 +307,7 @@ def test_create_bridge_snapshots_routes_before_enslave():
         snapshot_call = ('ip addr show dev eth0 | grep "inet6 " | grep -v " scope link"', False)
         assert calls.index(snapshot_call) < calls.index(("enslave", "eth0", "br_eth0"))
         assert ("ip addr add fd00:5:5:28::79:d283/64 dev br_eth0", True) in calls
-        assert ("ip -6 route add default via fd00:5:5:28::1 dev br_eth0 proto static metric 101", True) in calls
+        assert ("ip -6 route replace default via fd00:5:5:28::1 dev br_eth0 proto static metric 101", True) in calls
     finally:
         linux.is_network_device_existing = original_is_network_device_existing
         linux.is_bridge = original_is_bridge
