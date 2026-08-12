@@ -4,6 +4,7 @@
 '''
 import base64
 import copy
+import fnmatch
 import hashlib
 import os
 import os.path
@@ -2086,18 +2087,21 @@ if __name__ == "__main__":
     def update_os(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         exclude = "--exclude=" + cmd.excludePackages if cmd.excludePackages else ""
-        updates = cmd.updatePackages if cmd.updatePackages else ""
+        update_selectors = cmd.updatePackages.replace(',', ' ').split() if cmd.updatePackages else []
+        updates = ' '.join(update_selectors)
+        update_qemu_kvm = any(fnmatch.fnmatchcase("qemu-kvm", update) for update in update_selectors)
         releasever = cmd.releaseVersion if cmd.releaseVersion else kvmagent.get_host_yum_release()
         yum_cmd = "yum --enablerepo=* clean all && echo {}>/etc/yum/vars/YUM0 && ".format(releasever)
         # If upgrade qemu-kvm and libvirt at the same time
         # you need to upgrade qemu-kvm and then upgrade libvirt
         # to ensure that libvirtd is rebooted after upgrading qemu-kvm
-        if "qemu-kvm" in updates or (cmd.releaseVersion != '' and "qemu-kvm" not in exclude):
+        if update_qemu_kvm or (cmd.releaseVersion != '' and "qemu-kvm" not in exclude):
             update_qemu_cmd = "export YUM0={0};"
             if releasever in ['c74', 'c76', 'c79', 'h76c', 'h79c']:
-                update_qemu_cmd += "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} swap -y -- remove qemu-img-ev -- install qemu-img " \
-                              "&& yum remove qemu-kvm-ev qemu-kvm-common-ev qemu-kvm-block-cbd -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update " \
-                              "qemu-storage-daemon -y && yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} install qemu-kvm qemu-kvm-common -y && "
+                update_qemu_cmd += "yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} swap -y -- " \
+                                   "remove qemu-img-ev qemu-kvm-ev qemu-kvm-common-ev qemu-kvm-block-cbd -- " \
+                                   "install qemu-img qemu-kvm qemu-kvm-common && yum --disablerepo=* " \
+                                   "--enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update qemu-storage-daemon -y && "
             else:
                 update_qemu_cmd += " yum --disablerepo=* --enablerepo=zstack-mn,qemu-kvm-ev-mn{1} update qemu-storage-daemon -y;"
             yum_cmd = yum_cmd + update_qemu_cmd.format(releasever,
