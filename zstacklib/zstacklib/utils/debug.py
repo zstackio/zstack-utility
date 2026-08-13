@@ -123,7 +123,6 @@ def track_memory_growth():
         logger.warn("get error when track memory info %s" % e.message)
 
 
-@dump_track
 def dump_threads():
     logger.debug('dumping threads')
     output = []
@@ -309,7 +308,6 @@ def track_objects(times=5, interval=300):
     return
 
 
-@dump_track
 def dump_objects():
     old_num_stats, old_size_stats, total_num, total_size = type_stats()
     log_objs_statistics(old_num_stats, old_size_stats, {}, {}, total_size, total_num)
