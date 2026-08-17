@@ -253,6 +253,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
     WORLD_OPEN_CIDR_IPV6 = '::/0'
 
     ZSTACK_DEFAULT_CHAIN = 'sg-default'
+    ZSTACK_DEFAULT_OUT_CHAIN = 'sg-default-out'
+    ZSTACK_DEFAULT_IN_CHAIN = 'sg-default-in'
     IPV4 = 4
     IPV6 = 6
     ZSTACK_IPSET_FAMILYS = {4: "inet", 6: "inet6"}
@@ -284,14 +286,24 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         # delete vnic chain when nic is removed
         filter_table = iptables.from_iptables_save() if version == self.IPV4 else iptables.from_iptables_save(version=self.IPV6)
         sg_default_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_CHAIN)
+        sg_default_out_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_OUT_CHAIN)
+        sg_default_in_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_IN_CHAIN)
         if sg_default_chain:
+            referencing_chains = [
+                chain
+                for chain in [sg_default_out_chain, sg_default_in_chain, sg_default_chain]
+                if chain
+            ]
             for chain in filter_table.get_chains():
-                if self._is_vnic_chain_name(chain.name):
-                    vnic_name = chain.name.split('-')[1]
-                    if vnic_name not in all_nics:
-                        logger.debug('clean up defunct vnic chain[%s]' % chain.name)
-                        filter_table.delete_chain(chain.name)
-                        sg_default_chain.delete_rule_by_target(chain.name)
+                if not self._is_vnic_chain_name(chain.name):
+                    continue
+                vnic_name = chain.name.split('-')[1]
+                if vnic_name in all_nics:
+                    continue
+                logger.debug('clean up defunct vnic chain[%s]' % chain.name)
+                filter_table.delete_chain(chain.name)
+                for referencing_chain in referencing_chains:
+                    referencing_chain.delete_rule_by_target(chain.name)
 
         filter_table.iptables_restore()
 
@@ -348,6 +360,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         forward_chain.add_rule('-A FORWARD -m physdev --physdev-is-bridged -j %s' % self.ZSTACK_DEFAULT_CHAIN)
 
         sg_default_chain = ipt.add_chain_if_not_exist(self.ZSTACK_DEFAULT_CHAIN)
+        sg_default_out_chain = ipt.add_chain_if_not_exist(self.ZSTACK_DEFAULT_OUT_CHAIN)
+        sg_default_in_chain = ipt.add_chain_if_not_exist(self.ZSTACK_DEFAULT_IN_CHAIN)
         sg_default_chain.flush_chain()
         sg_default_chain.add_default_rule('-A %s -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
         sg_default_chain.add_rule('-A %s -m state --state RELATED,ESTABLISHED -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
@@ -363,12 +377,18 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             sg_default_chain.add_rule('-A %s -p ipv6-icmp -m icmp6 --icmpv6-type 135 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
             sg_default_chain.add_rule('-A %s -p ipv6-icmp -m icmp6 --icmpv6-type 136 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
             sg_default_chain.add_rule('-A %s -p ipv6-icmp -m icmp6 --icmpv6-type 137 -j ACCEPT' % self.ZSTACK_DEFAULT_CHAIN)
+        sg_default_chain.add_rule('-A %s -j %s' % (self.ZSTACK_DEFAULT_CHAIN, self.ZSTACK_DEFAULT_OUT_CHAIN))
+        sg_default_chain.add_rule('-A %s -j %s' % (self.ZSTACK_DEFAULT_CHAIN, self.ZSTACK_DEFAULT_IN_CHAIN))
+
+        # The ingress dispatcher is the final security-group stage. A packet
+        # reaching its end has either no destination vNIC chain or an ALLOW
+        # default policy, and must not return to an egress security-group chain.
+        sg_default_in_chain.delete_rule_by_target(self.ZSTACK_DEFAULT_CHAIN)
+        sg_default_in_chain.delete_rule_by_target(self.ZSTACK_DEFAULT_OUT_CHAIN)
+        sg_default_in_chain.add_default_rule('-A %s -j ACCEPT' % self.ZSTACK_DEFAULT_IN_CHAIN)
 
     def _check_sg_default_rules(self, filter_table, ip_version):
-        sg_default_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_CHAIN)
-
-        if not sg_default_chain:
-            self._create_sg_default_chain(filter_table, ip_version)
+        self._create_sg_default_chain(filter_table, ip_version)
 
     def _is_sg_ipset_name(self, name):
         if not name:
@@ -384,6 +404,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
 
     def is_sg_chain_name(self, chain_name):
         if not chain_name:
+            return False
+        if chain_name in [self.ZSTACK_DEFAULT_CHAIN, self.ZSTACK_DEFAULT_OUT_CHAIN, self.ZSTACK_DEFAULT_IN_CHAIN]:
             return False
         if chain_name.startswith('sg-') and (chain_name.endswith('-in') or chain_name.endswith('-out')) and 'vnic' not in chain_name:
             return True
@@ -463,7 +485,10 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         rule_str.extend(['-m comment --comment', rule_comment])
 
         if rto.action:
-            rule_str.extend(['-j', rto.action])
+            action = rto.action
+            if rto.type == RULE_TYPE_EGRESS and action == self.RULE_ACTION_ACCEPT:
+                action = self.ZSTACK_DEFAULT_IN_CHAIN
+            rule_str.extend(['-j', action])
 
         return rule_str
 
@@ -520,17 +545,15 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
         filter6_table.delete_chain(in_chain_name)
         filter6_table.delete_chain(out_chain_name)
 
-        sg_default_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_CHAIN)
-        if not sg_default_chain:
-            raise Exception('cannot find iptables filter chain[%s]' % self.ZSTACK_DEFAULT_CHAIN)
-        sg_default_chain.delete_rule_by_target(in_chain_name)
-        sg_default_chain.delete_rule_by_target(out_chain_name)
+        sg_default_out_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_OUT_CHAIN)
+        sg_default_in_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_IN_CHAIN)
+        sg_default_in_chain.delete_rule_by_target(in_chain_name)
+        sg_default_out_chain.delete_rule_by_target(out_chain_name)
 
-        sg6_default_chain = filter6_table.get_chain_by_name(self.ZSTACK_DEFAULT_CHAIN)
-        if not sg6_default_chain:
-            raise Exception('cannot find ip6tables filter chain[%s]' % self.ZSTACK_DEFAULT_CHAIN)
-        sg6_default_chain.delete_rule_by_target(in_chain_name)
-        sg6_default_chain.delete_rule_by_target(out_chain_name)
+        sg6_default_out_chain = filter6_table.get_chain_by_name(self.ZSTACK_DEFAULT_OUT_CHAIN)
+        sg6_default_in_chain = filter6_table.get_chain_by_name(self.ZSTACK_DEFAULT_IN_CHAIN)
+        sg6_default_in_chain.delete_rule_by_target(in_chain_name)
+        sg6_default_out_chain.delete_rule_by_target(out_chain_name)
 
     def _do_update_vnic_rules(self, filter_table, filter6_table, nics):
         for nic in nics:
@@ -551,7 +574,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
             nic_out_action = self.RULE_ACTION_RETURN if nic.egress_policy == self.NIC_SECURITY_POLICY_ALLOW else self.RULE_ACTION_DROP
 
             if is_ipv4:
-                sg_default_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_CHAIN)
+                sg_default_out_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_OUT_CHAIN)
+                sg_default_in_chain = filter_table.get_chain_by_name(self.ZSTACK_DEFAULT_IN_CHAIN)
                 nic_in_chain = filter_table.add_chain(nic_in_chain_name)
                 nic_in_chain.flush_chain()
                 nic_out_chain = filter_table.add_chain(nic_out_chain_name)
@@ -564,13 +588,14 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 nic_in_chain.add_default_rule('-A %s -j %s' % (nic_in_chain_name, nic_in_action))
                 nic_out_chain.add_default_rule('-A %s -j %s' % (nic_out_chain_name, nic_out_action))
 
-                #  -A sg-default -m physdev --physdev-out vnic516.0 -j vnic516.0-in
-                #  -A sg-default -m physdev --physdev-in vnic516.0 -j vnic516.0-out
-                sg_default_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_CHAIN, '-m physdev --physdev-out', nic.name, '-j', nic_in_chain_name]))
-                sg_default_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_CHAIN, '-m physdev --physdev-in', nic.name, '-j', nic_out_chain_name]))
+                #  -A sg-default-in -m physdev --physdev-out vnic516.0 -j sg-vnic516.0-in
+                #  -A sg-default-out -m physdev --physdev-in vnic516.0 -j sg-vnic516.0-out
+                sg_default_in_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_IN_CHAIN, '-m physdev --physdev-out', nic.name, '-j', nic_in_chain_name]))
+                sg_default_out_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_OUT_CHAIN, '-m physdev --physdev-in', nic.name, '-j', nic_out_chain_name]))
                 self._cleanup_conntrack(nic.ips, "ipv4")
             if is_ipv6:
-                sg6_default_chain = filter6_table.get_chain_by_name(self.ZSTACK_DEFAULT_CHAIN)
+                sg6_default_out_chain = filter6_table.get_chain_by_name(self.ZSTACK_DEFAULT_OUT_CHAIN)
+                sg6_default_in_chain = filter6_table.get_chain_by_name(self.ZSTACK_DEFAULT_IN_CHAIN)
                 nic_in_chain = filter6_table.add_chain(nic_in_chain_name)
                 nic_in_chain.flush_chain()
                 nic_out_chain = filter6_table.add_chain(nic_out_chain_name)
@@ -583,8 +608,8 @@ class SecurityGroupPlugin(kvmagent.KvmAgent):
                 nic_in_chain.add_default_rule('-A %s -j %s' % (nic_in_chain_name, nic_in_action))
                 nic_out_chain.add_default_rule('-A %s -j %s' % (nic_out_chain_name, nic_out_action))
 
-                sg6_default_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_CHAIN, '-m physdev --physdev-out', nic.name, '-j', nic_in_chain_name]))
-                sg6_default_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_CHAIN, '-m physdev --physdev-in', nic.name, '-j', nic_out_chain_name]))
+                sg6_default_in_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_IN_CHAIN, '-m physdev --physdev-out', nic.name, '-j', nic_in_chain_name]))
+                sg6_default_out_chain.add_rule(' '.join(['-A', self.ZSTACK_DEFAULT_OUT_CHAIN, '-m physdev --physdev-in', nic.name, '-j', nic_out_chain_name]))
                 self._cleanup_conntrack(nic.ips, "ipv6")
 
     @bash.in_bash
