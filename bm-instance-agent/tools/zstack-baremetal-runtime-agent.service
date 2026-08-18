@@ -1,0 +1,18 @@
+[Unit]
+Description=ZStack baremetal runtime agent
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+User=root
+ExecStartPre=/usr/bin/install -d -o root -g root -m 0755 /var/lib/zstack/baremetalv2/runtime
+ExecStartPre=/usr/bin/install -d -o root -g root -m 0755 /var/lib/zstack/baremetalv2/runtime/releases
+ExecStartPre=/usr/bin/install -d -o root -g root -m 0755 /var/lib/zstack/baremetalv2/runtime/mount-facts.d
+ExecStartPre=/usr/bin/install -d -o root -g root -m 0755 /var/lib/zstack/baremetal-runtime/state
+ExecStart=/var/lib/zstack/baremetalv2/runtime/current/baremetal-runtime-agent --socket /var/lib/zstack/baremetalv2/runtime/runtime.sock --state-dir /var/lib/zstack/baremetal-runtime/state --max-request-bytes 4194304 --max-response-bytes 4194304
+
+[Install]
+WantedBy=multi-user.target

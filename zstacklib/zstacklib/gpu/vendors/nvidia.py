@@ -18,6 +18,10 @@ from zstacklib.gpu.base import (
     register_gpu_vendor
 )
 from zstacklib.gpu.operation_gate import gpu_operation_gate
+from zstacklib.gpu_runtime_inventory import (
+    get_nvidia_runtime_inventory_cmd,
+    get_nvidia_topology_cmd,
+)
 
 logger = log.get_logger(__name__)
 
@@ -129,6 +133,14 @@ class NVIDIA(GPUBase):
         if is_windows:
             cmd = cmd.replace(" ", "|")
         return cmd
+
+    @classmethod
+    def get_runtime_inventory_cmd(cls, is_windows=False):
+        return get_nvidia_runtime_inventory_cmd(is_windows)
+
+    @classmethod
+    def get_topology_cmd(cls, is_windows=False):
+        return get_nvidia_topology_cmd(is_windows)
 
     @classmethod
     def get_basic_info(cls):

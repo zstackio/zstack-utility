@@ -24,5 +24,10 @@ class DataFormatHook(hooks.PecanHook):
         if body:
             # NOTE(ya.wang) The body is byte type in py35, therefore use
             # jsonutils to safe load the body
-            body = bm_utils.camel_obj_to_snake(jsonutils.loads(body))
+            body = jsonutils.loads(body)
+            path = state.request.path
+            is_runtime_path = (
+                path == '/v2/runtime' or path.startswith('/v2/runtime/'))
+            if not is_runtime_path:
+                body = bm_utils.camel_obj_to_snake(body)
             state.request.json_body = body

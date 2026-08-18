@@ -14,6 +14,7 @@ md5sum -c md5sum
 pkill -9 shellinaboxd || true
 
 tar -zxf bm-instance-agent.tar.gz
+. ${temp}/runtime-artifact-common.sh
 
 mkdir -p /var/lib/zstack/baremetalv2/bm-instance-agent/
 mkdir -p /var/log/zstack/baremetalv2/
@@ -27,6 +28,12 @@ fi
 yes | cp ${temp}/zwatch-vm-agent-`uname -m` /var/lib/zstack/baremetalv2/bm-instance-agent/
 yes | cp ${temp}/service.conf /var/lib/zstack/baremetalv2/bm-instance-agent/service.conf
 
+runtime_prepare_directories
+runtime_artifact_path="$(runtime_find_packaged_artifact "${temp}" "$(runtime_detect_target)")"
+if [ -n "${runtime_artifact_path}" ]; then
+    runtime_install_artifact "${runtime_artifact_path}" "$(runtime_detect_target)"
+fi
+
 popd
 
 sed -i '/SELINUX=/s/enforcing/permissive/g' /etc/selinux/config >/dev/null 2>&1 || true
@@ -34,6 +41,7 @@ setenforce 0 >/dev/null 2>&1 || true
 
 if which systemctl &> /dev/null; then
     mkdir -p /usr/lib/systemd/system/
+    yes | cp ${temp}/zstack-baremetal-runtime-agent.service /usr/lib/systemd/system/zstack-baremetal-runtime-agent.service
     cat << EOF > /usr/lib/systemd/system/zstack-baremetal-instance-agent.service
 [Unit]
 Description=ZStack baremetal instance agent
@@ -58,6 +66,10 @@ EOF
     systemctl daemon-reload \
         && systemctl enable zstack-baremetal-instance-agent \
         && systemctl restart zstack-baremetal-instance-agent
+    if [ -x /var/lib/zstack/baremetalv2/runtime/current/baremetal-runtime-agent ]; then
+        systemctl enable zstack-baremetal-runtime-agent \
+            && systemctl restart zstack-baremetal-runtime-agent
+    fi
 else
     cat << 'EOF' > /etc/init.d/zstack-baremetal-instance-agent
 #!/bin/bash

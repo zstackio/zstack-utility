@@ -7,6 +7,7 @@ from bm_instance_agent.api.controllers.v2 import nic
 from bm_instance_agent.api.controllers.v2 import password
 from bm_instance_agent.api.controllers.v2 import ping
 from bm_instance_agent.api.controllers.v2 import reboot
+from bm_instance_agent.api.controllers.v2 import runtime
 from bm_instance_agent.api.controllers.v2 import stop
 from bm_instance_agent.api.controllers.v2 import volume
 
@@ -20,6 +21,7 @@ class Controller(RestController):
         'password': password.PasswordController,
         'ping': ping.PingController,
         'reboot': reboot.RebootController,
+        'runtime': runtime.RuntimeController,
         'stop': stop.StopController,
         'volume': volume.VolumeController,
         'inspect': inspect.InspectController

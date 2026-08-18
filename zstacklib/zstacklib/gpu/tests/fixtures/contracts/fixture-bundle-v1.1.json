@@ -1,0 +1,36 @@
+{
+  "schemaRevision": "1.1.0",
+  "bundle": "nvidia-dual-gpu-v1.1",
+  "sourceType": "synthetic-reference",
+  "sourceNote": "Contract fixture only. It is not captured from delivery hardware and must not be used as NVIDIA or MetaX acceptance evidence.",
+  "files": [
+    {
+      "path": "nvidia-dual-gpu/gpu-inventory.invalid-pci-identity.json",
+      "sha256": "6798d7899569f2e84c1da4f536cb3d0a7dd193318b14278e871c8af82e560a25"
+    },
+    {
+      "path": "nvidia-dual-gpu/gpu-inventory.valid.json",
+      "sha256": "d672c13d28bb7cf8334cd90c7ba8d8eeb52c747541d13fe18a7a7c3e0ec8cded"
+    },
+    {
+      "path": "nvidia-dual-gpu/state-cases.json",
+      "sha256": "dbb9787a767c180daf7c4e6c950579fddad6331d4612bff30645b16e447ebb09"
+    },
+    {
+      "path": "v1.1/nvidia-dual-gpu/runtime-api-examples.json",
+      "sha256": "51e1830edd700796a343b15df9427be3df7a67a81ec0b850e9b26f7139d40ff1"
+    },
+    {
+      "path": "v1.1/nvidia-dual-gpu/workload-spec.invalid-missing-materialization.json",
+      "sha256": "bbe525491ad828efab9b85f2389f233c8e20905f0f1683c126354bba893695d7"
+    },
+    {
+      "path": "v1.1/nvidia-dual-gpu/workload-spec.invalid-path-digest.json",
+      "sha256": "dd216f0c4c3eb369e71ee83710087d74490a352d0671baaa11afb874b3713835"
+    },
+    {
+      "path": "v1.1/nvidia-dual-gpu/workload-spec.valid.json",
+      "sha256": "356d8135eb1a4ff9983bb176878aa665c2f1cc2af2d86ace9d8f00ff064793df"
+    }
+  ]
+}

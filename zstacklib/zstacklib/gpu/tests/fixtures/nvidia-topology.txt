@@ -1,0 +1,3 @@
+        GPU0    GPU1    CPU Affinity    NUMA Affinity    GPU NUMA ID
+GPU0     X      NV4    0-47            0                N/A
+GPU1    NV4      X     48-95           1                N/A

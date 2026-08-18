@@ -2,12 +2,22 @@ import json
 import multiprocessing
 import os
 import platform
-import yaml
 import re
+import time
+import yaml
 from oslo_concurrency import processutils
 from oslo_log import log as logging
 from stevedore import driver
 from zstacklib.utils import network_ipv6
+from zstacklib.gpu_runtime_inventory import (
+    RuntimeInventoryError,
+    build_unsupported_runtime_inventory,
+    build_nvidia_runtime_inventory,
+    get_nvidia_runtime_inventory_cmd,
+    get_nvidia_topology_cmd,
+    parse_nvidia_runtime_query_output,
+    runtime_inventory_to_legacy_pci_devices,
+)
 
 from .__init__ import __version__
 from bm_instance_agent.common import utils as bm_utils
@@ -31,6 +41,14 @@ units_mapping = {
     'mb': 1024 * 1024,
     'gb': 1024 * 1024 * 1024
 }
+
+GPU_RUNTIME_UNSUPPORTED_CLASSES = set([
+    'VGA compatible controller',
+    'Display controller',
+    'Processing accelerators',
+    'Co-processor',
+    '3D controller',
+])
 
 
 class AgentManager(object):
@@ -200,7 +218,15 @@ class AgentManager(object):
         hardware_info.update(self._get_basic_info())
         hardware_info['nics'] = self._get_nic_info(provision_network)
         hardware_info['disks'] = self._get_disk_info()
-        hardware_info['pciDevices'] = self._get_pci_info()
+        legacy_pci_devices = self._get_pci_info()
+        gpu_inventory = self._get_gpu_inventory(ipmi_address, ipmi_port)
+        if gpu_inventory:
+            hardware_info['gpuInventory'] = gpu_inventory
+            runtime_pci_devices = runtime_inventory_to_legacy_pci_devices(
+                gpu_inventory)
+            hardware_info['pciDevices'] = runtime_pci_devices or legacy_pci_devices
+        else:
+            hardware_info['pciDevices'] = legacy_pci_devices
 
         result['hardwareInfo'] = json.dumps(hardware_info)
         LOG.info("inspect baremetal chassis hardwardinfo: %s successfully", result)
@@ -319,6 +345,220 @@ class AgentManager(object):
         if os.path.exists('/sys/firmware/efi'):
             return 'UEFI'
         return 'Legacy'
+
+    def _get_gpu_inventory(self, ipmi_address, ipmi_port):
+        try:
+            inventory = self._collect_nvidia_runtime_inventory(ipmi_address, ipmi_port)
+            if inventory:
+                return inventory
+            return self._collect_unsupported_gpu_inventory(ipmi_address, ipmi_port)
+        except RuntimeInventoryError as err:
+            LOG.warning("failed to build runtime gpu inventory: %s", err)
+        except Exception:
+            LOG.exception("unexpected error while building runtime gpu inventory")
+        return None
+
+    def _collect_nvidia_runtime_inventory(self, ipmi_address, ipmi_port):
+        r, _, _ = bm_utils.shell_cmd("which nvidia-smi", False)
+        if r != 0:
+            return None
+
+        r, query_output, err = bm_utils.shell_cmd(
+            get_nvidia_runtime_inventory_cmd(), False)
+        if r != 0 or not query_output.strip():
+            LOG.warning("nvidia runtime inventory query failed: %s", err)
+            return None
+
+        parsed_devices = parse_nvidia_runtime_query_output(query_output)
+        pci_facts = self._get_nvidia_runtime_pci_facts(parsed_devices)
+        if not pci_facts:
+            return None
+
+        r, topo_output, topo_err = bm_utils.shell_cmd(
+            get_nvidia_topology_cmd(), False)
+        if r != 0:
+            LOG.warning("nvidia topology query failed: %s", topo_err)
+            topo_output = ''
+
+        now = int(time.time())
+        observed_at = self._format_utc(now)
+        valid_until = self._format_utc(now + 120)
+        target_uuid = 'inspection:%s:%s' % (ipmi_address, ipmi_port)
+
+        return build_nvidia_runtime_inventory(
+            target_uuid=target_uuid,
+            observation_generation=max(now, 1),
+            observed_at=observed_at,
+            valid_until=valid_until,
+            collector_version=__version__,
+            boot_id=self._get_boot_id(),
+            query_output=query_output,
+            topology_output=topo_output,
+            pci_device_facts=pci_facts)
+
+    def _collect_unsupported_gpu_inventory(self, ipmi_address, ipmi_port):
+        vendor_names, detected_nvidia = self._detect_unsupported_gpu_vendors()
+        if detected_nvidia or not vendor_names:
+            return None
+
+        vendor_names = sorted(set(vendor_names))
+        reason = (
+            'runtime inventory is unsupported for detected GPU vendors: %s'
+            % ', '.join(vendor_names))
+        now = int(time.time())
+        return build_unsupported_runtime_inventory(
+            target_uuid='inspection:%s:%s' % (ipmi_address, ipmi_port),
+            observation_generation=max(now, 1),
+            observed_at=self._format_utc(now),
+            valid_until=self._format_utc(now + 120),
+            collector_version=__version__,
+            boot_id=self._get_boot_id(),
+            vendor_names=vendor_names,
+            reason=reason)
+
+    def _detect_unsupported_gpu_vendors(self):
+        vendor_names = []
+        detected_nvidia = False
+        r, output, err = bm_utils.shell_cmd("lspci -Dmmnn", False)
+        if r != 0:
+            LOG.warning("failed to probe pci devices for unsupported gpu vendors: %s", err)
+            return vendor_names, detected_nvidia
+
+        for part in output.split('\n\n'):
+            pci_class = None
+            vendor_id = None
+            vendor_text = None
+            for line in part.split('\n'):
+                if len(line.split(':')) < 2:
+                    continue
+                title = line.split(':')[0].strip()
+                content = line.split(':', 1)[1].strip()
+                if title == 'Class':
+                    pci_class = content.split('[')[0].strip()
+                elif title == 'Vendor':
+                    vendor_text = '['.join(content.split('[')[:-1]).strip()
+                    vendor_id = content.split('[')[-1].strip(']').lower()
+
+            if pci_class not in GPU_RUNTIME_UNSUPPORTED_CLASSES or not vendor_text:
+                continue
+
+            vendor_name = self._simplify_pci_device_name(vendor_text)
+            if vendor_name == VendorEnum.NVIDIA or vendor_id == '10de':
+                detected_nvidia = True
+                continue
+            vendor_names.append(vendor_name)
+
+        return vendor_names, detected_nvidia
+
+    def _get_nvidia_runtime_pci_facts(self, parsed_devices):
+        pci_facts = {}
+        shared_nodes = self._get_nvidia_shared_device_nodes()
+        device_nodes_by_pci = {}
+        for device in parsed_devices:
+            dedicated_nodes = []
+            if device.get('index') is not None:
+                node = self._get_device_node_fact('/dev/nvidia%s' % device['index'])
+                if node:
+                    dedicated_nodes.append(node)
+            device_nodes_by_pci[device['pciAddress']] = dedicated_nodes
+
+        r, output, err = bm_utils.shell_cmd("lspci -Dmmnnv", False)
+        if r != 0:
+            LOG.warning("failed to read pci facts for runtime inventory: %s", err)
+            return pci_facts
+
+        for part in output.split('\n\n'):
+            pci_address = None
+            vendor_id = None
+            device_id = None
+            subsystem_vendor_id = None
+            subsystem_device_id = None
+            iommu_group = None
+            for line in part.split('\n'):
+                if len(line.split(':')) < 2:
+                    continue
+                title = line.split(':')[0].strip()
+                content = line.split(':')[1].strip()
+                if title == 'Slot':
+                    pci_address = line[5:].strip().lower()
+                    group_path = os.path.join(
+                        '/sys/bus/pci/devices/', pci_address, 'iommu_group')
+                    group_realpath = os.path.realpath(group_path)
+                    iommu_match = re.search(r'(\d+)$', group_realpath)
+                    iommu_group = int(iommu_match.group(1)) if iommu_match else None
+                elif title == 'Vendor':
+                    vendor_id = content.split('[')[-1].strip(']').lower()
+                elif title == 'Device':
+                    device_id = content.split('[')[-1].strip(']').lower()
+                elif title == 'SVendor':
+                    subsystem_vendor_id = content.split('[')[-1].strip(']').lower()
+                elif title == 'SDevice':
+                    subsystem_device_id = content.split('[')[-1].strip(']').lower()
+
+            if not pci_address or vendor_id != '10de':
+                continue
+
+            driver_loaded = bool(device_nodes_by_pci.get(pci_address))
+            driver_ready = driver_loaded
+            driver_reason = None if driver_ready else 'missing dedicated device node'
+            pci_facts[pci_address] = {
+                'vendorId': vendor_id,
+                'deviceId': device_id,
+                'subsystemVendorId': subsystem_vendor_id,
+                'subsystemDeviceId': subsystem_device_id,
+                'iommuGroup': iommu_group,
+                'numaNode': self._get_numa_node(pci_address),
+                'dedicatedDeviceNodes': device_nodes_by_pci.get(pci_address) or [],
+                'sharedDeviceNodes': shared_nodes,
+                'driverLoaded': driver_loaded,
+                'driverReady': driver_ready,
+                'driverReason': driver_reason,
+                'extensions': {
+                    'legacyInspectPath': 'bm-instance-agent'
+                }
+            }
+        return pci_facts
+
+    @staticmethod
+    def _format_utc(timestamp):
+        return time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(timestamp))
+
+    @staticmethod
+    def _get_boot_id():
+        boot_id_path = '/proc/sys/kernel/random/boot_id'
+        if os.path.exists(boot_id_path):
+            with open(boot_id_path, 'r') as stream:
+                return stream.read().strip()
+        return 'unknown-boot-id'
+
+    @staticmethod
+    def _get_numa_node(pci_address):
+        numa_path = os.path.join('/sys/bus/pci/devices', pci_address, 'numa_node')
+        try:
+            with open(numa_path, 'r') as stream:
+                value = int(stream.read().strip())
+                return None if value < 0 else value
+        except Exception:
+            return None
+
+    @staticmethod
+    def _get_device_node_fact(path):
+        if not os.path.exists(path):
+            return None
+        stat_result = os.stat(path)
+        return {
+            'path': path,
+            'major': os.major(stat_result.st_rdev),
+            'minor': os.minor(stat_result.st_rdev)
+        }
+
+    def _get_nvidia_shared_device_nodes(self):
+        nodes = []
+        for path in ['/dev/nvidiactl', '/dev/nvidia-uvm']:
+            node = self._get_device_node_fact(path)
+            if node:
+                nodes.append(node)
+        return nodes
 
     def _get_pci_info(self):
         pci_device_address = ""

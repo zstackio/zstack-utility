@@ -124,6 +124,85 @@ class ApiTest(ApiTestBase):
         mock_stop.assert_called_once_with(
             bm_instance=bm_utils.camel_obj_to_snake(fake.BM_INSTANCE1))
 
+    @mock.patch('bm_instance_agent.runtime.RuntimeManager.get_capabilities')
+    def test_runtime_capabilities(self, mock_get_capabilities):
+        mock_get_capabilities.return_value = (
+            200,
+            {'apiVersion': '1.0.0', 'maxRequestBytes': 4194304})
+
+        resp = self.app.get('/v2/runtime/capabilities')
+
+        self.assertEqual(200, resp.status_int)
+        self.assertEqual('1.0.0', resp.json['apiVersion'])
+
+    @mock.patch('bm_instance_agent.runtime.RuntimeManager.prepare_allocation')
+    def test_runtime_prepare(self, mock_prepare):
+        mock_prepare.return_value = (
+            201,
+            {
+                'requestId': 'request-prepare-001',
+                'allocationUuid': 'allocation-001',
+                'generation': 7,
+                'phase': 'Prepared',
+                'changed': True,
+                'observedAt': '2026-08-14T02:00:00Z'
+            })
+
+        payload = {
+            'requestId': 'request-prepare-001',
+            'generation': 7,
+            'workloadSpec': {'allocationUuid': 'allocation-001'}
+        }
+        resp = self.app.put(
+            '/v2/runtime/allocations/allocation-001/prepare',
+            headers=fake.HEADERS,
+            params=json.dumps(payload))
+
+        self.assertEqual(201, resp.status_int)
+        mock_prepare.assert_called_once_with('allocation-001', payload)
+
+    def test_runtime_remaining_routes_preserve_contract_payloads(self):
+        payload = {
+            'requestId': 'request-runtime-001',
+            'generation': 8,
+            'allocationUuids': ['allocation-001']
+        }
+        success = (200, {'requestId': payload['requestId'], 'changed': True})
+        with mock.patch(
+                'bm_instance_agent.runtime.RuntimeManager.reconcile',
+                return_value=success) as mock_reconcile, \
+                mock.patch(
+                    'bm_instance_agent.runtime.RuntimeManager.start_allocation',
+                    return_value=success) as mock_start, \
+                mock.patch(
+                    'bm_instance_agent.runtime.RuntimeManager.inspect_allocation',
+                    return_value=(200, {'phase': 'Running'})) as mock_inspect, \
+                mock.patch(
+                    'bm_instance_agent.runtime.RuntimeManager.stop_allocation',
+                    return_value=success) as mock_stop, \
+                mock.patch(
+                    'bm_instance_agent.runtime.RuntimeManager.release_allocation',
+                    return_value=success) as mock_release:
+            self.assertEqual(200, self.app.post(
+                '/v2/runtime/reconcile', params=json.dumps(payload)).status_int)
+            self.assertEqual(200, self.app.post(
+                '/v2/runtime/allocations/allocation-001/start',
+                params=json.dumps(payload)).status_int)
+            self.assertEqual(200, self.app.get(
+                '/v2/runtime/allocations/allocation-001').status_int)
+            self.assertEqual(200, self.app.post(
+                '/v2/runtime/allocations/allocation-001/stop',
+                params=json.dumps(payload)).status_int)
+            self.assertEqual(200, self.app.delete(
+                '/v2/runtime/allocations/allocation-001',
+                params=json.dumps(payload)).status_int)
+
+        mock_reconcile.assert_called_once_with(payload)
+        mock_start.assert_called_once_with('allocation-001', payload)
+        mock_inspect.assert_called_once_with('allocation-001')
+        mock_stop.assert_called_once_with('allocation-001', payload)
+        mock_release.assert_called_once_with('allocation-001', payload)
+
     @mock.patch('bm_instance_agent.manager.AgentManager.attach_volume')
     @mock.patch('bm_instance_agent.manager.AgentManager._load_driver')
     @mock.patch('bm_instance_agent.api.utils._post')
