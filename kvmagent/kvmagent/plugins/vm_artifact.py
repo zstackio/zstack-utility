@@ -228,13 +228,17 @@ class VmArtifactViewSpec(object):
         return virtiofs_source_path(self.vm_uuid, self.source_path)
 
     def to_virtiofs_spec(self):
+        # libvirt rejects read-only virtiofs before 11.0.0 ("virtiofs does not
+        # yet support read-only mode"), so never emit <readonly/> here; the
+        # view contents are already bound read-only on the host by
+        # sync_artifact_view/bind_readonly.
         return virtiofs_device.VirtiofsDeviceSpec(
             self.tag,
             self.resolve_source_path(),
             self.cache,
             self.queue,
             self.binary_path,
-            self.read_only,
+            False,
             True,
             True,
         )

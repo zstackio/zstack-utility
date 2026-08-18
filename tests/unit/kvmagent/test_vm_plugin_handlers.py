@@ -3566,7 +3566,10 @@ class TestVmStartCmdXmlBuild:
         assert '<filesystem type="mount" accessmode="passthrough">' in xml_str
         assert '<driver type="virtiofs" queue="1024"' in xml_str
         assert '<cache mode="none"' in xml_str
-        assert '<readonly' in xml_str
+        root = ET.fromstring(xml_str)
+        filesystems = root.findall('./devices/filesystem')
+        assert filesystems
+        assert all(fs.find('readonly') is None for fs in filesystems)
         assert '<memoryBacking>' in xml_str
         assert '<access mode="shared"' in xml_str
 
