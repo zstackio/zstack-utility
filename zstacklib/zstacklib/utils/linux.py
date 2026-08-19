@@ -1876,9 +1876,9 @@ def _restore_dev_route(dest_dev, route_info):
     for r in route_info['routes']:
         shell.call('ip route add %s' % _route_with_dev(r, dest_dev))
     for r in route_info['direct_routes6']:
-        shell.call('ip -6 route add %s' % _route_with_dev(r, dest_dev))
+        shell.call('ip -6 route add %s' % _build_ipv6_route(r, dest_dev))
     for r in route_info['routes6']:
-        shell.call('ip -6 route add %s' % _route_with_dev(r, dest_dev))
+        shell.call('ip -6 route add %s' % _build_ipv6_route(r, dest_dev))
 
 
 def _parse_ip_addresses(ip_addr_output):
@@ -1912,6 +1912,31 @@ def _route_with_dev(route, dev):
         if index + 1 < len(parts):
             return ' '.join(parts[:index + 2] + ['dev', dev] + parts[index + 2:])
     return ' '.join([parts[0], 'dev', dev] + parts[1:])
+
+
+def _build_ipv6_route(route, dev):
+    """Build an IPv6 route from the stable values supported by ip route add."""
+    parts = route.split()
+    if not parts:
+        return route
+
+    route_parts = [parts[0]]
+    value_fields = {'via', 'proto', 'metric', 'hoplimit', 'pref'}
+    index = 1
+    while index < len(parts):
+        field = parts[index]
+        if field == 'dev':
+            route_parts.extend(['dev', dev])
+            index += 2
+        elif field in value_fields and index + 1 < len(parts):
+            route_parts.extend([field, parts[index + 1]])
+            index += 2
+        else:
+            index += 2 if field == 'expires' else 1
+
+    if 'dev' not in route_parts:
+        route_parts[1:1] = ['dev', dev]
+    return ' '.join(route_parts)
 
 
 def _migrate_resolved_dns(src_dev, dest_dev):
