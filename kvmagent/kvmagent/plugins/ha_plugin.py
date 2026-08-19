@@ -219,6 +219,7 @@ class ReportHaNetworkGroupStatusCmd(object):
     def __init__(self):
         self.hostUuid = None
         self.networkGroupStatus = None
+        self.failedVmUuids = None
 
 
 class FencerStateRsp(AgentRsp):
@@ -3376,14 +3377,15 @@ class HaPlugin(kvmagent.KvmAgent):
 
         return failed_groups
 
-    def _kill_vms_by_network_group_rule(self, vm_rules, down_monitors):
+    def _collect_failed_vms_by_network_group_rule(self, vm_rules, down_monitors):
         if not vm_rules:
             return []
 
-        killed_vms = []
+        failed_vms = set()
         down_str = ','.join(sorted(list(down_monitors))) if down_monitors else 'none'
 
-        for vm_uuid, vm_cfg in vm_rules.items():
+        for vm_uuid in sorted(vm_rules.keys()):
+            vm_cfg = vm_rules[vm_uuid]
             failed_groups = self._get_failed_vm_network_groups(vm_cfg, down_monitors)
             if not failed_groups:
                 continue
@@ -3400,18 +3402,12 @@ class HaPlugin(kvmagent.KvmAgent):
                 '%s:%s/%s' % (group['groupUuid'], group['score'], group['minScore'])
                 for group in failed_groups
             ])
-            reason = 'because vm network groups[%s] are lower than required minScore, down resources[%s]' % (
-                failed_groups_str, down_str
-            )
-            kill_vm_use_pid({vm_uuid: vm_pid}, reason)
-            killed_vms.append(vm_uuid)
-            logger.warn('ha network group fencer killed vm[uuid:%s], failedGroups:%s, down:%s' % (
+            failed_vms.add(vm_uuid)
+            logger.debug('ha network group fencer detected failed vm[uuid:%s], failedGroups:%s, down:%s' % (
                 vm_uuid, failed_groups_str, down_str
             ))
 
-        if killed_vms:
-            clean_network_config(killed_vms)
-        return killed_vms
+        return sorted(failed_vms)
 
     def _calculate_network_group_status(self, network_groups, down_monitors):
         if not network_groups:
@@ -3440,7 +3436,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
         return status
 
-    def _dump_ha_network_group_debug(self, stage, down_monitors=None, network_group_status=None):
+    def _dump_ha_network_group_debug(self, stage, down_monitors=None, network_group_status=None,
+                                     failed_vm_uuids=None):
         try:
             with self.ha_network_group_lock:
                 content = {
@@ -3459,6 +3456,8 @@ class HaPlugin(kvmagent.KvmAgent):
                 content['downMonitors'] = sorted(list(down_monitors))
             if network_group_status is not None:
                 content['networkGroupStatus'] = network_group_status
+            if failed_vm_uuids is not None:
+                content['failedVmUuids'] = sorted(list(failed_vm_uuids))
 
             with lock.NamedLock('ha-network-group-debug-dump'):
                 dump_dir = os.path.dirname(self.NETWORK_GROUP_DEBUG_DUMP_PATH)
@@ -3477,7 +3476,7 @@ class HaPlugin(kvmagent.KvmAgent):
         except Exception as e:
             logger.debug('failed to dump ha network group debug file, %s' % e)
 
-    def _do_report_ha_network_group_status(self, network_group_status, report_generation):
+    def _do_report_ha_network_group_status(self, network_group_status, failed_vm_uuids, report_generation):
         try:
             url, host_uuid = self._get_report_url_and_host_uuid()
             if not url:
@@ -3491,12 +3490,15 @@ class HaPlugin(kvmagent.KvmAgent):
             cmd = ReportHaNetworkGroupStatusCmd()
             cmd.hostUuid = host_uuid
             cmd.networkGroupStatus = network_group_status
+            cmd.failedVmUuids = sorted(list(set(failed_vm_uuids or [])))
             http.json_dump_post(url, cmd, {'commandpath': self.REPORT_HA_NETWORK_GROUP_STATUS_PATH}, fail_soon=True)
             with self.ha_network_group_lock:
                 if report_generation == self.ha_network_group_report_generation:
                     self.ha_network_group_last_status = dict(network_group_status)
-            logger.debug('reported ha network group status for host[%s], status:%s' % (host_uuid, network_group_status))
-            self._dump_ha_network_group_debug('report-status', network_group_status=network_group_status)
+            logger.debug('reported ha network group status for host[%s], status:%s, failedVmCount:%s' % (
+                host_uuid, network_group_status, len(cmd.failedVmUuids)))
+            self._dump_ha_network_group_debug('report-status', network_group_status=network_group_status,
+                                              failed_vm_uuids=cmd.failedVmUuids)
         except Exception as e:
             logger.warn('failed to report ha network group status to management node, %s' % e)
         finally:
@@ -3504,19 +3506,20 @@ class HaPlugin(kvmagent.KvmAgent):
                 self.ha_network_group_reporting_in_flight = False
 
     @thread.AsyncThread
-    def _async_report_ha_network_group_status(self, network_group_status, report_generation):
-        self._do_report_ha_network_group_status(network_group_status, report_generation)
+    def _async_report_ha_network_group_status(self, network_group_status, failed_vm_uuids, report_generation):
+        self._do_report_ha_network_group_status(network_group_status, failed_vm_uuids, report_generation)
 
-    def _report_ha_network_group_status(self, network_group_status):
-        if not network_group_status:
+    def _report_ha_network_group_status(self, network_group_status, failed_vm_uuids=None):
+        failed_to_report = sorted(list(set(failed_vm_uuids or [])))
+        if not network_group_status and not failed_to_report:
             with self.ha_network_group_lock:
                 self.ha_network_group_last_status = {}
                 self.ha_network_group_report_generation += 1
             return
 
-        status_to_report = dict(network_group_status)
+        status_to_report = dict(network_group_status or {})
         with self.ha_network_group_lock:
-            if status_to_report == self.ha_network_group_last_status:
+            if not failed_to_report and status_to_report == self.ha_network_group_last_status:
                 return
             if self.ha_network_group_reporting_in_flight:
                 return
@@ -3526,7 +3529,7 @@ class HaPlugin(kvmagent.KvmAgent):
             report_generation = self.ha_network_group_report_generation
             self.ha_network_group_reporting_in_flight = True
 
-        self._async_report_ha_network_group_status(status_to_report, report_generation)
+        self._async_report_ha_network_group_status(status_to_report, failed_to_report, report_generation)
 
     def _wait_ha_network_group_monitor(self, interval):
         return self.ha_network_group_monitor_stop_event.wait(max(interval, 0))
@@ -3556,13 +3559,14 @@ class HaPlugin(kvmagent.KvmAgent):
                     continue
 
                 down_monitors = self._get_down_monitors(monitors, max_attempts)
-                killed_vms = self._kill_vms_by_network_group_rule(vm_rules, down_monitors)
+                failed_vm_uuids = self._collect_failed_vms_by_network_group_rule(vm_rules, down_monitors)
                 network_group_status = self._calculate_network_group_status(network_groups, down_monitors)
-                self._report_ha_network_group_status(network_group_status)
+                self._report_ha_network_group_status(network_group_status, failed_vm_uuids)
 
-                if killed_vms:
-                    logger.warn('ha network group monitor killed vms: %s' % ','.join(killed_vms))
-                    self._dump_ha_network_group_debug('kill-vm', down_monitors, network_group_status)
+                if failed_vm_uuids:
+                    logger.debug('ha network group monitor reported failed vms: %s' % ','.join(failed_vm_uuids))
+                    self._dump_ha_network_group_debug('failed-vm-report', down_monitors,
+                                                      network_group_status, failed_vm_uuids)
             except Exception as e:
                 logger.warn('ha network group monitor loop hit exception, %s' % e)
                 logger.debug(traceback.format_exc())
