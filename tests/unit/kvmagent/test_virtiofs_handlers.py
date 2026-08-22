@@ -45,6 +45,28 @@ def test_prepare_host_model_cache_registers_sensitive_command(
         virtiofs_plugin.PrepareHostModelCacheCmd)
 
 
+def test_report_host_model_cache_reports_missing_cache_leaf_without_creating_it(tmp_path, monkeypatch):
+    parent = tmp_path / 'primary-storage'
+    parent.mkdir()
+    source_root = parent / 'ai-model-cache'
+    monkeypatch.setattr(
+        virtiofs_plugin.virtiofs_source,
+        'statvfs_capacity',
+        lambda path: {'physicalTotalBytes': 100, 'physicalAvailableBytes': 80})
+
+    req = {
+        http.REQUEST_BODY: json.dumps({'sourceRoot': str(source_root)})
+    }
+    rsp = json.loads(virtiofs_plugin.VirtiofsPlugin().report_host_model_cache(req))
+
+    assert rsp['success'] is True
+    assert not source_root.exists()
+    assert rsp['sourceRoot'] == os.path.realpath(str(source_root))
+    assert rsp['physicalTotalBytes'] == 100
+    assert rsp['physicalAvailableBytes'] == 80
+    assert rsp['cacheEntries'] == []
+
+
 class TestVerifySourcePath:
     """Test verify_source_path() security validation."""
 

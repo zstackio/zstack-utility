@@ -297,16 +297,38 @@ def _log_prepare_decision(decision, reason, expected, local_version, path, model
         ))
 
 
+def _ensure_report_source_root(root):
+    if os.path.exists(root):
+        if not os.path.isdir(root):
+            raise Exception('sourceRoot[%s] is not a directory' % root)
+        return root
+
+    if root == _normalize_root(HOST_SOURCE_ROOT):
+        _ensure_directory(root)
+        return root
+
+    parent = os.path.dirname(root)
+    if not parent or not os.path.exists(parent):
+        raise Exception('sourceRoot[%s] does not exist' % root)
+    if not os.path.isdir(parent):
+        raise Exception('sourceRoot[%s] parent[%s] is not a directory' % (root, parent))
+
+    # Reporting is a read-only operation for primary-storage roots.  Capacity
+    # belongs to the mounted parent and can be initialized before the cache
+    # leaf is created by the first prepare operation.
+    return parent
+
+
 def report_source_root(source_root):
     root = _normalize_root(source_root or HOST_SOURCE_ROOT)
-    if not os.path.exists(root):
-        raise Exception('sourceRoot[%s] does not exist' % root)
-    if not os.path.isdir(root):
-        raise Exception('sourceRoot[%s] is not a directory' % root)
+    capacity_root = _ensure_report_source_root(root)
 
-    result = statvfs_capacity(root)
+    result = statvfs_capacity(capacity_root)
     result['sourceRoot'] = root
     result['cacheEntries'] = []
+
+    if not os.path.isdir(root):
+        return result
 
     registry = SourceRegistry(os.path.join(root, '.registry')).load()
     for entry in registry.values():

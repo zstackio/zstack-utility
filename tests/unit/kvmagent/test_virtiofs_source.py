@@ -316,6 +316,64 @@ def test_prepare_model_center_cache_reuses_existing_cache_with_matching_strong_v
     assert entry['prepareActions'] == 'mount=0,copy=0'
 
 
+def test_report_source_root_uses_parent_capacity_without_creating_missing_leaf(tmp_path, monkeypatch):
+    parent = tmp_path / 'primary-storage'
+    parent.mkdir()
+    source_root = parent / 'ai-model-cache'
+
+    capacity_paths = []
+    monkeypatch.setattr(
+        virtiofs_source,
+        'statvfs_capacity',
+        lambda path: capacity_paths.append(path) or
+        {'physicalTotalBytes': 100, 'physicalAvailableBytes': 80})
+
+    report = virtiofs_source.report_source_root(str(source_root))
+
+    assert not source_root.exists()
+    assert capacity_paths == [os.path.realpath(str(parent))]
+    assert report['sourceRoot'] == os.path.realpath(str(source_root))
+    assert report['physicalTotalBytes'] == 100
+    assert report['physicalAvailableBytes'] == 80
+    assert report['cacheEntries'] == []
+
+
+def test_report_source_root_initializes_managed_default_root(tmp_path, monkeypatch):
+    source_root = tmp_path / 'zstack' / 'aios' / 'virtiofs-sources'
+    monkeypatch.setattr(virtiofs_source, 'HOST_SOURCE_ROOT', str(source_root))
+    monkeypatch.setattr(
+        virtiofs_source,
+        'statvfs_capacity',
+        lambda path: {'physicalTotalBytes': 100, 'physicalAvailableBytes': 80})
+
+    report = virtiofs_source.report_source_root(None)
+
+    assert source_root.is_dir()
+    assert report['sourceRoot'] == os.path.realpath(str(source_root))
+    assert report['cacheEntries'] == []
+
+
+def test_report_source_root_rejects_missing_parent_mount(tmp_path):
+    source_root = tmp_path / 'missing-mount' / 'ai-model-cache'
+
+    with pytest.raises(Exception) as exc_info:
+        virtiofs_source.report_source_root(str(source_root))
+
+    assert 'does not exist' in str(exc_info.value)
+
+
+def test_report_source_root_rejects_non_directory_parent(tmp_path):
+    parent_file = tmp_path / 'not-a-directory'
+    parent_file.write_text('file parent')
+    source_root = parent_file / 'ai-model-cache'
+
+    with pytest.raises(Exception) as exc_info:
+        virtiofs_source.report_source_root(str(source_root))
+
+    assert 'parent[' in str(exc_info.value)
+    assert 'is not a directory' in str(exc_info.value)
+
+
 def test_prepare_model_center_cache_refreshes_when_strong_version_mismatches(tmp_path, monkeypatch):
     source_root = tmp_path / 'primary-storage' / 'ai-model-cache'
     target = source_root / 'models' / 'model-uuid' / 'v1'
