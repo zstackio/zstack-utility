@@ -179,6 +179,12 @@ class Huawei(GPUBase):
         reports the PCI address of chip 0.  The summary table reports both
         chips, so use it to discover the secondary PCI function without
         treating Warning or otherwise unhealthy chips as nominal.
+
+        See docs/hardware-tools/npu-smi-output.md#910c_normal_npu-smi-info_output
+        for the complete real output captured from the 910C environment.
+
+        See docs/hardware-tools/npu-smi-output.md#910b_normal_npu-smi-info_output
+        for the complete real output captured from the 910B environment.
         """
         gpu_infos = []
         npu_id = None
@@ -362,6 +368,37 @@ class Huawei(GPUBase):
         except Exception as ex:
             logger.debug(
                 "Failed to batch collect Huawei aios rank table: %s" % ex)
+
+    @classmethod
+    def enrich_pci_device_dependencies(cls, pci_devices, gpu_info_map):
+        devices_by_address = {
+            cls.normalize_pci_address(device.pciDeviceAddress): device
+            for device in pci_devices
+        }
+        chips_by_npu = {}
+        for address, info in (gpu_info_map or {}).items():
+            npu_id = info.get("npuId")
+            chip_id = info.get("chipId")
+            normalized_address = cls.normalize_pci_address(address)
+            if (npu_id is None or chip_id is None
+                    or normalized_address not in devices_by_address):
+                continue
+            chips_by_npu.setdefault(npu_id, {})[chip_id] = normalized_address
+
+        for chips in chips_by_npu.values():
+            if len(chips) < 2:
+                continue
+            addresses = set(chips.values())
+            for address in addresses:
+                device = devices_by_address[address]
+                dependencies = {
+                    dependency for dependency in (device.dependentDevices or [])
+                    if cls.normalize_pci_address(dependency) != address
+                }
+                dependencies.update(
+                    devices_by_address[peer].pciDeviceAddress
+                    for peer in addresses if peer != address)
+                device.dependentDevices = sorted(dependencies)
 
     # ==========================================================================
     # Prometheus Metrics Collection
