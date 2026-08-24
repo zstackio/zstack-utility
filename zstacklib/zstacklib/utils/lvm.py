@@ -1995,7 +1995,10 @@ class RecursiveOperateLv(object):
         self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
         self.backing = None
         self.delete_when_exception = delete_when_exception
-        self.skip_deactivate_tags = skip_deactivate_tags
+        if shared and skip_deactivate_tags is None:
+            self.skip_deactivate_tags = [IMAGE_TAG]
+        else:
+            self.skip_deactivate_tags = skip_deactivate_tags
 
     def __enter__(self):
         self.lock_ref_cnt.lock(self.target_lock)
