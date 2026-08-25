@@ -52,6 +52,7 @@ from kvmagent.plugins.baremetal_v2_gateway_agent import \
 from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins import host_pushgateway
 from kvmagent.plugins import vm_artifact
+from kvmagent.plugins import zbs_storage_plugin
 from kvmagent.plugins import zbs_vhost_target
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
@@ -8494,6 +8495,7 @@ class VmPlugin(kvmagent.KvmAgent):
     KVM_LIST_EXPORTED_VOLUMES_PATH = "/vm/volume/listexportedvolumes"
     KVM_UNEXPORT_NBD_VOLUMES_PATH = "/vm/volume/unexportnbdvolumes"
     KVM_CANCEL_VOLUME_CBT_BACKUP_PATH = "/vm/volume/cancelcbtbackup"
+    KVM_ROLLBACK_VOLUME_CBT_BACKUP_PATH = "/vm/volume/rollbackcbtbackup"
     KVM_GET_VOLUMES_BITMAPS_PATH = "/vm/volume/getvolumebitmaps"
     KVM_TAKE_VOLUME_MIRROR_PATH = "/vm/volume/takemirror"
     KVM_GET_VOLUME_MIRROR_MODE_PATH = "/vm/volume/getmirrormode"
@@ -11042,7 +11044,9 @@ host side snapshot files chian:
         rsp = kvmagent.AgentResponse()
         for volume in cmd.volumes:
             real_path = self.get_cbt_volume_actual_install_path(volume.installPath)
-            qemu_nbd.kill_nbd_process_by_flag(real_path)
+            found = qemu_nbd.kill_nbd_process_by_flag(real_path) == 0
+            if not found and real_path != volume.installPath:
+                qemu_nbd.kill_nbd_process_by_flag(volume.installPath)
             self.deactive_volume_if_need(real_path, False)
 
         rsp.success = True
@@ -11053,6 +11057,8 @@ host side snapshot files chian:
             return path.replace("sharedblock:/", "/dev")
         elif path.startswith('ceph'):
             return path.replace("ceph://", "rbd:")
+        elif path.startswith(PROTOCOL_CBD_PREFIX):
+            return get_volume_actual_installpath(path)
         return path
 
     @kvmagent.replyerror
@@ -11077,7 +11083,7 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = TakeVolumeCbtBackupResponse()
         isc = ImageStoreClient()
-        infos = None
+        infos = cmd.volumeInfos
 
         vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
         if not vm:
@@ -11103,9 +11109,9 @@ host side snapshot files chian:
                 bitmapTimestamp = cmd.bitmapTimestamp
             if cmd.portRange:
                 cmd.portRange = cmd.portRange.replace(":", "-")
-            infos = isc.cbt_backup_volume(vm, cmd.volumeInfos, bitmapTimestamp, cmd.portRange)
             execute_qmp_command(cmd.vmUuid, '{"execute": "migrate-set-capabilities","arguments":'
                                             '{"capabilities":[ {"capability": "dirty-bitmaps", "state":true}]}}')
+            infos = isc.cbt_backup_volume(vm, cmd.volumeInfos, bitmapTimestamp, cmd.portRange)
             logger.info('finished create cbt backup on vm[%s]' % cmd.vmUuid)
 
         except Exception as e:
@@ -11137,32 +11143,26 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def rollback_volume_cbt_backup(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CancelVolumeCbtBackupResponse()
+
+        vm = get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
+        if not vm:
+            raise kvmagent.KvmError("vm[uuid: %s] not found by libvirt" % cmd.vmUuid)
+
+        try:
+            ImageStoreClient().rollback_vm_cbt_backup_jobs(cmd.vmUuid, cmd.records)
+        except Exception as e:
+            content = traceback.format_exc()
+            logger.warn("rollback vm cbt task failed: " + str(e) + '\n' + content)
+            rsp.error = str(e)
+            rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def get_volumes_cbt_bitmaps(self, req):
-        def _merge_json_data(rbd_list, qcow2_list):
-            result = {}
-            merge_result = {}
-            qcow2_result = qcow2_list
-            for rbd_start, rbd_length in rbd_list.items():
-                rbd_end = rbd_start + rbd_length
-                result[rbd_start] = rbd_length
-
-                if not qcow2_list:
-                    continue
-                for qcow2_start, qcow2_length in qcow2_result.items():
-                    qcow2_end = qcow2_start + qcow2_length
-                    if (qcow2_start <= rbd_start <= qcow2_end) or (rbd_start >= qcow2_start >= rbd_end) or (
-                            qcow2_start <= rbd_end <= qcow2_end) or (rbd_start >= qcow2_end >= rbd_end):
-                        start = min(rbd_start, qcow2_start)
-                        end = max(rbd_end, qcow2_end)
-                        length = end - start
-                        result.pop(rbd_start, None)
-                        qcow2_result.pop(qcow2_start, None)
-                        merge_result[start] = length
-
-            result.update(merge_result)
-            result.update(qcow2_result)
-            return result
-
         def _get_volume_bitmap(volume_info):
             bitmap_map = {}
             if volume_info.mode == "full":
@@ -11172,7 +11172,18 @@ host side snapshot files chian:
 
                     raw_path = volume_info.volume.installPath.replace('ceph://', '')
                     raw_result = qemu.get_rbd_data_bitmap(raw_path, MAX_NBD_READ_SIZE)
-                    bitmap_map = _merge_json_data(raw_result, qcow2_result)
+                    bitmap_map = qemu.merge_data_bitmaps([raw_result, qcow2_result], MAX_NBD_READ_SIZE)
+                elif volume_info.volume.installPath.startswith(PROTOCOL_CBD_PREFIX):
+                    _, logical_pool, volume = volume_info.volume.installPath.split('/', 2)
+                    raw_path = "%s/%s" % (logical_pool, volume)
+                    raw_result = zbs_storage_plugin.query_allocated_extents(raw_path)
+
+                    qcow2_path = get_volume_actual_installpath(volume_info.target)
+                    if not qcow2_path.startswith('cbd:'):
+                        raise ValueError("invalid ZBS CBT scratch path: expected cbd: protocol")
+                    qcow2_result = qemu.get_data_bitmap(
+                        qcow2_path, MAX_NBD_READ_SIZE, False, True, "-f qcow2")
+                    bitmap_map = qemu.merge_data_bitmaps([raw_result, qcow2_result], MAX_NBD_READ_SIZE)
                 else:
                     path = build_nbd_url(volume_info.nbdServer, volume_info.nbdPort, volume_info.scratchNodeName)
                     bitmap_map = qemu.get_data_bitmap(path, MAX_NBD_READ_SIZE, False, True, "-f raw")
@@ -13609,6 +13620,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.KVM_LIST_EXPORTED_VOLUMES_PATH, self.list_exported_volumes)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_CBT_BACKUP_PATH, self.take_volume_cbt_backup)
         http_server.register_async_uri(self.KVM_CANCEL_VOLUME_CBT_BACKUP_PATH, self.cancel_volume_cbt_backup)
+        http_server.register_async_uri(self.KVM_ROLLBACK_VOLUME_CBT_BACKUP_PATH, self.rollback_volume_cbt_backup)
         http_server.register_async_uri(self.KVM_GET_VOLUMES_BITMAPS_PATH, self.get_volumes_cbt_bitmaps)
         http_server.register_async_uri(self.KVM_TAKE_VOLUME_MIRROR_PATH, self.take_volume_mirror)
         http_server.register_async_uri(self.KVM_GET_VOLUME_MIRROR_MODE_PATH, self.get_volume_mirror_mode)

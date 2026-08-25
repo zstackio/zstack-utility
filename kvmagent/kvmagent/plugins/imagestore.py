@@ -139,12 +139,17 @@ class ImageStoreClient(object):
                 raise Exception('fail to mirror volume %s, because %s' % (vm, str(err)))
 
     def cbt_backup_volume(self, vm, volume_infos, bitmapTimestamp, portRange):
+        def _find_target_disk(volume):
+            if volume.deviceType == 'cbd':
+                return vm._get_target_disk_by_path(volume.installPath)
+            return vm._get_target_disk(volume)
+
         def _parse_json_and_update_mode(volume_infos, json_data):
             json_list = json.loads(json_data)
             infos = []
 
             for info in volume_infos:
-                target_disk, _ = vm._get_target_disk(info.volume)
+                target_disk, _ = _find_target_disk(info.volume)
                 node_name = self.get_disk_device_name(target_disk)
                 for item in json_list:
                     if item['device'] == node_name:
@@ -159,7 +164,7 @@ class ImageStoreClient(object):
 
         volumes = ""
         for volume_info in volume_infos:
-            target_disk, _ = vm._get_target_disk(volume_info.volume)
+            target_disk, _ = _find_target_disk(volume_info.volume)
             node_name = self.get_disk_device_name(target_disk)
 
             target_install_path = volume_info.target
@@ -169,11 +174,17 @@ class ImageStoreClient(object):
         with linux.ShowLibvirtErrorOnException(vm):
             cmdstr = '%s cbtbak -domain %s -volumes "%s" -bitmap "%s" -portrange "%s" > %s' % \
                      (self.ZSTORE_CLI_PATH, vm.uuid, volumes, bitmapTimestamp, portRange, PFILE)
-            shell.call(cmdstr)
+            shell_cmd = shell.ShellCmd(cmdstr)
+            shell_cmd(False)
             with open(PFILE) as fd:
                 linux.rm_file_force(PFILE)
                 json_data = fd.read()
-                return  _parse_json_and_update_mode(volume_infos, json_data)
+            infos = _parse_json_and_update_mode(volume_infos, json_data) if json_data else []
+            if shell_cmd.return_code != 0:
+                shell_cmd.raise_error()
+            if not json_data:
+                raise Exception('cbtbak returned empty result')
+            return infos
 
     def stop_vm_cbt_backup_jobs(self, vm, records, force=False):
         infos = ""
@@ -185,6 +196,23 @@ class ImageStoreClient(object):
         with linux.ShowLibvirtErrorOnException(vm):
             cmdstr = '%s stopcbtbak -force=%s -domain %s -volumes "%s" -bitmap "%s"' % \
                      (self.ZSTORE_CLI_PATH, force, vm, infos, bitmapName)
+            return shell.call(cmdstr).strip()
+
+    def rollback_vm_cbt_backup_jobs(self, vm, records):
+        infos = ""
+        previous_bitmap = ""
+        new_bitmap = ""
+        for record in records:
+            infos += ",".join([record.scratchNodeName, record.target, record.mode]) + ";"
+            if record.lastBitmapName:
+                previous_bitmap = record.lastBitmapName
+            if record.bitmapName:
+                new_bitmap = record.bitmapName
+        if not new_bitmap:
+            raise ValueError("missing new bitmap for CBT rollback")
+        with linux.ShowLibvirtErrorOnException(vm):
+            cmdstr = '%s stopcbtbak -rollback=true -domain %s -volumes "%s" -bitmap "%s" -newbitmap "%s"' % \
+                     (self.ZSTORE_CLI_PATH, vm, infos, previous_bitmap, new_bitmap)
             return shell.call(cmdstr).strip()
 
     def query_vm_mirror_latencies_boundary(self, vm, times):

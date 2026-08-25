@@ -7,10 +7,9 @@ from zstacklib.utils import linux
 
 
 def export(port, *args):
-    command = 'qemu-nbd -p %s' % port
-    if args:
-        command += ' ' + ' '.join(str(arg) for arg in args)
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    command = ['qemu-nbd', '-p', str(port)]
+    command.extend(str(arg) for arg in args)
+    process = subprocess.Popen(command, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return process
 
 

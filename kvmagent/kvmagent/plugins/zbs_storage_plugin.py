@@ -1,3 +1,4 @@
+import json
 import os.path
 
 from kvmagent import kvmagent
@@ -13,6 +14,39 @@ from zstacklib.utils import shell
 
 
 logger = log.get_logger(__name__)
+
+
+def query_allocated_extents(path):
+    output = shell.call("zbs query diff --path %s --format json" % linux.shellquote(path))
+    response = json.loads(output.strip())
+    if not isinstance(response, dict):
+        raise ValueError("invalid zbs query diff response: expected an object")
+
+    error = response.get('error')
+    if error:
+        if isinstance(error, dict):
+            code = error.get('code')
+            message = error.get('message') or str(error)
+        else:
+            code = None
+            message = str(error)
+        raise RuntimeError("zbs query diff failed for %s: code=%s, message=%s" % (path, code, message))
+
+    extents = response.get('result')
+    if not isinstance(extents, list):
+        raise ValueError("invalid zbs query diff response: result must be a list")
+
+    result = {}
+    for item in extents:
+        exists = item.get('exists')
+        if not (exists is True or str(exists).lower() == 'true'):
+            continue
+        start = int(item['offset'])
+        length = int(item['length'])
+        if start < 0 or length <= 0:
+            raise ValueError("invalid zbs query diff extent: offset must be non-negative and length must be positive")
+        result[start] = length
+    return result
 
 
 class CheckHostStorageConnectionRsp(kvmagent.AgentResponse):
