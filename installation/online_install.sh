@@ -11,7 +11,7 @@ UPGRADE='n'
 FORCE='n'
 MANAGEMENT_INTERFACE=`ip route | grep default | head -n 1 | cut -d ' ' -f 5`
 SUPPORTED_OS="$CENTOS6, $CENTOS7, $UBUNTU1404"
-ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
+ZSTACK_INSTALL_LOG='/tmp/cloud_installation.log'
 [ -f $ZSTACK_INSTALL_LOG ] && /bin/rm -f $ZSTACK_INSTALL_LOG
 INSTALLATION_FAILURE=/tmp/zstack_installation_failure_exit_code
 [ -f $INSTALLATION_FAILURE ] && /bin/rm -f $INSTALLATION_FAILURE

@@ -7389,7 +7389,7 @@ mkdir -p {4}
         os.fdopen(fd, 'w').write(pre_script)
 
         pre_script_on_rh6 = '''
-ZSTACK_INSTALL_LOG='/tmp/zstack_installation.log'
+ZSTACK_INSTALL_LOG='/tmp/cloud_installation.log'
 rpm -qi python-crypto >/dev/null 2>&1
 if [ $? -eq 0 ]; then
     echo "Management node remote installation failed. You need to manually remove python-crypto by \n\n \`rpm -ev python-crypto\` \n\n in remote management node; otherwise it will conflict with ansible's pycrypto." >>$ZSTACK_INSTALL_LOG
