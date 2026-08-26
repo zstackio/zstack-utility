@@ -72,3 +72,26 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
             hostUuid=hostUuid
         )
         self.assertEqual(True, rsp.success, rsp.error)
+
+        thinSnapshotUuid = misc.uuid()
+        virtualSize = 2147483648
+        rsp = sharedblock_utils.shareblock_create_empty_volume(
+            installPath="sharedblock://{}/{}".format(vgUuid,thinSnapshotUuid),
+            volumeUuid=thinSnapshotUuid,
+            size=virtualSize,
+            hostUuid=hostUuid,
+            vgUuid=vgUuid,
+        )
+        self.assertEqual(True, rsp.success, rsp.error)
+        lvm.resize_lv("/dev/{}/{}".format(vgUuid, thinSnapshotUuid), 1073741824, True)
+
+        thickVolumeUuid = misc.uuid()
+        rsp = sharedblock_utils.sharedblock_merge_snapshot(
+            snapshotInstallPath="sharedblock://{}/{}".format(vgUuid,thinSnapshotUuid),
+            workspaceInstallPath="sharedblock://{}/{}".format(vgUuid,thickVolumeUuid),
+            vgUuid=vgUuid,
+            hostUuid=hostUuid,
+            provisioning=lvm.VolumeProvisioningStrategy.ThickProvisioning
+        )
+        self.assertEqual(True, rsp.success, rsp.error)
+        self.assertGreaterEqual(int(lvm.get_lv_size("/dev/{}/{}".format(vgUuid, thickVolumeUuid))), virtualSize)

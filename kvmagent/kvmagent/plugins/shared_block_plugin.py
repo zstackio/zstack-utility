@@ -1192,7 +1192,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.update_pv_allocate_strategy(cmd)
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(snapshot_abs_path)
-            lv_size = max(self.get_total_required_size(snapshot_abs_path), int(lvm.get_lv_size(snapshot_abs_path)))
+            lv_size = virtual_size if cmd.provisioning == lvm.VolumeProvisioningStrategy.ThickProvisioning else \
+                max(self.get_total_required_size(snapshot_abs_path), int(lvm.get_lv_size(snapshot_abs_path)))
             if not lvm.lv_exists(workspace_abs_path):
                 pe_ranges = lvm.get_lv_affinity_sorted_pvs(snapshot_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(workspace_abs_path, lv_size,
