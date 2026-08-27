@@ -1870,8 +1870,8 @@ upgrade_zstack(){
     # configure deploy_mode if it is zsv
     if zstack-ctl show_configuration | grep 'deploy_mode' | grep zsv >/dev/null 2>&1; then
         show_spinner iz_upgrade_zsphere_tools
-        show_spinner iz_install_key_manager
     fi
+    show_spinner iz_install_key_manager
 
     # update consoleProxyCertFile if necessary
     update_console_proxy_cert_file
@@ -2847,8 +2847,8 @@ install_zstack(){
     # zsphere is zsv env
     if [ x"$ZSV_INSTALL" = x"y" ]; then
         show_spinner iz_install_zsphere_tools
-        show_spinner iz_install_key_manager
     fi
+    show_spinner iz_install_key_manager
 }
 
 install_db(){
