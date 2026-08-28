@@ -77,6 +77,27 @@ class TestGPUBase(unittest.TestCase):
 
 class TestGPUVendorRegistry(unittest.TestCase):
     """Test vendor registration system"""
+
+    def test_enrich_pci_device_dependencies_dispatches_by_vendor(self):
+        from zstacklib.gpu import enrich_pci_device_dependencies
+
+        first = type('PciDeviceTO', (), {})()
+        first.vendor = "Huawei"
+        first.pciDeviceAddress = "0000:87:00.0"
+        first.dependentDevices = []
+        second = type('PciDeviceTO', (), {})()
+        second.vendor = "Huawei"
+        second.pciDeviceAddress = "0000:97:00.0"
+        second.dependentDevices = []
+        gpu_info_map = {
+            first.pciDeviceAddress: {"npuId": "0", "chipId": "0"},
+            second.pciDeviceAddress: {"npuId": "0", "chipId": "1"},
+        }
+
+        enrich_pci_device_dependencies([first, second], gpu_info_map)
+
+        self.assertEqual(first.dependentDevices, [second.pciDeviceAddress])
+        self.assertEqual(second.dependentDevices, [first.pciDeviceAddress])
     
     def test_nvidia_registered(self):
         """Test NVIDIA vendor is registered"""
@@ -421,6 +442,68 @@ class TestAMD(unittest.TestCase):
 
 class TestHuawei(unittest.TestCase):
     """Test Huawei vendor implementation"""
+
+    def test_enrich_pci_device_dependencies_groups_chips_of_one_npu(self):
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        first = type('PciDeviceTO', (), {})()
+        first.pciDeviceAddress = "0000:87:00.0"
+        first.dependentDevices = ["0000:86:00.0"]
+        second = type('PciDeviceTO', (), {})()
+        second.pciDeviceAddress = "0000:97:00.0"
+        second.dependentDevices = []
+        gpu_info_map = {
+            first.pciDeviceAddress: {"npuId": "0", "chipId": "0"},
+            second.pciDeviceAddress: {"npuId": "0", "chipId": "1"},
+        }
+
+        Huawei.enrich_pci_device_dependencies(
+            [first, second], gpu_info_map)
+
+        self.assertEqual(
+            first.dependentDevices,
+            ["0000:86:00.0", second.pciDeviceAddress])
+        self.assertEqual(second.dependentDevices, [first.pciDeviceAddress])
+
+    def test_enrich_pci_device_dependencies_excludes_device_itself(self):
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        first = type('PciDeviceTO', (), {})()
+        first.pciDeviceAddress = "0000:87:00.0"
+        first.dependentDevices = [first.pciDeviceAddress]
+        second = type('PciDeviceTO', (), {})()
+        second.pciDeviceAddress = "0000:97:00.0"
+        second.dependentDevices = []
+        gpu_info_map = {
+            first.pciDeviceAddress: {"npuId": "0", "chipId": "0"},
+            second.pciDeviceAddress: {"npuId": "0", "chipId": "1"},
+        }
+
+        Huawei.enrich_pci_device_dependencies(
+            [first, second], gpu_info_map)
+
+        self.assertEqual(first.dependentDevices, [second.pciDeviceAddress])
+
+    def test_enrich_pci_device_dependencies_ignores_incomplete_groups(self):
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        first = type('PciDeviceTO', (), {})()
+        first.pciDeviceAddress = "0000:87:00.0"
+        first.dependentDevices = []
+        second = type('PciDeviceTO', (), {})()
+        second.pciDeviceAddress = "0000:97:00.0"
+        second.dependentDevices = []
+        gpu_info_map = {
+            first.pciDeviceAddress: {"npuId": "0", "chipId": "0"},
+            second.pciDeviceAddress: {"npuId": "1", "chipId": "0"},
+            "0000:a7:00.0": {"npuId": "0", "chipId": "1"},
+        }
+
+        Huawei.enrich_pci_device_dependencies(
+            [first, second], gpu_info_map)
+
+        self.assertEqual(first.dependentDevices, [])
+        self.assertEqual(second.dependentDevices, [])
     
     def test_vendor_config(self):
         """Test Huawei vendor configuration"""

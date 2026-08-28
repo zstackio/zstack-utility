@@ -413,6 +413,35 @@ class TestGPUDeviceMatcher(unittest.TestCase):
         self.assertFalse(_gpu_device_matcher(MockTO(), MockContext()))
 
 
+class TestGPUDevicePrepare(unittest.TestCase):
+    @patch('zstacklib.utils.gpu.enrich_gpu_info_map')
+    @patch('zstacklib.utils.gpu.get_all_gpu_infos_by_pci')
+    def test_post_prepare_hook_enriches_vendor_dependencies(
+            self, mock_get_gpu_infos, _mock_enrich_gpu_info_map):
+        from zstacklib.utils.gpu import _gpu_device_prepare
+
+        gpu_info_map = {
+            "0000:87:00.0": {"npuId": "0", "chipId": "0"},
+            "0000:97:00.0": {"npuId": "0", "chipId": "1"},
+        }
+        mock_get_gpu_infos.return_value = gpu_info_map
+        context = type('Context', (), {'gpu_info_map': None})()
+        first = type('PciDeviceTO', (), {})()
+        first.vendor = "Huawei"
+        first.pciDeviceAddress = "0000:87:00.0"
+        first.dependentDevices = []
+        second = type('PciDeviceTO', (), {})()
+        second.vendor = "Huawei"
+        second.pciDeviceAddress = "0000:97:00.0"
+        second.dependentDevices = []
+
+        post_prepare = _gpu_device_prepare(context)
+        post_prepare([first, second], context)
+
+        self.assertEqual(first.dependentDevices, [second.pciDeviceAddress])
+        self.assertEqual(second.dependentDevices, [first.pciDeviceAddress])
+
+
 class TestGPUDeviceProcessor(unittest.TestCase):
     """Test _gpu_device_processor: only treats device as GPU when gpu_info is valid (ZSTAC-81489)"""
 

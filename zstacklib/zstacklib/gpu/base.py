@@ -547,6 +547,11 @@ class GPUBase(object):
         """
         pass
 
+    @classmethod
+    def enrich_pci_device_dependencies(cls, pci_devices, gpu_info_map):
+        """Enrich PCI dependencies using vendor-specific device topology."""
+        pass
+
     # ==========================================================================
     # Device Type Validation
     # ==========================================================================

@@ -2192,6 +2192,11 @@ def get_all_metrics():
     return results
 
 
+def _enrich_gpu_pci_device_dependencies(pci_devices, context):
+    from zstacklib.gpu import enrich_pci_device_dependencies
+    enrich_pci_device_dependencies(pci_devices, context.gpu_info_map)
+
+
 def _gpu_device_prepare(context):
     """
     GPU device ops preparation hook (Linux kernel style).
@@ -2206,8 +2211,6 @@ def _gpu_device_prepare(context):
     Returns:
         callable or None: Post-prepare hook (device_list, context) -> None, or None
     """
-    import os
-
     # Batch collect GPU info
     gpu_info_map = get_all_gpu_infos_by_pci()
 
@@ -2217,10 +2220,7 @@ def _gpu_device_prepare(context):
     # Store in context for use by device ops and other components (e.g., sriov detection)
     context.gpu_info_map = gpu_info_map
 
-    # No post-prepare hook needed anymore
-    # SR-IOV detection is now handled by vendor methods in GPU device ops
-    # gpu_info_map is available in context for vendor methods to use
-    return None
+    return _enrich_gpu_pci_device_dependencies
 
 
 # Register GPU device operations on module import (Linux kernel style)

@@ -3715,8 +3715,7 @@ done
         # Note: GPU vendors implement detect_vfio_mdev_capability and
         # detect_sriov_capability methods
 
-        # Call post-prepare hooks if any (currently not used, but kept for
-        # extensibility)
+        # Call post-prepare hooks after all PCI devices have been collected.
         for post_prepare_hook in post_prepare_hooks:
             try:
                 post_prepare_hook(rsp.pciDevicesInfo, context)
