@@ -21,7 +21,8 @@ class TestCpuHotplugOnline(TestCase):
         return vm
 
     def _run_qga(self, guest_os, vcpus, domain_xml=None, state='Running',
-                 command_errors=None, set_results=None):
+                 command_errors=None, set_results=None, get_results=None,
+                 target_cpu_num=None, return_sleep=False):
         vm = self._new_vm(domain_xml or '<domain><name>vm-uuid</name></domain>')
         qga = mock.Mock()
         qga.state = state
@@ -29,12 +30,23 @@ class TestCpuHotplugOnline(TestCase):
         calls = []
         command_errors = command_errors or {}
         set_results = iter(set_results) if set_results is not None else None
+        get_results = iter(get_results) if get_results is not None else None
+
+        if target_cpu_num is None:
+            logical_ids = [vcpu.get('logical-id') for vcpu in vcpus
+                           if isinstance(vcpu, dict)
+                           and isinstance(vcpu.get('logical-id'), (int, long))
+                           and not isinstance(vcpu.get('logical-id'), bool)] \
+                if isinstance(vcpus, list) else []
+            target_cpu_num = max(logical_ids) + 1 if logical_ids else 5
 
         def call_qga(command, args=None):
             calls.append((command, args))
             if command in command_errors:
                 raise command_errors[command]
             if command == 'guest-get-vcpus':
+                if get_results is not None:
+                    return next(get_results)
                 return vcpus
             if command == 'guest-set-vcpus':
                 if set_results is not None:
@@ -44,10 +56,13 @@ class TestCpuHotplugOnline(TestCase):
 
         qga.call_qga_command.side_effect = call_qga
         with mock.patch.object(vm_plugin, 'HOST_ARCH', 'x86_64'), \
-                mock.patch.object(vm_plugin, 'VmQga') as qga_class:
+                mock.patch.object(vm_plugin, 'VmQga') as qga_class, \
+                mock.patch.object(vm_plugin.time, 'sleep') as sleep:
             qga_class.QGA_STATE_RUNNING = 'Running'
             qga_class.return_value = qga
-            vm._qga_online_hotplugged_cpus(4)
+            vm._qga_online_hotplugged_cpus(4, target_cpu_num)
+        if return_sleep:
+            return calls, sleep
         return calls
 
     def test_ubuntu_and_debian_payload_only_contains_new_offline_cpus(self):
@@ -64,17 +79,22 @@ class TestCpuHotplugOnline(TestCase):
         ]}
 
         for guest_os in ('Ubuntu 22.04 LTS', 'Debian GNU/Linux 12'):
-            calls = self._run_qga(guest_os, vcpus)
+            calls, sleep = self._run_qga(
+                guest_os,
+                vcpus,
+                return_sleep=True,
+            )
             self.assertEqual(
                 [('guest-get-vcpus', None), ('guest-set-vcpus', expected)],
                 calls,
             )
+            self.assertEqual([], sleep.call_args_list)
 
     def test_non_x86_skips_before_constructing_qga(self):
         vm = self._new_vm()
         with mock.patch.object(vm_plugin, 'HOST_ARCH', 'aarch64'), \
                 mock.patch.object(vm_plugin, 'VmQga') as qga_class:
-            vm._qga_online_hotplugged_cpus(4)
+            vm._qga_online_hotplugged_cpus(4, 8)
         qga_class.assert_not_called()
 
     def test_empty_and_non_whitelist_os_skip(self):
@@ -124,17 +144,71 @@ class TestCpuHotplugOnline(TestCase):
         self.assertFalse(vm._has_smbios_cpu_hotplug())
 
     def test_empty_and_all_online_vcpu_lists_do_not_call_guest_set(self):
-        for vcpus in (
-                [],
-                [{'logical-id': cpu_id, 'online': True} for cpu_id in range(8)]):
-            calls = self._run_qga('Debian 12', vcpus)
-            self.assertEqual([('guest-get-vcpus', None)], calls)
+        calls = self._run_qga(
+            'Debian 12',
+            [{'logical-id': cpu_id, 'online': True} for cpu_id in range(8)],
+        )
+        self.assertEqual([('guest-get-vcpus', None)], calls)
+
+    def test_waits_for_guest_to_enumerate_hotplugged_cpus(self):
+        old_vcpus = [{'logical-id': cpu_id, 'online': True}
+                     for cpu_id in range(4)]
+        complete_vcpus = old_vcpus + [
+            {'logical-id': 4, 'online': False},
+            {'logical-id': 5, 'online': False},
+        ]
+
+        calls, sleep = self._run_qga(
+            'Ubuntu 22.04',
+            complete_vcpus,
+            get_results=(old_vcpus, complete_vcpus),
+            target_cpu_num=6,
+            return_sleep=True,
+        )
+
+        self.assertEqual([
+            ('guest-get-vcpus', None),
+            ('guest-get-vcpus', None),
+            ('guest-set-vcpus', {'vcpus': [
+                {'logical-id': 4, 'online': True},
+                {'logical-id': 5, 'online': True},
+            ]}),
+        ], calls)
+        self.assertEqual(
+            [mock.call(vm_plugin._QGA_CPU_ENUM_RETRY_INTERVAL)],
+            sleep.call_args_list,
+        )
+
+    def test_guest_cpu_enumeration_timeout_is_fail_open(self):
+        old_vcpus = [{'logical-id': cpu_id, 'online': True}
+                     for cpu_id in range(4)]
+        with mock.patch.object(vm_plugin.logger, 'warning') as warning:
+            calls, sleep = self._run_qga(
+                'Debian 12',
+                old_vcpus,
+                target_cpu_num=6,
+                return_sleep=True,
+            )
+
+        self.assertEqual(
+            [('guest-get-vcpus', None)] * vm_plugin._QGA_CPU_ENUM_RETRY_TIMES,
+            calls,
+        )
+        self.assertEqual(
+            [mock.call(vm_plugin._QGA_CPU_ENUM_RETRY_INTERVAL)]
+            * (vm_plugin._QGA_CPU_ENUM_RETRY_TIMES - 1),
+            sleep.call_args_list,
+        )
+        warning.assert_called_once_with(
+            'timed out waiting for guest to enumerate hotplugged CPUs '
+            'for vm[uuid:vm-uuid], missing CPUs [4, 5]'
+        )
 
     def test_qga_exception_is_fail_open(self):
         vm = self._new_vm()
         with mock.patch.object(vm_plugin, 'HOST_ARCH', 'x86_64'), \
                 mock.patch.object(vm_plugin, 'VmQga', side_effect=Exception('QGA timeout')):
-            vm._qga_online_hotplugged_cpus(4)
+            vm._qga_online_hotplugged_cpus(4, 8)
 
     def test_guest_get_vcpus_exception_is_fail_open(self):
         calls = self._run_qga(
@@ -343,10 +417,10 @@ class TestCpuHotplugHandlers(TestCase):
         self.assertEqual(8, rsp.cpuNum)
         self.assertEqual(3, vm.get_cpu_num.call_count)
         vm.hotplug_cpu.assert_called_once_with(8)
-        vm._qga_online_hotplugged_cpus.assert_called_once_with(4)
+        vm._qga_online_hotplugged_cpus.assert_called_once_with(4, 8)
         self.assertLess(
             vm.method_calls.index(mock.call.hotplug_cpu(8)),
-            vm.method_calls.index(mock.call._qga_online_hotplugged_cpus(4)),
+            vm.method_calls.index(mock.call._qga_online_hotplugged_cpus(4, 8)),
         )
 
     def test_cpumem_cpu_increase_calls_qga_with_previous_cpu_count(self):
@@ -369,8 +443,13 @@ class TestCpuHotplugHandlers(TestCase):
         self.assertEqual(9 * 1024 * 1024 * 1024, rsp.memorySize)
         vm.hotplug_mem.assert_called_once_with(9 * 1024 * 1024 * 1024)
         vm.hotplug_cpu.assert_called_once_with(8)
-        vm._qga_online_hotplugged_cpus.assert_called_once_with(4)
-        self.assertLess(
-            vm.method_calls.index(mock.call.hotplug_cpu(8)),
-            vm.method_calls.index(mock.call._qga_online_hotplugged_cpus(4)),
+        vm._qga_online_hotplugged_cpus.assert_called_once_with(4, 8)
+        expected_hotplug_order = [
+            mock.call.hotplug_mem(9 * 1024 * 1024 * 1024),
+            mock.call.hotplug_cpu(8),
+            mock.call._qga_online_hotplugged_cpus(4, 8),
+        ]
+        self.assertEqual(
+            expected_hotplug_order,
+            [call for call in vm.method_calls if call in expected_hotplug_order],
         )

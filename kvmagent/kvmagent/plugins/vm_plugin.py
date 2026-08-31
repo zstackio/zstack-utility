@@ -89,6 +89,8 @@ HOST_ARCH = platform.machine()
 _CPU_HOTPLUG_OS_WHITELIST = ('ubuntu', 'debian')
 _SMBIOS_MANUFACTURER = 'Microsoft Corporation'
 _SMBIOS_PRODUCT = 'Virtual Machine'
+_QGA_CPU_ENUM_RETRY_TIMES = 5
+_QGA_CPU_ENUM_RETRY_INTERVAL = 1
 
 DIST = platform.dist()
 DIST_NAME = DIST[0]
@@ -4801,7 +4803,7 @@ class Vm(object):
             logger.debug('failed to check SMBIOS for vm[uuid:%s]: %s' % (self.uuid, str(ex)))
             return False
 
-    def _qga_online_hotplugged_cpus(self, prev_cpu_num):
+    def _qga_online_hotplugged_cpus(self, prev_cpu_num, target_cpu_num):
         """After CPU hotplug, use QGA to online newly added CPUs for whitelisted guests.
 
         Only x86_64 Ubuntu/Debian guests without the SMBIOS auto-online marker
@@ -4828,14 +4830,40 @@ class Vm(object):
                              'skip QGA cpu online' % self.uuid)
                 return
 
-            vcpus_info = qga.call_qga_command('guest-get-vcpus')
-            if not vcpus_info:
-                return
+            expected_cpu_ids = set(range(prev_cpu_num, target_cpu_num))
+            vcpus_info = None
+            for attempt in range(_QGA_CPU_ENUM_RETRY_TIMES):
+                vcpus_info = qga.call_qga_command('guest-get-vcpus')
+                if not isinstance(vcpus_info, list):
+                    logger.warning('invalid QGA guest-get-vcpus result for vm[uuid:%s]: %s'
+                                   % (self.uuid, vcpus_info))
+                    return
+
+                if any(not isinstance(vcpu, dict)
+                       or isinstance(vcpu.get('logical-id'), bool)
+                       or not isinstance(vcpu.get('logical-id'), (int, long))
+                       or not isinstance(vcpu.get('online'), bool)
+                       for vcpu in vcpus_info):
+                    logger.warning('malformed QGA guest-get-vcpus result for vm[uuid:%s]: %s'
+                                   % (self.uuid, vcpus_info))
+                    return
+
+                enumerated_cpu_ids = set(vcpu['logical-id'] for vcpu in vcpus_info)
+                missing_cpu_ids = expected_cpu_ids - enumerated_cpu_ids
+                if not missing_cpu_ids:
+                    break
+
+                if attempt + 1 == _QGA_CPU_ENUM_RETRY_TIMES:
+                    logger.warning('timed out waiting for guest to enumerate hotplugged CPUs '
+                                   'for vm[uuid:%s], missing CPUs %s'
+                                   % (self.uuid, sorted(missing_cpu_ids)))
+                    return
+                time.sleep(_QGA_CPU_ENUM_RETRY_INTERVAL)
 
             offline_cpus = []
             for vcpu in vcpus_info:
-                if isinstance(vcpu, dict) and not vcpu.get('online', True) \
-                        and vcpu.get('logical-id', 0) >= prev_cpu_num:
+                if not vcpu['online'] \
+                        and prev_cpu_num <= vcpu['logical-id'] < target_cpu_num:
                     offline_cpus.append({
                         'logical-id': vcpu['logical-id'],
                         'online': True
@@ -8212,7 +8240,7 @@ class VmPlugin(kvmagent.KvmAgent):
             prev_cpu_num = vm.get_cpu_num()
             cpu_num = cmd.cpuNum
             vm.hotplug_cpu(cpu_num)
-            vm._qga_online_hotplugged_cpus(prev_cpu_num)
+            vm._qga_online_hotplugged_cpus(prev_cpu_num, cpu_num)
             vm = get_vm_by_uuid(cmd.vmUuid)
             rsp.cpuNum = vm.get_cpu_num()
             logger.debug('successfully increase cpu number of vm[uuid:%s] to %s' % (cmd.vmUuid, vm.get_cpu_num()))
@@ -8235,7 +8263,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm.hotplug_mem(memory_size)
             vm.hotplug_cpu(cpu_num)
             if cpu_num > prev_cpu_num:
-                vm._qga_online_hotplugged_cpus(prev_cpu_num)
+                vm._qga_online_hotplugged_cpus(prev_cpu_num, cpu_num)
             vm = get_vm_by_uuid(cmd.vmUuid)
             rsp.cpuNum = vm.get_cpu_num()
             rsp.memorySize = vm.get_memory()
