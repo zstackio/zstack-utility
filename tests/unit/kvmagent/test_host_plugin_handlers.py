@@ -46,6 +46,12 @@ def _make_plugin():
     return plugin
 
 
+@pytest.fixture(autouse=True)
+def _default_distribution():
+    with patch.object(kva, 'get_host_distribution', return_value='centos'):
+        yield
+
+
 @pytest.mark.kvmagent
 class TestHostPluginPing:
     """Test host_plugin.ping handler."""
@@ -971,12 +977,13 @@ class TestHostPluginSetIpOnHostNetworkInterface:
         rsp = json.loads(result)
         assert rsp['success'] is True
 
-    def test_set_ipv6_on_host_network_interface(self):
+    @pytest.mark.parametrize('distribution', ['kylin', 'alinux'])
+    def test_set_ipv6_on_host_network_interface(self, distribution):
         plugin = _make_plugin()
-        plugin._has_vlan_or_bridge = MagicMock(return_value=False)
 
         from zstacklib.utils import shell
         shell.call = MagicMock()
+        shell.run = MagicMock(return_value=0)
 
         req = _make_req({
             'interfaceName': 'eth1',
@@ -988,12 +995,126 @@ class TestHostPluginSetIpOnHostNetworkInterface:
             'oldNetmask': None,
             'oldGateway': None,
         })
-        result = plugin.set_ip_on_host_network_interface(req)
+        with patch.object(kva, 'get_host_distribution', return_value=distribution):
+            result = plugin.set_ip_on_host_network_interface(req)
         rsp = json.loads(result)
         assert rsp['success'] is True
         calls = [c[0][0] for c in shell.call.call_args_list]
+        assert '/usr/local/bin/zs-network-setting -i eth1 fd66:6:6:6:1:1:1:f257 64' in calls
+
+    def test_set_ip_allows_interface_with_upper_device(self):
+        plugin = _make_plugin()
+
+        from zstacklib.utils import shell
+        shell.call = MagicMock()
+        shell.run = MagicMock(return_value=0)
+
+        req = _make_req({
+            'interfaceName': 'bond0',
+            'ipAddress': '192.168.1.10',
+            'netmask': '255.255.255.0',
+            'gateway': '192.168.1.1',
+            'oldIpAddress': None,
+            'oldNetmask': None,
+            'oldGateway': None,
+        })
+        with patch.object(kva, 'get_host_distribution', return_value='kylin'):
+            rsp = json.loads(plugin.set_ip_on_host_network_interface(req))
+
+        assert rsp['success'] is True
+        shell.call.assert_any_call(
+            '/usr/local/bin/zs-network-setting -i bond0 192.168.1.10 255.255.255.0 192.168.1.1')
+
+    def test_delete_ipv6_uses_zs_network_setting(self):
+        plugin = _make_plugin()
+        from zstacklib.utils import shell
+        shell.call = MagicMock()
+        shell.run = MagicMock(return_value=0)
+
+        req = _make_req({
+            'interfaceName': 'bond0',
+            'ipAddress': None,
+            'netmask': None,
+            'gateway': None,
+            'oldIpAddress': 'fd66::10',
+            'oldNetmask': '64',
+            'oldGateway': None,
+        })
+        with patch.object(kva, 'get_host_distribution', return_value='kylin'):
+            rsp = json.loads(plugin.set_ip_on_host_network_interface(req))
+
+        assert rsp['success'] is True
+        shell.call.assert_called_once_with('/usr/local/bin/zs-network-setting --del-ipv6 bond0')
+
+    def test_unreachable_gateway_restores_old_ip_without_raising(self):
+        plugin = _make_plugin()
+        from zstacklib.utils import shell
+        shell.call = MagicMock()
+        shell.run = MagicMock(return_value=1)
+
+        req = _make_req({
+            'interfaceName': 'bond0',
+            'ipAddress': '192.168.1.20',
+            'netmask': '255.255.255.0',
+            'gateway': '192.168.1.1',
+            'oldIpAddress': '192.168.1.10',
+            'oldNetmask': '255.255.255.0',
+            'oldGateway': '192.168.1.1',
+        })
+        with patch.object(kva, 'get_host_distribution', return_value='kylin'):
+            rsp = json.loads(plugin.set_ip_on_host_network_interface(req))
+
+        assert rsp['success'] is False
+        assert rsp['error'] == 'gateway[192.168.1.1] is unreachable'
+        assert [call.args[0] for call in shell.call.call_args_list] == [
+            '/usr/local/bin/zs-network-setting -i bond0 192.168.1.20 255.255.255.0 192.168.1.1',
+            '/usr/local/bin/zs-network-setting -d bond0',
+            '/usr/local/bin/zs-network-setting -i bond0 192.168.1.10 255.255.255.0 192.168.1.1',
+        ]
+
+    def test_ipv6_keeps_existing_ip_path_without_network_manager(self):
+        plugin = _make_plugin()
+        from zstacklib.utils import shell
+        shell.call = MagicMock()
+        shell.run = MagicMock(return_value=1)
+        plugin._has_vlan_or_bridge = MagicMock(return_value=False)
+
+        req = _make_req({
+            'interfaceName': 'eth1',
+            'ipAddress': 'fd66::10',
+            'netmask': '64',
+            'prefixLength': 64,
+            'gateway': None,
+            'oldIpAddress': None,
+            'oldNetmask': None,
+            'oldGateway': None,
+        })
+        rsp = json.loads(plugin.set_ip_on_host_network_interface(req))
+
+        assert rsp['success'] is True
+        calls = [c[0][0] for c in shell.call.call_args_list]
         assert 'ip -6 addr flush dev eth1 scope global' in calls
-        assert 'ip -6 addr add fd66:6:6:6:1:1:1:f257/64 dev eth1' in calls
+        assert 'ip -6 addr add fd66::10/64 dev eth1' in calls
+
+    def test_without_network_manager_keeps_upper_device_restriction(self):
+        plugin = _make_plugin()
+        from zstacklib.utils import shell
+        shell.run = MagicMock(return_value=1)
+        plugin._has_vlan_or_bridge = MagicMock(return_value=True)
+
+        req = _make_req({
+            'interfaceName': 'eth1',
+            'ipAddress': '192.168.1.10',
+            'netmask': '255.255.255.0',
+            'gateway': None,
+            'oldIpAddress': None,
+            'oldNetmask': None,
+            'oldGateway': None,
+        })
+        rsp = json.loads(plugin.set_ip_on_host_network_interface(req))
+
+        assert rsp['success'] is False
+        assert 'has a sub-interface or a bridge port' in rsp['error']
 
 
 @pytest.mark.kvmagent

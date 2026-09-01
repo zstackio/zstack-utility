@@ -50,8 +50,7 @@ import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
 from zstacklib.utils.sizeunit import get_size
 
-os_info = platform.freedesktop_os_release()
-DIST_NAME = os_info.get('ID', '').lower()
+DIST_NAME = kvmagent.get_host_distribution()
 # FIXME(py3): remove it
 DIST_NAME = 'centos' if DIST_NAME == 'helix' else DIST_NAME
 
@@ -2954,11 +2953,84 @@ done
 
         return False
 
+    @staticmethod
+    def _update_ip_with_zs_scripts(cmd):
+        if cmd.ipAddress is None:
+            if cmd.oldIpAddress is not None and ':' in cmd.oldIpAddress:
+                shell.call('/usr/local/bin/zs-network-setting --del-ipv6 %s' %
+                           shell_quote(cmd.interfaceName))
+            else:
+                shell.call('/usr/local/bin/zs-network-setting -d %s' %
+                           shell_quote(cmd.interfaceName))
+            return
+
+        if ':' in cmd.ipAddress:
+            prefix_length = cmd.prefixLength
+            if prefix_length is None:
+                prefix_length = cmd.netmask
+            if cmd.gateway is not None:
+                shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (
+                    shell_quote(cmd.interfaceName), shell_quote(cmd.ipAddress), prefix_length,
+                    shell_quote(cmd.gateway)))
+            else:
+                shell.call('/usr/local/bin/zs-network-setting -i %s %s %s' % (
+                    shell_quote(cmd.interfaceName), shell_quote(cmd.ipAddress), prefix_length))
+            return
+
+        if cmd.gateway is not None:
+            shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (
+                shell_quote(cmd.interfaceName), shell_quote(cmd.ipAddress),
+                shell_quote(cmd.netmask), shell_quote(cmd.gateway)))
+        else:
+            shell.call('/usr/local/bin/zs-network-setting -d %s' % shell_quote(cmd.interfaceName))
+            shell.call('/usr/local/bin/zs-network-setting -i %s %s %s' % (
+                shell_quote(cmd.interfaceName), shell_quote(cmd.ipAddress), shell_quote(cmd.netmask)))
+
+    @staticmethod
+    def _restore_ip_with_zs_scripts(cmd):
+        shell.call('/usr/local/bin/zs-network-setting -d %s' % shell_quote(cmd.interfaceName))
+        if cmd.oldIpAddress is None:
+            return
+        if cmd.oldGateway is not None:
+            shell.call('/usr/local/bin/zs-network-setting -i %s %s %s %s' % (
+                shell_quote(cmd.interfaceName), shell_quote(cmd.oldIpAddress),
+                shell_quote(cmd.oldNetmask), shell_quote(cmd.oldGateway)))
+            return
+        shell.call('/usr/local/bin/zs-network-setting -i %s %s %s' % (
+            shell_quote(cmd.interfaceName), shell_quote(cmd.oldIpAddress),
+            shell_quote(cmd.oldNetmask)))
+
     @kvmagent.replyerror
     @in_bash
     def set_ip_on_host_network_interface(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetIpOnHostNetworkInterfaceRsp()
+
+        if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+            try:
+                self._update_ip_with_zs_scripts(cmd)
+            except Exception as e:
+                rsp.error = 'unable to update ip[%s], because %s' % (cmd.interfaceName, str(e))
+                rsp.success = False
+                return jsonobject.dumps(rsp)
+
+            check_gateway = (cmd.ipAddress is not None and ':' not in cmd.ipAddress and
+                             cmd.gateway is not None)
+            if not check_gateway or shell.run(
+                    'ping -c 5 -W 1 %s > /dev/null 2>&1' % shell_quote(cmd.gateway)) == 0:
+                return jsonobject.dumps(rsp)
+
+            try:
+                self._restore_ip_with_zs_scripts(cmd)
+            except Exception as e:
+                rsp.error = 'gateway[%s] is unreachable and old ip cannot be restored, because %s' % (
+                    cmd.gateway, str(e))
+                rsp.success = False
+                return jsonobject.dumps(rsp)
+
+            rsp.error = 'gateway[%s] is unreachable' % cmd.gateway
+            rsp.success = False
+            return jsonobject.dumps(rsp)
 
         try:
             if self._has_vlan_or_bridge(cmd.interfaceName):

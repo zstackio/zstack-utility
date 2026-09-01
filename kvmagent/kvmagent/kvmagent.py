@@ -61,6 +61,7 @@ _rest_service = None
 _tf_service = None
 _qemu_path = None
 host_arch = linux.HOST_ARCH
+NM_DISTROS = ('kylin', 'alinux')
 
 def new_rest_service(config={}):
     global _rest_service
@@ -80,6 +81,9 @@ def get_tf_service():
 
 def get_host_yum_release():
     return subprocess.getoutput("rpm -q zstack-release 2>/dev/null | awk -F'-' '{print $3}'").strip()
+
+def get_host_distribution():
+    return platform.freedesktop_os_release().get('ID', '').lower()
 
 def get_host_os_type():
     os_info = platform.freedesktop_os_release()
