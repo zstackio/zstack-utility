@@ -50,7 +50,7 @@ class ResourceControlManager(object):
         except ResourceControlError as error:
             reason = self._reason_code(error)
             if reason == 'RESOURCE_CONTROL_UNAVAILABLE':
-                return self._unavailable(handles)
+                return self._unavailable()
             raise
         memory_backend = None
         memory_root = None
@@ -91,7 +91,9 @@ class ResourceControlManager(object):
             except ResourceControlError:
                 results.append(self._result('ERROR', None, None))
 
-        return self._summarize(results)
+        return self._summarize(
+            results, 'READY' if enabled else 'DISABLED',
+            desired, desired_memory)
 
     def _apply_systemd_slice(
             self, root, backend, role_type, slice_name, handles,
@@ -202,12 +204,9 @@ class ResourceControlManager(object):
                 continue
             results.append(self._result(
                 'READY', service_cpu_set, actual_memory))
-        summary = self._summarize(results)
-        if slice_target is not None:
-            summary['cpuSet'] = actual
-        if manage_memory and not memory_error:
-            summary['memory'] = actual_memory
-        return summary
+        return self._summarize(
+            results, 'READY' if enabled else 'DISABLED',
+            desired, desired_memory)
 
     def _validate_active_slice_memory(
             self, _cpu_root, slice_name, desired_memory,
@@ -687,37 +686,30 @@ class ResourceControlManager(object):
             raise ResourceControlError('MEMORY_LIMIT_INVALID')
         return memory_limit
 
-    def _unavailable(self, handles):
-        handles = handles or []
-        return self._summarize([
-            self._result('ERROR', None, None) for _handle in handles
-        ])
+    def _unavailable(self):
+        return {'synced': False}
 
-    def _summarize(self, results):
+    def _summarize(
+            self, results, required_state, desired_cpu_set, desired_memory):
         expected = 0
-        covered = 0
-        actual_sets = set()
-        actual_memory = set()
+        synced = True
 
         for result in results:
             if result.get('state') == 'SKIPPED':
                 continue
             expected += 1
-            if result.get('state') in ('READY', 'DISABLED'):
-                covered += 1
-                if result.get('cpuSet') is not None:
-                    actual_sets.add(result.get('cpuSet'))
-                if result.get('memory') is not None:
-                    actual_memory.add(result.get('memory'))
-
-        return {
-            'cpuSet': next(iter(actual_sets)) if len(actual_sets) == 1 else '',
-            'memory': next(iter(actual_memory))
-                if len(actual_memory) == 1 else None,
-            'coveredServiceCount': covered,
-            'expectedServiceCount': expected,
-            'results': results,
-        }
+            actual_cpu_set = self._normalize(result.get('cpuSet') or '')
+            actual_memory = result.get('memory')
+            memory_matches = (desired_memory is None
+                              or actual_memory == desired_memory
+                              or desired_memory == 0 and actual_memory is None)
+            if (result.get('state') != required_state
+                    or actual_cpu_set != desired_cpu_set
+                    or not memory_matches):
+                synced = False
+        if required_state == 'READY' and expected == 0:
+            synced = False
+        return {'synced': synced}
 
     def _result(self, state, cpu_set, memory):
         return {

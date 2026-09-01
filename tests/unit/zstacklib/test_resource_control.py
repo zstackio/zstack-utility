@@ -56,15 +56,7 @@ def test_release_with_only_optional_handles_is_an_idempotent_success(monkeypatch
         96 * manager.MEBIBYTE,
     )
 
-    assert result["expectedServiceCount"] == 0, (
-        "未出现的可选 Handle 不计入期望覆盖数: expected=0 actual=%s"
-        % result["expectedServiceCount"]
-    )
-    assert result["coveredServiceCount"] == 0, (
-        "未出现的可选 Handle 不应伪造覆盖: expected=0 actual=%s"
-        % result["coveredServiceCount"]
-    )
-    assert result["results"][0]["state"] == "SKIPPED"
+    assert result["synced"], "释放不存在的可选 Handle 必须保持幂等成功"
 
 
 def test_role_memory_limit_is_applied_once_at_slice_boundary(monkeypatch):
@@ -103,10 +95,7 @@ def test_role_memory_limit_is_applied_once_at_slice_boundary(monkeypatch):
         "CGROUP_V2_MEMORY", "/sys/fs/cgroup",
         "/sys/fs/cgroup/zstack-management.slice",
         4 * 1024 * 1024 * 1024, False, None)
-    assert all(
-        item["memory"] == 4 * 1024 * 1024 * 1024
-        for item in result["results"]
-    ), "一个 Role 的服务共享同一个 Slice 总体内存边界: actual=%s" % result["results"]
+    assert result["synced"], "Role Slice 的 CPU 和内存边界均生效后才能返回 synced"
 
 
 def test_apply_stages_service_slice_without_restarting_running_service(monkeypatch):
@@ -143,8 +132,7 @@ def test_apply_stages_service_slice_without_restarting_running_service(monkeypat
         "APPLY", 2 * 1024 ** 3, "zstack-compute.slice")
 
     assert commands == [["daemon-reload"]]
-    assert result["results"][0]["state"] == "PENDING_RESTART"
-    assert result["coveredServiceCount"] == 0
+    assert not result["synced"], "仅写入 drop-in、进程尚未进入 Slice 时不能返回 synced"
 
 
 def test_legacy_systemd_hybrid_keeps_cpu_fallback_and_stages_role_memory(
@@ -185,8 +173,7 @@ def test_legacy_systemd_hybrid_keeps_cpu_fallback_and_stages_role_memory(
         2 * 1024 ** 3, "zstack-compute.slice")
 
     assert cpu_fallback.call_count == 1
-    assert result["results"][0]["state"] == "PENDING_RESTART"
-    assert result["memory"] == 2 * 1024 ** 3
+    assert not result["synced"], "遗留 systemd 服务重启前必须保持 Unsynced"
 
 
 def test_legacy_systemd_release_preserves_cpu_fallback_failure(monkeypatch):
@@ -211,10 +198,7 @@ def test_legacy_systemd_release_preserves_cpu_fallback_failure(monkeypatch):
         "zstack-compute.slice", [service], "", None,
         False, False, None, None)
 
-    assert result["results"] == [{
-        "state": "ERROR", "cpuSet": None, "memory": None}]
-    assert result["coveredServiceCount"] == 0
-    assert result["expectedServiceCount"] == 1
+    assert not result["synced"], "释放失败不能被成功的 HTTP 调用掩盖"
 
 
 def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(
@@ -258,9 +242,7 @@ def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(
     apply_memory.assert_called_once_with(
         "CGROUP_V1_MEMORY", "/memory",
         "/memory/zstack-compute.slice", 2 * 1024 ** 3, False, None)
-    assert result["results"] == [{
-        "state": "READY", "cpuSet": "0-3", "memory": 2 * 1024 ** 3}]
-    assert result["memory"] == 2 * 1024 ** 3
+    assert result["synced"], "v1 CPU 和内存总体边界都生效后必须返回 synced"
 
 
 def test_restart_fully_stops_units_before_start_so_new_slice_is_applied(monkeypatch):
@@ -727,11 +709,7 @@ def test_handle_failure_keeps_assignment_unsatisfied(monkeypatch):
         None,
     )
 
-    assert sorted(item["state"] for item in result["results"]) == ["ERROR", "READY"]
-    assert result["coveredServiceCount"] == 1 and result["expectedServiceCount"] == 2, (
-        "聚合计数必须由逐 Handle 结果计算: expected=1/2 actual=%s/%s"
-        % (result["coveredServiceCount"], result["expectedServiceCount"])
-    )
+    assert not result["synced"], "任一必需 Handle 失败都必须让 Assignment 保持 Unsynced"
 
 
 def test_apply_memory_limit_v2_sets_and_clears_limit_in_cgroup_files(tmp_path):
@@ -887,9 +865,7 @@ def test_apply_reports_memory_controller_unavailable_per_handle(tmp_path, monkey
     result = manager.apply("MANAGEMENT", "0-3", [handle("zstack.service")], "APPLY",
                            manager.MEBIBYTE)
 
-    item = result["results"][0]
-    assert item["state"] == "ERROR"
-    assert result["coveredServiceCount"] == 0
+    assert not result["synced"], "请求内存限制时缺少内存控制器必须返回未同步"
 
 
 @pytest.mark.parametrize(
@@ -942,8 +918,7 @@ def test_hybrid_apply_uses_memory_controller_independently_from_cpuset(
         "MANAGEMENT", "0-3", [handle("zstack.service")],
         "APPLY", 3 * manager.MEBIBYTE)
 
-    assert result["results"][0]["state"] == "READY"
-    assert result["results"][0]["memory"] == 3 * manager.MEBIBYTE
+    assert result["synced"], "hybrid 环境中独立的 CPU 和内存控制器都生效后必须同步"
     limit_name = ("memory.max" if memory_backend == "CGROUP_V2_MEMORY"
                   else "memory.limit_in_bytes")
     with open(os.path.join(memory_target, limit_name)) as stream:
@@ -1138,8 +1113,7 @@ def test_apply_memory_limit_v1_managed_group_moves_processes_and_releases(
                             "APPLY", 3 * manager.MEBIBYTE)
     memory_target = os.path.join(memory_root, os.path.basename(target))
 
-    assert limited["results"][0]["state"] == "READY"
-    assert limited["results"][0]["memory"] == 3 * manager.MEBIBYTE
+    assert limited["synced"]
     with open(os.path.join(memory_target, "memory.limit_in_bytes")) as stream:
         assert stream.read() == str(3 * manager.MEBIBYTE)
     with open(os.path.join(target, "cgroup.procs")) as stream:
@@ -1150,8 +1124,7 @@ def test_apply_memory_limit_v1_managed_group_moves_processes_and_releases(
     released = manager.apply("MANAGEMENT", "0-3", [handle("zstack.service")],
                              "RELEASE", 3 * manager.MEBIBYTE)
 
-    assert released["results"][0]["state"] == "DISABLED"
-    assert released["results"][0]["memory"] == 0
+    assert released["synced"]
     with open(os.path.join(memory_target, "memory.limit_in_bytes")) as stream:
         assert stream.read() == "9223372036854771712"
     with open(os.path.join(memory_target, "cgroup.procs")) as stream:
