@@ -1,6 +1,4 @@
-# Generated from GitLab zstackio/code-reviews:zstack-utility.yaml
-# Source commit: 9a5072d6e5783b4772a9d99cabe5c3aa278c4dce
-# Do not edit this generated file directly; update zstackio/code-reviews instead.
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 language: zh-CN
 tone_instructions: ''
 early_access: true
