@@ -2,6 +2,7 @@ import os.path
 import re
 import random
 import struct
+import time
 import traceback
 from string import whitespace
 
@@ -11,6 +12,7 @@ from zstacklib.utils import thread
 from zstacklib.utils import jsonobject
 from zstacklib.utils import bash
 from zstacklib.utils import lock
+from zstacklib.utils import shell
 from zstacklib.utils.linux import ignoreerror
 
 GLLK_BEGIN = 65
@@ -411,6 +413,69 @@ def get_hosts_state(lockspace_name):
     r, o, e = bash.bash_roe("sanlock client gets -h 1")
     if r == 0 and lockspace_name in o:
         return HostsState(o, lockspace_name)
+
+
+def get_host_status(lockspace_name, host_id):
+    status = shell.call("timeout 30 sanlock client host_status -s %s -D" % lockspace_name)
+    return SanlockHostStatusParser(status).get_record(host_id)
+
+
+@linux.retry(5, 0.5)
+def get_running_host_id(vg_uuid):
+    cmd = shell.ShellCmd("sanlock client gets | awk -F':' '/%s/{ print $2 }'" % vg_uuid)
+    cmd(is_exception=False)
+    if cmd.stdout.strip() == "":
+        raise Exception("can not get running host id for vg %s" % vg_uuid)
+    return cmd.stdout.strip()
+
+
+def check_host_liveness(vg_uuid, dst_host_id, dst_host_uuid=None):
+    DEAD = "dead"
+    LIVE = "live"
+
+    def get_host_status_from_sanlock():
+        host_status = get_hosts_state("lvm_" + vg_uuid)
+        if not host_status or str(dst_host_id) not in host_status.hosts:
+            raise Exception("cannot get host status from sanlock client")
+        ts = host_status.get_timestamp(dst_host_id)
+        return (DEAD if host_status.is_host_dead(dst_host_id) else LIVE), ts
+
+    check_interval = 10
+    count = 0
+    our_host_id = int(get_running_host_id(vg_uuid))
+    parser = SanlockHostStatusParser(shell.call("timeout 30 sanlock client host_status -s lvm_%s -D" % vg_uuid))
+    dst_host_io_timeout = parser.get_record(dst_host_id).get_io_timeout()
+    our_host_io_timeout = parser.get_record(our_host_id).get_io_timeout()
+    max_check_count = (calc_host_dead_seconds(dst_host_io_timeout) + 2 * our_host_io_timeout) // check_interval + 1
+    host_info = "hostId:%s" % dst_host_id
+    if dst_host_uuid:
+        host_info = "hostUuid:%s, %s" % (dst_host_uuid, host_info)
+    logger.debug("host[%s] sanlock io timeout is %s, current host io timeout is %s" %
+                 (host_info, dst_host_io_timeout, our_host_io_timeout))
+    latest_timestamp = None
+    timestamp_change_count = 0
+    while count < max_check_count:
+        if latest_timestamp is not None:
+            time.sleep(check_interval)
+
+        status, current_timestamp = get_host_status_from_sanlock()
+        logger.info("read sanlock current heartbeat: %s, latest heartbeat: %s on sanlock" % (current_timestamp, latest_timestamp))
+        if status == DEAD:
+            logger.debug("sanlock host lease on vg %s has expired for host[%s]" % (vg_uuid, host_info))
+            return False
+        elif latest_timestamp is None:
+            latest_timestamp = current_timestamp
+        elif latest_timestamp != current_timestamp:
+            timestamp_change_count += 1
+            latest_timestamp = current_timestamp
+            if timestamp_change_count > 1:
+                break
+        else:
+            count += 1
+
+    logger.debug("host[%s] is still alive judged by sanlock" % host_info)
+    return True
+
 
 def get_host_name(lockspace_name, host_id):
     bash.bash_r("sanlock client host_status -D ")

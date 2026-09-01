@@ -976,51 +976,6 @@ class SblkHealthChecker(AbstractStorageFencer):
         return '%s-host_%s' % (vg_uuid, self.host_uuid)
 
 
-    def check_sanlock_heartbeat(self, ps_uuid, dst_host_uuid, dst_host_id):
-        DEAD = "dead"
-        LIVE = "live"
-
-        def get_host_status_from_sanlock():
-            host_status = sanlock.get_hosts_state("lvm_" + ps_uuid)
-            if not host_status or str(dst_host_id) not in host_status.hosts:
-                raise Exception("cannot get host status from sanlock client")
-            ts = host_status.get_timestamp(dst_host_id)
-            return (DEAD if host_status.is_host_dead(dst_host_id) else LIVE), ts
-
-        check_interval = 10
-        count = 0
-        our_host_id = int(lvm.get_running_host_id(ps_uuid))
-        parser = sanlock.SanlockHostStatusParser(shell.call("timeout 30 sanlock client host_status -s lvm_%s -D" % ps_uuid))
-        dst_host_io_timeout = parser.get_record(dst_host_id).get_io_timeout()
-        our_host_io_timeout = parser.get_record(our_host_id).get_io_timeout()
-        max_check_count = (sanlock.calc_host_dead_seconds(dst_host_io_timeout) + 2 * our_host_io_timeout) // check_interval + 1
-        logger.debug("dst host %s sanlock io timeout is %s, current host: %s" % (dst_host_uuid, dst_host_io_timeout, our_host_io_timeout))
-        latest_timestamp = None
-        timestamp_change_count = 0
-        while count < max_check_count:
-            if latest_timestamp is not None:
-                time.sleep(check_interval)
-
-            status, current_timestamp = get_host_status_from_sanlock()
-            logger.info("read sanlock current heartbeat: %s, latest heartbeat: %s on sanlock" % (current_timestamp, latest_timestamp))
-            if status == DEAD:
-                logger.debug("sanlock host lease on ps %s has expired for host[hostUuid: %s, hostId: %s]" % (ps_uuid, dst_host_uuid, dst_host_id))
-                return False
-            elif latest_timestamp is None:
-                latest_timestamp = current_timestamp
-            elif latest_timestamp != current_timestamp:
-                timestamp_change_count += 1
-                latest_timestamp = current_timestamp
-                if timestamp_change_count > 1:
-                    break
-            else:
-                # timestamp not updated
-                count += 1
-
-        logger.debug("host %s still alive judge by sanlock" % dst_host_uuid)
-        return True
-
-
     def check_fencer_heartbeat(self, host_uuid, storage_check_timeout, interval, max_attempts, ps_uuid, hostId=None):
         heartbeat_suc_count = thread.AtomicInteger()
         vm_uuids = []
@@ -1037,7 +992,7 @@ class SblkHealthChecker(AbstractStorageFencer):
 
         def run_sanlock_checker():
             try:
-                if self.check_sanlock_heartbeat(ps_uuid, host_uuid, hostId):
+                if sanlock.check_host_liveness(ps_uuid, hostId, host_uuid):
                     heartbeat_suc_count.inc()
             except Exception as e:
                 exceptions[1] = e
