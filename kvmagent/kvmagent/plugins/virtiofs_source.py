@@ -412,6 +412,32 @@ def _unmount_model_center(mount_path):
         raise Exception('model center mount is still active after unmount')
 
 
+def _artifact_prepare_lock_path(target):
+    return target + '.prepare.lock'
+
+
+def _open_flock(lock_path, exclusive):
+    parent = os.path.dirname(lock_path)
+    if parent and not os.path.exists(parent):
+        _ensure_directory(parent)
+    lock_fd = open(lock_path, 'a+')
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+    except Exception:
+        lock_fd.close()
+        raise
+    return lock_fd
+
+
+def _close_flock(lock_fd):
+    if lock_fd is None:
+        return
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+    finally:
+        lock_fd.close()
+
+
 def prepare_model_center_cache(source_root, source_path, model_center_uuid, storage_url,
                                artifact_relative_path, required_capacity_bytes=None,
                                storage_subdir='models', register_cache=True,
@@ -437,6 +463,32 @@ def prepare_model_center_cache(source_root, source_path, model_center_uuid, stor
     if not os.path.exists(root):
         _ensure_directory(root)
 
+    # Strong-version hit must not take the model-center exclusive lock.
+    # A timed-out cold copy keeps that lock for the whole JuiceFS copy, and MN
+    # timeout does not cancel it (ZSTAC-88117). Other artifacts of the same
+    # model center that already have a local sidecar would otherwise block.
+    # Same-target refresh still serializes via a per-artifact lock so a hit
+    # cannot observe a rename-in-progress directory.
+    artifact_lock_fd = None
+    if had_local and expected_strong:
+        artifact_lock_fd = _open_flock(_artifact_prepare_lock_path(target), False)
+        try:
+            if is_local_content_aligned(target, expected_strong):
+                actions = _prepare_actions(False, False)
+                entry = cache_entry(
+                    root, target, expected_strong,
+                    'strong_hit', 'strong_match', actions)
+                if register_cache:
+                    _register_model_center_cache(root, target)
+                _log_prepare_decision(
+                    'strong_hit', 'strong_match', expected_strong, local_before,
+                    target, model_center_uuid, storage_subdir, actions, entry,
+                    (time.time() - started) * 1000)
+                return entry
+        finally:
+            _close_flock(artifact_lock_fd)
+            artifact_lock_fd = None
+
     if not os.path.exists(MODEL_CENTER_PROVIDER_ROOT):
         _ensure_directory(MODEL_CENTER_PROVIDER_ROOT)
     if not os.path.exists(MODEL_CENTER_LOCK_ROOT):
@@ -447,72 +499,63 @@ def prepare_model_center_cache(source_root, source_path, model_center_uuid, stor
     lock_fd = open(lock_path, 'a+')
     try:
         fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
-        if os.path.ismount(mount_path):
-            _unmount_model_center(mount_path)
+        artifact_lock_fd = _open_flock(_artifact_prepare_lock_path(target), True)
+        try:
+            if os.path.ismount(mount_path):
+                _unmount_model_center(mount_path)
 
-        # Strong-version hit: local sidecar already matches shared truth → skip mount.
-        if had_local and expected_strong and is_local_content_aligned(target, expected_strong):
-            actions = _prepare_actions(False, False)
+            aligned_version = None
+            decision = None
+            reason = None
+            copied = False
+            try:
+                _mount_model_center(str(storage_url).strip(), mount_path, storage_subdir)
+                remote_source = ensure_under(
+                    os.path.join(mount_path, relative_path),
+                    mount_path,
+                    'modelRelativePath',
+                    allow_root=False)
+                expected_version = expected_strong or remote_directory_meta(remote_source)
+
+                if os.path.exists(target) and is_local_content_aligned(target, expected_version):
+                    aligned_version = expected_version
+                    if expected_strong:
+                        decision, reason = 'strong_hit', 'strong_match'
+                    else:
+                        decision, reason = 'meta_hit', 'meta_match'
+                else:
+                    # Never rmtree first: keep usable cache until new copy is ready.
+                    # Rename old aside → copy into target → drop backup; on failure restore.
+                    _refresh_model_center_cache_from_remote(
+                        target, root, remote_source, mount_path,
+                        required_capacity_bytes, expected_version)
+                    aligned_version = expected_version
+                    copied = True
+                    if not had_local:
+                        decision, reason = 'cold_copy', 'missing_local'
+                    elif not local_before:
+                        decision, reason = 'refresh', 'no_sidecar'
+                    elif expected_strong:
+                        decision, reason = 'refresh', 'strong_mismatch'
+                    else:
+                        decision, reason = 'refresh', 'meta_mismatch'
+            finally:
+                _unmount_model_center(mount_path)
+
+            actions = _prepare_actions(True, copied)
             entry = cache_entry(
-                root, target, expected_strong,
-                'strong_hit', 'strong_match', actions)
+                root, target, aligned_version,
+                decision, reason, actions)
             if register_cache:
                 _register_model_center_cache(root, target)
             _log_prepare_decision(
-                'strong_hit', 'strong_match', expected_strong, local_before,
+                decision, reason, expected_strong or aligned_version, local_before,
                 target, model_center_uuid, storage_subdir, actions, entry,
                 (time.time() - started) * 1000)
             return entry
-
-        aligned_version = None
-        decision = None
-        reason = None
-        copied = False
-        try:
-            _mount_model_center(str(storage_url).strip(), mount_path, storage_subdir)
-            remote_source = ensure_under(
-                os.path.join(mount_path, relative_path),
-                mount_path,
-                'modelRelativePath',
-                allow_root=False)
-            expected_version = expected_strong or remote_directory_meta(remote_source)
-
-            if os.path.exists(target) and is_local_content_aligned(target, expected_version):
-                aligned_version = expected_version
-                if expected_strong:
-                    decision, reason = 'strong_hit', 'strong_match'
-                else:
-                    decision, reason = 'meta_hit', 'meta_match'
-            else:
-                # Never rmtree first: keep usable cache until new copy is ready.
-                # Rename old aside → copy into target → drop backup; on failure restore.
-                _refresh_model_center_cache_from_remote(
-                    target, root, remote_source, mount_path,
-                    required_capacity_bytes, expected_version)
-                aligned_version = expected_version
-                copied = True
-                if not had_local:
-                    decision, reason = 'cold_copy', 'missing_local'
-                elif not local_before:
-                    decision, reason = 'refresh', 'no_sidecar'
-                elif expected_strong:
-                    decision, reason = 'refresh', 'strong_mismatch'
-                else:
-                    decision, reason = 'refresh', 'meta_mismatch'
         finally:
-            _unmount_model_center(mount_path)
-
-        actions = _prepare_actions(True, copied)
-        entry = cache_entry(
-            root, target, aligned_version,
-            decision, reason, actions)
-        if register_cache:
-            _register_model_center_cache(root, target)
-        _log_prepare_decision(
-            decision, reason, expected_strong or aligned_version, local_before,
-            target, model_center_uuid, storage_subdir, actions, entry,
-            (time.time() - started) * 1000)
-        return entry
+            _close_flock(artifact_lock_fd)
+            artifact_lock_fd = None
     finally:
         try:
             fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
