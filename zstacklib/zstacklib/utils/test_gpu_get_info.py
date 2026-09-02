@@ -141,13 +141,12 @@ class TestGetInfo(unittest.TestCase):
         """Test get_info legacy fallback for Huawei with special fields"""
         # bash_ro returns (r, o) only, not (r, o, e)
         mock_bash_ro.return_value = (0, "NPU ID: 0\nNPU ID: 1")  # npu-smi info -l
-        mock_bash_roe.side_effect = [
-            (0, "/usr/bin/npu-smi", ""),  # which npu-smi
-            (0, "PCIe Bus Info: 0000:81:00.0\nSerial Number: HUAWEI001", ""),  # npu info
-            (0, "Product Type: Atlas 800", ""),  # product name
-        ]
+        mock_bash_roe.return_value = (
+            0, "PCIe Bus Info: 0000:81:00.0\nSerial Number: HUAWEI001", "")
 
-        result = gpu._get_info_legacy("0000:81:00.0", VendorEnum.HUAWEI)
+        with patch('zstacklib.utils.gpu.get_npu_smi_path',
+                   return_value='/usr/sbin/npu-smi'):
+            result = gpu._get_info_legacy("0000:81:00.0", VendorEnum.HUAWEI)
         # Note: This requires actual implementation
         # For now, verify it handles Huawei-specific logic
         self.assertIsNotNone(result)
@@ -290,13 +289,12 @@ class TestLegacyCollectors(unittest.TestCase):
         """Test _collect_huawei_legacy with special fields"""
         # bash_ro returns (r, o) only, not (r, o, e)
         mock_bash_ro.return_value = (0, "NPU ID: 0")
-        mock_bash_roe.side_effect = [
-            (0, "/usr/bin/npu-smi", ""),  # which
-            (0, "PCIe Bus Info: 0000:81:00.0\nSerial Number: HW001", ""),  # npu info
-            (0, "Product Type: Atlas 800", ""),  # product name
-        ]
+        mock_bash_roe.return_value = (
+            0, "PCIe Bus Info: 0000:81:00.0\nSerial Number: HW001", "")
 
-        result = gpu._collect_huawei_legacy("0000:81:00.0")
+        with patch('zstacklib.utils.gpu.get_npu_smi_path',
+                   return_value='/usr/sbin/npu-smi'):
+            result = gpu._collect_huawei_legacy("0000:81:00.0")
         # Note: Requires actual implementation
         self.assertIsNotNone(result)
 
