@@ -64,6 +64,20 @@ def as_list(value):
     return [value]
 
 
+def source_roots_from_view(view):
+    for field in ('allowedRoots', 'allowedSourceRoots', 'hostSourceRoot', 'sourceRootPath'):
+        if get_attr(view, field) is not None:
+            return virtiofs_source.source_roots_from_raw(view)
+    return None
+
+
+def remote_source_roots_from_view(view):
+    remote_root = get_attr(view, 'remoteSourceRootPath')
+    if remote_root is None:
+        return None
+    return virtiofs_source.source_roots_from_raw({'sourceRootPath': remote_root}, include_vm_view=False)
+
+
 def safe_uuid(value, field_name):
     if not value or not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.-]*$', value):
         raise Exception('invalid %s: %s' % (field_name, value))
@@ -149,7 +163,9 @@ def make_view_bind_specs(vm_uuid, artifacts):
 
 class VmArtifactViewSpec(object):
     def __init__(self, vm_uuid, tag=None, artifacts=None, source_path=None,
-                 cache=None, queue=None, binary_path=None, read_only=True):
+                 cache=None, queue=None, binary_path=None, read_only=True,
+                 source_roots=None, required_capacity_bytes=None, remote_source_path=None,
+                 remote_source_roots=None):
         self.vm_uuid = safe_uuid(vm_uuid, 'vmInstanceUuid')
         self.tag = sanitize_tag(tag or self.vm_uuid)
         self.artifacts = as_list(artifacts)
@@ -158,6 +174,10 @@ class VmArtifactViewSpec(object):
         self.queue = virtiofs_device.normalize_queue(queue or DEFAULT_VIRTIOFS_QUEUE)
         self.binary_path = binary_path or DEFAULT_VIRTIOFS_BINARY
         self.read_only = read_only is not False
+        self.source_roots = source_roots
+        self.required_capacity_bytes = required_capacity_bytes
+        self.remote_source_path = remote_source_path
+        self.remote_source_roots = remote_source_roots
 
         if self.artifacts and self.source_path:
             raise Exception('vmArtifactView cannot specify both artifacts and sourcePath')
@@ -177,22 +197,48 @@ class VmArtifactViewSpec(object):
             queue=get_attr(view, 'queue', DEFAULT_VIRTIOFS_QUEUE),
             binary_path=get_attr(view, 'binaryPath', DEFAULT_VIRTIOFS_BINARY),
             read_only=get_attr(view, 'readOnly', True),
+            source_roots=source_roots_from_view(view),
+            required_capacity_bytes=virtiofs_source._parse_required_capacity(
+                get_attr(view, 'requiredCapacityBytes', get_attr(view, 'requiredBytes'))),
+            remote_source_path=get_attr(view, 'remoteSourcePath'),
+            remote_source_roots=remote_source_roots_from_view(view),
         )
 
     def resolve_source_path(self):
         if self.artifacts:
             source_path, _ = sync_artifact_view(self.vm_uuid, self.artifacts)
             return source_path
+        if self.source_path:
+            if self.remote_source_path:
+                virtiofs_source.prepare_copy_source(
+                    self.source_path,
+                    self.source_roots or (HOST_SOURCE_ROOT,),
+                    self.remote_source_path,
+                    self.remote_source_roots or (HOST_SOURCE_ROOT,),
+                    self.required_capacity_bytes)
+            try:
+                source_path = virtiofs_source.ensure_under_any(
+                    self.source_path, self.source_roots or (HOST_SOURCE_ROOT,), 'sourcePath', allow_root=False)
+                virtiofs_source.check_available_capacity(source_path, self.required_capacity_bytes)
+                return source_path
+            except Exception as exc:
+                if 'available capacity' in str(exc) or 'failed to check virtiofs source capacity' in str(exc):
+                    raise
+                return virtiofs_source_path(self.vm_uuid, self.source_path)
         return virtiofs_source_path(self.vm_uuid, self.source_path)
 
     def to_virtiofs_spec(self):
+        # libvirt rejects read-only virtiofs before 11.0.0 ("virtiofs does not
+        # yet support read-only mode"), so never emit <readonly/> here; the
+        # view contents are already bound read-only on the host by
+        # sync_artifact_view/bind_readonly.
         return virtiofs_device.VirtiofsDeviceSpec(
             self.tag,
             self.resolve_source_path(),
             self.cache,
             self.queue,
             self.binary_path,
-            self.read_only,
+            False,
             True,
             True,
         )
