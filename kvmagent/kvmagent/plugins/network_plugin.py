@@ -57,6 +57,8 @@ PVLAN_ISOLATED_CHAIN = "pvlan-isolated"
 PVLAN_ISOLATED_CHAIN_V6 = "pvlan-isolated-v6"
 IPV4 = 4
 IPV6 = 6
+NM_CONF_DIR = '/run/NetworkManager/conf.d'
+NM_CONF_PREFIX = 'zstack-l2-'
 
 logger = log.get_logger(__name__)
 
@@ -389,6 +391,165 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         iproute.set_link_down(device_name)
 
+    @staticmethod
+    def _is_nm_running():
+        command = 'nmcli -t -f RUNNING general >/dev/null 2>&1'
+        return shell.run(command) == 0
+
+    @staticmethod
+    def _get_nm_conf_path(uplink_name):
+        if not uplink_name or not uplink_name.strip() or '/' in uplink_name:
+            raise ValueError('invalid uplink name[%s]' % uplink_name)
+        file_name = '%s%s.conf' % (NM_CONF_PREFIX, uplink_name)
+        return os.path.join(NM_CONF_DIR, file_name)
+
+    @staticmethod
+    def _get_root_uplink_devices(physical_device):
+        if not physical_device or not physical_device.strip():
+            raise ValueError('physical device name cannot be empty')
+
+        chain = []
+        current = physical_device
+        while True:
+            if current in chain:
+                raise RuntimeError('cyclic VLAN parent relationship from device[%s]' % physical_device)
+            chain.append(current)
+
+            net_path = '/sys/class/net/%s' % current
+            if not os.path.isdir(net_path):
+                raise RuntimeError('cannot find sysfs path for network device[%s]' % current)
+
+            if not os.path.isfile('/proc/net/vlan/%s' % current):
+                break
+
+            parent_devices = []
+            for name in os.listdir(net_path):
+                if name.startswith('lower_') and name[len('lower_'):]:
+                    parent_devices.append(name[len('lower_'):])
+            if len(parent_devices) != 1:
+                raise RuntimeError('cannot find the parent of VLAN device[%s]' % current)
+            current = parent_devices[0]
+
+        chain.reverse()
+        root_uplink = chain[0]
+        devices = [root_uplink]
+
+        slaves_path = '/sys/class/net/%s/bonding/slaves' % root_uplink
+        if os.path.isfile(slaves_path):
+            slaves = linux.read_file_strip(slaves_path)
+            if slaves:
+                for slave in slaves.split():
+                    if slave not in devices:
+                        devices.append(slave)
+        return root_uplink, devices
+
+    @staticmethod
+    def _is_device_unmanaged(device):
+        if not device:
+            return False
+        output = shell.call(
+            'nmcli -g GENERAL.NM-MANAGED device show %s' % device,
+            exception=False).strip()
+        return output == 'no'
+
+    def _write_nm_conf(self, conf_name, devices, config_nm=True):
+        path = self._get_nm_conf_path(conf_name)
+        if not devices:
+            raise ValueError('NetworkManager config devices cannot be empty')
+        if not os.path.isdir(NM_CONF_DIR):
+            os.makedirs(NM_CONF_DIR)
+
+        device_specs = []
+        for device in devices:
+            if device:
+                device_specs.append('interface-name:%s' % device)
+        config = '[keyfile]\nunmanaged-devices+=%s\n' % ';'.join(device_specs)
+
+        temporary_path = '%s.tmp' % path
+        try:
+            with open(temporary_path, 'w') as fd:
+                fd.write(config)
+                fd.flush()
+                os.fsync(fd.fileno())
+            os.rename(temporary_path, path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
+        if config_nm:
+            self._config_nm_devices(devices)
+
+    def _config_nm_devices(self, devices):
+        if not self._is_nm_running():
+            return
+
+        # Set controllers unmanaged before their ports to preserve master relations.
+        for device in devices:
+            if not linux.is_network_device_existing(device):
+                continue
+            if self._is_device_unmanaged(device):
+                continue
+            shell.call('nmcli device set %s managed no' % device)
+
+        shell.call('nmcli general reload 1')
+        self._check_unmanaged_devices(devices)
+
+    def _check_unmanaged_devices(self, devices):
+        if not self._is_nm_running():
+            return
+        for device in devices:
+            if not linux.is_network_device_existing(device):
+                continue
+            if not linux.wait_callback_success(self._is_device_unmanaged, device, timeout=5, interval=0.1):
+                raise RuntimeError('NetworkManager still manages device[%s]' % device)
+
+    @staticmethod
+    def _set_devices_up(devices):
+        for device in devices:
+            if device and linux.is_network_device_existing(device):
+                shell.call('ip link set dev %s up' % device)
+
+    def _ensure_base_nm_conf(self, physical_device):
+        root_uplink, _ = self._get_root_uplink_devices(physical_device)
+        conf_path = self._get_nm_conf_path(root_uplink)
+        # zs-nic-to-bond updates the same base config.
+        with lock.FileLock('%s.lock' % conf_path, lock.Flock()):
+            _, devices = self._get_root_uplink_devices(physical_device)
+            if os.path.isfile(conf_path):
+                return root_uplink, devices
+            self._write_nm_conf(root_uplink, devices)
+            self._set_devices_up(devices)
+        return root_uplink, devices
+
+    @staticmethod
+    def _build_l2_nm_devices(physical_device, root_uplink, cloud_devices):
+        devices = []
+        if physical_device != root_uplink:
+            devices.append(physical_device)
+        for device in cloud_devices:
+            if device and device not in devices:
+                devices.append(device)
+        return devices
+
+    def _write_l2_nm_conf(self, physical_device, conf_name, cloud_devices):
+        root_uplink, base_devices = self._ensure_base_nm_conf(physical_device)
+        devices = self._build_l2_nm_devices(physical_device, root_uplink, cloud_devices)
+        self._write_nm_conf(conf_name, devices)
+        self._set_devices_up(base_devices + devices)
+        return base_devices + devices
+
+    def _remove_l2_nm_conf(self, physical_device, conf_name, cloud_devices):
+        root_uplink, _ = self._get_root_uplink_devices(physical_device)
+        devices = self._build_l2_nm_devices(physical_device, root_uplink, cloud_devices)
+        conf_path = self._get_nm_conf_path(conf_name)
+        if os.path.exists(conf_path):
+            os.unlink(conf_path)
+        if not self._is_nm_running():
+            return
+        shell.call('nmcli general reload 1')
+        for device in devices:
+            if linux.is_network_device_existing(device):
+                shell.call('nmcli device set %s managed yes' % device, exception=False)
+
     def modifySysConfiguration(self, name, old_value, new_value):
         sysconf_path = "/etc/sysctl.conf"
         if not os.path.exists(sysconf_path):
@@ -694,15 +855,16 @@ class NetworkPlugin(kvmagent.KvmAgent):
             if cmd.mode is not None or cmd.xmitHashPolicy is not None:
                 mode = linux.read_file("/sys/class/net/%s/bonding/mode" % cmd.bondName).strip()
                 policy = linux.read_file("/sys/class/net/%s/bonding/xmit_hash_policy" % cmd.bondName).strip()
-                if cmd.mode not in mode or cmd.xmitHashPolicy is not None and cmd.xmitHashPolicy not in policy:
+                target_mode = cmd.mode or mode.split()[0]
+                if target_mode not in mode or cmd.xmitHashPolicy is not None and cmd.xmitHashPolicy not in policy:
                     # zs-bond -u bond1 mode 802.3ad
                     if cmd.xmitHashPolicy is None:
-                        shell.call('/usr/local/bin/zs-bond -u %s mode %s' % (cmd.bondName, cmd.mode))
+                        shell.call('/usr/local/bin/zs-bond -u %s mode %s' % (cmd.bondName, target_mode))
                     else:
-                        shell.call('/usr/local/bin/zs-bond -u %s mode %s xmitHashPolicy %s' % (
-                            cmd.bondName, cmd.mode, cmd.xmitHashPolicy))
+                        shell.call('/usr/local/bin/zs-bond -u %s mode %s xmit_hash_policy %s' % (
+                            cmd.bondName, target_mode, cmd.xmitHashPolicy))
 
-            if add_items != reduce_items:
+            if add_items or reduce_items:
                 # zs-nic-to-bond -a bond2 nic3
                 for interface in add_items:
                     shell.call('/usr/local/bin/zs-nic-to-bond -a %s %s' % (cmd.bondName, interface))
@@ -712,7 +874,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         except Exception as e:
             logger.warning(traceback.format_exc())
-            rsp.error = 'unable to create bonding[%s], because %s' % (cmd.bondName, str(e))
+            rsp.error = 'unable to update bonding[%s], because %s' % (cmd.bondName, str(e))
             rsp.success = False
 
         return jsonobject.dumps(rsp)
@@ -737,6 +899,8 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    @lock.lock('bonding')
+    @kvmagent.replyerror
     @in_bash
     def detach_nic_from_bonding(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -965,7 +1129,10 @@ configure lldp status rx-only \n
         rsp = CreateBridgeResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         try:
-            self.update_bridge_vlan(cmd, rsp)
+            if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                self.update_bridge_vlan_with_nm(cmd)
+            else:
+                self.update_bridge_vlan(cmd, rsp)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to update vlan bridge[%s], because %s' % (
@@ -1047,19 +1214,74 @@ configure lldp status rx-only \n
             rsp.success = False
         return jsonobject.dumps(rsp)
 
+    def update_bridge_vlan_with_nm(self, cmd):
+        transition_devices = [cmd.bridgeName]
+        if cmd.oldVlan:
+            old_vlan = '%s.%s' % (cmd.physicalInterfaceName, cmd.oldVlan)
+            if old_vlan not in transition_devices:
+                transition_devices.append(old_vlan)
+        if cmd.newVlan:
+            new_vlan = '%s.%s' % (cmd.physicalInterfaceName, cmd.newVlan)
+            if new_vlan not in transition_devices:
+                transition_devices.append(new_vlan)
+
+        self._write_l2_nm_conf(
+            cmd.physicalInterfaceName, cmd.bridgeName, transition_devices)
+        self._ifup_device_if_down(cmd.physicalInterfaceName)
+
+        old_interface = cmd.physicalInterfaceName
+        if cmd.oldVlan:
+            old_interface = '%s.%s' % (cmd.physicalInterfaceName, cmd.oldVlan)
+
+        new_interface = cmd.physicalInterfaceName
+        if cmd.newVlan:
+            new_interface = '%s.%s' % (cmd.physicalInterfaceName, cmd.newVlan)
+            linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.newVlan)
+
+        if linux.is_network_device_existing(old_interface):
+            linux.check_bridge_with_interface(old_interface, cmd.bridgeName)
+            linux.ip_link_set_net_device_nomaster(old_interface)
+        linux.ip_link_set_net_device_master(new_interface, cmd.bridgeName)
+        linux.set_device_uuid_alias(new_interface, cmd.l2NetworkUuid)
+
+        if not cmd.newVlan and cmd.oldVlan:
+            linux.move_dev_route(cmd.physicalInterfaceName, cmd.bridgeName)
+        if cmd.newVlan and not cmd.oldVlan:
+            linux.move_dev_route(cmd.bridgeName, cmd.physicalInterfaceName)
+
+        if cmd.oldVlan and str(cmd.oldVlan) != str(cmd.newVlan):
+            linux.delete_vlan_eth(old_interface)
+            final_devices = [cmd.bridgeName]
+            if cmd.newVlan:
+                final_devices.append(new_interface)
+            self._write_l2_nm_conf(
+                cmd.physicalInterfaceName, cmd.bridgeName, final_devices)
+        logger.debug('successfully update bridge[%s] vlan interface from device[%s] to device[%s]'
+                     % (cmd.bridgeName, old_interface, new_interface))
+
     @lock.lock('bridge')
     @kvmagent.replyerror
     def create_bridge(self, req):
         rsp = CreateBridgeResponse()
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         try:
-            self.create_novlan_bridge(cmd, rsp)
+            if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                self.create_novlan_bridge_with_nm(cmd, rsp)
+            else:
+                self.create_novlan_bridge(cmd, rsp)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create bridge[%s] from device[%s], because %s' % (
                 cmd.bridgeName, cmd.physicalInterfaceName, str(e))
             rsp.success = False
         return jsonobject.dumps(rsp)
+
+    def create_novlan_bridge_with_nm(self, cmd, rsp):
+        devices = self._write_l2_nm_conf(
+            cmd.physicalInterfaceName, cmd.bridgeName, [cmd.bridgeName])
+        self.create_novlan_bridge(cmd, rsp)
+        if rsp.success:
+            self._check_unmanaged_devices(devices)
 
     def create_novlan_bridge(self, cmd, rsp):
         self._ifup_device_if_down(cmd.physicalInterfaceName)
@@ -1094,7 +1316,10 @@ configure lldp status rx-only \n
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if cmd.vlan == 0:
             try:
-                self.create_novlan_bridge(cmd, rsp)
+                if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                    self.create_novlan_bridge_with_nm(cmd, rsp)
+                else:
+                    self.create_novlan_bridge(cmd, rsp)
             except Exception as e:
                 logger.warning(traceback.format_exc())
                 rsp.error = 'unable to create bridge[%s] from device[%s], because %s' % (
@@ -1111,6 +1336,10 @@ configure lldp status rx-only \n
         pvlan = getattr(cmd, 'pvlan', None)
         isolated = getattr(cmd, 'isolated', False)
         try:
+            if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                self.create_vlan_bridge_with_nm(cmd, vlanInterfName, mtu)
+                return jsonobject.dumps(rsp)
+
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
             self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, mtu)
@@ -1132,6 +1361,27 @@ configure lldp status rx-only \n
             rsp.success = False
         return jsonobject.dumps(rsp)
 
+    def create_vlan_bridge_with_nm(self, cmd, vlan_interface, mtu):
+        l2_devices = [cmd.bridgeName, vlan_interface]
+        devices = self._write_l2_nm_conf(
+            cmd.physicalInterfaceName, cmd.bridgeName, l2_devices)
+
+        if self._get_interface_mtu(cmd.physicalInterfaceName) < mtu:
+            self._configure_bridge_mtu(None, cmd.physicalInterfaceName, mtu)
+        linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
+        self._configure_bridge(cmd.disableIptables)
+        self._configure_bridge_mtu(cmd.bridgeName, vlan_interface, mtu)
+        self._configure_bridge_learning(cmd.bridgeName, vlan_interface)
+        self._configure_bridge_multicast(cmd)
+        linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
+        linux.set_device_uuid_alias(vlan_interface, cmd.l2NetworkUuid)
+
+        if getattr(cmd, 'isolated', False):
+            self._configure_isolated(vlan_interface)
+        self._check_unmanaged_devices(devices)
+        logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (
+            cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
+
     @lock.lock('bridge')
     @kvmagent.replyerror
     def create_mac_vlan_eth(self, req):
@@ -1144,8 +1394,15 @@ configure lldp status rx-only \n
         if mtu is None or oldMtu > mtu:
             mtu = oldMtu
         try:
-            linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.vlan)
-            linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
+            if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                devices = self._write_l2_nm_conf(
+                    cmd.physicalInterfaceName, vlanInterfName, [vlanInterfName])
+                linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.vlan)
+                linux.set_device_uuid_alias(vlanInterfName, cmd.l2NetworkUuid)
+                self._check_unmanaged_devices(devices)
+            else:
+                linux.create_vlan_eth(cmd.physicalInterfaceName, cmd.vlan)
+                linux.set_device_uuid_alias(vlanInterfName, cmd.l2NetworkUuid)
             logger.debug('successfully realize vlan eth[name:%s, vlan:%s] from device[%s]' % (
                 vlanInterfName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
@@ -1429,7 +1686,10 @@ configure lldp status rx-only \n
         rsp = DeleteBridgeResponse()
 
         try:
-            del_novlan_bridge(cmd)
+            if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                self.delete_novlan_bridge_with_nm(cmd)
+            else:
+                del_novlan_bridge(cmd)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'failed to delete bridge[%s] with physical interface[%s], because %s' % (
@@ -1437,6 +1697,16 @@ configure lldp status rx-only \n
             rsp.success = False
 
         return jsonobject.dumps(rsp)
+
+    def delete_novlan_bridge_with_nm(self, cmd):
+        linux.delete_novlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
+        if linux.is_network_device_existing(cmd.bridgeName):
+            logger.debug('keep NetworkManager config because bridge[%s] is still in use' % cmd.bridgeName)
+            return
+        self._remove_l2_nm_conf(
+            cmd.physicalInterfaceName, cmd.bridgeName, [cmd.bridgeName])
+        logger.debug('successfully delete bridge[%s] with physical interface[%s]' % (
+            cmd.bridgeName, cmd.physicalInterfaceName))
 
     @lock.lock('bridge')
     @kvmagent.replyerror
@@ -1446,7 +1716,10 @@ configure lldp status rx-only \n
 
         if cmd.vlan == 0:
             try:
-                del_novlan_bridge(cmd)
+                if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                    self.delete_novlan_bridge_with_nm(cmd)
+                else:
+                    del_novlan_bridge(cmd)
             except Exception as e:
                 logger.warning(traceback.format_exc())
                 rsp.error = 'failed to delete bridge[%s] with physical interface[%s], because %s' % (
@@ -1455,10 +1728,16 @@ configure lldp status rx-only \n
 
             return jsonobject.dumps(rsp)
 
-        vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
-
         try:
-            linux.delete_vlan_bridge(cmd.bridgeName, vlanInterfName)
+            vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
+            if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                linux.delete_vlan_bridge(cmd.bridgeName, vlanInterfName)
+                if not linux.is_network_device_existing(cmd.bridgeName):
+                    self._remove_l2_nm_conf(
+                        cmd.physicalInterfaceName, cmd.bridgeName,
+                        [cmd.bridgeName, vlanInterfName])
+            else:
+                linux.delete_vlan_bridge(cmd.bridgeName, vlanInterfName)
             logger.debug('successfully delete vlan bridge[name:%s, vlan:%s] from device[%s]' % (
                 cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
             self._delete_isolated(vlanInterfName)
@@ -1478,7 +1757,12 @@ configure lldp status rx-only \n
         vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
 
         try:
-            linux.delete_vlan_eth(vlanInterfName)
+            if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
+                linux.delete_vlan_eth(vlanInterfName)
+                self._remove_l2_nm_conf(
+                    cmd.physicalInterfaceName, vlanInterfName, [vlanInterfName])
+            else:
+                linux.delete_vlan_eth(vlanInterfName)
             logger.debug('successfully delete vlan eth[name:%s, vlan:%s] from device[%s]' % (
                 vlanInterfName, cmd.vlan, cmd.physicalInterfaceName))
         except Exception as e:
