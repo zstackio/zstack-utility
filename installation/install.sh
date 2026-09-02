@@ -426,6 +426,46 @@ configure_management_ip6() {
     zstack-ctl configure management.server.ip6="${MANAGEMENT_IP6}" || fail2 "Failed to configure management.server.ip6."
 }
 
+has_chrony_server_config() {
+    zstack-ctl show_configuration | grep -Eq '^[[:space:]]*chrony\.serverIp\.[0-9]+[[:space:]]*='
+}
+
+configure_default_chrony_servers() {
+    has_chrony_server_config && return
+
+    local management_ip4=`zstack-ctl get_configuration management.server.ip4 2>/dev/null`
+    local management_ip6="${MANAGEMENT_IP6:-`zstack-ctl get_configuration management.server.ip6 2>/dev/null`}"
+    local configured=' '
+    local index=0
+    local server_ip
+    for server_ip in "$MANAGEMENT_IP" "$management_ip4" "$management_ip6"; do
+        [ -z "$server_ip" ] && continue
+        case "$configured" in
+            *" $server_ip "*) continue ;;
+        esac
+        zstack-ctl configure chrony.serverIp.${index}="${server_ip}"
+        configured="${configured}${server_ip} "
+        index=$((index + 1))
+    done
+}
+
+configure_chrony_servers() {
+    if [ -n "$CHRONY_SERVER_IP" ]; then
+        local current_configuration
+        local chrony_server_keys
+        local chrony_server_key
+        current_configuration=`zstack-ctl show_configuration` || fail2 "Failed to read existing chrony server configuration."
+        chrony_server_keys=`printf '%s\n' "$current_configuration" | sed -n -E 's/^[[:space:]]*(chrony\.serverIp\.[0-9]+)[[:space:]]*=.*$/\1/p'`
+        for chrony_server_key in $chrony_server_keys; do
+            zstack-ctl configure --delete "$chrony_server_key" || fail2 "Failed to delete $chrony_server_key."
+        done
+        zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}" || fail2 "Failed to configure chrony.serverIp.0."
+        return
+    fi
+
+    configure_default_chrony_servers
+}
+
 YUM_ONLINE_REPO='y'
 INSTALL_MONITOR=''
 UPGRADE_MONITOR=''
@@ -1723,18 +1763,12 @@ upgrade_zstack(){
     uz_configure_grayscale_upgrade
 
     # configure management.server.ip if not exists
-    zstack-ctl show_configuration | grep '^[[:space:]]*management.server.ip' >/dev/null 2>&1
+    zstack-ctl get_configuration management.server.ip >/dev/null 2>&1
     [ $? -ne 0 ] && zstack-ctl configure management.server.ip="${MANAGEMENT_IP}"
     configure_management_ip6
 
     # configure chrony.serverIp if not exists
-    if [ -n "$CHRONY_SERVER_IP" ]; then
-        sed -i '/^[[:space:]]*chrony\.serverIp\.[0-9]/d' $properties_file
-        zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
-    else
-        zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-        [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
-    fi
+    configure_chrony_servers
 
     # configure RepoVersion.Strategy if not exists
     zstack-ctl show_configuration | grep "RepoVersion.Strategy" >/dev/null 2>&1
@@ -4808,8 +4842,9 @@ fi
 
 if [ x"$UPGRADE" = x"y" ] && [ x"$NEED_SET_MN_IP" != x"y" ]; then
     # If -I is not set during the upgrade, ensure that MANAGEMENT_IP is the same as the current management.server.ip
-    zstack-ctl show_configuration | grep 'management.server.ip' >/dev/null 2>&1
-    [ $? -eq 0 ] && MANAGEMENT_IP=$(zstack-ctl get_configuration management.server.ip)
+    if zstack-ctl get_configuration management.server.ip >/dev/null 2>&1; then
+        MANAGEMENT_IP=$(zstack-ctl get_configuration management.server.ip)
+    fi
 fi
 
 if [ -z "$MANAGEMENT_IP" ]; then
@@ -5290,13 +5325,7 @@ configure_management_ip6
 zstack-ctl configure RepoVersion.Strategy="permissive"
 
 # configure chrony.serverIp if not exists
-if [ -n "$CHRONY_SERVER_IP" ]; then
-    sed -i "/^[[:space:]]*chrony\.serverIp\.[0-9]/d" $properties_file
-    zstack-ctl configure chrony.serverIp.0="${CHRONY_SERVER_IP}"
-else
-    zstack-ctl show_configuration | grep '^[[:space:]]*chrony.serverIp.' >/dev/null 2>&1
-    [ $? -ne 0 ] && zstack-ctl configure chrony.serverIp.0="${MANAGEMENT_IP}"
-fi
+configure_chrony_servers
 
 # deploy by cube mode
 if [ x"$CUBE_INSTALL" = x"y" ];then

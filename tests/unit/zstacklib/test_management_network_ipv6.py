@@ -66,6 +66,8 @@ if hasattr(linux.format_ssh_target, 'side_effect'):
     linux.format_ssh_target.side_effect = _format_ssh_target
 if hasattr(linux.is_port_available, 'side_effect'):
     linux.is_port_available.side_effect = _is_port_available
+if hasattr(ceph_utils.linux.is_valid_address, 'side_effect'):
+    ceph_utils.linux.is_valid_address.side_effect = linux.is_valid_address
 
 
 class FakeAddress(object):
@@ -296,6 +298,28 @@ def test_get_ceph_mon_addr_rejects_nonlocal_ipv6_route(monkeypatch):
     monkeypatch.setattr(ceph_utils, 'bash_r', fake_bash_r)
 
     assert ceph_utils.get_mon_addr(monmap, ceph_utils.ROUTE_PROTOCOL_KERNEL) is None
+    assert commands == [
+        "ip -6 route get '%s' | grep -E '^local[[:space:]]' > /dev/null" % TEST_IPV6_ADDRESS
+    ]
+
+
+def test_get_ceph_mon_addr_skips_invalid_address_before_shell_execution(monkeypatch):
+    commands = []
+    invalid_address = "2001:db8::1'; echo injected"
+    monmap = '{"mons":[{"addr":"[%s]:%s/0"},{"addr":"[%s]:%s/0"}]}' % (
+        invalid_address,
+        TEST_CEPH_PORT,
+        TEST_IPV6_ADDRESS,
+        TEST_CEPH_PORT,
+    )
+
+    def fake_bash_r(cmd):
+        commands.append(cmd)
+        return 0
+
+    monkeypatch.setattr(ceph_utils, 'bash_r', fake_bash_r)
+
+    assert ceph_utils.get_mon_addr(monmap, ceph_utils.ROUTE_PROTOCOL_KERNEL) == TEST_IPV6_ADDRESS
     assert commands == [
         "ip -6 route get '%s' | grep -E '^local[[:space:]]' > /dev/null" % TEST_IPV6_ADDRESS
     ]

@@ -352,7 +352,7 @@ def get_route_match_cmd(addr, route_protocol=None):
 def get_mon_addr(monmap, route_protocol=None):
     for mon in jsonobject.loads(monmap).mons:
         addr = extract_mon_host(mon.addr)
-        if addr is None:
+        if addr is None or not linux.is_valid_address(addr):
             continue
 
         cmd = get_route_match_cmd(addr, route_protocol)
