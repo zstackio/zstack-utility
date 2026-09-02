@@ -397,6 +397,82 @@ def test_prepare_strong_hit_takes_shared_artifact_lock(tmp_path, monkeypatch):
         for name, flags in seen)
 
 
+def _track_close_flock(monkeypatch):
+    closed = []
+    orig_close = virtiofs_source._close_flock
+
+    def _close(lock_fd):
+        closed.append(lock_fd)
+        return orig_close(lock_fd)
+
+    monkeypatch.setattr(virtiofs_source, '_close_flock', _close)
+    return closed
+
+
+def test_prepare_releases_artifact_lock_when_preliminary_unmount_fails(tmp_path, monkeypatch):
+    source_root = tmp_path / 'primary-storage' / 'ai-model-cache'
+    source_root.mkdir(parents=True)
+    target = source_root / 'models' / 'model-uuid' / 'v1'
+    provider_root = tmp_path / 'provider-mounts'
+    lock_root = tmp_path / 'provider-locks'
+    mount_path = str(provider_root / 'model-center-uuid')
+    orig_ismount = os.path.ismount
+    closed = _track_close_flock(monkeypatch)
+
+    monkeypatch.setattr(virtiofs_source, 'MODEL_CENTER_PROVIDER_ROOT', str(provider_root))
+    monkeypatch.setattr(virtiofs_source, 'MODEL_CENTER_LOCK_ROOT', str(lock_root))
+    monkeypatch.setattr(
+        os.path, 'ismount',
+        lambda path: path == mount_path or orig_ismount(path))
+
+    def _fail_unmount(path):
+        raise Exception('preliminary unmount failed')
+
+    monkeypatch.setattr(virtiofs_source, '_unmount_model_center', _fail_unmount)
+
+    with pytest.raises(Exception, match='preliminary unmount failed'):
+        virtiofs_source.prepare_model_center_cache(
+            str(source_root),
+            str(target),
+            'model-center-uuid',
+            'redis://model-center',
+            'qwen/v1',
+            1024)
+
+    assert closed
+
+
+def test_prepare_releases_artifact_lock_when_cleanup_unmount_fails(tmp_path, monkeypatch):
+    source_root = tmp_path / 'primary-storage' / 'ai-model-cache'
+    source_root.mkdir(parents=True)
+    target = source_root / 'models' / 'model-uuid' / 'v1'
+    provider_root = tmp_path / 'provider-mounts'
+    lock_root = tmp_path / 'provider-locks'
+    closed = _track_close_flock(monkeypatch)
+
+    monkeypatch.setattr(virtiofs_source, 'MODEL_CENTER_PROVIDER_ROOT', str(provider_root))
+    monkeypatch.setattr(virtiofs_source, 'MODEL_CENTER_LOCK_ROOT', str(lock_root))
+    monkeypatch.setattr(
+        virtiofs_source, '_mount_model_center',
+        lambda storage_url, mount_path, storage_subdir='models': os.makedirs(mount_path))
+
+    def _fail_unmount(path):
+        raise Exception('cleanup unmount failed')
+
+    monkeypatch.setattr(virtiofs_source, '_unmount_model_center', _fail_unmount)
+
+    with pytest.raises(Exception, match='cleanup unmount failed'):
+        virtiofs_source.prepare_model_center_cache(
+            str(source_root),
+            str(target),
+            'model-center-uuid',
+            'redis://model-center',
+            'missing/model',
+            1024)
+
+    assert closed
+
+
 def test_report_source_root_uses_parent_capacity_without_creating_missing_leaf(tmp_path, monkeypatch):
     parent = tmp_path / 'primary-storage'
     parent.mkdir()

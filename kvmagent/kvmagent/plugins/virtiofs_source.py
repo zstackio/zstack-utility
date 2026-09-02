@@ -500,60 +500,62 @@ def prepare_model_center_cache(source_root, source_path, model_center_uuid, stor
     try:
         fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
         artifact_lock_fd = _open_flock(_artifact_prepare_lock_path(target), True)
-        if os.path.ismount(mount_path):
-            _unmount_model_center(mount_path)
-
-        aligned_version = None
-        decision = None
-        reason = None
-        copied = False
         try:
-            _mount_model_center(str(storage_url).strip(), mount_path, storage_subdir)
-            remote_source = ensure_under(
-                os.path.join(mount_path, relative_path),
-                mount_path,
-                'modelRelativePath',
-                allow_root=False)
-            expected_version = expected_strong or remote_directory_meta(remote_source)
+            if os.path.ismount(mount_path):
+                _unmount_model_center(mount_path)
 
-            if os.path.exists(target) and is_local_content_aligned(target, expected_version):
-                aligned_version = expected_version
-                if expected_strong:
-                    decision, reason = 'strong_hit', 'strong_match'
+            aligned_version = None
+            decision = None
+            reason = None
+            copied = False
+            try:
+                _mount_model_center(str(storage_url).strip(), mount_path, storage_subdir)
+                remote_source = ensure_under(
+                    os.path.join(mount_path, relative_path),
+                    mount_path,
+                    'modelRelativePath',
+                    allow_root=False)
+                expected_version = expected_strong or remote_directory_meta(remote_source)
+
+                if os.path.exists(target) and is_local_content_aligned(target, expected_version):
+                    aligned_version = expected_version
+                    if expected_strong:
+                        decision, reason = 'strong_hit', 'strong_match'
+                    else:
+                        decision, reason = 'meta_hit', 'meta_match'
                 else:
-                    decision, reason = 'meta_hit', 'meta_match'
-            else:
-                # Never rmtree first: keep usable cache until new copy is ready.
-                # Rename old aside → copy into target → drop backup; on failure restore.
-                _refresh_model_center_cache_from_remote(
-                    target, root, remote_source, mount_path,
-                    required_capacity_bytes, expected_version)
-                aligned_version = expected_version
-                copied = True
-                if not had_local:
-                    decision, reason = 'cold_copy', 'missing_local'
-                elif not local_before:
-                    decision, reason = 'refresh', 'no_sidecar'
-                elif expected_strong:
-                    decision, reason = 'refresh', 'strong_mismatch'
-                else:
-                    decision, reason = 'refresh', 'meta_mismatch'
+                    # Never rmtree first: keep usable cache until new copy is ready.
+                    # Rename old aside → copy into target → drop backup; on failure restore.
+                    _refresh_model_center_cache_from_remote(
+                        target, root, remote_source, mount_path,
+                        required_capacity_bytes, expected_version)
+                    aligned_version = expected_version
+                    copied = True
+                    if not had_local:
+                        decision, reason = 'cold_copy', 'missing_local'
+                    elif not local_before:
+                        decision, reason = 'refresh', 'no_sidecar'
+                    elif expected_strong:
+                        decision, reason = 'refresh', 'strong_mismatch'
+                    else:
+                        decision, reason = 'refresh', 'meta_mismatch'
+            finally:
+                _unmount_model_center(mount_path)
+
+            actions = _prepare_actions(True, copied)
+            entry = cache_entry(
+                root, target, aligned_version,
+                decision, reason, actions)
+            if register_cache:
+                _register_model_center_cache(root, target)
+            _log_prepare_decision(
+                decision, reason, expected_strong or aligned_version, local_before,
+                target, model_center_uuid, storage_subdir, actions, entry,
+                (time.time() - started) * 1000)
+            return entry
         finally:
-            _unmount_model_center(mount_path)
             _close_flock(artifact_lock_fd)
             artifact_lock_fd = None
-
-        actions = _prepare_actions(True, copied)
-        entry = cache_entry(
-            root, target, aligned_version,
-            decision, reason, actions)
-        if register_cache:
-            _register_model_center_cache(root, target)
-        _log_prepare_decision(
-            decision, reason, expected_strong or aligned_version, local_before,
-            target, model_center_uuid, storage_subdir, actions, entry,
-            (time.time() - started) * 1000)
-        return entry
     finally:
         try:
             fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
