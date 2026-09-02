@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import fcntl
 import json
 import os
 
@@ -313,6 +314,51 @@ def test_prepare_model_center_cache_reuses_existing_cache_with_matching_strong_v
     assert entry['contentVersion'] == 'v:checksum-abc'
     assert entry['prepareDecision'] == 'strong_hit'
     assert entry['prepareReason'] == 'strong_match'
+    assert entry['prepareActions'] == 'mount=0,copy=0'
+
+
+def test_prepare_strong_hit_does_not_take_model_center_lock(tmp_path, monkeypatch):
+    source_root = tmp_path / 'primary-storage' / 'ai-model-cache'
+    target = source_root / 'models' / 'cached-model' / 'v1'
+    target.mkdir(parents=True)
+    (target / 'config.json').write_text('{}')
+    virtiofs_source.write_local_content_version(str(target), 'v:checksum-hit')
+    monkeypatch.setattr(
+        virtiofs_source,
+        'MODEL_CENTER_PROVIDER_ROOT',
+        str(tmp_path / 'provider-mounts'))
+    monkeypatch.setattr(
+        virtiofs_source,
+        'MODEL_CENTER_LOCK_ROOT',
+        str(tmp_path / 'provider-locks'))
+    monkeypatch.setattr(
+        virtiofs_source,
+        '_mount_model_center',
+        lambda storage_url, mount_path, storage_subdir='models': pytest.fail(
+            'cache hit must not mount model center'))
+
+    orig_flock = virtiofs_source.fcntl.flock
+
+    def _fail_model_center_lock(fd, flags):
+        if flags == fcntl.LOCK_EX:
+            path = os.readlink('/proc/self/fd/%d' % fd)
+            if path.endswith('model-center-uuid.lock'):
+                raise AssertionError(
+                    'cache hit must not take model-center exclusive lock (ZSTAC-88117)')
+        return orig_flock(fd, flags)
+
+    monkeypatch.setattr(virtiofs_source.fcntl, 'flock', _fail_model_center_lock)
+
+    entry = virtiofs_source.prepare_model_center_cache(
+        str(source_root),
+        str(target),
+        'model-center-uuid',
+        'redis://model-center',
+        'cached/v1',
+        1024,
+        content_version='checksum-hit')
+
+    assert entry['prepareDecision'] == 'strong_hit'
     assert entry['prepareActions'] == 'mount=0,copy=0'
 
 

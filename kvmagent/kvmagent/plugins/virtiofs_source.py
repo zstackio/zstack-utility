@@ -437,6 +437,23 @@ def prepare_model_center_cache(source_root, source_path, model_center_uuid, stor
     if not os.path.exists(root):
         _ensure_directory(root)
 
+    # Strong-version hit must not take the model-center exclusive lock.
+    # A timed-out cold copy keeps that lock for the whole JuiceFS copy, and MN
+    # timeout does not cancel it (ZSTAC-88117). Other artifacts of the same
+    # model center that already have a local sidecar would otherwise block.
+    if had_local and expected_strong and is_local_content_aligned(target, expected_strong):
+        actions = _prepare_actions(False, False)
+        entry = cache_entry(
+            root, target, expected_strong,
+            'strong_hit', 'strong_match', actions)
+        if register_cache:
+            _register_model_center_cache(root, target)
+        _log_prepare_decision(
+            'strong_hit', 'strong_match', expected_strong, local_before,
+            target, model_center_uuid, storage_subdir, actions, entry,
+            (time.time() - started) * 1000)
+        return entry
+
     if not os.path.exists(MODEL_CENTER_PROVIDER_ROOT):
         _ensure_directory(MODEL_CENTER_PROVIDER_ROOT)
     if not os.path.exists(MODEL_CENTER_LOCK_ROOT):
@@ -449,20 +466,6 @@ def prepare_model_center_cache(source_root, source_path, model_center_uuid, stor
         fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
         if os.path.ismount(mount_path):
             _unmount_model_center(mount_path)
-
-        # Strong-version hit: local sidecar already matches shared truth → skip mount.
-        if had_local and expected_strong and is_local_content_aligned(target, expected_strong):
-            actions = _prepare_actions(False, False)
-            entry = cache_entry(
-                root, target, expected_strong,
-                'strong_hit', 'strong_match', actions)
-            if register_cache:
-                _register_model_center_cache(root, target)
-            _log_prepare_decision(
-                'strong_hit', 'strong_match', expected_strong, local_before,
-                target, model_center_uuid, storage_subdir, actions, entry,
-                (time.time() - started) * 1000)
-            return entry
 
         aligned_version = None
         decision = None
