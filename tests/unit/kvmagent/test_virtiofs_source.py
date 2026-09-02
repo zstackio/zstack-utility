@@ -362,6 +362,41 @@ def test_prepare_strong_hit_does_not_take_model_center_lock(tmp_path, monkeypatc
     assert entry['prepareActions'] == 'mount=0,copy=0'
 
 
+def test_prepare_strong_hit_takes_shared_artifact_lock(tmp_path, monkeypatch):
+    source_root = tmp_path / 'primary-storage' / 'ai-model-cache'
+    target = source_root / 'models' / 'cached-model' / 'v1'
+    target.mkdir(parents=True)
+    (target / 'config.json').write_text('{}')
+    virtiofs_source.write_local_content_version(str(target), 'v:checksum-hit')
+    monkeypatch.setattr(
+        virtiofs_source, 'MODEL_CENTER_PROVIDER_ROOT', str(tmp_path / 'provider-mounts'))
+    monkeypatch.setattr(
+        virtiofs_source, 'MODEL_CENTER_LOCK_ROOT', str(tmp_path / 'provider-locks'))
+    monkeypatch.setattr(
+        virtiofs_source, '_mount_model_center',
+        lambda storage_url, mount_path, storage_subdir='models': pytest.fail('must not mount'))
+
+    seen = []
+    orig_flock = virtiofs_source.fcntl.flock
+
+    def _track(fd, flags):
+        path = os.readlink('/proc/self/fd/%d' % fd)
+        seen.append((os.path.basename(path), flags))
+        return orig_flock(fd, flags)
+
+    monkeypatch.setattr(virtiofs_source.fcntl, 'flock', _track)
+    virtiofs_source.prepare_model_center_cache(
+        str(source_root), str(target), 'model-center-uuid', 'redis://model-center',
+        'cached/v1', 1024, content_version='checksum-hit')
+
+    assert any(
+        name.endswith('.prepare.lock') and flags == fcntl.LOCK_SH
+        for name, flags in seen)
+    assert not any(
+        name.endswith('model-center-uuid.lock') and flags == fcntl.LOCK_EX
+        for name, flags in seen)
+
+
 def test_report_source_root_uses_parent_capacity_without_creating_missing_leaf(tmp_path, monkeypatch):
     parent = tmp_path / 'primary-storage'
     parent.mkdir()

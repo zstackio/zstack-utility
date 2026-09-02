@@ -412,6 +412,32 @@ def _unmount_model_center(mount_path):
         raise Exception('model center mount is still active after unmount')
 
 
+def _artifact_prepare_lock_path(target):
+    return target + '.prepare.lock'
+
+
+def _open_flock(lock_path, exclusive):
+    parent = os.path.dirname(lock_path)
+    if parent and not os.path.exists(parent):
+        _ensure_directory(parent)
+    lock_fd = open(lock_path, 'a+')
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+    except Exception:
+        lock_fd.close()
+        raise
+    return lock_fd
+
+
+def _close_flock(lock_fd):
+    if lock_fd is None:
+        return
+    try:
+        fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
+    finally:
+        lock_fd.close()
+
+
 def prepare_model_center_cache(source_root, source_path, model_center_uuid, storage_url,
                                artifact_relative_path, required_capacity_bytes=None,
                                storage_subdir='models', register_cache=True,
@@ -441,18 +467,27 @@ def prepare_model_center_cache(source_root, source_path, model_center_uuid, stor
     # A timed-out cold copy keeps that lock for the whole JuiceFS copy, and MN
     # timeout does not cancel it (ZSTAC-88117). Other artifacts of the same
     # model center that already have a local sidecar would otherwise block.
-    if had_local and expected_strong and is_local_content_aligned(target, expected_strong):
-        actions = _prepare_actions(False, False)
-        entry = cache_entry(
-            root, target, expected_strong,
-            'strong_hit', 'strong_match', actions)
-        if register_cache:
-            _register_model_center_cache(root, target)
-        _log_prepare_decision(
-            'strong_hit', 'strong_match', expected_strong, local_before,
-            target, model_center_uuid, storage_subdir, actions, entry,
-            (time.time() - started) * 1000)
-        return entry
+    # Same-target refresh still serializes via a per-artifact lock so a hit
+    # cannot observe a rename-in-progress directory.
+    artifact_lock_fd = None
+    if had_local and expected_strong:
+        artifact_lock_fd = _open_flock(_artifact_prepare_lock_path(target), False)
+        try:
+            if is_local_content_aligned(target, expected_strong):
+                actions = _prepare_actions(False, False)
+                entry = cache_entry(
+                    root, target, expected_strong,
+                    'strong_hit', 'strong_match', actions)
+                if register_cache:
+                    _register_model_center_cache(root, target)
+                _log_prepare_decision(
+                    'strong_hit', 'strong_match', expected_strong, local_before,
+                    target, model_center_uuid, storage_subdir, actions, entry,
+                    (time.time() - started) * 1000)
+                return entry
+        finally:
+            _close_flock(artifact_lock_fd)
+            artifact_lock_fd = None
 
     if not os.path.exists(MODEL_CENTER_PROVIDER_ROOT):
         _ensure_directory(MODEL_CENTER_PROVIDER_ROOT)
@@ -464,6 +499,7 @@ def prepare_model_center_cache(source_root, source_path, model_center_uuid, stor
     lock_fd = open(lock_path, 'a+')
     try:
         fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+        artifact_lock_fd = _open_flock(_artifact_prepare_lock_path(target), True)
         if os.path.ismount(mount_path):
             _unmount_model_center(mount_path)
 
@@ -504,6 +540,8 @@ def prepare_model_center_cache(source_root, source_path, model_center_uuid, stor
                     decision, reason = 'refresh', 'meta_mismatch'
         finally:
             _unmount_model_center(mount_path)
+            _close_flock(artifact_lock_fd)
+            artifact_lock_fd = None
 
         actions = _prepare_actions(True, copied)
         entry = cache_entry(
