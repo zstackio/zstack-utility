@@ -127,11 +127,11 @@ class TestFindVmUseFaultNicWithVirsh(unittest.TestCase):
     def setUp(self):
         self.fencer = _make_fencer()
 
-    @mock.patch('kvmagent.plugins.ha_plugin.linux.find_vm_pid_by_uuid')
+    @mock.patch.object(PhysicalNicFencer, '_get_vm_pid')
     @mock.patch('kvmagent.plugins.ha_plugin.shell.call')
     @mock.patch('kvmagent.plugins.ha_plugin.linux.read_file')
     @mock.patch('kvmagent.plugins.ha_plugin.find_vm_uuid_list_by_virsh')
-    @mock.patch.object(PhysicalNicFencer, 'skip_vm_bussiness_nic_check', return_value=False)
+    @mock.patch.object(PhysicalNicFencer, 'get_vm_business_nic_route', return_value='hostBusinessNic')
     def test_skips_virsh_for_vms_not_using_faulted_nic(
             self, mock_skip, mock_virsh_list, mock_read_file, mock_shell_call, mock_find_pid):
         """Core scenario: 3 VMs on host, only vm-3 uses faulted NIC eth0.
@@ -154,10 +154,14 @@ class TestFindVmUseFaultNicWithVirsh(unittest.TestCase):
         mock_shell_call.return_value = "br_eth0\n"  # virsh domiflist output for vm3
         mock_find_pid.return_value = "12345"
 
-        result = self.fencer.find_vm_use_falut_nic_with_virsh(['eth0'])
+        result, affected_host_vms, affected_group_vms = (
+            self.fencer.find_vm_use_falut_nic_with_virsh(['eth0'])
+        )
 
         # Only vm3 should be in result
         self.assertEqual(result, {vm3: "12345"})
+        self.assertEqual(affected_host_vms, [vm3])
+        self.assertEqual(affected_group_vms, [])
         # virsh domiflist should be called exactly once (for vm3 only)
         self.assertEqual(mock_shell_call.call_count, 1)
         self.assertIn(vm3, mock_shell_call.call_args[0][0])
@@ -165,7 +169,7 @@ class TestFindVmUseFaultNicWithVirsh(unittest.TestCase):
     @mock.patch('kvmagent.plugins.ha_plugin.shell.call')
     @mock.patch('kvmagent.plugins.ha_plugin.linux.read_file')
     @mock.patch('kvmagent.plugins.ha_plugin.find_vm_uuid_list_by_virsh')
-    @mock.patch.object(PhysicalNicFencer, 'skip_vm_bussiness_nic_check', return_value=False)
+    @mock.patch.object(PhysicalNicFencer, 'get_vm_business_nic_route', return_value='hostBusinessNic')
     def test_all_vms_no_match_zero_virsh_calls(
             self, mock_skip, mock_virsh_list, mock_read_file, mock_shell_call):
         """100-VM scenario from Jira: none use faulted NIC → zero virsh domiflist calls."""
@@ -173,16 +177,20 @@ class TestFindVmUseFaultNicWithVirsh(unittest.TestCase):
         mock_virsh_list.return_value = vm_uuids
         mock_read_file.return_value = SAMPLE_XML_NO_MATCH_BRIDGE  # all have eth1 only
 
-        result = self.fencer.find_vm_use_falut_nic_with_virsh(['eth0'])
+        result, affected_host_vms, affected_group_vms = (
+            self.fencer.find_vm_use_falut_nic_with_virsh(['eth0'])
+        )
 
         self.assertEqual(result, {})
+        self.assertEqual(affected_host_vms, [])
+        self.assertEqual(affected_group_vms, [])
         mock_shell_call.assert_not_called()
 
-    @mock.patch('kvmagent.plugins.ha_plugin.linux.find_vm_pid_by_uuid')
+    @mock.patch.object(PhysicalNicFencer, '_get_vm_pid')
     @mock.patch('kvmagent.plugins.ha_plugin.shell.call')
     @mock.patch('kvmagent.plugins.ha_plugin.linux.read_file')
     @mock.patch('kvmagent.plugins.ha_plugin.find_vm_uuid_list_by_virsh')
-    @mock.patch.object(PhysicalNicFencer, 'skip_vm_bussiness_nic_check', return_value=False)
+    @mock.patch.object(PhysicalNicFencer, 'get_vm_business_nic_route', return_value='hostBusinessNic')
     def test_xml_unreadable_falls_back_to_virsh(
             self, mock_skip, mock_virsh_list, mock_read_file, mock_shell_call, mock_find_pid):
         """If XML can't be read, virsh domiflist is still called (safe fallback)."""
@@ -192,9 +200,13 @@ class TestFindVmUseFaultNicWithVirsh(unittest.TestCase):
         mock_shell_call.return_value = "br_eth0\n"
         mock_find_pid.return_value = "99999"
 
-        result = self.fencer.find_vm_use_falut_nic_with_virsh(['eth0'])
+        result, affected_host_vms, affected_group_vms = (
+            self.fencer.find_vm_use_falut_nic_with_virsh(['eth0'])
+        )
 
         self.assertEqual(result, {vm1: "99999"})
+        self.assertEqual(affected_host_vms, [vm1])
+        self.assertEqual(affected_group_vms, [])
         self.assertEqual(mock_shell_call.call_count, 1)
 
 

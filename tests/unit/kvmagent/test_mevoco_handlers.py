@@ -30,13 +30,15 @@ class _MevocoPluginProto(Protocol):
     _delete_dhcp4: Callable[..., None]
     _delete_dhcp6: Callable[..., None]
     _refresh_dnsmasq: Callable[..., None]
+    _batch_update_configurations: Callable[..., dict[str, int]]
+    _normalize_dhcp_records: Callable[..., tuple[list[object], dict[str, set[object]]]]
+    _replace_config_file: Callable[[str, str], bool]
     do_apply_dhcp: Callable[..., None]
     _make_conf_path: Callable[..., tuple[str, str, str, str, str]]
     _remove_dns_forward: Callable[..., None]
     _restart_dnsmasq: Callable[..., None]
     restore_ebtables_chain_except_kvmagent: Callable[[], None]
     userData_vms: dict[str, list[str]]
-    _erase_configurations: Callable[..., None]
 
     def arping_dhcp_namespace(self, req: dict[str, object]) -> str: ...
     def apply_dhcp(self, req: dict[str, object]) -> str: ...
@@ -868,6 +870,13 @@ class TestMevocoReleaseDhcp:
         linux = cast(MagicMock, importlib.import_module("zstacklib.utils.linux"))
         linux.find_process_by_cmdline = MagicMock(return_value=None)
         linux.wait_callback_success = MagicMock(return_value=True)
+        plugin._batch_update_configurations = MagicMock(return_value={
+            'removed_dhcp': 1,
+            'removed_dns': 1,
+            'removed_option': 1,
+            'changed_files': 3,
+        })
+        plugin._restart_dnsmasq = MagicMock()
 
         cmd = _Obj(dhcp=[_Obj(namespaceName='ns-dhcp', mac='fa:16:3e:00:00:01', ip='192.168.0.2', nicType='VF', ipVersion=4)])
         def _wrapped_release(req: dict[str, object]) -> str:
@@ -893,12 +902,20 @@ class TestMevocoReleaseDhcp:
                         mevoco.bash_r(mevoco.EBTABLES_CMD + ' -D ZSTACK-VF-DHCP -p IPv4 -d {{VF_NIC_MAC}} --ip-proto udp --ip-sport 67:68 -j ACCEPT')
 
             def release(dhcp: list[object]) -> None:
+                _, config_keys = plugin._normalize_dhcp_records(dhcp)
                 for d in dhcp:
                     if d.nicType == "VF":
                         _remove_ebtable_rules_for_vfnics(d)
-                    conf_file_path, dhcp_path, dns_path, option_path, _ = plugin._make_conf_path(d.namespaceName)
-                    plugin._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
-                    plugin._restart_dnsmasq(d.namespaceName, conf_file_path)
+
+                namespace_name = dhcp[0].namespaceName
+                conf_file_path, dhcp_path, dns_path, option_path, _ = plugin._make_conf_path(namespace_name)
+                plugin._batch_update_configurations(
+                    dhcp_path=dhcp_path,
+                    dns_path=dns_path,
+                    option_path=option_path,
+                    keys=config_keys,
+                )
+                plugin._restart_dnsmasq(namespace_name, conf_file_path)
 
             for _, v in _IterDict(namespace_dhcp).iteritems():
                 release(v)
@@ -911,11 +928,16 @@ class TestMevocoReleaseDhcp:
             rsp = _load_rsp(result)
 
         assert rsp['success'] is True
+        assert cast(MagicMock, plugin._batch_update_configurations).call_count == 1
+        assert cast(MagicMock, plugin._restart_dnsmasq).call_count == 1
 
         cmd = _Obj(dhcp=[_Obj(namespaceName='ns-dhcp', mac='fa:16:3e:00:00:01', ip='192.168.0.2', nicType='VF', ipVersion=4)])
         with patch.object(mevoco.jsonobject, "loads", return_value=cmd):
             req = _make_req({'dhcp': [{'namespaceName': 'ns-dhcp'}]})
             _ = plugin.release_dhcp(req)
+
+        assert cast(MagicMock, plugin._batch_update_configurations).call_count == 2
+        assert cast(MagicMock, plugin._restart_dnsmasq).call_count == 2
 
 
 @pytest.mark.kvmagent
@@ -1181,6 +1203,17 @@ class TestMevocoDoApplyDhcp:
         linux = cast(MagicMock, importlib.import_module("zstacklib.utils.linux"))
         linux.mkdir = MagicMock(side_effect=lambda path, _mode=None: os.makedirs(path, exist_ok=True))
         linux.touch_file = MagicMock(side_effect=lambda path: open(path, "a", encoding="utf-8").close())
+
+        def _replace_config_file(path: str, content: str) -> bool:
+            with open(path, encoding="utf-8") as fd:
+                old_content = fd.read()
+            if old_content == content:
+                return False
+            with open(path, "w", encoding="utf-8") as fd:
+                fd.write(content)
+            return True
+
+        plugin._replace_config_file = MagicMock(side_effect=_replace_config_file)
 
         shell = cast(MagicMock, importlib.import_module("zstacklib.utils.shell"))
         shell.call = MagicMock(return_value="5")
