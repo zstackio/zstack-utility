@@ -1,10 +1,8 @@
-import time
 import unittest
 import mock
 import logging
 from zstacklib.utils import lvm
 from zstacklib.utils import bash
-from cachetools import TTLCache
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +47,19 @@ class TestCase(unittest.TestCase):
         mock_active_lv()
         mock_shell_output()
         lvm.get_lockspace = mock.Mock(return_value="lvm_53ce31387e9745729844a7c2a09ed832:36:/dev/mapper/53ce31387e9745729844a7c2a09ed832-lvmlock:0")
-        lvm.get_lv_size = mock.Mock(return_value="10485760")
-        lvm.lv_uuid = mock.Mock(return_value="duci6c-WkvT-49f1-pajk-vqNF-9JlN-Nr8R5D")
+        lvm.sanlock.get_sector_size = mock.Mock(return_value=512)
 
         lv_path = "/dev/53ce31387e9745729844a7c2a09ed832/6932af51af3c47e495199f8b3a58bc50"
-        def test_active_lv_with_check(sanlock_client_status=False, sanlock_direct_dump=None, expect=False):
+        def test_active_lv_with_check(sanlock_client_status=False, sanlock_direct_dump=None,
+                                      lock_offset=73400320, expect=False):
             self.released = False
             self.sanlock_client_status = sanlock_client_status
-            self.sanlock_direct_dump = sanlock_direct_dump
+            self.sanlock_direct_dump = sanlock_direct_dump or \
+                "%s lvm_53ce31387e9745729844a7c2a09ed832 duci6c-WkvT-49f1-pajk-vqNF-9JlN-Nr8R5D 0001906629 0036 0001 1" % lock_offset
+            lvm.get_lv_attr = mock.Mock(return_value={
+                "lv_uuid": "duci6c-WkvT-49f1-pajk-vqNF-9JlN-Nr8R5D",
+                "lv_lockargs": "1.0.0:%s" % lock_offset,
+            })
             try:
                 lvm.active_lv_with_check(lv_path)
                 self.assertEqual(expect, True, "lv change failed")
@@ -64,17 +67,13 @@ class TestCase(unittest.TestCase):
                 logger.debug(str(e))
                 self.assertEqual(expect, False, "lv change failed")
 
-        lvm.lv_offset = TTLCache(maxsize=10, ttl=3)
         test_active_lv_with_check(sanlock_client_status=True, expect=False)
-        assert lvm.lv_offset.get(lv_path) is None
-
-        test_active_lv_with_check(sanlock_client_status=False, sanlock_direct_dump="73400320 0001906629 0036", expect=True)
-        assert lvm.lv_offset.get(lv_path) == "73400320"
-
-        time.sleep(4)
-        assert lvm.lv_offset.get(lv_path) is None
-        test_active_lv_with_check(sanlock_client_status=False, sanlock_direct_dump="73400321 0001906629 0037", expect=False)
-        assert lvm.lv_offset.get(lv_path) == "73400321"
+        test_active_lv_with_check(sanlock_client_status=False,
+                                  sanlock_direct_dump="73400320 lvm_53ce31387e9745729844a7c2a09ed832 duci6c-WkvT-49f1-pajk-vqNF-9JlN-Nr8R5D 0001906629 0036 0001 1",
+                                  expect=True)
+        test_active_lv_with_check(sanlock_client_status=False,
+                                  sanlock_direct_dump="73400321 lvm_53ce31387e9745729844a7c2a09ed832 duci6c-WkvT-49f1-pajk-vqNF-9JlN-Nr8R5D 0001906629 0037 0001 1",
+                                  lock_offset=73400321, expect=False)
 
 
 if __name__ == '__main__':

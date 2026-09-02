@@ -741,7 +741,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.connected(cmd.vgUuid)
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
-        rsp.hostId = lvm.get_running_host_id(cmd.vgUuid)
+        rsp.hostId = sanlock.get_running_host_id(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
         rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
