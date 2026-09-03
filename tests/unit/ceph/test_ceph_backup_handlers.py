@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
+import shlex
 import sys
 import pytest
 from typing import cast
@@ -60,20 +62,213 @@ def _mock_capacity(agent, total=10**12, avail=5 * 10**11):
 @pytest.mark.ceph
 class TestCephBackupSftpCommandFormatting:
     def test_sftp_targets_wrap_ipv6_hostname(self):
-        assert module.build_sftp_target("root", "2001:db8::10") == "root@[2001:db8::10]"
-        assert module.build_sftp_target("root", "192.168.10.10") == "root@192.168.10.10"
+        with patch.object(module.linux, 'format_ssh_target', side_effect=lambda user, host: (
+                '%s@[%s]' % (user, host) if ':' in host else '%s@%s' % (user, host))):
+            assert module.build_sftp_target("root", "2001:db8::10") == "root@[2001:db8::10]"
+            assert module.build_sftp_target("root", "192.168.10.10") == "root@192.168.10.10"
 
     def test_sftp_commands_use_bracketed_ipv6_target(self):
-        scp_cmd = module.build_sftp_scp_to_pipe_cmd(
-            22,
-            "root",
-            "2001:db8::10",
-            "/backup/image.qcow2",
-            "/tmp/image.fifo")
-        sftp_cmd = module.build_sftp_batch_cmd(22, "root", "2001:db8::10")
+        with patch.object(module.linux, 'format_ssh_target', return_value='root@[2001:db8::10]'):
+            scp_cmd = module.build_sftp_scp_to_pipe_cmd(
+                22, "root", "2001:db8::10", "/backup/image.qcow2", "/tmp/image.fifo")
+            sftp_cmd = module.build_sftp_batch_cmd(22, "root", "2001:db8::10")
 
-        assert "root@[2001:db8::10]:/backup/image.qcow2" in scp_cmd
+        assert shlex.split(scp_cmd)[-2] == "root@[2001:db8::10]:/backup/image.qcow2"
         assert sftp_cmd.endswith("root@[2001:db8::10]")
+
+    def test_scp_remote_path_uses_protocol_compatible_escaping(self):
+        path = '/backup/镜像 $(touch hacked);a\\b\'c"d.qcow2'
+
+        escaped_path = module.escape_scp_remote_path(path)
+
+        assert escaped_path == "/backup/镜像\\ \\$\\(touch\\ hacked\\)\\;a\\\\b\\'c\\\"d.qcow2"
+
+
+# ---------------------------------------------------------------------------
+# Download URL handling
+# ---------------------------------------------------------------------------
+@pytest.mark.ceph
+class TestCephBackupDownloadUrl:
+    def test_ZSTAC_87499_preserves_ipv6_authority(self):
+        url = "http://[fd11:5:5:29::66:571d]:18080/centos image.qcow2"
+
+        encoded_url = module.encode_download_url(url)
+
+        assert encoded_url == "http://[fd11:5:5:29::66:571d]:18080/centos%20image.qcow2"
+
+    def test_preserves_sftp_userinfo_and_ipv6_authority(self):
+        url = "sftp://root:password@[2001:db8::10]:22/backup/image.qcow2"
+
+        encoded_url = module.encode_download_url(url)
+
+        assert encoded_url == url
+
+    def test_encodes_path_without_changing_query_structure(self):
+        url = "https://example.com/镜像/image.qcow2?token=a%20b&name=测试"
+
+        encoded_url = module.encode_download_url(url)
+
+        assert encoded_url == (
+            "https://example.com/%E9%95%9C%E5%83%8F/image.qcow2"
+            "?token=a%20b&name=%E6%B5%8B%E8%AF%95"
+        )
+
+    def test_extracts_last_content_length_after_redirect(self):
+        command_shell = MagicMock()
+        command_shell.call.return_value = (
+            "HTTP/1.1 302 Found\r\nContent-Length: 0\r\n\r\n"
+            "HTTP/1.1 200 OK\r\nContent-Length: 21474836480\r\n"
+        )
+        url = "http://[2001:db8::10]:18080/image.qcow2"
+
+        content_length = module.get_http_content_length(command_shell, url)
+
+        assert content_length == "21474836480"
+        command_shell.call.assert_called_once_with(
+            "curl -fsSIL --globoff -- 'http://[2001:db8::10]:18080/image.qcow2'"
+        )
+
+    def test_missing_content_length_has_explicit_error(self):
+        command_shell = MagicMock()
+        command_shell.call.return_value = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n"
+        url = "https://user:secret@example.com/image.qcow2?token=signed-value"
+
+        with pytest.raises(Exception) as error:
+            module.get_http_content_length(command_shell, url)
+
+        assert str(error.value) == 'cannot get Content-Length from download URL'
+        assert 'secret' not in str(error.value)
+        assert 'signed-value' not in str(error.value)
+
+    def test_missing_content_length_in_final_redirect_response_has_explicit_error(self):
+        command_shell = MagicMock()
+        command_shell.call.return_value = (
+            "HTTP/1.1 302 Found\r\nContent-Length: 0\r\n\r\n"
+            "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n"
+        )
+
+        with pytest.raises(Exception, match="cannot get Content-Length"):
+            module.get_http_content_length(command_shell, "https://example.com/image.qcow2")
+
+    def test_download_keeps_file_url_path_decoded(self, tmp_path):
+        image_path = tmp_path / "centos image.qcow2"
+        image_path.write_bytes(b"raw-image")
+        progress_path = tmp_path / "progress"
+        progress_path.write_text("")
+        agent = _make_agent()
+        agent._set_capacity_to_response = MagicMock()
+        command_shell = MagicMock()
+        command_shell.call.side_effect = lambda command: (
+            "raw" if "grep 'file format'" in command else '{"size": 9}')
+
+        with patch.object(module.traceable_shell, 'get_shell', return_value=command_shell), \
+                patch.object(module.linux, 'create_temp_file', return_value=str(progress_path)), \
+                patch.object(module, 'Report'):
+            result = agent.download(_make_req({
+                'url': 'file://%s' % image_path,
+                'installPath': 'ceph://pool/image',
+                'sendCommandUrl': '',
+                'threadContext': {},
+                'threadContextStack': [],
+                'imageUuid': 'image-uuid',
+            }))
+
+        rsp = _load_rsp(result)
+        assert rsp['success'] is True
+        assert rsp['actualSize'] == os.path.getsize(str(image_path))
+        assert str(image_path) in command_shell.bash_progress_1.call_args[0][0]
+
+    def test_download_reports_final_redirect_content_length(self, tmp_path):
+        progress_path = tmp_path / "progress"
+        progress_path.write_text("")
+        agent = _make_agent()
+        agent._set_capacity_to_response = MagicMock()
+        command_shell = MagicMock()
+
+        def command_result(command):
+            if command.startswith('curl '):
+                return (
+                    "HTTP/1.1 302 Found\r\nContent-Length: 0\r\n\r\n"
+                    "HTTP/1.1 200 OK\r\nContent-Length: 21474836480\r\n")
+            if "grep 'file format'" in command:
+                return 'raw'
+            return '{"size": 21474836480}'
+
+        command_shell.call.side_effect = command_result
+        command_shell.bash_progress_1.return_value = (None, None, None)
+        response = MagicMock()
+        response.read.return_value = b'raw-image'
+
+        with patch.object(module.traceable_shell, 'get_shell', return_value=command_shell), \
+                patch.object(module.linux, 'create_temp_file', return_value=str(progress_path)), \
+                patch.object(module.linux, 'get_file_size_by_http_head',
+                             side_effect=AssertionError('must not issue a second HEAD request')), \
+                patch.object(module.urllib.request, 'urlopen', return_value=response), \
+                patch.object(module, 'Report'):
+            result = agent.download(_make_req({
+                'url': 'https://example.com/image.qcow2',
+                'installPath': 'ceph://pool/image',
+                'sendCommandUrl': '',
+                'threadContext': {},
+                'threadContextStack': [],
+                'imageUuid': 'image-uuid',
+            }))
+
+        rsp = _load_rsp(result)
+        assert rsp['success'] is True
+        assert rsp['actualSize'] == 21474836480
+
+    def test_download_decodes_sftp_path_before_command_construction(self, tmp_path):
+        progress_path = tmp_path / "progress"
+        progress_path.write_text("")
+        agent = _make_agent()
+        agent._set_capacity_to_response = MagicMock()
+        command_shell = MagicMock()
+
+        def command_result(command):
+            if 'sftp ' in command:
+                return "Connected\n-rw-r--r-- 1 root root 9 Jan 1 image.qcow2\n"
+            if "grep 'file format'" in command:
+                return 'raw'
+            return '{"size": 9}'
+
+        command_shell.call.side_effect = command_result
+        command_shell.bash_progress_1.return_value = (None, None, None)
+
+        with patch.object(module.traceable_shell, 'get_shell', return_value=command_shell), \
+                patch.object(module.linux, 'create_temp_file', return_value=str(progress_path)), \
+                patch.object(module.linux, 'format_ssh_target', return_value='root@example.com'), \
+                patch.object(module.linux, 'rm_file_force'), \
+                patch.object(module.os, 'mkfifo'), \
+                patch.object(module, 'Report'):
+            result = agent.download(_make_req({
+                'url': 'sftp://root@example.com/backup/镜像 $(touch hacked).qcow2',
+                'installPath': 'ceph://pool/image',
+                'sendCommandUrl': '',
+                'threadContext': {},
+                'threadContextStack': [],
+                'imageUuid': 'image-uuid',
+            }))
+
+        rsp = _load_rsp(result)
+        assert rsp['success'] is True
+        commands = [call.args[0] for call in command_shell.call.call_args_list]
+        commands.append(command_shell.bash_progress_1.call_args.args[0])
+        commands.append(command_shell.run.call_args.args[0])
+        sftp_commands = '\n'.join(commands)
+        assert '"/backup/镜像 $(touch hacked).qcow2"' in commands[0]
+        assert 'root@example.com:/backup/镜像\\ \\$\\(touch\\ hacked\\).qcow2' in shlex.split(commands[-2])
+        assert "<<'EOF'" in commands[0]
+        assert '%E9%95%9C%E5%83%8F%20%24%28touch%20hacked%29.qcow2' not in sftp_commands
+
+    @pytest.mark.parametrize('path', [
+        '/backup/image%00.qcow2',
+        '/backup/image%0D.qcow2',
+        '/backup/image%0AEOF%0Aecho%20injected.qcow2',
+    ])
+    def test_decode_sftp_path_rejects_unsupported_control_characters(self, path):
+        with pytest.raises(Exception, match='unsupported control character'):
+            module.decode_sftp_path(path)
 
 
 # ---------------------------------------------------------------------------

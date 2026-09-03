@@ -15,8 +15,6 @@ __ENV_SETUP__ = {
     'self': {}
 }
 
-global_br_name=""
-
 ## describe: case will manage by ztest
 class TestBridgeApi(TestCase):
 
@@ -29,13 +27,15 @@ class TestBridgeApi(TestCase):
         r, o = bash.bash_ro("ip a| grep BROADCAST|grep -v virbr | awk -F ':' 'NR==1{print $2}' | sed 's/ //g'")
         interF = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
         br_name = "br_" + interF
-        global global_br_name
-        global_br_name = br_name
         rsp = network_plugin_utils.create_bridge(
             physicalInterfaceName=interF,
             l2NetworkUuid=misc.uuid(),
             disableIptables=True,
             bridgeName=br_name)
+        self.addCleanup(
+            network_plugin_utils.delete_novlan_bridge,
+            bridgeName=br_name,
+            physicalInterfaceName=interF)
         rspO = jsonobject.loads(rsp)
         self.assertEqual(True, rspO.success, "Error happen when create bridge")
 
@@ -44,20 +44,37 @@ class TestBridgeApi(TestCase):
         self.assertTrue(isExsit, "[check] bridge not create on host")
 
         self.check_novlan_interface(br_name, interF)
-        # clean bridge
-        network_plugin_utils.delete_novlan_bridge(bridgeName=br_name, physicalInterfaceName=interF)
 
     @pytest_utils.ztest_decorater
-    # make sure run this case after test_create_bridge
     def test_d_add_if_to_bridge(self):
-        _, o = bash.bash_ro("ip a| grep BROADCAST|grep -v virbr | awk -F ':' 'NR==1{print $2}' | sed 's/ //g'")
-        interF = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
-        # physical interface from configuration
+        bridge_interface = "bri" + misc.uuid()[:8]
+        interF = "phy" + misc.uuid()[:8]
+        br_name = "br" + misc.uuid()[:8]
+        iproute.add_link(bridge_interface, "dummy")
+        self.addCleanup(iproute.delete_link, bridge_interface)
+        iproute.add_link(interF, "dummy")
+        self.addCleanup(iproute.delete_link, interF)
+        rsp = network_plugin_utils.create_bridge(
+            physicalInterfaceName=bridge_interface,
+            l2NetworkUuid=misc.uuid(),
+            disableIptables=True,
+            bridgeName=br_name)
+        self.addCleanup(
+            network_plugin_utils.delete_novlan_bridge,
+            bridgeName=br_name,
+            physicalInterfaceName=interF)
+        rspO = jsonobject.loads(rsp)
+        self.assertEqual(True, rspO.success, "Error happen when create bridge")
+        linux.ip_link_set_net_device_nomaster(bridge_interface)
+
         rsp = network_plugin_utils.add_interface_to_bridge(
-            bridgeName=global_br_name,
+            bridgeName=br_name,
             physicalInterfaceName=interF)
         rspO = jsonobject.loads(rsp)
         self.assertEqual(True, rspO.success, "Error happen when check physical network interface")
+        self.assertTrue(
+            linux.is_vif_on_bridge(br_name, interF),
+            "[check] physical network interface not added to bridge")
 
     @pytest_utils.ztest_decorater
     def test_create_vlan_bridge(self):
@@ -92,7 +109,7 @@ class TestBridgeApi(TestCase):
         vniId = 1000
         br_name = "br_" + interF + "_" + str(vniId)
 
-        r, o = bash.bash_ro("ip a show %s|grep inet|grep -v inet6|awk 'NR==1{print $2}'|awk -F '/' 'NR==1{print $1}' | sed 's/ //g'" % global_br_name)
+        r, o = bash.bash_ro("ip a show %s|grep inet|grep -v inet6|awk 'NR==1{print $2}'|awk -F '/' 'NR==1{print $1}' | sed 's/ //g'" % interF)
         vtepIp = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
         rsp = network_plugin_utils.create_vxlan_bridge(
             bridgeName=br_name,
@@ -122,9 +139,4 @@ class TestBridgeApi(TestCase):
             bridgeName = bridgeName,
             physicalInterfaceName = physicalInterfaceName
         )
-
-
-
-
-
 

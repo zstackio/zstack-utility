@@ -37,7 +37,7 @@ from zstacklib.utils.thread import AsyncThread
 
 logger = log.get_logger(__name__)
 BUFFER_SIZE = 16 * 1024 ** 2
-SFTP_SCP_TO_PIPE_CMD_FORMAT = "scp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s:%s %s"
+SFTP_SCP_TO_PIPE_CMD_FORMAT = "scp -P %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s %s"
 SFTP_BATCH_CMD_FORMAT = "sftp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=no -P %s -b /dev/stdin %s"
 
 
@@ -45,12 +45,56 @@ def build_sftp_target(username, hostname):
     return linux.format_ssh_target(username, hostname)
 
 
+def escape_scp_remote_path(path):
+    safe_characters = '/._-@%+=:,'
+    return ''.join(character if character.isalnum() or character in safe_characters
+                   else '\\' + character for character in path)
+
+
 def build_sftp_scp_to_pipe_cmd(port, username, hostname, path, pipe_path):
-    return SFTP_SCP_TO_PIPE_CMD_FORMAT % (port, build_sftp_target(username, hostname), path, pipe_path)
+    remote_source = "%s:%s" % (build_sftp_target(username, hostname), escape_scp_remote_path(path))
+    return SFTP_SCP_TO_PIPE_CMD_FORMAT % (
+        port, linux.shellquote(remote_source), linux.shellquote(pipe_path))
 
 
 def build_sftp_batch_cmd(port, username, hostname):
     return SFTP_BATCH_CMD_FORMAT % (port, build_sftp_target(username, hostname))
+
+
+def decode_sftp_path(path):
+    decoded_path = urllib.parse.unquote(path)
+    if any(character in decoded_path for character in ('\x00', '\r', '\n')):
+        raise Exception('sftp path contains an unsupported control character')
+    return decoded_path
+
+
+def quote_sftp_batch_path(path):
+    return '"%s"' % path.replace('\\', '\\\\').replace('"', '\\"')
+
+
+def encode_download_url(url):
+    parsed = urllib.parse.urlsplit(url)
+    path = urllib.parse.quote(parsed.path, safe="/:=@%")
+    query = urllib.parse.quote(parsed.query, safe=":/?=&%")
+    fragment = urllib.parse.quote(parsed.fragment, safe=":/?=&%")
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, path, query, fragment))
+
+
+def get_http_content_length(command_shell, url):
+    headers = command_shell.call(
+        "curl -fsSIL --globoff -- %s" % linux.shellquote(url)
+    )
+    content_lengths = []
+    for line in headers.splitlines():
+        if line.strip().upper().startswith('HTTP/'):
+            content_lengths = []
+            continue
+        name, separator, value = line.partition(':')
+        if separator and name.strip().lower() == 'content-length' and value.strip():
+            content_lengths.append(value.strip())
+    if not content_lengths:
+        raise Exception('cannot get Content-Length from download URL')
+    return content_lengths[-1]
 
 
 class CephPoolCapacity(object):
@@ -1044,17 +1088,18 @@ class CephAgent(object):
         report.resourceUuid = cmd.imageUuid
         report.progress_report("0", "start")
 
-        cmd.url = urllib.parse.quote(cmd.url, safe=':/?=')
-
         url = urllib.parse.urlparse(cmd.url)
+        if url.scheme in ('http', 'https', 'ftp', 'sftp'):
+            cmd.url = encode_download_url(cmd.url)
+            url = urllib.parse.urlparse(cmd.url)
         if url.scheme in ('http', 'https', 'ftp'):
             image_format = get_origin_format(cmd.url, True)
-            cmd.url = linux.shellquote(cmd.url)
+            quoted_url = linux.shellquote(cmd.url)
             # roll back tmp ceph file after import it
             _1()
 
             PFILE = linux.create_temp_file()
-            content_length = shell.call("""curl -sLI %s|awk '/[cC]ontent-[lL]ength/{print $NF}'""" % cmd.url).splitlines()[-1]
+            content_length = get_http_content_length(shell, cmd.url)
             total = _getRealSize(content_length)
 
             def _getProgress(synced):
@@ -1073,11 +1118,11 @@ class CephAgent(object):
             logger.debug("content-length is: %s" % total)
 
             _, _, err = shell.bash_progress_1('wget --no-check-certificate -O - %s 2>%s| rbd import '
-                                              '--image-format 2 - %s/%s ' % (cmd.url, PFILE, pool, tmp_image_name)
+                                              '--image-format 2 - %s/%s ' % (quoted_url, PFILE, pool, tmp_image_name)
                                               , _getProgress, pipe_fail=True)
             if err:
                 raise err
-            actual_size = linux.get_file_size_by_http_head(cmd.url)
+            actual_size = int(content_length)
 
             if os.path.exists(PFILE):
                 os.remove(PFILE)
@@ -1087,14 +1132,17 @@ class CephAgent(object):
             PFILE = linux.create_temp_file()
             ssh_pswd_file = None
             pipe_path = PFILE + "fifo"
-            scp_to_pipe_cmd = build_sftp_scp_to_pipe_cmd(port, url.username, url.hostname, url.path, pipe_path)
-            sftp_command = build_sftp_batch_cmd(port, url.username, url.hostname) + " <<EOF\n%s\nEOF\n"
+            remote_path = decode_sftp_path(url.path)
+            scp_to_pipe_cmd = build_sftp_scp_to_pipe_cmd(
+                port, url.username, url.hostname, remote_path, pipe_path)
+            sftp_command = build_sftp_batch_cmd(port, url.username, url.hostname)
             if url.password is not None:
                 ssh_pswd_file = linux.write_to_temp_file(url.password)
                 scp_to_pipe_cmd = 'sshpass -f %s %s' % (ssh_pswd_file, scp_to_pipe_cmd)
                 sftp_command = 'sshpass -f %s %s' % (ssh_pswd_file, sftp_command)
 
-            actual_size = shell.call(sftp_command % ("ls -l " + url.path)).splitlines()[1].strip().split()[4]
+            actual_size = shell.call(sftp_command + " <<'EOF'\n%s\nEOF\n" % (
+                "ls -l " + quote_sftp_batch_path(remote_path))).splitlines()[1].strip().split()[4]
             os.mkfifo(pipe_path)
             image_format = get_origin_format(cmd.url, True)
             cmd.url = linux.shellquote(cmd.url)
@@ -1126,7 +1174,7 @@ class CephAgent(object):
                 raise err
 
         elif url.scheme == 'file':
-            src_path = cmd.url.lstrip('file:')
+            src_path = urllib.parse.unquote(cmd.url[len('file:'):])
             src_path = os.path.normpath(src_path)
             if not os.path.isfile(src_path):
                 raise Exception('cannot find the file[%s]' % src_path)
@@ -1145,7 +1193,8 @@ class CephAgent(object):
                 return synced
 
             t_shell = traceable_shell.get_shell(cmd)
-            t_shell.bash_progress_1("rbd import --image-format 2 %s %s/%s 2>%s " % (src_path, pool, tmp_image_name, p_file), _get_percent)
+            t_shell.bash_progress_1("rbd import --image-format 2 %s %s/%s 2>%s " % (
+                linux.shellquote(src_path), pool, tmp_image_name, p_file), _get_percent)
             actual_size = os.path.getsize(src_path)
         else:
             raise Exception('unknown url[%s]' % cmd.url)

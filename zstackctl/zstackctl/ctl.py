@@ -3,6 +3,7 @@
 
 import argparse
 import hashlib
+import ipaddress
 import os
 import re
 import signal
@@ -854,6 +855,54 @@ def get_ui_address():
         return management_ip
 
     return get_default_ip()
+
+
+def get_status_ui_addresses():
+    ui_address = get_ui_address()
+    if not ui_address:
+        return []
+
+    management_addresses = {}
+    for property_name in (
+            management_network_ipv6.MANAGEMENT_IP_PROPERTY_KEY,
+            management_network_ipv6.MANAGEMENT_IP4_PROPERTY_KEY,
+            management_network_ipv6.MANAGEMENT_IP6_PROPERTY_KEY):
+        address = ctl.read_property(property_name)
+        if not is_reportable_ip(address):
+            continue
+        family = get_ip_version(address)
+        if family not in management_addresses:
+            management_addresses[family] = address
+
+    if ui_address not in management_addresses.values():
+        return [ui_address]
+
+    addresses = [management_addresses[family] for family in (
+        management_network_ipv6.IPV4_VERSION,
+        management_network_ipv6.IPV6_VERSION,
+    ) if family in management_addresses]
+    if management_network_ipv6.IPV6_VERSION in management_addresses:
+        ipv6_listen_host = normalize_ui_ipv6_listen_host(
+            ctl.read_ui_property(UI_LISTEN_HOST_PROPERTY))
+        if not ipv6_listen_host:
+            return [ui_address]
+        if ipv6_listen_host != UI_IPV6_ANY_NGINX_LISTEN_HOST:
+            addresses[-1] = ipv6_listen_host.strip('[]')
+
+    return addresses
+
+
+def write_ui_status_endpoints(status, pid, protocol, port, addresses=None):
+    addresses = addresses if addresses is not None else get_status_ui_addresses()
+    if not addresses:
+        return False
+
+    info('UI status: %s [PID:%s] %s://%s:%s' % (
+        status, pid, protocol, format_url_host(addresses[0]), port))
+    if len(addresses) > 1:
+        info('UI IPv6 address: %s://%s:%s' % (
+            protocol, format_url_host(addresses[1]), port))
+    return True
 
 
 def get_management_or_default_ip():
@@ -2252,7 +2301,7 @@ class Zsha2Utils(object):
             error('cannot ssh peer node with sshkey')
 
     def validate_ip_versions(self):
-        versions = set()
+        versions = {}
         invalid_ips = []
         for name in ('nodeip', 'peerip', 'dbvip'):
             value = self.config.get(name, '')
@@ -2262,13 +2311,73 @@ class Zsha2Utils(object):
             if version is None:
                 invalid_ips.append('%s=%s' % (name, value))
                 continue
-            versions.add(version)
+            self.config[name] = value.strip('[]')
+            versions[name] = version
 
         if invalid_ips:
             error('zsha2 nodeip, peerip and dbvip must be valid IP addresses: %s' % ', '.join(invalid_ips))
+            return
 
-        if len(versions) > 1:
-            error('zsha2 nodeip, peerip and dbvip must use the same IP version')
+        node_version = versions.get('nodeip')
+        peer_version = versions.get('peerip')
+        if node_version is not None and peer_version is not None and node_version != peer_version:
+            error('zsha2 nodeip and peerip must use the same IP version')
+            return
+
+        enabled_virtual_ips = set()
+        enabled_inventories = {}
+        has_nested_inventory = False
+        for family_name, expected_version in (('ipv4', 4), ('ipv6', 6)):
+            family = self.config.get(family_name)
+            if family is None:
+                continue
+            has_nested_inventory = True
+            if not isinstance(family, dict):
+                error('zsha2 %s inventory must be an object' % family_name)
+                return
+            if not family.get('enabled', False):
+                continue
+
+            for field in ('nodeIp', 'peerIp', 'virtualIp'):
+                value = family.get(field, '')
+                if get_ip_version(value) != expected_version:
+                    error('zsha2 %s.%s must be a valid IPv%s address' % (
+                        family_name, field, expected_version))
+                    return
+                family[field] = value.strip('[]')
+
+            gateway = family.get('gateway', '')
+            if gateway and get_ip_version(gateway) != expected_version:
+                error('zsha2 %s.gateway must be a valid IPv%s address' % (
+                    family_name, expected_version))
+                return
+            if gateway:
+                family['gateway'] = gateway.strip('[]')
+
+            enabled_inventories[expected_version] = family
+            enabled_virtual_ips.add(ipaddress.ip_address(family['virtualIp']))
+
+        db_version = versions.get('dbvip')
+        if has_nested_inventory:
+            primary_inventory = enabled_inventories.get(node_version)
+            if node_version is not None and primary_inventory is None:
+                error('zsha2 nodeip and peerip must match an enabled ipv4/ipv6 inventory')
+                return
+            if primary_inventory is not None:
+                for legacy_field, inventory_field in (
+                        ('nodeip', 'nodeIp'), ('peerip', 'peerIp')):
+                    legacy_value = self.config.get(legacy_field)
+                    if legacy_value and ipaddress.ip_address(legacy_value) != ipaddress.ip_address(
+                            primary_inventory[inventory_field]):
+                        error('zsha2 %s must match %s of the enabled primary inventory' % (
+                            legacy_field, inventory_field))
+                        return
+            dbvip = self.config.get('dbvip')
+            if dbvip and ipaddress.ip_address(dbvip) not in enabled_virtual_ips:
+                error('zsha2 dbvip must match virtualIp of an enabled ipv4/ipv6 inventory')
+                return
+        elif node_version is not None and db_version is not None and node_version != db_version:
+            error('zsha2 mixed node and database IP versions require nested ipv4/ipv6 inventory')
 
     def execute_on_peer(self, cmd, useSudo=False):
         remote_path = '/tmp/%s.sh' % uuid.uuid4()
@@ -11257,14 +11366,13 @@ class UiStatusCmd(Command):
                     write_status(colorize_output('Stopped', 'red'))
                 return False
             elif 'UP' in cmd.stdout:
-                default_ip = get_ui_address()
+                addresses = get_status_ui_addresses()
 
-                if not default_ip:
+                if not addresses:
                     info('UI status: %s [PID:%s]' % (colorize_output('Running', 'green'), pid))
                 else:
                     http = 'https' if '--ssl.enabled=true' in output else 'http'
-                    info('UI status: %s [PID:%s] %s://%s:%s' % (
-                        colorize_output('Running', 'green'), pid, http, format_url_host(default_ip), port))
+                    write_ui_status_endpoints(colorize_output('Running', 'green'), pid, http, port, addresses)
             else:
                 write_status(colorize_output('Unknown', 'yellow'))
             return True
@@ -11280,19 +11388,16 @@ class UiStatusCmd(Command):
             write_status(cmd.stdout)
             return False
         else:
-            default_ip = get_ui_address()
+            addresses = get_status_ui_addresses()
             output = shell_return_stdout_stderr(
                 "systemctl show --property MainPID  zstack-ui-nginx.service | awk -F= '{printf $2}'")
             output = output[1]
-            if not default_ip:
+            if not addresses:
                 info('UI status: %s [PID:%s] ' % (colorize_output('Running', 'green'),output))
             else:
-                if os.path.exists(StartUiCmd.HTTP_FILE):
-                    with open(StartUiCmd.HTTP_FILE, 'r') as fd2:
-                        protcol = fd2.readline()
-                        protcol = protcol.strip()
-                        info('UI status: %s [PID:%s] %s://%s:%s' % (
-                            colorize_output('Running', 'green'),output, protcol, format_url_host(default_ip), port))
+                write_ui_status_endpoints(
+                    colorize_output('Running', 'green'), output,
+                    default_protcol, port, addresses)
 
 # For VDI UI 2.1
 class VDIUiStatusCmd(Command):

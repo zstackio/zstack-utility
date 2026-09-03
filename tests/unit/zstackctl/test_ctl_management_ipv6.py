@@ -6,6 +6,7 @@ import socket
 import sys
 import types
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -145,6 +146,191 @@ def test_validate_ip_versions_rejects_invalid_ip(monkeypatch):
     assert errors == [
         'zsha2 nodeip, peerip and dbvip must be valid IP addresses: peerip=invalid-peer'
     ]
+
+
+def test_validate_ip_versions_accepts_independent_db_family(monkeypatch):
+    errors = []
+    monkeypatch.setattr(ctl, 'error', lambda message: errors.append(message))
+
+    zsha = ctl.Zsha2Utils.__new__(ctl.Zsha2Utils)
+    zsha.config = {
+        'nodeip': '2001:db8::10',
+        'peerip': '2001:db8::11',
+        'dbvip': '192.168.10.20',
+        'ipv4': {
+            'enabled': True,
+            'nodeIp': '192.168.10.10',
+            'peerIp': '192.168.10.11',
+            'virtualIp': '192.168.10.20',
+        },
+        'ipv6': {
+            'enabled': True,
+            'nodeIp': '2001:db8::10',
+            'peerIp': '2001:db8::11',
+            'virtualIp': '2001:db8::20',
+        },
+    }
+
+    zsha.validate_ip_versions()
+
+    assert errors == []
+
+
+def test_validate_ip_versions_rejects_mixed_node_and_peer(monkeypatch):
+    errors = []
+    monkeypatch.setattr(ctl, 'error', lambda message: errors.append(message))
+
+    zsha = ctl.Zsha2Utils.__new__(ctl.Zsha2Utils)
+    zsha.config = {
+        'nodeip': '2001:db8::10',
+        'peerip': '192.168.10.11',
+        'dbvip': '192.168.10.20',
+    }
+
+    zsha.validate_ip_versions()
+
+    assert errors == ['zsha2 nodeip and peerip must use the same IP version']
+
+
+def test_validate_ip_versions_rejects_mixed_family_without_nested_inventory(monkeypatch):
+    errors = []
+    monkeypatch.setattr(ctl, 'error', lambda message: errors.append(message))
+
+    zsha = ctl.Zsha2Utils.__new__(ctl.Zsha2Utils)
+    zsha.config = {
+        'nodeip': '2001:db8::10',
+        'peerip': '2001:db8::11',
+        'dbvip': '192.168.10.20',
+    }
+
+    zsha.validate_ip_versions()
+
+    assert errors == [
+        'zsha2 mixed node and database IP versions require nested ipv4/ipv6 inventory'
+    ]
+
+
+def test_validate_ip_versions_rejects_invalid_nested_family(monkeypatch):
+    errors = []
+    monkeypatch.setattr(ctl, 'error', lambda message: errors.append(message))
+
+    zsha = ctl.Zsha2Utils.__new__(ctl.Zsha2Utils)
+    zsha.config = {
+        'nodeip': '2001:db8::10',
+        'peerip': '2001:db8::11',
+        'dbvip': '192.168.10.20',
+        'ipv4': {
+            'enabled': True,
+            'nodeIp': '192.168.10.10',
+            'peerIp': '192.168.10.11',
+            'virtualIp': '192.168.10.20',
+        },
+        'ipv6': {
+            'enabled': True,
+            'nodeIp': '2001:db8::10',
+            'peerIp': '192.168.10.11',
+            'virtualIp': '2001:db8::20',
+        },
+    }
+
+    zsha.validate_ip_versions()
+
+    assert errors == ['zsha2 ipv6.peerIp must be a valid IPv6 address']
+
+
+def test_validate_ip_versions_rejects_missing_primary_family_inventory(monkeypatch):
+    errors = []
+    monkeypatch.setattr(ctl, 'error', lambda message: errors.append(message))
+
+    zsha = ctl.Zsha2Utils.__new__(ctl.Zsha2Utils)
+    zsha.config = {
+        'nodeip': '2001:db8::10',
+        'peerip': '2001:db8::11',
+        'dbvip': '192.168.10.20',
+        'ipv4': {
+            'enabled': True,
+            'nodeIp': '192.168.10.10',
+            'peerIp': '192.168.10.11',
+            'virtualIp': '192.168.10.20',
+        },
+    }
+
+    zsha.validate_ip_versions()
+
+    assert errors == [
+        'zsha2 nodeip and peerip must match an enabled ipv4/ipv6 inventory'
+    ]
+
+
+@pytest.mark.parametrize(('field', 'value', 'expected_error'), [
+    ('nodeip', '2001:db8::12',
+     'zsha2 nodeip must match nodeIp of the enabled primary inventory'),
+    ('peerip', '2001:db8::13',
+     'zsha2 peerip must match peerIp of the enabled primary inventory'),
+])
+def test_validate_ip_versions_rejects_primary_inventory_address_mismatch(
+        monkeypatch, field, value, expected_error):
+    errors = []
+    monkeypatch.setattr(ctl, 'error', lambda message: errors.append(message))
+    config = {
+        'nodeip': '2001:db8::10',
+        'peerip': '2001:db8::11',
+        'dbvip': '192.168.10.20',
+        'ipv4': {
+            'enabled': True,
+            'nodeIp': '192.168.10.10',
+            'peerIp': '192.168.10.11',
+            'virtualIp': '192.168.10.20',
+        },
+        'ipv6': {
+            'enabled': True,
+            'nodeIp': '2001:db8::10',
+            'peerIp': '2001:db8::11',
+            'virtualIp': '2001:db8::20',
+        },
+    }
+    config[field] = value
+    zsha = ctl.Zsha2Utils.__new__(ctl.Zsha2Utils)
+    zsha.config = config
+
+    zsha.validate_ip_versions()
+
+    assert errors == [expected_error]
+
+
+@pytest.mark.parametrize(('scope', 'field'), [
+    ('legacy', 'nodeip'),
+    ('legacy', 'peerip'),
+    ('legacy', 'dbvip'),
+    ('inventory', 'nodeIp'),
+    ('inventory', 'peerIp'),
+    ('inventory', 'virtualIp'),
+])
+def test_validate_ip_versions_accepts_bracketed_ipv6_comparison_values(
+        monkeypatch, scope, field):
+    errors = []
+    monkeypatch.setattr(ctl, 'error', lambda message: errors.append(message))
+    config = {
+        'nodeip': '2001:db8::10',
+        'peerip': '2001:db8::11',
+        'dbvip': '2001:db8::20',
+        'ipv6': {
+            'enabled': True,
+            'nodeIp': '2001:db8::10',
+            'peerIp': '2001:db8::11',
+            'virtualIp': '2001:db8::20',
+        },
+    }
+    target = config if scope == 'legacy' else config['ipv6']
+    expected_value = target[field]
+    target[field] = '[%s]' % expected_value
+    zsha = ctl.Zsha2Utils.__new__(ctl.Zsha2Utils)
+    zsha.config = config
+
+    zsha.validate_ip_versions()
+
+    assert errors == []
+    assert target[field] == expected_value
 
 
 def test_management_server_ip_stack_opts_enable_dual_stack_for_ip6():
@@ -333,6 +519,130 @@ def test_get_ui_address_prefers_management_ip_over_loopback_ui_address(monkeypat
     monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: 'fd00:5:5:28::116:84')
 
     assert ctl.get_ui_address() == 'fd00:5:5:28::116:84'
+
+
+def test_get_status_ui_addresses_keeps_ipv4_status_line_and_appends_enabled_ipv6(monkeypatch):
+    properties = {
+        'management.server.ip': '172.24.246.95',
+        'management.server.ip6': 'fd00:5:5:28::116:84',
+    }
+    logs = []
+
+    monkeypatch.setattr(
+        ctl.ctl,
+        'read_ui_property',
+        lambda key: '172.24.246.95' if key == 'ui_address' else '::')
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: properties.get(key, ''))
+    monkeypatch.setattr(ctl, 'info', lambda message: logs.append(message))
+
+    assert ctl.get_status_ui_addresses() == [
+        '172.24.246.95',
+        'fd00:5:5:28::116:84',
+    ]
+    assert ctl.write_ui_status_endpoints('Running', '50595', 'http', '5000')
+    assert logs == [
+        'UI status: Running [PID:50595] http://172.24.246.95:5000',
+        'UI IPv6 address: http://[fd00:5:5:28::116:84]:5000',
+    ]
+
+
+def test_get_status_ui_addresses_hides_unconfigured_secondary_ipv6(monkeypatch):
+    properties = {
+        'management.server.ip': '172.24.246.95',
+        'management.server.ip6': 'fd00:5:5:28::116:84',
+    }
+
+    monkeypatch.setattr(ctl.ctl, 'read_ui_property', lambda key: '172.24.246.95' if key == 'ui_address' else '')
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: properties.get(key, ''))
+
+    assert ctl.get_status_ui_addresses() == ['172.24.246.95']
+
+
+def test_get_status_ui_addresses_uses_specific_ipv6_listen_host(monkeypatch):
+    properties = {
+        'management.server.ip': '172.24.246.95',
+        'management.server.ip6': 'fd00:5:5:28::116:84',
+    }
+    logs = []
+
+    monkeypatch.setattr(
+        ctl.ctl,
+        'read_ui_property',
+        lambda key: '172.24.246.95' if key == 'ui_address' else 'fd00:5:5:28::116:99')
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: properties.get(key, ''))
+    monkeypatch.setattr(ctl, 'info', lambda message: logs.append(message))
+
+    assert ctl.get_status_ui_addresses() == [
+        '172.24.246.95',
+        'fd00:5:5:28::116:99',
+    ]
+    assert ctl.write_ui_status_endpoints('Running', '50595', 'http', '5000')
+    assert logs[-1] == 'UI IPv6 address: http://[fd00:5:5:28::116:99]:5000'
+
+
+def test_get_status_ui_addresses_preserves_custom_explicit_ui_address(monkeypatch):
+    properties = {
+        'management.server.ip': '172.24.246.95',
+        'management.server.ip6': 'fd00:5:5:28::116:84',
+    }
+
+    monkeypatch.setattr(ctl.ctl, 'read_ui_property', lambda key: '203.0.113.10')
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: properties.get(key, ''))
+
+    assert ctl.get_status_ui_addresses() == ['203.0.113.10']
+
+
+def test_get_status_ui_addresses_preserves_single_stack_output(monkeypatch):
+    properties = {'management.server.ip': '172.24.246.95'}
+    logs = []
+
+    monkeypatch.setattr(ctl.ctl, 'read_ui_property', lambda key: '172.24.246.95')
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: properties.get(key, ''))
+    monkeypatch.setattr(ctl, 'info', lambda message: logs.append(message))
+
+    assert ctl.get_status_ui_addresses() == ['172.24.246.95']
+    assert ctl.write_ui_status_endpoints('Running', '50595', 'http', '5000')
+    assert logs == ['UI status: Running [PID:50595] http://172.24.246.95:5000']
+
+
+def test_get_status_ui_addresses_supports_ipv6_only(monkeypatch):
+    properties = {'management.server.ip': 'fd00:5:5:28::116:84'}
+
+    monkeypatch.setattr(ctl.ctl, 'read_ui_property', lambda key: 'fd00:5:5:28::116:84')
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: properties.get(key, ''))
+
+    assert ctl.get_status_ui_addresses() == ['fd00:5:5:28::116:84']
+
+
+def test_get_status_ui_addresses_uses_specific_listen_host_for_ipv6_only(monkeypatch):
+    properties = {'management.server.ip': 'fd00:5:5:28::116:84'}
+
+    monkeypatch.setattr(
+        ctl.ctl,
+        'read_ui_property',
+        lambda key: ('fd00:5:5:28::116:84' if key == 'ui_address'
+                     else 'fd00:5:5:28::116:99'))
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: properties.get(key, ''))
+
+    assert ctl.get_status_ui_addresses() == ['fd00:5:5:28::116:99']
+
+
+def test_ui_status_uses_default_protocol_when_runtime_file_is_missing(monkeypatch):
+    status_command = MagicMock(return_code=0)
+    endpoint_writer = MagicMock()
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: '')
+    monkeypatch.setattr(ctl.os.path, 'exists', lambda path: False)
+    monkeypatch.setattr(ctl, 'ShellCmd', lambda *args, **kwargs: status_command)
+    monkeypatch.setattr(ctl, 'get_status_ui_addresses', lambda: ['192.0.2.10'])
+    monkeypatch.setattr(ctl, 'shell_return_stdout_stderr', lambda command: (0, '50595', ''))
+    monkeypatch.setattr(ctl, 'write_ui_status_endpoints', endpoint_writer)
+    command = ctl.UiStatusCmd.__new__(ctl.UiStatusCmd)
+
+    command.run(SimpleNamespace(host='localhost', quiet=False))
+
+    endpoint_writer.assert_called_once()
+    assert endpoint_writer.call_args.args[1:] == (
+        '50595', 'http', 5000, ['192.0.2.10'])
 
 
 def test_license_server_post_start_log_brackets_ipv6_default_ip(monkeypatch):

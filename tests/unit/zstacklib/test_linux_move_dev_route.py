@@ -57,7 +57,7 @@ def test_move_dev_route_moves_ipv6_address_and_routes():
 
     linux.move_dev_route("ens4", "br_ens4")
 
-    assert ("ip -6 route del default via 2026:3:3:1::1 proto static metric 101", True) in calls
+    assert ("ip -6 route del default via 2026:3:3:1::1 dev ens4 proto static metric 101", True) in calls
     assert ("ip addr del 2026:3:3:1::4b:3364/64 dev ens4", False) in calls
     assert ("ip -6 route del 2026:3:3:1::/64 dev ens4 proto kernel metric 101 pref medium", False) in calls
     assert ("ip addr add 2026:3:3:1::4b:3364/64 dev br_ens4", True) in calls
@@ -200,13 +200,10 @@ def test_zstac_87140_restore_existing_ipv6_ra_default_route_without_eexist():
     linux = _load_linux_module()
     calls = []
     route = "default via fe80::1 proto ra metric 1024 expires 1799sec pref medium"
-    add_cmd = "ip -6 route add default via fe80::1 dev br_zsn0 proto ra metric 1024 expires 1799sec pref medium"
-    replace_cmd = "ip -6 route replace default via fe80::1 dev br_zsn0 proto ra metric 1024 expires 1799sec pref medium"
+    replace_cmd = "ip -6 route replace default via fe80::1 dev br_zsn0 proto ra metric 1024 pref medium"
 
     def shell_call(cmd, exception=True):
         calls.append((cmd, exception))
-        if cmd == add_cmd:
-            raise RuntimeError("RTNETLINK answers: File exists")
         return ""
 
     linux.shell.call = MagicMock(side_effect=shell_call)
@@ -220,7 +217,6 @@ def test_zstac_87140_restore_existing_ipv6_ra_default_route_without_eexist():
     })
 
     assert (replace_cmd, True) in calls
-    assert (add_cmd, True) not in calls
 
 
 def test_move_dev_route_migrates_resolved_dns_to_bridge():

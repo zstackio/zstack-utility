@@ -1668,8 +1668,21 @@ def delete_zstack_metadata_live(vm_uuid, metadata_key):
 
 
 def get_console_listen_address(host_management_ip):
-    if host_management_ip and network_ipv6.IPV6_SEPARATOR in host_management_ip:
+    if not host_management_ip:
+        return CONSOLE_LISTEN_IPV4_ADDRESS
+    if network_ipv6.IPV6_SEPARATOR in host_management_ip:
         return CONSOLE_LISTEN_IPV6_ADDRESS
+    try:
+        socket.inet_pton(socket.AF_INET, host_management_ip)
+        return CONSOLE_LISTEN_IPV4_ADDRESS
+    except OSError:
+        pass
+    try:
+        addresses = socket.getaddrinfo(host_management_ip, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        if any(address[0] == socket.AF_INET6 for address in addresses):
+            return CONSOLE_LISTEN_IPV6_ADDRESS
+    except socket.gaierror:
+        pass
     return CONSOLE_LISTEN_IPV4_ADDRESS
 
 
