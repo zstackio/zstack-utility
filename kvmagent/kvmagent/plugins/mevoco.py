@@ -2413,6 +2413,8 @@ mimetype.assign = (
 
         @in_bash
         def apply(dhcp):
+            input_count = len(dhcp)
+            render_records, config_keys = self._normalize_dhcp_records(dhcp)
             bridge_name = dhcp[0].bridgeName
             namespace_name = dhcp[0].namespaceName
             conf_file_path, dhcp_path, dns_path, option_path, log_path = self._make_conf_path(namespace_name)
@@ -2443,7 +2445,7 @@ dhcp-range={{g}}
 
             dinfo4 = None
             dinfo6 = None
-            for d in dhcp:
+            for d in render_records:
                 if d.ipVersion == 4:
                     dinfo4 = d
                 elif d.ipVersion == 6:
@@ -2487,12 +2489,8 @@ dhcp-range={{g}}
                     write_file_if_changed(conf_file_path, conf_file)
                     logger.debug('wrote dnsmasq configure file for bridge[%s]\n%s' % (bridge_name, conf_file))
 
-
             info = []
-            for d in dhcp:
-                if d.nicType == "VF":
-                    _add_ebtable_rules_for_vfnics(d)
-
+            for d in render_records:
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
                 dhcp_info['dns'] = ','.join(d.dns)
@@ -2516,9 +2514,6 @@ dhcp-range={{g}}
                 dhcp_info['address'] = address
                 info.append(dhcp_info)
 
-                if not rebuild:
-                    self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
-
             dhcp_conf = '''\
 {% for d in dhcp -%}
 {% if d.isDefaultL3Network -%}
@@ -2537,16 +2532,6 @@ id:{{d.dhcp6Duid}},set:{{d.tag}},[{{d.ip6}}],infinite
 
             tmpt = Template(dhcp_conf)
             dhcp_conf = tmpt.render({'dhcp': info})
-            mode = 'a+'
-            if rebuild:
-                mode = 'w'
-
-            if rebuild:
-                refresh_dnsmasq = write_file_if_changed(dhcp_path, dhcp_conf) or refresh_dnsmasq
-            else:
-                with open(dhcp_path, mode) as fd:
-                    fd.write(dhcp_conf)
-                refresh_dnsmasq = True
 
             option_conf = '''\
 {% for o in options -%}
@@ -2585,13 +2570,6 @@ tag:{{o.tag}},option:mtu,{{o.mtu}}
             tmpt = Template(option_conf)
             option_conf = tmpt.render({'options': info})
 
-            if rebuild:
-                refresh_dnsmasq = write_file_if_changed(option_path, option_conf) or refresh_dnsmasq
-            else:
-                with open(option_path, mode) as fd:
-                    fd.write(option_conf)
-                refresh_dnsmasq = True
-
             hostname_conf = '''\
 {% for h in hostnames -%}
 {% if h.isDefaultL3Network and h.hostname -%}
@@ -2605,17 +2583,40 @@ tag:{{o.tag}},option:mtu,{{o.mtu}}
             tmpt = Template(hostname_conf)
             hostname_conf = tmpt.render({'hostnames': info})
 
+            for d in dhcp:
+                if d.nicType == "VF":
+                    _add_ebtable_rules_for_vfnics(d)
+
+            stats = self._batch_update_configurations(
+                dhcp_path=dhcp_path,
+                dns_path=dns_path,
+                option_path=option_path,
+                keys=config_keys,
+                dhcp_conf=dhcp_conf,
+                dns_conf=hostname_conf,
+                option_conf=option_conf,
+                rebuild=rebuild,
+            )
             if rebuild:
-                refresh_dnsmasq = write_file_if_changed(dns_path, hostname_conf) or refresh_dnsmasq
+                refresh_dnsmasq = stats['changed_files'] > 0 or refresh_dnsmasq
             else:
-                with open(dns_path, mode) as fd:
-                    fd.write(hostname_conf)
                 refresh_dnsmasq = True
 
             self._sync_dnsmasq(namespace_name, conf_file_path, restart_dnsmasq, refresh_dnsmasq)
+            logger.debug(
+                'batch updated dnsmasq configs, operation: apply, namespace: %s, '
+                'input count: %s, deduplicated count: %s, removed dhcp: %s, '
+                'removed option: %s, removed dns: %s, changed files: %s' % (
+                    namespace_name, input_count, len(render_records),
+                    stats['removed_dhcp'], stats['removed_option'],
+                    stats['removed_dns'], stats['changed_files']
+                )
+            )
 
         @in_bash
         def applyv6(dhcp):
+            input_count = len(dhcp)
+            render_records, config_keys = self._normalize_dhcp_records(dhcp)
             bridge_name = dhcp[0].bridgeName
             namespace_name = dhcp[0].namespaceName
             dnsDomain = dhcp[0].dnsDomain
@@ -2643,7 +2644,12 @@ dhcp-range={{range}}
             if not br_num:
                 raise Exception('cannot find the ID for the namespace[%s]' % namespace_name)
 
-            dhcp_range = '%s,%s,static,%s,24h' % (dhcp[0].firstIp, dhcp[0].endIp, dhcp[0].prefixLength)
+            range_info = render_records[0]
+            dhcp_range = '%s,%s,static,%s,24h' % (
+                range_info.firstIp,
+                range_info.endIp,
+                range_info.prefixLength,
+            )
             ra_param = '\nenable-ra' \
                        '\nra-param=inner%s,0,0' % br_num
 
@@ -2654,7 +2660,7 @@ dhcp-range={{range}}
                 'option': option_path,
                 'log': log_path,
                 'iface_name': 'inner%s' % br_num,
-                'range': dhcp_range + ra_param if dhcp[0].enableRa else dhcp_range,
+                'range': dhcp_range + ra_param if range_info.enableRa else dhcp_range,
             })
 
             restart_dnsmasq = False
@@ -2672,10 +2678,7 @@ dhcp-range={{range}}
                     logger.debug('wrote dnsmasq configure file for bridge[%s]\n%s' % (bridge_name, conf_file))
 
             info = []
-            for d in dhcp:
-                if d.nicType == "VF":
-                    _add_ebtable_rules_for_vfnics(d)
-
+            for d in render_records:
                 dhcp_info = {'tag': d.mac.replace(':', '')}
                 dhcp_info.update(d.__dict__)
                 if d.dns6 is not None:
@@ -2685,9 +2688,6 @@ dhcp-range={{range}}
                     dhcp_info['domainList'] = ",".join(d.dnsDomain)
                 dhcp_info['dhcp6Duid'] = make_dhcpv6_duid_uuid(getattr(d, 'vmUuid', None))
                 info.append(dhcp_info)
-
-                if not rebuild:
-                    self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
 
             dhcp_conf = '''\
 {% for d in dhcp -%}
@@ -2700,16 +2700,6 @@ id:{{d.dhcp6Duid}},set:{{d.tag}},[{{d.ip6}}],{{d.hostname}},infinite
 
             tmpt = Template(dhcp_conf)
             dhcp_conf = tmpt.render({'dhcp': info})
-            mode = 'a+'
-            if rebuild:
-                mode = 'w'
-
-            if rebuild:
-                refresh_dnsmasq = write_file_if_changed(dhcp_path, dhcp_conf) or refresh_dnsmasq
-            else:
-                with open(dhcp_path, mode) as fd:
-                    fd.write(dhcp_conf)
-                refresh_dnsmasq = True
 
             # for dhcpv6,  if dns-server is not provided, dnsmasq will use dhcp server as dns-server
             option_conf = '''\
@@ -2725,13 +2715,6 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
             tmpt = Template(option_conf)
             option_conf = tmpt.render({'options': info})
 
-            if rebuild:
-                refresh_dnsmasq = write_file_if_changed(option_path, option_conf) or refresh_dnsmasq
-            else:
-                with open(option_path, mode) as fd:
-                    fd.write(option_conf)
-                refresh_dnsmasq = True
-
             hostname_conf = '''\
 {% for h in hostnames -%}
 {% if h.isDefaultL3Network and h.hostname -%}
@@ -2742,14 +2725,35 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
             tmpt = Template(hostname_conf)
             hostname_conf = tmpt.render({'hostnames': info})
 
+            for d in dhcp:
+                if d.nicType == "VF":
+                    _add_ebtable_rules_for_vfnics(d)
+
+            stats = self._batch_update_configurations(
+                dhcp_path=dhcp_path,
+                dns_path=dns_path,
+                option_path=option_path,
+                keys=config_keys,
+                dhcp_conf=dhcp_conf,
+                dns_conf=hostname_conf,
+                option_conf=option_conf,
+                rebuild=rebuild,
+            )
             if rebuild:
-                refresh_dnsmasq = write_file_if_changed(dns_path, hostname_conf) or refresh_dnsmasq
+                refresh_dnsmasq = stats['changed_files'] > 0 or refresh_dnsmasq
             else:
-                with open(dns_path, mode) as fd:
-                    fd.write(hostname_conf)
                 refresh_dnsmasq = True
 
             self._sync_dnsmasq(namespace_name, conf_file_path, restart_dnsmasq, refresh_dnsmasq)
+            logger.debug(
+                'batch updated dnsmasq configs, operation: apply, namespace: %s, '
+                'input count: %s, deduplicated count: %s, removed dhcp: %s, '
+                'removed option: %s, removed dns: %s, changed files: %s' % (
+                    namespace_name, input_count, len(render_records),
+                    stats['removed_dhcp'], stats['removed_option'],
+                    stats['removed_dns'], stats['changed_files']
+                )
+            )
 
         for k, v in namespace_dhcp.items():
             if v[0].ipVersion == 4 or v[0].ipVersion == 46:
@@ -2802,25 +2806,207 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
         shell.call('kill -1 %s' % pid)
         self.signal_count += 1
 
-    def _erase_configurations(self, mac, ip, dhcp_path, dns_path, option_path):
-        MAC = mac
-        TAG = mac.replace(':', '')
-        DHCP = dhcp_path
-        OPTION = option_path
-        IP = ip
-        DNS = dns_path
+    @staticmethod
+    def _normalize_mac_address(mac):
+        return mac.strip().lower() if mac else None
 
-        bash_errorout('''\
-sed -i '/{{MAC}},/d' {{DHCP}};
-sed -i '/set:{{TAG}},/d' {{DHCP}};
-sed -i '/,{{IP}},/d' {{DHCP}};
-sed -i '/^$/d' {{DHCP}};
-sed -i '/{{TAG}},/d' {{OPTION}};
-sed -i '/^$/d' {{OPTION}};
-sed -i '/^{{IP}} /d' {{DNS}};
-sed -i '/^$/d' {{DNS}}
-''')
+    @staticmethod
+    def _normalize_dhcp_tag(mac):
+        normalized = Mevoco._normalize_mac_address(mac)
+        return normalized.replace(':', '') if normalized else None
 
+    @staticmethod
+    def _normalize_duid(duid):
+        return duid.strip().lower() if duid else None
+
+    @staticmethod
+    def _normalize_ip_key(address):
+        if not address:
+            return None
+
+        candidate = str(address).strip().strip('[]')
+        for family in (socket.AF_INET, socket.AF_INET6):
+            try:
+                return family, socket.inet_pton(family, candidate)
+            except socket.error:
+                pass
+        return None
+
+    @staticmethod
+    def _normalize_config_lines(lines):
+        normalized = [line.rstrip('\r\n') for line in lines if line.strip()]
+        return '\n'.join(normalized) + ('\n' if normalized else '')
+
+    @staticmethod
+    def _merge_config_content(retained, appended):
+        parts = []
+        for content in (retained, appended):
+            stripped = content.strip()
+            if stripped:
+                parts.append(stripped)
+        return '\n'.join(parts) + ('\n' if parts else '')
+
+    def _normalize_dhcp_records(self, dhcp):
+        keys = {
+            'macs': set(),
+            'tags': set(),
+            'ips': set(),
+            'duids': set(),
+        }
+
+        for record in dhcp:
+            mac = self._normalize_mac_address(getattr(record, 'mac', None))
+            tag = self._normalize_dhcp_tag(getattr(record, 'mac', None))
+            if mac:
+                keys['macs'].add(mac)
+            if tag:
+                keys['tags'].add(tag)
+
+            for field in ('ip', 'ip6'):
+                ip_key = self._normalize_ip_key(getattr(record, field, None))
+                if ip_key:
+                    keys['ips'].add(ip_key)
+
+            duid = self._normalize_duid(getattr(record, 'dhcp6Duid', None))
+            if not duid:
+                duid = self._normalize_duid(
+                    make_dhcpv6_duid_uuid(getattr(record, 'vmUuid', None))
+                )
+            if duid:
+                keys['duids'].add(duid)
+
+        seen = set()
+        deduplicated_reversed = []
+        for record in reversed(dhcp):
+            mac = self._normalize_mac_address(getattr(record, 'mac', None))
+            identity = mac if mac else id(record)
+            if identity in seen:
+                continue
+            seen.add(identity)
+            deduplicated_reversed.append(record)
+
+        deduplicated_reversed.reverse()
+        return deduplicated_reversed, keys
+
+    def _filter_dhcp_config(self, content, keys):
+        retained = []
+        removed = 0
+        stale_ips = set()
+
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            fields = [field.strip() for field in line.split(',')]
+            first = fields[0].lower() if fields else ''
+            matched = first in keys['macs']
+
+            if first.startswith('id:') and first[3:] in keys['duids']:
+                matched = True
+
+            for field in fields:
+                lowered = field.lower()
+                if lowered.startswith('set:') and lowered[4:] in keys['tags']:
+                    matched = True
+
+                ip_key = self._normalize_ip_key(field)
+                if ip_key and ip_key in keys['ips']:
+                    matched = True
+
+            if matched:
+                removed += 1
+                for field in fields:
+                    ip_key = self._normalize_ip_key(field)
+                    if ip_key:
+                        stale_ips.add(ip_key)
+            else:
+                retained.append(raw_line)
+
+        return self._normalize_config_lines(retained), removed, stale_ips
+
+    def _filter_option_config(self, content, keys):
+        retained = []
+        removed = 0
+        expected_tags = set('tag:%s' % tag for tag in keys['tags'])
+
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            first = line.split(',', 1)[0].strip().lower()
+            if first in expected_tags:
+                removed += 1
+            else:
+                retained.append(raw_line)
+
+        return self._normalize_config_lines(retained), removed
+
+    def _filter_dns_config(self, content, ip_keys):
+        retained = []
+        removed = 0
+
+        for raw_line in content.splitlines():
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            first = line.split(None, 1)[0]
+            if self._normalize_ip_key(first) in ip_keys:
+                removed += 1
+            else:
+                retained.append(raw_line)
+
+        return self._normalize_config_lines(retained), removed
+
+    @staticmethod
+    def _replace_config_file(path, content):
+        with linux.CrashSafeFileEditor(path) as editor:
+            changed = editor.text != content
+            editor.text = content
+        return changed
+
+    def _batch_update_configurations(self, dhcp_path, dns_path, option_path,
+                                     keys, dhcp_conf='', dns_conf='',
+                                     option_conf='', rebuild=False):
+        with open(dhcp_path, 'r') as fd:
+            old_dhcp = fd.read()
+        with open(dns_path, 'r') as fd:
+            old_dns = fd.read()
+        with open(option_path, 'r') as fd:
+            old_option = fd.read()
+
+        if rebuild:
+            final_dhcp = self._merge_config_content('', dhcp_conf)
+            final_dns = self._merge_config_content('', dns_conf)
+            final_option = self._merge_config_content('', option_conf)
+            removed_dhcp = len([line for line in old_dhcp.splitlines() if line.strip()])
+            removed_dns = len([line for line in old_dns.splitlines() if line.strip()])
+            removed_option = len([line for line in old_option.splitlines() if line.strip()])
+        else:
+            retained_dhcp, removed_dhcp, stale_ips = self._filter_dhcp_config(old_dhcp, keys)
+            dns_keys = set(keys['ips'])
+            dns_keys.update(stale_ips)
+            retained_dns, removed_dns = self._filter_dns_config(old_dns, dns_keys)
+            retained_option, removed_option = self._filter_option_config(old_option, keys)
+
+            final_dhcp = self._merge_config_content(retained_dhcp, dhcp_conf)
+            final_dns = self._merge_config_content(retained_dns, dns_conf)
+            final_option = self._merge_config_content(retained_option, option_conf)
+
+        # Keep DHCP last so its stale addresses remain discoverable after a partial failure.
+        changed_files = 0
+        changed_files += int(self._replace_config_file(dns_path, final_dns))
+        changed_files += int(self._replace_config_file(option_path, final_option))
+        changed_files += int(self._replace_config_file(dhcp_path, final_dhcp))
+
+        return {
+            'removed_dhcp': removed_dhcp,
+            'removed_dns': removed_dns,
+            'removed_option': removed_option,
+            'changed_files': changed_files,
+        }
 
     @lock.lock('dnsmasq')
     @kvmagent.replyerror
@@ -2861,13 +3047,31 @@ sed -i '/^$/d' {{DNS}}
 
         @in_bash
         def release(dhcp):
+            input_count = len(dhcp)
+            render_records, config_keys = self._normalize_dhcp_records(dhcp)
+
             for d in dhcp:
                 if d.nicType == "VF":
                     _remove_ebtable_rules_for_vfnics(d)
 
-                conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(d.namespaceName)
-                self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
-                self._restart_dnsmasq(d.namespaceName, conf_file_path)
+            namespace_name = dhcp[0].namespaceName
+            conf_file_path, dhcp_path, dns_path, option_path, _ = self._make_conf_path(namespace_name)
+            stats = self._batch_update_configurations(
+                dhcp_path=dhcp_path,
+                dns_path=dns_path,
+                option_path=option_path,
+                keys=config_keys,
+            )
+            self._restart_dnsmasq(namespace_name, conf_file_path)
+            logger.debug(
+                'batch updated dnsmasq configs, operation: release, namespace: %s, '
+                'input count: %s, deduplicated count: %s, removed dhcp: %s, '
+                'removed option: %s, removed dns: %s, changed files: %s' % (
+                    namespace_name, input_count, len(render_records),
+                    stats['removed_dhcp'], stats['removed_option'],
+                    stats['removed_dns'], stats['changed_files']
+                )
+            )
 
         for k, v in namespace_dhcp.items():
             release(v)
