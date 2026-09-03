@@ -256,11 +256,7 @@ class ZbsAgent(plugin.TaskManager):
     DESTROY_VHOST_PATH = "/zbs/primarystorage/vhost/destroy"
     CREATE_VHOST_BDEV_PATH = "/zbs/primarystorage/vhost/bdev/create"
     DELETE_VHOST_BDEV_PATH = "/zbs/primarystorage/vhost/bdev/delete"
-    RESOURCE_USAGE_CGROUP_NAMES = frozenset([
-        'zstone.share.slice',
-        'zstone.cs.slice',
-        'zstone.vhost.slice',
-    ])
+    RESOURCE_USAGE_CGROUP_NAMES = frozenset(['zstone.share.slice', 'zstone.cs.slice', 'zstone.vhost.slice'])
 
     http_server = http.HttpServer(port=7763)
     http_server.logfile_path = log.get_logfile_path()
@@ -273,8 +269,7 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS_PATH, self.get_facts)
         self.http_server.register_async_uri(self.SYNC_METADATA_PATH, self.sync_metadata)
-        self.http_server.register_async_uri(
-            self.GET_RESOURCE_USAGE_PATH, self.get_resource_usage)
+        self.http_server.register_async_uri(self.GET_RESOURCE_USAGE_PATH, self.get_resource_usage)
         self.http_server.register_async_uri(self.DEPLOY_CLIENT_PATH, self.deploy_client)
         self.http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         self.http_server.register_async_uri(self.COPY_PATH, self.copy)
@@ -344,24 +339,22 @@ class ZbsAgent(plugin.TaskManager):
     @replyerror
     def get_resource_usage(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        names = getattr(cmd, 'cgroupNames', None)
+        names = cmd.cgroupNames
         if (not isinstance(names, list) or not names
                 or any(not isinstance(name, str) for name in names)
                 or len(names) != len(set(names))
-                or any(name not in self.RESOURCE_USAGE_CGROUP_NAMES
-                       for name in names)):
+                or any(name not in self.RESOURCE_USAGE_CGROUP_NAMES for name in names)):
             raise resource_control.ResourceControlError(
-                'CGROUP_NAME_SET_INVALID')
+                'Cgroup names must be a non-empty unique subset of the '
+                'configured ZBS cgroups')
 
         serial_number = read_physical_server_serial_number()
         if not serial_number:
-            raise resource_control.ResourceControlError(
-                'PHYSICAL_SERVER_SERIAL_NUMBER_UNAVAILABLE')
+            raise resource_control.ResourceControlError('Physical server serial number is unavailable')
 
         rsp = ResourceUsageRsp()
         rsp.physicalServerSerialNumber = serial_number
-        rsp.usages = resource_control.ResourceControlManager().inspect_systemd_slices(
-            names)
+        rsp.usages = resource_control.ResourceControlManager().inspect_systemd_slices(names)
         return jsonobject.dumps(rsp)
 
     @replyerror

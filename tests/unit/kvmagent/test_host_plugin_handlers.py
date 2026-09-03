@@ -179,8 +179,7 @@ class TestHostPluginCapacity:
 
         # Mock _get_total_memory (reads /proc/meminfo via shell)
         with patch.object(host_plugin, '_get_total_memory', return_value=8 * 1024 * 1024 * 1024), \
-             patch.object(host_plugin.resource_control.ResourceControlManager,
-                          'get_shared_cpu_num', return_value=8):
+             patch.object(host_plugin.resource_control.ResourceControlManager, 'get_shared_cpu_num', return_value=8):
             req = _make_req()
             result = plugin.capacity(req)
             rsp = json.loads(result)
@@ -203,19 +202,13 @@ class TestHostPluginCapacity:
                 host_plugin.resource_control.ResourceControlManager,
                 'get_shared_cpu_num',
                 side_effect=host_plugin.resource_control.ResourceControlError(
-                    'READ_FAILED:cpuset.cpus.effective')), \
+                    'Failed to read cpuset.cpus.effective')), \
              patch.object(linux, 'get_cpu_num', return_value=8), \
              patch.object(linux, 'get_cpu_speed', return_value=2400), \
              patch.object(linux, 'get_socket_num', return_value=2), \
              patch.object(linux, 'get_cpu_core_num', return_value=4), \
-             patch.object(
-                     vm_plugin,
-                     'get_cpu_memory_used_by_running_vms',
-                     return_value=(0, 0)), \
-             patch.object(
-                     host_plugin,
-                     '_get_total_memory',
-                     return_value=8 * 1024 * 1024 * 1024):
+             patch.object(vm_plugin, 'get_cpu_memory_used_by_running_vms', return_value=(0, 0)), \
+             patch.object(host_plugin, '_get_total_memory', return_value=8 * 1024 * 1024 * 1024):
             rsp = json.loads(plugin.capacity(_make_req()))
 
         assert rsp['success'] is True
@@ -225,19 +218,16 @@ class TestHostPluginCapacity:
 @pytest.mark.kvmagent
 class TestHostPluginResourceControl:
     def _command(self):
-        consumer = 'host-agent:' + 'a' * 32
         return {
             'roleType': 'COMPUTE',
             'sliceName': 'zstack-compute.slice',
             'cpuSet': '0-1',
-            'operation': 'APPLY',
             'memory': 0,
             'handles': [
                 {
                     'handleType': 'SYSTEMD_UNIT',
                     'value': 'zstack-kvmagent.service',
                     'serviceName': 'kvmagent',
-                    'consumerKey': consumer,
                     'optional': False,
                     'restartable': False,
                 },
@@ -245,7 +235,6 @@ class TestHostPluginResourceControl:
                     'handleType': 'SYSTEMD_UNIT',
                     'value': 'virtlogd.service',
                     'serviceName': 'virtlogd',
-                    'consumerKey': consumer,
                     'optional': True,
                     'restartable': False,
                 },
@@ -255,54 +244,84 @@ class TestHostPluginResourceControl:
     def test_valid_command_is_applied_once(self):
         plugin = _make_plugin()
         manager = MagicMock()
-        manager.apply.return_value = {
-            'cpuSet': '0-1',
-            'coveredServiceCount': 2,
-            'expectedServiceCount': 2,
-            'results': [],
-        }
+        manager.apply.return_value = {'synced': True}
 
-        with patch.object(host_plugin.resource_control, 'ResourceControlManager',
-                          return_value=manager):
-            rsp = json.loads(plugin.apply_resource_control(
-                _make_req(self._command())))
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(plugin.apply_resource_control(_make_req(self._command())))
 
         assert rsp['success'] is True
         manager.apply.assert_called_once()
+        manager.release.assert_not_called()
+
+    def test_memory_only_command_does_not_require_cpu_set(self):
+        command = self._command()
+        command.pop('cpuSet')
+        command['memory'] = 1024 * 1024
+        manager = MagicMock()
+        manager.apply.return_value = {'synced': True}
+
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(_make_plugin().apply_resource_control(_make_req(command)))
+
+        assert rsp['success'] is True
+        manager.apply.assert_called_once()
+        role_type, cpu_set, handles, memory, slice_name, isolation_mode = manager.apply.call_args.args
+        assert role_type == 'COMPUTE'
+        assert cpu_set is None
+        assert [handle.serviceName for handle in handles] == ['kvmagent', 'virtlogd']
+        assert memory == 1024 * 1024
+        assert slice_name == 'zstack-compute.slice'
+        assert isolation_mode is None
 
     def test_unsafe_handles_are_rejected_before_apply(self):
         cases = []
 
         command = self._command()
         command['roleType'] = 'MANAGEMENT'
-        cases.append((command, 'ROLE_TYPE_UNSUPPORTED'))
+        cases.append((command, 'not supported by the KVM agent'))
 
         command = self._command()
         command['sliceName'] = '../../attacker.slice'
-        cases.append((command, 'SLICE_NAME_INVALID'))
+        cases.append((command, 'not a valid systemd slice'))
+
+        command = self._command()
+        command['isolationMode'] = 'ISOLATED'
+        cases.append((command, 'must be SHARED or EXCLUSIVE'))
 
         command = self._command()
         command['handles'][1]['value'] = '../../attacker.service'
-        cases.append((command, 'SERVICE_HANDLE_UNSUPPORTED'))
-
-        command = self._command()
-        command['handles'][1]['consumerKey'] = 'host-agent:' + 'b' * 32
-        cases.append((command, 'SERVICE_HANDLE_SET_INVALID'))
+        cases.append((command, 'Systemd unit handle value'))
 
         command = self._command()
         command['handles'].append(dict(command['handles'][1]))
-        cases.append((command, 'SERVICE_HANDLE_DUPLICATED'))
+        cases.append((command, 'is duplicated'))
 
         for command, reason in cases:
             manager = MagicMock()
-            with patch.object(host_plugin.resource_control,
-                              'ResourceControlManager', return_value=manager):
-                rsp = json.loads(plugin_response := _make_plugin().apply_resource_control(
-                    _make_req(command)))
+            with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+                rsp = json.loads(plugin_response := _make_plugin().apply_resource_control(_make_req(command)))
 
             assert rsp['success'] is False, plugin_response
             assert reason in rsp['error'], plugin_response
             manager.apply.assert_not_called()
+            manager.release.assert_not_called()
+
+    def test_release_endpoint_calls_only_release(self):
+        command = self._command()
+        command.pop('cpuSet')
+        command.pop('memory')
+        manager = MagicMock()
+        manager.release.return_value = {'synced': True}
+
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(_make_plugin().release_resource_control(_make_req(command)))
+
+        assert rsp['success'] is True
+        manager.apply.assert_not_called()
+        role_type, handles, slice_name = manager.release.call_args.args
+        assert role_type == 'COMPUTE'
+        assert [handle.serviceName for handle in handles] == ['kvmagent', 'virtlogd']
+        assert slice_name == 'zstack-compute.slice'
 
     def test_new_manifest_service_does_not_require_agent_code_change(self):
         command = self._command()
@@ -310,22 +329,14 @@ class TestHostPluginResourceControl:
             'handleType': 'SYSTEMD_UNIT',
             'value': 'image-store-agent.service',
             'serviceName': 'image-store-agent',
-            'consumerKey': 'host-agent:' + 'a' * 32,
             'optional': True,
             'restartable': True,
         }]
         manager = MagicMock()
-        manager.apply.return_value = {
-            'cpuSet': '0-1',
-            'coveredServiceCount': 1,
-            'expectedServiceCount': 1,
-            'results': [],
-        }
+        manager.apply.return_value = {'synced': True}
 
-        with patch.object(host_plugin.resource_control, 'ResourceControlManager',
-                          return_value=manager):
-            rsp = json.loads(_make_plugin().apply_resource_control(
-                _make_req(command)))
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(_make_plugin().apply_resource_control(_make_req(command)))
 
         assert rsp['success'] is True
         manager.apply.assert_called_once()
@@ -344,10 +355,8 @@ class TestHostPluginResourceControl:
             'memoryLimit': 0,
         }]
 
-        with patch.object(host_plugin.resource_control, 'ResourceControlManager',
-                          return_value=manager):
-            rsp = json.loads(_make_plugin().get_managed_service_usage(
-                _make_req(command)))
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(_make_plugin().get_managed_service_usage(_make_req(command)))
 
         assert rsp['success'] is True
         assert rsp['services'][0]['serviceName'] == 'kvmagent'
@@ -357,43 +366,51 @@ class TestHostPluginResourceControl:
         assert role_type == 'COMPUTE'
         assert [item.serviceName for item in handles] == ['kvmagent', 'virtlogd']
 
+    def test_managed_service_probe_failure_is_returned_to_cloud(self):
+        command = self._command()
+        manager = MagicMock()
+        manager.inspect.side_effect = (
+            host_plugin.resource_control.ResourceControlError('No available cpuset controller was found'))
+
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(_make_plugin().get_managed_service_usage(_make_req(command)))
+
+        assert rsp['success'] is False
+        assert 'No available cpuset controller was found' in rsp['error']
+
     def test_only_explicitly_selected_restartable_services_are_restarted(self):
         command = self._command()
         command['handles'] = [{
             'handleType': 'SYSTEMD_UNIT',
             'value': 'node_exporter.service',
             'serviceName': 'node-exporter',
-            'consumerKey': 'host-agent:' + 'a' * 32,
             'optional': True,
             'restartable': True,
         }]
         manager = MagicMock()
 
-        with patch.object(host_plugin.resource_control, 'ResourceControlManager',
-                          return_value=manager):
-            rsp = json.loads(_make_plugin().restart_managed_services(
-                _make_req(command)))
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(_make_plugin().restart_managed_services(_make_req(command)))
 
         assert rsp['success'] is True
         manager.restart.assert_called_once()
-        handles = manager.restart.call_args.args[0]
+        assert manager.restart.call_args.args[0] == 'zstack-compute.slice'
+        handles = manager.restart.call_args.args[1]
         assert [item.serviceName for item in handles] == ['node-exporter']
 
-    def test_extreme_cpu_range_is_rejected_without_apply(self):
+    def test_extreme_cpu_range_is_rejected_before_backend_change(self):
         command = self._command()
         command['cpuSet'] = '0-2147483647'
         manager = host_plugin.resource_control.ResourceControlManager()
 
-        with patch.object(host_plugin.resource_control, 'ResourceControlManager',
-                          return_value=manager), \
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager), \
              patch.object(manager, '_read', return_value='0-7'), \
-             patch.object(manager, 'apply') as apply:
-            rsp = json.loads(_make_plugin().apply_resource_control(
-                _make_req(command)))
+             patch.object(manager, '_backend') as backend:
+            rsp = json.loads(_make_plugin().apply_resource_control(_make_req(command)))
 
         assert rsp['success'] is False
-        assert 'CPUSET_OUT_OF_RANGE' in rsp['error']
-        apply.assert_not_called()
+        assert 'contains CPUs outside online CPU set' in rsp['error']
+        backend.assert_not_called()
 
 
 @pytest.mark.kvmagent
