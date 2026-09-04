@@ -3819,8 +3819,7 @@ class StartCmd(Command):
                 fd.write('export CATALINA_OPTS=" %s"' % ' '.join(catalina_opts))
 
         def is_resource_assignment_enabled():
-            db_hostname, db_port, db_user, db_password = \
-                ctl.get_live_mysql_portal()
+            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
             query = MySqlCommandLineQuery()
             query.host = db_hostname
             query.port = db_port
@@ -3851,8 +3850,7 @@ class StartCmd(Command):
                 command = ' '.join(shell_quote(argument) for argument in
                                    management_node_systemd_run_arguments(
                                        start_script,
-                                       os.path.join(os.path.expanduser('~zstack'),
-                                                    'management-server.pid')))
+                                       os.path.join(os.path.expanduser('~zstack'), 'management-server.pid')))
                 shell(command)
             else:
                 drop_in_dir = os.path.dirname(RESOURCE_ASSIGNMENT_DROP_IN)

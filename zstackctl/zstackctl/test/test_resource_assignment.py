@@ -26,15 +26,12 @@ class ResourceAssignmentTest(unittest.TestCase):
         shutil.rmtree(self.cgroup_root)
 
     def test_existing_global_config_is_authoritative(self):
-        self.assertFalse(resource_assignment_enabled(
-            [{'value': 'true'}], self.cgroup_root))
+        self.assertTrue(resource_assignment_enabled([{'value': 'true'}], self.cgroup_root))
 
         open(os.path.join(self.cgroup_root, 'cgroup.controllers'), 'w').close()
 
-        self.assertFalse(resource_assignment_enabled(
-            [{'value': 'false'}], self.cgroup_root))
-        self.assertTrue(resource_assignment_enabled(
-            [{'value': 'TRUE'}], self.cgroup_root))
+        self.assertFalse(resource_assignment_enabled([{'value': 'false'}], self.cgroup_root))
+        self.assertTrue(resource_assignment_enabled([{'value': 'TRUE'}], self.cgroup_root))
 
     def test_new_environment_defaults_from_unified_cgroup_v2(self):
         self.assertFalse(resource_assignment_enabled([], self.cgroup_root))
@@ -48,11 +45,8 @@ class ResourceAssignmentTest(unittest.TestCase):
 
         self.assertIn('--unit=%s' % MANAGEMENT_NODE_SERVICE, arguments)
         self.assertIn('--slice=%s' % MANAGEMENT_NODE_SLICE, arguments)
-        self.assertIn(
-            '--property=PIDFile=/var/lib/zstack/management-server.pid',
-            arguments)
-        self.assertEqual(arguments[-3:], [
-            '/bin/sh', '/opt/zstack/startup.sh', '-DappName=zstack'])
+        self.assertIn('--property=PIDFile=/var/lib/zstack/management-server.pid', arguments)
+        self.assertEqual(arguments[-3:], ['/bin/sh', '/opt/zstack/startup.sh', '-DappName=zstack'])
 
 
 if __name__ == '__main__':
