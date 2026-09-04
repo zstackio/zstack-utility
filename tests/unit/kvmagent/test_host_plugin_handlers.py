@@ -17,6 +17,7 @@ from unittest.mock import patch, MagicMock, mock_open
 
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.system.linux.decorators import retry as real_retry
 
 # Import the real modules under test
 from kvmagent import kvmagent as kva
@@ -1948,19 +1949,6 @@ class TestHostPluginNvidiaMdevReconnect:
         cmd.mdevUuids = [str(uuid.uuid4())]
         attempts = []
 
-        def retry_without_sleep(times=3, sleep_time=0):
-            def decorate(func):
-                def invoke(*args, **kwargs):
-                    last_error = None
-                    for _ in range(times):
-                        try:
-                            return func(*args, **kwargs)
-                        except Exception as error:
-                            last_error = error
-                    raise last_error
-                return invoke
-            return decorate
-
         def exists(path):
             if path == '/usr/lib/nvidia/sriov-manage':
                 return True
@@ -1972,12 +1960,15 @@ class TestHostPluginNvidiaMdevReconnect:
             attempts.append(command)
             assert kwargs.get('errorout') is True
             if len(attempts) == 1:
-                raise RuntimeError('Failed to acquire UnbindLock')
+                class BashError(Exception):
+                    pass
+                raise BashError('Failed to acquire UnbindLock')
             return 0, '', ''
 
         with patch('kvmagent.plugins.host_plugin.os.path.exists', side_effect=exists), \
                 patch.object(host_plugin, 'bash_roe', side_effect=run_sriov_manage), \
-                patch.object(host_plugin.linux, 'retry', side_effect=retry_without_sleep), \
+                patch.object(host_plugin.linux, 'retry', side_effect=real_retry), \
+                patch('zstacklib.system.linux.decorators.time.sleep'), \
                 patch('builtins.open', side_effect=lambda *a, **k: io.StringIO()), \
                 patch.object(host_plugin.uuid, 'UUID', side_effect=lambda value: value):
             rsp = json.loads(plugin._generate_nvidia_vfio_mdev_devices(cmd))
