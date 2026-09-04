@@ -3831,18 +3831,13 @@ class StartCmd(Command):
                 "where category='%s' and name='%s' "
                 "order by id desc limit 1" %
                 (GLOBAL_CONFIG_CATEGORY, GLOBAL_CONFIG_NAME))
-            try:
-                return resource_assignment_enabled(query.query())
-            except Exception as exception:
-                warn('failed to read %s.%s, keep resource assignment disabled: %s'
-                     % (GLOBAL_CONFIG_CATEGORY, GLOBAL_CONFIG_NAME, exception))
-                return False
+            return resource_assignment_enabled(query.query())
 
         def start_mgmt_node():
             log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
             start_script = os.path.join(ctl.zstack_home, self.START_SCRIPT)
             shell('chown zstack:zstack %s || true' % log_path)
-            if is_resource_assignment_enabled():
+            if is_resource_assignment_enabled() or os.path.isfile(RESOURCE_ASSIGNMENT_DROP_IN):
                 shell('systemctl stop %s >/dev/null 2>&1 || true; '
                       'systemctl reset-failed %s >/dev/null 2>&1 || true' %
                       (MANAGEMENT_NODE_SERVICE, MANAGEMENT_NODE_SERVICE),
@@ -3853,11 +3848,6 @@ class StartCmd(Command):
                                        os.path.join(os.path.expanduser('~zstack'), 'management-server.pid')))
                 shell(command)
             else:
-                drop_in_dir = os.path.dirname(RESOURCE_ASSIGNMENT_DROP_IN)
-                shell('rm -f %s; rmdir %s 2>/dev/null || true; '
-                      'systemctl daemon-reload' %
-                      (RESOURCE_ASSIGNMENT_DROP_IN, drop_in_dir),
-                      is_exception=False)
                 shell('sudo -u zstack sh %s -DappName=zstack' % start_script)
 
             info_and_debug("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")

@@ -54,6 +54,8 @@ restart_libvirtd = 'false'
 enable_spice_tls = None
 enable_cgroup_device_acl = None
 resource_assignment_enabled = 'false'
+resource_assignment_slice_name = 'zstack-compute.slice'
+resource_assignment_systemd_units = []
 isRemoteCube = False
 reserved_ports = "49152-49215"
 
@@ -1160,24 +1162,26 @@ def do_systemd_config():
     run_remote_command(command, host_post_info)
 
 def configure_resource_assignment():
-    drop_in_dir = '/etc/systemd/system/zstack-kvmagent.service.d'
-    drop_in = '%s/50-zstack-resource-assignment.conf' % drop_in_dir
-    if resource_assignment_enabled == 'true':
-        command = "if command -v systemctl >/dev/null 2>&1; then " \
-                  "if test -f /sys/fs/cgroup/cgroup.controllers; then " \
-                  "systemctl stop zstack-kvmagent.service; " \
-                  "mkdir -p %s; " \
-                  "printf '[Service]\\nSlice=zstack-compute.slice\\n' > %s; " \
-                  "fi; " \
-                  "systemctl daemon-reload; fi" % \
-                  (drop_in_dir, drop_in)
-    else:
-        command = "if command -v systemctl >/dev/null 2>&1; then " \
-                  "systemctl stop zstack-kvmagent.service; " \
-                  "rm -f %s; rmdir %s 2>/dev/null || true; " \
-                  "systemctl daemon-reload; fi" % (drop_in, drop_in_dir)
+    if resource_assignment_enabled != 'true':
+        return
+    if not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.slice$', resource_assignment_slice_name):
+        error('Invalid resource assignment slice[%s]' % resource_assignment_slice_name)
+    units = resource_assignment_systemd_units or ['zstack-kvmagent.service']
+    if any(not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.service$', unit) for unit in units):
+        error('Invalid resource assignment systemd unit list')
+    command = "if command -v systemctl >/dev/null 2>&1; then " \
+              "systemctl stop zstack-kvmagent.service; " \
+              "slice_name=%s; for unit in %s; do " \
+              "drop_in_dir=/etc/systemd/system/${unit}.d; " \
+              "drop_in=${drop_in_dir}/50-zstack-resource-assignment.conf; " \
+              "if test ! -e \"${drop_in}\" && test ! -L \"${drop_in}\"; then " \
+              "mkdir -p \"${drop_in_dir}\"; " \
+              "printf '[Service]\\nSlice=%%s\\n' \"${slice_name}\" > \"${drop_in}\"; fi; done; " \
+              "systemctl daemon-reload; fi" % (
+                  shell_quote(resource_assignment_slice_name),
+                  ' '.join(shell_quote(unit) for unit in units))
     host_post_info.post_label = "ansible.shell.resource-assignment"
-    host_post_info.post_label_param = "zstack-kvmagent"
+    host_post_info.post_label_param = resource_assignment_slice_name
     run_remote_command(command, host_post_info)
 
 def start_kvmagent():

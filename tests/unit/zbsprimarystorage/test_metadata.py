@@ -10,6 +10,7 @@ from zbsprimarystorage import zbsagent
 def test_reads_physical_server_serial_number_from_sysfs():
     serial_file = mock_open(read_data="  PS-SN-001\n")
     with patch.object(zbsagent, "_physical_server_serial_number", None), \
+            patch.object(zbsagent.os.path, "isfile", return_value=True), \
             patch("builtins.open", serial_file), \
             patch.object(zbsagent.shell, "call") as shell_call:
         assert zbsagent.read_physical_server_serial_number() == "PS-SN-001"
@@ -20,7 +21,7 @@ def test_reads_physical_server_serial_number_from_sysfs():
 
 def test_falls_back_to_dmidecode_for_physical_server_serial_number():
     with patch.object(zbsagent, "_physical_server_serial_number", None), \
-            patch("builtins.open", side_effect=IOError), \
+            patch.object(zbsagent.os.path, "isfile", return_value=False), \
             patch.object(zbsagent.shell, "call", return_value="PS-SN-002\n"):
         assert zbsagent.read_physical_server_serial_number() == "PS-SN-002"
 

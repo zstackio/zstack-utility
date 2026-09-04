@@ -35,9 +35,8 @@ class ResourceControlManager(object):
     SYSTEMD_DROP_IN = '50-zstack-resource-assignment.conf'
 
     def get_shared_cpu_num(self):
-        try:
-            backend, root = self._backend()
-        except ResourceControlUnavailableError:
+        backend, root = self._find_backend()
+        if backend is None:
             return None
         if backend != 'CGROUP_V2_CPUSET':
             return None
@@ -49,10 +48,7 @@ class ResourceControlManager(object):
     def apply(self, role_type, cpu_set, handles, memory=None, slice_name=None, isolation_mode='SHARED'):
         isolation_mode = self._isolation_mode(isolation_mode)
         memory = self.validate_memory_limit(memory)
-        try:
-            desired = self._normalize('' if cpu_set is None else cpu_set)
-        except (AttributeError, TypeError, ValueError):
-            raise ResourceControlError('CPU set has an invalid format')
+        desired = self._normalize('' if cpu_set is None else cpu_set)
         if desired:
             desired = self.validate_cpu_set(desired)
         else:
@@ -61,19 +57,13 @@ class ResourceControlManager(object):
             raise ResourceControlError('Exclusive isolation requires a CPU set')
         if desired is None and memory is None:
             return {'synced': True}
-        try:
-            backend, root = self._backend()
-        except ResourceControlUnavailableError:
-            return self._unavailable()
+        backend, root = self._backend()
         if (isolation_mode == 'EXCLUSIVE' and backend != 'CGROUP_V2_CPUSET'):
             raise ResourceControlError('Exclusive CPU partitions require cgroup v2')
         memory_backend = None
         memory_root = None
         if memory is not None:
-            try:
-                memory_backend, memory_root = self._memory_backend()
-            except MemoryControllerUnavailableError:
-                pass
+            memory_backend, memory_root = self._memory_backend()
         if (slice_name and any(self._value(handle, 'handleType') == 'SYSTEMD_UNIT' for handle in handles or [])):
             return self._apply_systemd_slice(
                 root, backend, role_type, slice_name, handles,
@@ -88,20 +78,11 @@ class ResourceControlManager(object):
         return self._summarize(results, 'READY', desired, memory)
 
     def release(self, role_type, handles, slice_name=None):
-        try:
-            backend, root = self._backend()
-        except ResourceControlUnavailableError:
-            return self._unavailable()
-        memory_backend = None
-        memory_root = None
-        try:
-            memory_backend, memory_root = self._memory_backend()
-        except MemoryControllerUnavailableError:
-            pass
+        backend, root = self._backend()
+        memory_backend, memory_root = self._find_memory_backend()
         if (slice_name and any(self._value(handle, 'handleType') == 'SYSTEMD_UNIT' for handle in handles or [])):
             return self._release_systemd_slice(
-                root, backend, role_type, slice_name, handles,
-                memory_backend, memory_root)
+                root, backend, role_type, slice_name, handles, memory_backend, memory_root)
         results = [
             self._release_non_systemd_handle(root, backend, role_type, handle, memory_backend, memory_root)
             for handle in handles or []
@@ -121,9 +102,8 @@ class ResourceControlManager(object):
                 continue
             changed = self._configure_systemd_service(handle, slice_name) or changed
         legacy_cpu_results = {}
-        try:
-            slice_target = self._ensure_active_slice_target(root, slice_name)
-        except SystemdControlGroupNotFoundError:
+        slice_target = self._ensure_active_slice_target(root, slice_name)
+        if slice_target is None:
             if isolation_mode == 'EXCLUSIVE':
                 raise ResourceControlError(
                     'The configured systemd slice must be active before '
@@ -132,6 +112,8 @@ class ResourceControlManager(object):
             if desired is not None:
                 for index, handle in enumerate(handles or []):
                     if self._value(handle, 'handleType') != 'SYSTEMD_UNIT':
+                        continue
+                    if self._configured_slice(self._value(handle, 'value')) != slice_name:
                         continue
                     legacy_cpu_results[index] = self._apply_non_systemd_handle(
                         root, backend, role_type, handle, desired,
@@ -143,14 +125,11 @@ class ResourceControlManager(object):
         if slice_target is not None and desired is not None:
             actual = self._apply_cpu_boundary(root, backend, slice_target, desired, isolation_mode)
         if desired_memory is not None and memory_backend is not None:
-            try:
-                memory_slice_target = self._active_controller_slice_target(memory_root, slice_name)
-                if memory_slice_target is not None:
-                    actual_memory = self._apply_memory_target(
-                        memory_backend, memory_root, memory_slice_target,
-                        desired_memory)
-            except ResourceControlError:
-                memory_error = True
+            memory_slice_target = self._active_controller_slice_target(memory_root, slice_name)
+            if memory_slice_target is not None:
+                actual_memory = self._apply_memory_target(
+                    memory_backend, memory_root, memory_slice_target,
+                    desired_memory)
         if changed:
             self._systemctl(['daemon-reload'], 30)
 
@@ -161,6 +140,9 @@ class ResourceControlManager(object):
                     root, backend, role_type, handle, desired,
                     desired_memory, memory_backend, memory_root,
                     isolation_mode))
+                continue
+            if self._configured_slice(self._value(handle, 'value')) != slice_name:
+                results.append(self._result('SKIPPED', None, None))
                 continue
             properties = self._systemd_properties(self._value(handle, 'value'))
             optional = self._value(handle, 'optional', False)
@@ -195,60 +177,23 @@ class ResourceControlManager(object):
         return self._summarize(results, 'READY', desired, desired_memory)
 
     def _release_systemd_slice(self, root, backend, role_type, slice_name, handles, memory_backend, memory_root):
-        changed = self._remove_systemd_service_drop_ins(slice_name)
-        changed = self._remove_drop_in(self._drop_in_path(slice_name)) or changed
-        for handle in handles or []:
-            if self._value(handle, 'handleType') == 'SYSTEMD_UNIT':
-                changed = self._remove_drop_in(self._drop_in_path(self._value(handle, 'value'))) or changed
-
-        legacy_results = {}
-        try:
-            slice_target = self._active_slice_target(root, slice_name)
-        except SystemdControlGroupNotFoundError:
-            slice_target = None
-            for index, handle in enumerate(handles or []):
-                if self._value(handle, 'handleType') == 'SYSTEMD_UNIT':
-                    legacy_results[index] = self._release_non_systemd_handle(
-                        root, backend, role_type, handle,
-                        None, None)
-
-        memory_error = False
+        changed = self._remove_drop_in(self._drop_in_path(slice_name))
+        slice_target = self._active_slice_target(root, slice_name)
+        if slice_target is None:
+            results = [
+                self._release_non_systemd_handle(root, backend, role_type, handle, memory_backend, memory_root)
+                for handle in handles or []
+            ]
+            return self._summarize(results, 'DISABLED', '', 0)
         if slice_target is not None:
             self._release_cpu_boundary(root, backend, slice_target)
         if memory_backend is not None:
-            try:
-                memory_target = self._active_controller_slice_target(memory_root, slice_name)
-                if memory_target is not None:
-                    self._apply_memory_target(memory_backend, memory_root, memory_target, 0)
-            except ResourceControlError:
-                memory_error = True
+            memory_target = self._active_controller_slice_target(memory_root, slice_name)
+            if memory_target is not None:
+                self._apply_memory_target(memory_backend, memory_root, memory_target, 0)
         if changed:
             self._systemctl(['daemon-reload'], 30)
-
-        results = []
-        for index, handle in enumerate(handles or []):
-            if self._value(handle, 'handleType') != 'SYSTEMD_UNIT':
-                results.append(self._release_non_systemd_handle(
-                    root, backend, role_type, handle,
-                    memory_backend, memory_root))
-                continue
-            properties = self._systemd_properties(self._value(handle, 'value'))
-            optional = self._value(handle, 'optional', False)
-            if properties.get('LoadState') == 'not-found':
-                results.append(self._result('SKIPPED' if optional else 'ERROR', None, None))
-                continue
-            if properties.get('ActiveState') != 'active':
-                results.append(self._result('SKIPPED' if optional else 'ERROR', None, None))
-                continue
-            legacy_result = legacy_results.get(index)
-            if (legacy_result is not None and legacy_result['state'] != 'DISABLED'):
-                results.append(legacy_result)
-                continue
-            results.append(self._result(
-                'ERROR' if memory_error else 'DISABLED',
-                None if memory_error else '',
-                None if memory_error else 0))
-        return self._summarize(results, 'DISABLED', '', 0)
+        return {'synced': True}
 
     def _validate_active_slice_memory(self, _cpu_root, slice_name, desired_memory, memory_backend, memory_root):
         properties = self._systemd_properties(slice_name)
@@ -261,31 +206,25 @@ class ResourceControlManager(object):
     def _apply_non_systemd_handle(
             self, root, backend, role_type, handle, desired,
             desired_memory, memory_backend, memory_root, isolation_mode):
-        try:
-            target = self._resolve(root, backend, role_type, handle)
-            if target is None:
-                return self._result('SKIPPED', None, None)
-            actual = (None if desired is None else self._apply_cpu_boundary(
-                root, backend, target, desired, isolation_mode))
-            actual_memory = None
-            if desired_memory is not None:
-                actual_memory = self._apply_memory_limit(root, target, desired_memory, memory_backend, memory_root)
-            return self._result('READY', actual, actual_memory)
-        except ResourceControlError:
-            return self._result('ERROR', None, None)
+        target = self._resolve(root, backend, role_type, handle)
+        if target is None:
+            return self._result('SKIPPED', None, None)
+        actual = (None if desired is None else self._apply_cpu_boundary(
+            root, backend, target, desired, isolation_mode))
+        actual_memory = None
+        if desired_memory is not None:
+            actual_memory = self._apply_memory_limit(root, target, desired_memory, memory_backend, memory_root)
+        return self._result('READY', actual, actual_memory)
 
     def _release_non_systemd_handle(self, root, backend, role_type, handle, memory_backend, memory_root):
-        try:
-            target = self._resolve_for_release(root, backend, role_type, handle)
-            if target is None:
-                return self._result('SKIPPED', None, None)
-            self._release_cpu_boundary(root, backend, target)
-            actual_memory = 0
-            if memory_backend is not None:
-                actual_memory = self._apply_memory_limit(root, target, 0, memory_backend, memory_root)
-            return self._result('DISABLED', '', actual_memory)
-        except ResourceControlError:
-            return self._result('ERROR', None, None)
+        target = self._resolve_for_release(root, backend, role_type, handle)
+        if target is None:
+            return self._result('SKIPPED', None, None)
+        self._release_cpu_boundary(root, backend, target)
+        actual_memory = 0
+        if memory_backend is not None:
+            actual_memory = self._apply_memory_limit(root, target, 0, memory_backend, memory_root)
+        return self._result('DISABLED', '', actual_memory)
 
     def _configure_systemd_slice(self, cpu_backend, memory_backend, slice_name, cpu_set, memory):
         path = self._drop_in_path(slice_name)
@@ -302,6 +241,8 @@ class ResourceControlManager(object):
 
     def _configure_systemd_service(self, handle, slice_name):
         path = self._drop_in_path(self._value(handle, 'value'))
+        if os.path.lexists(path):
+            return False
         return self._write_drop_in(path, '[Service]\nSlice=%s\n' % slice_name)
 
     def _prune_systemd_service_drop_ins(self, slice_name, handles):
@@ -310,18 +251,12 @@ class ResourceControlManager(object):
             if self._value(handle, 'handleType') == 'SYSTEMD_UNIT')
         return self._remove_systemd_service_drop_ins_except(slice_name, desired_units)
 
-    def _remove_systemd_service_drop_ins(self, slice_name):
-        return self._remove_systemd_service_drop_ins_except(slice_name, set())
-
     def _remove_systemd_service_drop_ins_except(self, slice_name, desired_units):
         if not os.path.isdir(self.SYSTEMD_UNIT_ROOT):
             return False
 
         changed = False
-        try:
-            directories = os.listdir(self.SYSTEMD_UNIT_ROOT)
-        except OSError as error:
-            raise ResourceControlError('Failed to scan systemd service drop-ins: %s' % error)
+        directories = os.listdir(self.SYSTEMD_UNIT_ROOT)
         for name in directories:
             if not name.endswith('.d'):
                 continue
@@ -343,34 +278,24 @@ class ResourceControlManager(object):
         if os.path.isfile(path) and self._read(path) == content:
             return False
         directory = os.path.dirname(path)
-        try:
-            if not os.path.isdir(directory):
-                os.makedirs(directory, mode=0o755)
-            descriptor, temporary = tempfile.mkstemp(prefix='.zstack-resource-', dir=directory)
-            try:
-                with os.fdopen(descriptor, 'w') as stream:
-                    stream.write(content)
-                os.chmod(temporary, 0o644)
-                os.replace(temporary, path)
-            finally:
-                if os.path.exists(temporary):
-                    os.unlink(temporary)
-            return True
-        except (IOError, OSError) as error:
-            raise ResourceControlError('Failed to write systemd drop-in[%s]: %s' % (path, error))
+        if not os.path.isdir(directory):
+            os.makedirs(directory, mode=0o755)
+        with tempfile.TemporaryDirectory(prefix='.zstack-resource-', dir=directory) as temporary_directory:
+            temporary = os.path.join(temporary_directory, 'drop-in')
+            with open(temporary, 'w') as stream:
+                stream.write(content)
+            os.chmod(temporary, 0o644)
+            os.replace(temporary, path)
+        return True
 
     def _remove_drop_in(self, path):
         if not os.path.exists(path):
             return False
-        try:
-            os.unlink(path)
-            try:
-                os.rmdir(os.path.dirname(path))
-            except OSError:
-                pass
-            return True
-        except OSError as error:
-            raise ResourceControlError('Failed to remove systemd drop-in[%s]: %s' % (path, error))
+        os.unlink(path)
+        directory = os.path.dirname(path)
+        if os.path.isdir(directory) and not os.listdir(directory):
+            os.rmdir(directory)
+        return True
 
     def _ensure_active_slice_target(self, root, slice_name):
         properties = self._systemd_properties(slice_name)
@@ -382,20 +307,24 @@ class ResourceControlManager(object):
         properties = self._systemd_properties(slice_name)
         if properties.get('ActiveState') != 'active':
             return None
-        return self._systemd_target(root, properties.get('ControlGroup'))
+        return self._find_systemd_target(root, properties.get('ControlGroup'))
 
     def _active_controller_slice_target(self, root, slice_name):
         properties = self._systemd_properties(slice_name)
         if properties.get('ActiveState') != 'active':
             return None
-        return self._systemd_target(root, properties.get('ControlGroup'))
+        return self._find_systemd_target(root, properties.get('ControlGroup'))
 
-    def _systemd_target(self, root, control_group):
+    def _find_systemd_target(self, root, control_group):
         if not control_group:
-            raise ResourceControlError('Systemd did not report a control group')
+            return None
         target = os.path.normpath(os.path.join(root, control_group.lstrip('/')))
         self._under_root(root, target)
-        if target == root or not os.path.isdir(target):
+        return target if target != root and os.path.isdir(target) else None
+
+    def _systemd_target(self, root, control_group):
+        target = self._find_systemd_target(root, control_group)
+        if target is None:
             raise SystemdControlGroupNotFoundError('Systemd control group[%s] does not exist' % control_group)
         return target
 
@@ -403,17 +332,17 @@ class ResourceControlManager(object):
         return path == parent or path.startswith(parent + os.sep)
 
     def _control_group_in_target(self, root, control_group, target):
-        try:
-            current = self._systemd_target(root, control_group)
-        except ResourceControlError:
-            return False
-        return self._is_descendant(current, target)
+        current = self._find_systemd_target(root, control_group)
+        return current is not None and self._is_descendant(current, target)
 
-    def inspect(self, role_type, handles):
+    def inspect(self, role_type, handles, slice_name=None):
         backend, root = self._backend()
         result = []
         slice_targets = {}
         for handle in handles or []:
+            configured_slice = self._configured_slice(self._value(handle, 'value'))
+            if slice_name is not None and configured_slice is not None and configured_slice != slice_name:
+                continue
             state, target = self._inspect_target(root, backend, role_type, handle)
             usage = self._service_usage(handle, state)
             if target is not None:
@@ -458,25 +387,13 @@ class ResourceControlManager(object):
             raise ResourceControlError('At least one service handle is required')
 
         backend, root = self._backend()
-        try:
-            slice_target = self._active_slice_target(root, slice_name)
-        except SystemdControlGroupNotFoundError:
-            slice_target = None
+        slice_target = self._active_slice_target(root, slice_name)
         if backend == 'CGROUP_V2_CPUSET' and slice_target is None:
             raise ResourceControlError('Systemd slice[%s] is not active in the cpuset hierarchy' % slice_name)
 
         for unit in units:
             self._systemctl(['stop', unit], 120)
-            try:
-                self._start_active_unit(unit)
-            except ResourceControlError as error:
-                try:
-                    self._start_active_unit(unit)
-                except ResourceControlError as recovery_error:
-                    raise ResourceControlError(
-                        'Systemd unit[%s] failed to restart: %s; retry '
-                        'also failed: %s' % (unit, error, recovery_error))
-                raise ResourceControlError('Systemd unit[%s] failed to restart: %s' % (unit, error))
+            self._start_active_unit(unit)
             properties = self._systemd_properties(unit)
             if (slice_target is not None
                     and not self._control_group_in_target(root, properties.get('ControlGroup'), slice_target)):
@@ -511,13 +428,9 @@ class ResourceControlManager(object):
         if current == managed or self._group_has_processes(managed):
             return False
         if slice_name not in slice_targets:
-            target = None
-            try:
-                properties = self._systemd_properties(slice_name)
-                if properties.get('ActiveState') == 'active':
-                    target = self._systemd_target(root, properties.get('ControlGroup'))
-            except ResourceControlError:
-                pass
+            properties = self._systemd_properties(slice_name)
+            target = self._find_systemd_target(root, properties.get('ControlGroup')) \
+                if properties.get('ActiveState') == 'active' else None
             slice_targets[slice_name] = target
         target = slice_targets[slice_name]
         return target is None or not self._is_descendant(current, target)
@@ -528,15 +441,12 @@ class ResourceControlManager(object):
     def _configured_slice_path(self, path):
         if not os.path.isfile(path):
             return None
-        try:
-            for line in self._read(path).splitlines():
-                value = line.strip()
-                if not value.startswith('Slice='):
-                    continue
-                slice_name = value[len('Slice='):].strip()
-                return (slice_name if re.match(r'^[A-Za-z0-9_.@-]+\.slice$', slice_name) else None)
-        except ResourceControlError:
-            pass
+        for line in self._read(path).splitlines():
+            value = line.strip()
+            if not value.startswith('Slice='):
+                continue
+            slice_name = value[len('Slice='):].strip()
+            return (slice_name if re.match(r'^[A-Za-z0-9_.@-]+\.slice$', slice_name) else None)
         return None
 
     def _inspect_target(self, root, backend, role_type, handle):
@@ -606,9 +516,8 @@ class ResourceControlManager(object):
         return self._v1_cpu_time(control_group.lstrip('/'))
 
     def _memory_usage(self, relative, control_group=None):
-        try:
-            backend, root = self._memory_backend()
-        except MemoryControllerUnavailableError:
+        backend, root = self._find_memory_backend()
+        if backend is None:
             return None, None
         target = self._controller_target(root, relative)
         if control_group:
@@ -702,10 +611,7 @@ class ResourceControlManager(object):
         raise ResourceControlError('No cpuset control group was found for process[%s]' % pid)
 
     def validate_cpu_set(self, cpu_set):
-        try:
-            normalized = self._normalize('' if cpu_set is None else cpu_set)
-        except (AttributeError, TypeError, ValueError):
-            raise ResourceControlError('CPU set has an invalid format')
+        normalized = self._normalize('' if cpu_set is None else cpu_set)
         if not normalized:
             raise ResourceControlError('CPU set cannot be empty')
         online = self._normalize(self._read(self.CPU_ONLINE))
@@ -724,9 +630,6 @@ class ResourceControlManager(object):
                 'Memory limit[%s] must be zero or a positive multiple of '
                 '1 MiB' % memory_limit)
         return memory_limit
-
-    def _unavailable(self):
-        return {'synced': False}
 
     def _summarize(self, results, required_state, desired_cpu_set, desired_memory):
         expected = 0
@@ -754,25 +657,37 @@ class ResourceControlManager(object):
         return {'state': state, 'cpuSet': cpu_set, 'memory': memory,}
 
     def _backend(self):
+        backend = self._find_backend()
+        if backend[0] is not None:
+            return backend
+        raise ResourceControlUnavailableError('No available cpuset controller was found')
+
+    def _find_backend(self):
         for root in self._v2_roots():
             controllers = os.path.join(root, 'cgroup.controllers')
-            values = self._read(controllers).split()
+            values = self._read(controllers).split() if os.path.isfile(controllers) else []
             if 'cpuset' in values or os.path.isfile(os.path.join(root, 'cpuset.cpus.effective')):
                 return 'CGROUP_V2_CPUSET', root
         if os.path.isfile(os.path.join(self.CGROUP_V1_ROOT, 'cpuset.cpus')):
             return 'CGROUP_V1_CPUSET', self.CGROUP_V1_ROOT
-        raise ResourceControlUnavailableError('No available cpuset controller was found')
+        return None, None
 
     def _memory_backend(self):
+        backend = self._find_memory_backend()
+        if backend[0] is not None:
+            return backend
+        raise MemoryControllerUnavailableError('No available memory controller was found')
+
+    def _find_memory_backend(self):
         for root in self._v2_roots():
             controllers = os.path.join(root, 'cgroup.controllers')
-            values = self._read(controllers).split()
+            values = self._read(controllers).split() if os.path.isfile(controllers) else []
             if ('memory' in values or os.path.isfile(os.path.join(root, 'memory.max'))):
                 return 'CGROUP_V2_MEMORY', root
         root_limit = os.path.join(self.CGROUP_V1_MEMORY_ROOT, 'memory.limit_in_bytes')
         if os.path.isfile(root_limit):
             return 'CGROUP_V1_MEMORY', self.CGROUP_V1_MEMORY_ROOT
-        raise MemoryControllerUnavailableError('No available memory controller was found')
+        return None, None
 
     def _controller_target(self, root, relative):
         target = os.path.normpath(os.path.join(root, relative))
@@ -1049,12 +964,7 @@ class ResourceControlManager(object):
             status_file = '/proc/%s/status' % pid
             if not os.path.isfile(status_file):
                 continue
-            try:
-                status = self._read(status_file)
-            except ResourceControlError:
-                if not os.path.isdir('/proc/%s' % pid):
-                    continue
-                raise
+            status = self._read(status_file)
             match = re.search(r'^VmRSS:\s+([0-9]+)\s+kB$', status, re.MULTILINE)
             if match:
                 total += int(match.group(1)) * 1024
@@ -1100,11 +1010,7 @@ class ResourceControlManager(object):
             for pid in self._process_ids(source):
                 if (pid in destination_pids or not os.path.isdir('/proc/%s' % pid)):
                     continue
-                try:
-                    self._write(destination, pid)
-                except ResourceControlError:
-                    if os.path.isdir('/proc/%s' % pid):
-                        raise
+                self._write(destination, pid)
 
             destination_pids = set(self._process_ids(destination))
             remaining = [
@@ -1189,40 +1095,24 @@ class ResourceControlManager(object):
         return result
 
     def _systemctl(self, arguments, timeout):
-        try:
-            process = subprocess.Popen(['systemctl'] + list(arguments), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        except OSError as error:
-            raise ResourceControlError('Failed to execute systemctl: %s' % error)
-        try:
-            stdout, stderr = process.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.communicate()
-            raise ResourceControlError('Systemctl timed out after %s seconds' % timeout)
+        process = subprocess.run(
+            ['systemctl'] + list(arguments), stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, timeout=timeout)
         if process.returncode != 0:
-            raise ResourceControlError('Systemctl failed: %s' % self._text(stderr).strip())
-        return self._text(stdout)
+            raise ResourceControlError('Systemctl failed: %s' % self._text(process.stderr).strip())
+        return self._text(process.stdout)
 
     def _mkdir(self, path):
-        try:
+        if not os.path.isdir(path):
             os.makedirs(path)
-        except OSError:
-            if not os.path.isdir(path):
-                raise ResourceControlError('Failed to create control group directory[%s]' % path)
 
     def _read(self, path):
-        try:
-            with open(path, 'rb') as stream:
-                return self._text(stream.read())
-        except (IOError, OSError) as error:
-            raise ResourceControlError('Failed to read file[%s]: %s' % (path, error))
+        with open(path, 'rb') as stream:
+            return self._text(stream.read())
 
     def _write(self, path, value):
-        try:
-            with open(path, 'wb') as stream:
-                stream.write(value.encode('ascii'))
-        except (IOError, OSError) as error:
-            raise ResourceControlError('Failed to write file[%s]: %s' % (path, error))
+        with open(path, 'wb') as stream:
+            stream.write(value.encode('ascii'))
 
     def _normalize(self, value):
         text = self._text(value).strip()
