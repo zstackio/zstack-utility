@@ -1939,6 +1939,54 @@ class TestHostPluginMttyInfoDeep:
 
 
 @pytest.mark.kvmagent
+class TestHostPluginNvidiaMdevReconnect:
+    def test_retries_sriov_manage_when_unbind_lock_is_busy(self):
+        plugin = _make_plugin()
+        cmd = host_plugin.GenerateVfioMdevDevicesCommand()
+        cmd.pciDeviceAddress = '0000:65:00.0'
+        cmd.mdevSpecTypeId = '0x123'
+        cmd.mdevUuids = [str(uuid.uuid4())]
+        attempts = []
+
+        def retry_without_sleep(times=3, sleep_time=0):
+            def decorate(func):
+                def invoke(*args, **kwargs):
+                    last_error = None
+                    for _ in range(times):
+                        try:
+                            return func(*args, **kwargs)
+                        except Exception as error:
+                            last_error = error
+                    raise last_error
+                return invoke
+            return decorate
+
+        def exists(path):
+            if path == '/usr/lib/nvidia/sriov-manage':
+                return True
+            if path.endswith('/mdev_supported_types/nvidia-291'):
+                return True
+            return False
+
+        def run_sriov_manage(command, *args, **kwargs):
+            attempts.append(command)
+            assert kwargs.get('errorout') is True
+            if len(attempts) == 1:
+                raise RuntimeError('Failed to acquire UnbindLock')
+            return 0, '', ''
+
+        with patch('kvmagent.plugins.host_plugin.os.path.exists', side_effect=exists), \
+                patch.object(host_plugin, 'bash_roe', side_effect=run_sriov_manage), \
+                patch.object(host_plugin.linux, 'retry', side_effect=retry_without_sleep), \
+                patch('builtins.open', side_effect=lambda *a, **k: io.StringIO()), \
+                patch.object(host_plugin.uuid, 'UUID', side_effect=lambda value: value):
+            rsp = json.loads(plugin._generate_nvidia_vfio_mdev_devices(cmd))
+
+        assert rsp['success'] is True
+        assert len(attempts) == 2
+
+
+@pytest.mark.kvmagent
 class TestHostPluginNumaTopologyDeep:
     def test_get_numa_topology_parses_nodes(self):
         plugin = _make_plugin()

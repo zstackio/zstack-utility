@@ -4291,7 +4291,7 @@ done
 
         @linux.retry(times=30, sleep_time=5)
         def _exec_nvidia_sriov_manage(addr):
-            bash_roe("/usr/lib/nvidia/sriov-manage -e %s" % addr)
+            bash_roe("/usr/lib/nvidia/sriov-manage -e %s" % addr, errorout=True)
 
         # virtualization needs to be enabled when restarting the host to sync
         # vgpu mdev
