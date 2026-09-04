@@ -17,6 +17,7 @@ from unittest.mock import patch, MagicMock, mock_open
 
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
+from zstacklib.system.linux.decorators import retry as real_retry
 
 # Import the real modules under test
 from kvmagent import kvmagent as kva
@@ -1936,6 +1937,44 @@ class TestHostPluginMttyInfoDeep:
         rsp = json.loads(result)
         assert rsp['success'] is True
         assert rsp['mttyDeviceInfo']['virtStatus'] == 'VFIO_MDEV_VIRTUALIZABLE'
+
+
+@pytest.mark.kvmagent
+class TestHostPluginNvidiaMdevReconnect:
+    def test_retries_sriov_manage_when_unbind_lock_is_busy(self):
+        plugin = _make_plugin()
+        cmd = host_plugin.GenerateVfioMdevDevicesCommand()
+        cmd.pciDeviceAddress = '0000:65:00.0'
+        cmd.mdevSpecTypeId = '0x123'
+        cmd.mdevUuids = [str(uuid.uuid4())]
+        attempts = []
+
+        def exists(path):
+            if path == '/usr/lib/nvidia/sriov-manage':
+                return True
+            if path.endswith('/mdev_supported_types/nvidia-291'):
+                return True
+            return False
+
+        def run_sriov_manage(command, *args, **kwargs):
+            attempts.append(command)
+            assert kwargs.get('errorout') is True
+            if len(attempts) == 1:
+                class BashError(Exception):
+                    pass
+                raise BashError('Failed to acquire UnbindLock')
+            return 0, '', ''
+
+        with patch('kvmagent.plugins.host_plugin.os.path.exists', side_effect=exists), \
+                patch.object(host_plugin, 'bash_roe', side_effect=run_sriov_manage), \
+                patch.object(host_plugin.linux, 'retry', side_effect=real_retry), \
+                patch('zstacklib.system.linux.decorators.time.sleep'), \
+                patch('builtins.open', side_effect=lambda *a, **k: io.StringIO()), \
+                patch.object(host_plugin.uuid, 'UUID', side_effect=lambda value: value):
+            rsp = json.loads(plugin._generate_nvidia_vfio_mdev_devices(cmd))
+
+        assert rsp['success'] is True
+        assert len(attempts) == 2
 
 
 @pytest.mark.kvmagent
