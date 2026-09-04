@@ -2724,6 +2724,28 @@ def repair_rpmdb_if_damaged(host_post_info):
              "packages; continue host reconnect/deploy")
 
 
+def _build_atomic_yum_repo_command(repo_file, content):
+    repo_dir, repo_name = os.path.split(repo_file)
+    tmp_pattern = os.path.join(repo_dir, ".%s.XXXXXX" % repo_name)
+    return """set -e
+staged_repo=
+trap 'rm -f "$staged_repo"' 0
+trap 'exit 1' HUP INT TERM
+staged_repo=$(mktemp %(tmp_pattern)s)
+printf '%%s' %(content)s > "$staged_repo"
+chmod 0644 "$staged_repo"
+sync "$staged_repo"
+mv -f "$staged_repo" %(repo_file)s
+staged_repo=
+sync %(repo_dir)s
+""" % {
+        'tmp_pattern': shell_quote(tmp_pattern),
+        'content': shell_quote(content),
+        'repo_file': shell_quote(repo_file),
+        'repo_dir': shell_quote(repo_dir),
+    }
+
+
 class ZstackLib(object):
     def __init__(self, args):
         self.distro = args.distro
@@ -2931,38 +2953,30 @@ enabled=0" >  /etc/yum.repos.d/mlnx-ofed-mn.repo; sync /etc/yum.repos.d/mlnx-ofe
 
     # generate qemu-kvm-ev.repo
     def generate_qemu_kvm_ev_yum_repo(self):
-        generate_kvm_repo_raw_command = """
-echo -e "[qemu-kvm-ev-mn]
+        repo_content = """[qemu-kvm-ev-mn]
 name=qemu-kvm-ev-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/qemu-kvm-ev/
+baseurl=http://%s/zstack/static/zstack-repo/$basearch/$YUM0/Extra/qemu-kvm-ev/
 gpgcheck=0
 module_hotfixes=true
-enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo; sync /etc/yum.repos.d/qemu-kvm-ev-mn.repo
-               """
-        generate_kvm_repo_template = jinja2.Template(
-            generate_kvm_repo_raw_command)
-        generate_kvm_repo_command = generate_kvm_repo_template.render({
-            'yum_server': self.yum_server
-        })
+enabled=0
+""" % self.yum_server
+        generate_kvm_repo_command = _build_atomic_yum_repo_command(
+            "/etc/yum.repos.d/qemu-kvm-ev-mn.repo", repo_content)
         self.host_post_info.post_label = "ansible.shell.deploy.repo"
         self.host_post_info.post_label_param = "qemu-kvm-ev-mn"
         run_remote_command(generate_kvm_repo_command, self.host_post_info)
 
     # generate zstack-mn.repo
     def generate_mn_yum_repo(self):
-        generate_mn_repo_raw_command = """
-echo -e "[zstack-mn]
+        repo_content = """[zstack-mn]
 name=zstack-mn
-baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/
+baseurl=http://%s/zstack/static/zstack-repo/$basearch/$YUM0/
 gpgcheck=0
 module_hotfixes=true
-enabled=0" >  /etc/yum.repos.d/zstack-mn.repo; sync /etc/yum.repos.d/zstack-mn.repo
-               """
-        generate_mn_repo_template = jinja2.Template(
-            generate_mn_repo_raw_command)
-        generate_mn_repo_command = generate_mn_repo_template.render({
-            'yum_server': self.yum_server
-        })
+enabled=0
+""" % self.yum_server
+        generate_mn_repo_command = _build_atomic_yum_repo_command(
+            "/etc/yum.repos.d/zstack-mn.repo", repo_content)
         run_remote_command(generate_mn_repo_command, self.host_post_info)
 
     def generate_yum_repo_config_from_zstack_lib(self, repo_conf_name):
