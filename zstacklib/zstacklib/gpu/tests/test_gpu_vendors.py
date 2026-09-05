@@ -75,6 +75,32 @@ class TestGPUBase(unittest.TestCase):
         self.assertEqual(GPUBase.parse_unit_value("70.00 W"), 70.0)
 
 
+class TestNpuSmiPath(unittest.TestCase):
+    def test_prefers_path_lookup_for_910b(self):
+        try:
+            from unittest.mock import patch
+        except ImportError:
+            from mock import patch
+        from zstacklib.utils import gpu
+
+        with patch("zstacklib.utils.npu.bash_roe", return_value=(0, "/usr/sbin/npu-smi\n", "")), \
+                patch("zstacklib.utils.npu.os.path.isfile") as exists:
+            self.assertEqual(gpu.get_npu_smi_path(), "/usr/sbin/npu-smi")
+        exists.assert_not_called()
+
+    def test_falls_back_to_910c_local_path_when_lookup_fails(self):
+        try:
+            from unittest.mock import patch
+        except ImportError:
+            from mock import patch
+        from zstacklib.utils import gpu
+
+        with patch("zstacklib.utils.npu.bash_roe", return_value=(1, "", "not found")), \
+                patch("zstacklib.utils.npu.os.path.isfile", return_value=True), \
+                patch("zstacklib.utils.npu.os.access", return_value=True):
+            self.assertEqual(gpu.get_npu_smi_path(), "/usr/local/sbin/npu-smi")
+
+
 class TestGPUVendorRegistry(unittest.TestCase):
     """Test vendor registration system"""
 
@@ -600,13 +626,15 @@ Power Dissipation : 164.2 W
 """
 
         def mock_bash_roe(cmd):
-            if cmd == "npu-smi info":
+            if cmd.endswith(" info"):
                 return 0, summary_output, ""
             return 0, board_output, ""
 
         with patch.object(Huawei, "is_available", return_value=True), \
                 patch.object(Huawei, "get_npu_ids", return_value=["1"]), \
                 patch.object(Huawei, "check_npu_isolation", return_value=False), \
+                patch("zstacklib.gpu.vendors.huawei.get_npu_smi_path",
+                      return_value="/usr/local/sbin/npu-smi"), \
                 patch("zstacklib.gpu.vendors.huawei.bash_roe", side_effect=mock_bash_roe):
             infos = Huawei.get_basic_info()
 
@@ -616,6 +644,125 @@ Power Dissipation : 164.2 W
         self.assertEqual(infos[1].serial_number, "BOARD001")
         self.assertTrue(infos[1].driver_loaded)
         self.assertFalse(infos[1].extra["isIsolated"])
+
+    def test_collect_metrics_queries_each_910c_chip(self):
+        """910C must collect chip 0 and chip 1 with their own PCI addresses."""
+        try:
+            from unittest.mock import patch
+        except ImportError:
+            from mock import patch
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        summary_output = """
+| NPU   Name                | Health        | Power(W)             Temp(C)                 Hugepages-Usage(page)   |
+| Chip  Phy-ID              | Bus-Id        | AICore(%)            Memory-Usage(MB)        HBM-Usage(MB)           |
++===========================+===============+======================================================================+
+| 1     Ascend910           | OK            | 163.1                34                      0    / 0                |
+| 0     2                   | 0000:99:00.0  | 0                    0    / 0                2909 / 65536            |
++------------------------------------------------------------------------------------------------------------------+
+| 1     Ascend910           | OK            | -                    34                      0    / 0                |
+| 1     3                   | 0000:9B:00.0  | 0                    0    / 0                2870 / 65536            |
+"""
+        chip_outputs = {
+            "0": """
+Serial Number : BOARD001
+PCIe Bus Info : 0000:99:00.0
+Aicore Usage Rate(%) : 11
+Memory Usage Rate(%) : 12
+Temperature(C) : 51
+Real-time Power(W) : 151
+""",
+            "1": """
+PCIe Bus Info : 0000:9B:00.0
+Aicore Usage Rate(%) : 21
+Memory Usage Rate(%) : 22
+Temperature(C) : 52
+Real-time Power(W) : 152
+""",
+        }
+        commands = []
+
+        def mock_bash_roe(cmd):
+            commands.append(cmd)
+            if cmd.endswith(" info"):
+                return 0, summary_output, ""
+            if "-t board -i 1" in cmd and " -c " not in cmd:
+                return 0, chip_outputs["0"], ""
+            if "-i 1 -c 0" in cmd:
+                return 0, chip_outputs["0"], ""
+            if "-i 1 -c 1" in cmd:
+                return 0, chip_outputs["1"], ""
+            return 1, "", "unexpected command"
+
+        with patch.object(Huawei, "is_available", return_value=True), \
+                patch.object(Huawei, "get_npu_ids", return_value=["1"]), \
+                patch("zstacklib.gpu.vendors.huawei.get_npu_smi_path",
+                      return_value="/usr/local/sbin/npu-smi"), \
+                patch("zstacklib.gpu.vendors.huawei.bash_roe",
+                      side_effect=mock_bash_roe):
+            metrics = Huawei.collect_metrics()
+
+        self.assertEqual(
+            [metric.pci_address for metric in metrics],
+            ["0000:99:00.0", "0000:9b:00.0"])
+        self.assertEqual([metric.utilization for metric in metrics], [11.0, 21.0])
+        self.assertEqual([metric.serial_number for metric in metrics], ["BOARD001", "BOARD001"])
+        self.assertTrue(all(cmd.startswith("/usr/local/sbin/npu-smi") for cmd in commands))
+        self.assertTrue(any("-i 1 -c 0" in cmd for cmd in commands))
+        self.assertTrue(any("-i 1 -c 1" in cmd for cmd in commands))
+
+    def test_collect_metrics_keeps_910b_single_chip_query(self):
+        """910B summary rows must keep the legacy per-NPU metric command."""
+        try:
+            from unittest.mock import patch
+        except ImportError:
+            from mock import patch
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        summary_output = """
+| NPU   Name                | Health        | Power(W)             Temp(C)                 Hugepages-Usage(page)   |
+| Chip                      | Bus-Id        | AICore(%)            Memory-Usage(MB)        HBM-Usage(MB)           |
++===========================+===============+======================================================================+
+| 1     910B4               | OK            | 79.2                 31                      0    / 0                |
+| 0                         | 0000:C2:00.0  | 0                    0    / 0                2871 / 32768            |
++------------------------------------------------------------------------------------------------------------------+
+| 2     910B4               | OK            | 82.2                 31                      0    / 0                |
+| 0                         | 0000:81:00.0  | 0                    0    / 0                2869 / 32768            |
++------------------------------------------------------------------------------------------------------------------+
+| 5     910B4               | OK            | 84.0                 33                      0    / 0                |
+| 0                         | 0000:02:00.0  | 0                    0    / 0                2861 / 32768            |
++------------------------------------------------------------------------------------------------------------------+
+| 6     910B4               | OK            | 79.5                 34                      0    / 0                |
+| 0                         | 0000:41:00.0  | 0                    0    / 0                2859 / 32768            |
++------------------------------------------------------------------------------------------------------------------+
+| 7     910B4               | OK            | 78.8                 34                      0    / 0                |
+| 0                         | 0000:42:00.0  | 0                    0    / 0                2862 / 32768            |
+"""
+        metric_output = """
+Serial Number : BOARD910B
+PCIe Bus Info : 0000:C2:00.0
+Aicore Usage Rate(%) : 11
+"""
+        commands = []
+
+        def mock_bash_roe(cmd):
+            commands.append(cmd)
+            if cmd.endswith(" info"):
+                return 0, summary_output, ""
+            return 0, metric_output, ""
+
+        with patch.object(Huawei, "is_available", return_value=True), \
+                patch.object(Huawei, "get_npu_ids", return_value=["1"]), \
+                patch("zstacklib.gpu.vendors.huawei.get_npu_smi_path",
+                      return_value="/usr/sbin/npu-smi"), \
+                patch("zstacklib.gpu.vendors.huawei.bash_roe",
+                      side_effect=mock_bash_roe):
+            metrics = Huawei.collect_metrics()
+
+        self.assertEqual(len(metrics), 1)
+        self.assertEqual(metrics[0].pci_address, "0000:c2:00.0")
+        self.assertTrue(all(cmd.startswith("/usr/sbin/npu-smi") for cmd in commands))
+        self.assertFalse(any(" -c " in cmd for cmd in commands))
 
     def test_get_pci_only_candidates_processing_accelerators(self):
         """Huawei get_pci_only_candidates returns 19e5 + Processing accelerators when device name is valid."""

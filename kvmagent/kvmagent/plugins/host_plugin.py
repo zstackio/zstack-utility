@@ -3310,11 +3310,12 @@ done
         if not os.path.isdir(check_mdev_folder):
             return False
 
-        if shell.run("which npu-smi") != 0:
+        npu_smi_path = gpu.get_npu_smi_path()
+        if not npu_smi_path:
             logger.debug("no npu-smi")
             return False
 
-        r, npu_ids_out = bash_ro("npu-smi info -l")
+        r, npu_ids_out = bash_ro("%s info -l" % npu_smi_path)
         if r != 0:
             logger.error("npu query gpu is error, %s " % npu_ids_out)
             return False
@@ -3332,7 +3333,7 @@ done
 
         add_found = False
         for npu_id in npu_ids:
-            r, o, e = bash_roe("npu-smi info -t board -i %s" % npu_id)
+            r, o, e = bash_roe("%s info -t board -i %s" % (npu_smi_path, npu_id))
             if r != 0:
                 logger.error("npu query gpu board is error, %s " % e)
                 continue
@@ -3342,7 +3343,7 @@ done
 
             add_found = True
 
-            r, o, e = bash_roe("npu-smi info -t template-info -i %s" % npu_id)
+            r, o, e = bash_roe("%s info -t template-info -i %s" % (npu_smi_path, npu_id))
 
             if r != 0:
                 logger.error("npu query gpu template-info is error, %s " % e)
@@ -4303,13 +4304,19 @@ done
     def _generate_huawei_vfio_mdev_devices(self, cmd):
         rsp = GenerateVfioMdevDevicesRsp()
         addr = cmd.pciDeviceAddress
+        npu_smi_path = gpu.get_npu_smi_path()
+        if not npu_smi_path:
+            rsp.success = False
+            rsp.error = "npu-smi not found"
+            return jsonobject.dumps(rsp)
+
         r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
         if r == 0 and addr in virtStatusOut:
             logger.debug(
                 "no need to re-splite pci device[addr:%s] into mdev devices" % addr)
             return jsonobject.dumps(rsp)
 
-        r, o = bash_ro("npu-smi set -t vnpu-mode -d 1")
+        r, o = bash_ro("%s set -t vnpu-mode -d 1" % npu_smi_path)
         if r != 0:
             rsp.success = False
             rsp.error = o
