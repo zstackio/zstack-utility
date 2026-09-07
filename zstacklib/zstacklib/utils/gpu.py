@@ -4,6 +4,7 @@ import re
 
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
+from zstacklib.utils.npu import get_npu_smi_path
 from enum import Enum
 import json
 
@@ -24,6 +25,11 @@ from zstacklib.gpu.base import (
 from zstacklib.utils.qga import VmQga
 
 logger = log.get_logger(__name__)
+
+
+def _get_npu_smi_cmd():
+    """Keep legacy command builders usable after their availability checks."""
+    return get_npu_smi_path() or "npu-smi"
 
 
 class VmGpuStatus(Enum):
@@ -584,19 +590,19 @@ def get_tianshu_gpu_product_name_cmd(iswindows=False):
 
 
 def get_huawei_gpu_npu_id_cmd():
-    return "npu-smi info -l"
+    return "%s info -l" % _get_npu_smi_cmd()
 
 
 def get_huawei_gpu_basic_info_cmd(npu_id, iswindows=False):
-    cmd = "npu-smi info -t board -i {0};npu-smi info -i {0} -t memory;npu-smi info -t power -i {0}".format(
-        npu_id)
+    cmd = "{0} info -t board -i {1};{0} info -i {1} -t memory;{0} info -t power -i {1}".format(
+        _get_npu_smi_cmd(), npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd
 
 
 def get_huawei_gpu_product_name_cmd(npu_id, iswindows=False):
-    cmd = "npu-smi info -t product -i {0}".format(npu_id)
+    cmd = "{0} info -t product -i {1}".format(_get_npu_smi_cmd(), npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd
@@ -684,12 +690,12 @@ def check_huawei_npu_is_isolated(npu_id, all_npu_ids, iswindows=False):
         return False
 
     try:
-        r, _, _ = bash_roe("which npu-smi")
-        if r != 0:
+        npu_smi_path = get_npu_smi_path()
+        if not npu_smi_path:
             logger.debug("npu-smi not found, cannot check isolation status")
             return False
 
-        cmd = "npu-smi info -t hccs -i {0} -c 0".format(npu_id)
+        cmd = "{0} info -t hccs -i {1} -c 0".format(npu_smi_path, npu_id)
         if iswindows:
             cmd = cmd.replace(" ", "|")
 
@@ -724,7 +730,7 @@ def _check_npu_isolation_by_topo(npu_id, iswindows=False):
     Fallback isolation detection via topo matrix.
     An isolated NPU has zero HCCS connections (all links show SYS or PHB).
     """
-    cmd = "npu-smi info -t topo -i {0}".format(npu_id)
+    cmd = "{0} info -t topo -i {1}".format(_get_npu_smi_cmd(), npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
 
@@ -926,7 +932,8 @@ def _gpu_device_processor(pci_device_to, context):
 
                 # Detect all capabilities independently (no short-circuit)
                 vfio_mdev_supported, vfio_mdev_info = _safe_detect(
-                    "vfio_mdev", vendor_class.detect_vfio_mdev_capability, pci_device_to)
+                    "vfio_mdev", vendor_class.detect_vfio_mdev_capability,
+                    pci_device_to, gpu_info_map)
                 sriov_supported, sriov_info = _safe_detect(
                     "sriov", vendor_class.detect_sriov_capability, pci_device_to, gpu_info_map)
                 tensorfusion_supported, tensorfusion_info = _safe_detect(
@@ -1681,8 +1688,7 @@ def _collect_haiguang_legacy(pci_address):
 
 def _collect_huawei_legacy(pci_address):
     """Huawei legacy collection (includes special fields)"""
-    r, o, e = bash_roe("which npu-smi")
-    if r != 0:
+    if not get_npu_smi_path():
         return None
 
     r, npu_ids_out = bash_ro(get_huawei_gpu_npu_id_cmd())
@@ -2192,6 +2198,11 @@ def get_all_metrics():
     return results
 
 
+def _enrich_gpu_pci_device_dependencies(pci_devices, context):
+    from zstacklib.gpu import enrich_pci_device_dependencies
+    enrich_pci_device_dependencies(pci_devices, context.gpu_info_map)
+
+
 def _gpu_device_prepare(context):
     """
     GPU device ops preparation hook (Linux kernel style).
@@ -2206,8 +2217,6 @@ def _gpu_device_prepare(context):
     Returns:
         callable or None: Post-prepare hook (device_list, context) -> None, or None
     """
-    import os
-
     # Batch collect GPU info
     gpu_info_map = get_all_gpu_infos_by_pci()
 
@@ -2217,10 +2226,7 @@ def _gpu_device_prepare(context):
     # Store in context for use by device ops and other components (e.g., sriov detection)
     context.gpu_info_map = gpu_info_map
 
-    # No post-prepare hook needed anymore
-    # SR-IOV detection is now handled by vendor methods in GPU device ops
-    # gpu_info_map is available in context for vendor methods to use
-    return None
+    return _enrich_gpu_pci_device_dependencies
 
 
 # Register GPU device operations on module import (Linux kernel style)

@@ -141,13 +141,12 @@ class TestGetInfo(unittest.TestCase):
         """Test get_info legacy fallback for Huawei with special fields"""
         # bash_ro returns (r, o) only, not (r, o, e)
         mock_bash_ro.return_value = (0, "NPU ID: 0\nNPU ID: 1")  # npu-smi info -l
-        mock_bash_roe.side_effect = [
-            (0, "/usr/bin/npu-smi", ""),  # which npu-smi
-            (0, "PCIe Bus Info: 0000:81:00.0\nSerial Number: HUAWEI001", ""),  # npu info
-            (0, "Product Type: Atlas 800", ""),  # product name
-        ]
+        mock_bash_roe.return_value = (
+            0, "PCIe Bus Info: 0000:81:00.0\nSerial Number: HUAWEI001", "")
 
-        result = gpu._get_info_legacy("0000:81:00.0", VendorEnum.HUAWEI)
+        with patch('zstacklib.utils.gpu.get_npu_smi_path',
+                   return_value='/usr/sbin/npu-smi'):
+            result = gpu._get_info_legacy("0000:81:00.0", VendorEnum.HUAWEI)
         # Note: This requires actual implementation
         # For now, verify it handles Huawei-specific logic
         self.assertIsNotNone(result)
@@ -290,13 +289,12 @@ class TestLegacyCollectors(unittest.TestCase):
         """Test _collect_huawei_legacy with special fields"""
         # bash_ro returns (r, o) only, not (r, o, e)
         mock_bash_ro.return_value = (0, "NPU ID: 0")
-        mock_bash_roe.side_effect = [
-            (0, "/usr/bin/npu-smi", ""),  # which
-            (0, "PCIe Bus Info: 0000:81:00.0\nSerial Number: HW001", ""),  # npu info
-            (0, "Product Type: Atlas 800", ""),  # product name
-        ]
+        mock_bash_roe.return_value = (
+            0, "PCIe Bus Info: 0000:81:00.0\nSerial Number: HW001", "")
 
-        result = gpu._collect_huawei_legacy("0000:81:00.0")
+        with patch('zstacklib.utils.gpu.get_npu_smi_path',
+                   return_value='/usr/sbin/npu-smi'):
+            result = gpu._collect_huawei_legacy("0000:81:00.0")
         # Note: Requires actual implementation
         self.assertIsNotNone(result)
 
@@ -413,8 +411,95 @@ class TestGPUDeviceMatcher(unittest.TestCase):
         self.assertFalse(_gpu_device_matcher(MockTO(), MockContext()))
 
 
+class TestGPUDevicePrepare(unittest.TestCase):
+    @patch('zstacklib.utils.gpu.enrich_gpu_info_map')
+    @patch('zstacklib.utils.gpu.get_all_gpu_infos_by_pci')
+    def test_post_prepare_hook_enriches_vendor_dependencies(
+            self, mock_get_gpu_infos, _mock_enrich_gpu_info_map):
+        from zstacklib.utils.gpu import _gpu_device_prepare
+
+        gpu_info_map = {
+            "0000:87:00.0": {"npuId": "0", "chipId": "0"},
+            "0000:97:00.0": {"npuId": "0", "chipId": "1"},
+        }
+        mock_get_gpu_infos.return_value = gpu_info_map
+        context = type('Context', (), {'gpu_info_map': None})()
+        first = type('PciDeviceTO', (), {})()
+        first.vendor = "Huawei"
+        first.pciDeviceAddress = "0000:87:00.0"
+        first.dependentDevices = []
+        second = type('PciDeviceTO', (), {})()
+        second.vendor = "Huawei"
+        second.pciDeviceAddress = "0000:97:00.0"
+        second.dependentDevices = []
+
+        post_prepare = _gpu_device_prepare(context)
+        post_prepare([first, second], context)
+
+        self.assertEqual(first.dependentDevices, [second.pciDeviceAddress])
+        self.assertEqual(second.dependentDevices, [first.pciDeviceAddress])
+
+
 class TestGPUDeviceProcessor(unittest.TestCase):
     """Test _gpu_device_processor: only treats device as GPU when gpu_info is valid (ZSTAC-81489)"""
+
+    @patch('zstacklib.gpu.get_gpu_vendor')
+    def test_processor_passes_gpu_info_map_to_mdev_detector(self, mock_get_gpu_vendor):
+        from zstacklib.utils.gpu import _gpu_device_processor
+
+        gpu_info_map = {"0000:43:00.0": {"npuId": "0", "chipId": "1"}}
+        received = []
+
+        class Vendor(object):
+            @classmethod
+            def refine_gpu_type(cls, pci_device_to, device_type, pci_device_mapper):
+                return None
+
+            @classmethod
+            def detect_vfio_mdev_capability(cls, pci_device_to, received_gpu_info_map):
+                received.append(received_gpu_info_map)
+                return True, {
+                    "virtStatus": "VFIO_MDEV_VIRTUALIZABLE",
+                    "virtState": "VIRTUALIZABLE",
+                    "virtMode": "",
+                    "virtCapabilities": ["VFIO_MDEV"],
+                    "mdevSpecifications": [],
+                }
+
+            @classmethod
+            def detect_sriov_capability(cls, pci_device_to, received_gpu_info_map):
+                return False, {}
+
+            @classmethod
+            def detect_tensorfusion_capability(cls, pci_device_to):
+                return False, {}
+
+            @classmethod
+            def post_process_pci_device(cls, pci_device_to):
+                pass
+
+        class MockTO(object):
+            pciDeviceAddress = "0000:43:00.0"
+            type = PCI_CLASS_PROCESSING_ACCEL
+            device = "Device"
+            name = "Device"
+            vendor = "Huawei"
+            virtStatus = ""
+            virtState = ""
+            virtMode = ""
+            virtCapabilities = []
+
+        class MockContext(object):
+            pci_device_mapper = {}
+            opaque = None
+
+        MockContext.gpu_info_map = gpu_info_map
+        mock_get_gpu_vendor.return_value = Vendor
+
+        pci_device = MockTO()
+        self.assertTrue(_gpu_device_processor(pci_device, MockContext()))
+        self.assertEqual(received, [gpu_info_map])
+        self.assertEqual(pci_device.virtStatus, "VFIO_MDEV_VIRTUALIZABLE")
 
     @patch('zstacklib.utils.gpu.get_info')
     def test_processor_returns_false_when_get_info_returns_none(self, mock_get_info):

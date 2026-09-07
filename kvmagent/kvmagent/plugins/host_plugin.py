@@ -3376,92 +3376,25 @@ done
 
         return True
 
-    def _get_huawei_vfio_mdev_info(self, to):
-        addr = to.pciDeviceAddress
-        check_mdev_folder = '/sys/bus/pci/devices/%s/mdev_supported_types' % addr
-        if not os.path.isdir(check_mdev_folder):
+    def _get_huawei_vfio_mdev_info(self, to, gpu_info_map=None):
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        supported, capability_info = Huawei.detect_vfio_mdev_capability(
+            to, gpu_info_map)
+        if not supported:
             return False
 
-        if shell.run("which npu-smi") != 0:
-            logger.debug("no npu-smi")
-            return False
-
-        r, npu_ids_out = bash_ro("npu-smi info -l")
-        if r != 0:
-            logger.error("npu query gpu is error, %s " % npu_ids_out)
-            return False
-
-        npu_ids = []
-        for line in npu_ids_out.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if "NPU ID" in line:
-                npu_ids.append(line.split(":")[1].strip())
-
-        if len(npu_ids) == 0:
-            return False
-
-        add_found = False
-        for npu_id in npu_ids:
-            r, o, e = bash_roe("npu-smi info -t board -i %s" % npu_id)
-            if r != 0:
-                logger.error("npu query gpu board is error, %s " % e)
-                continue
-
-            if to.pciDeviceAddress.lower() not in o.lower():
-                continue
-
-            add_found = True
-
-            r, o, e = bash_roe("npu-smi info -t template-info -i %s" % npu_id)
-
-            if r != 0:
-                logger.error("npu query gpu template-info is error, %s " % e)
-                continue
-
-            for line in o.splitlines():
-                match = re.match(
-                    r'\|(\w+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\|', line)
-                if match and len(match.group(1)) > 0:
-                    template = {
-                        'Name': match.group(1),
-                        'TypeId': match.group(1),
-                        'AICORE': int(match.group(2)),
-                        'Memory': int(match.group(3)),
-                        'AICPU': int(match.group(4)),
-                        'VPC': int(match.group(5)),
-                        'VENC': int(match.group(6)),
-                        'JPEGD': int(match.group(7))
-                    }
-                    to.mdevSpecifications.append(template)
-
-        if not add_found:
-            logger.error(
-                "can't find gpu %s mdev spec in npu-smi output" % to.pciDeviceAddress)
-            return False
-
-        r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
-        if r != 0:
-            return False
-
-        if addr.lower() in virtStatusOut.lower():
-            set_pci_virt_metadata(
-                to, "VFIO_MDEV_VIRTUALIZED", "VIRTUALIZED",
-                "VFIO_MDEV", ["VFIO_MDEV"])
-        else:
-            set_pci_virt_metadata(
-                to, "VFIO_MDEV_VIRTUALIZABLE", "VIRTUALIZABLE",
-                None, ["VFIO_MDEV"])
-
+        to.mdevSpecifications = capability_info.get(
+            'mdevSpecifications', [])
+        gpu.apply_explicit_virt_metadata(to, capability_info)
         return True
 
-    def _get_vfio_mdev_info(self, to):
+    def _get_vfio_mdev_info(self, to, gpu_info_map=None):
         vendor_name = to.vendor
         if vendor_name == VendorEnum.NVIDIA:
             return self._get_nvidia_vfio_mdev_info(to)
         elif vendor_name == VendorEnum.HUAWEI:
-            return self._get_huawei_vfio_mdev_info(to)
+            return self._get_huawei_vfio_mdev_info(to, gpu_info_map)
         else:
             return False
 
@@ -3711,7 +3644,8 @@ done
         for to in pci_devices_info:
             if not to.virtStatus or to.virtStatus == "":
                 gpu_info_map = getattr(context, 'gpu_info_map', None) if context else None
-                vfio_mdev_supported = self._get_vfio_mdev_info(to)
+                vfio_mdev_supported = self._get_vfio_mdev_info(
+                    to, gpu_info_map)
                 vfio_mdev_status = to.virtStatus
                 sriov_supported = self._get_sriov_info(to, gpu_info_map)
                 if vfio_mdev_supported and sriov_supported:
@@ -3787,8 +3721,7 @@ done
         # Note: GPU vendors implement detect_vfio_mdev_capability and
         # detect_sriov_capability methods
 
-        # Call post-prepare hooks if any (currently not used, but kept for
-        # extensibility)
+        # Call post-prepare hooks after all PCI devices have been collected.
         for post_prepare_hook in post_prepare_hooks:
             try:
                 post_prepare_hook(rsp.pciDevicesInfo, context)
@@ -4376,13 +4309,19 @@ done
     def _generate_huawei_vfio_mdev_devices(self, cmd):
         rsp = GenerateVfioMdevDevicesRsp()
         addr = cmd.pciDeviceAddress
+        npu_smi_path = gpu.get_npu_smi_path()
+        if not npu_smi_path:
+            rsp.success = False
+            rsp.error = "npu-smi not found"
+            return jsonobject.dumps(rsp)
+
         r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
         if r == 0 and addr in virtStatusOut:
             logger.debug(
                 "no need to re-splite pci device[addr:%s] into mdev devices" % addr)
             return jsonobject.dumps(rsp)
 
-        r, o = bash_ro("npu-smi set -t vnpu-mode -d 1")
+        r, o = bash_ro("%s set -t vnpu-mode -d 1" % npu_smi_path)
         if r != 0:
             rsp.success = False
             rsp.error = o

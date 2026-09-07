@@ -452,7 +452,7 @@ class GPUBase(object):
         capability_info['virtCapabilities'] = list(virt_capabilities or [])
 
     @classmethod
-    def detect_vfio_mdev_capability(cls, pci_device_to):
+    def detect_vfio_mdev_capability(cls, pci_device_to, gpu_info_map=None):
         """
         Detect if the GPU device supports VFIO mdev (mediated device) virtualization.
 
@@ -461,6 +461,7 @@ class GPUBase(object):
 
         Args:
             pci_device_to: PciDeviceTO object representing the GPU device
+            gpu_info_map: Optional pre-collected GPU info map for resolving vendor device identity
 
         Returns:
             tuple: (bool, dict) - (is_supported, capability_info)
@@ -545,6 +546,11 @@ class GPUBase(object):
             gpu_info_map: dict mapping normalized PCI address -> GPU info dict (mutated in place)
             pci_addresses: list of normalized PCI addresses that belong to this vendor
         """
+        pass
+
+    @classmethod
+    def enrich_pci_device_dependencies(cls, pci_devices, gpu_info_map):
+        """Enrich PCI dependencies using vendor-specific device topology."""
         pass
 
     # ==========================================================================

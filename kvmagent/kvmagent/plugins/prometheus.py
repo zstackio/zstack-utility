@@ -2147,7 +2147,7 @@ def has_rocm_smi():
 
 
 def has_npu_smi():
-    return shell.run_without_log("which npu-smi") == 0
+    return gpu.get_npu_smi_path() is not None
 
 
 def has_vastai_smi():

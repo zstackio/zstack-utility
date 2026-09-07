@@ -153,6 +153,21 @@ def enrich_gpu_info_map(gpu_info_map):
                            (vendor_name, str(e)))
 
 
+def enrich_pci_device_dependencies(pci_devices, gpu_info_map):
+    """Dispatch PCI dependency enrichment to each GPU vendor."""
+    devices_by_vendor = {}
+    for device in pci_devices:
+        vendor_name = getattr(device, 'vendor', None)
+        if vendor_name:
+            devices_by_vendor.setdefault(vendor_name, []).append(device)
+
+    for vendor_name, devices in devices_by_vendor.items():
+        vendor_class = get_gpu_vendor(vendor_name)
+        if vendor_class:
+            vendor_class.enrich_pci_device_dependencies(
+                devices, gpu_info_map)
+
+
 __all__ = [
     # Vendor enumeration
     'VendorEnum',
@@ -181,4 +196,5 @@ __all__ = [
 
     # Batch addon enrichment
     'enrich_gpu_info_map',
+    'enrich_pci_device_dependencies',
 ]
