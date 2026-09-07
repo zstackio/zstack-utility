@@ -5766,6 +5766,17 @@ class Vm(object):
             logger.warning('cannot online increase memory with size 0 KB, skip this operate.')
             return
 
+        slot_hint = '; please stop and start the VM to release memory device slots before increasing memory again'
+        domain_xml = etree.fromstring(self.domain.XMLDesc(0))
+        max_memory = domain_xml.find('maxMemory')
+        if max_memory is not None and max_memory.get('slots') is not None:
+            slots = int(max_memory.get('slots'))
+            used_slots = sum(1 for device in domain_xml.findall('devices/memory')
+                             if device.get('model') in ('dimm', 'nvdimm'))
+            if used_slots >= slots:
+                raise kvmagent.KvmError('VM[uuid:%s] has no free memory device slots (%d/%d used)%s' %
+                                       (self.uuid, used_slots, slots, slot_hint))
+
         xml = "<memory model='dimm'><target><size unit='KiB'>%d</size><node>0</node></target></memory>" % mem_size
         logger.debug('hot plug memory: %d KiB' % mem_size)
         try:
@@ -5777,6 +5788,8 @@ class Vm(object):
                 raise kvmagent.KvmError("No enough physical memory for guest")
             elif "would exceed domain's maxMemory config" in err:
                 raise kvmagent.KvmError(err + "; please check if you have rebooted the VM to make Instance Offering Online Modification take effect")
+            elif "no free memory device slot available" in err:
+                raise kvmagent.KvmError(err + slot_hint)
             else:
                 raise kvmagent.KvmError(err)
         return
@@ -6758,7 +6771,7 @@ class Vm(object):
             root = elements['root']
             mem = cmd.memory // 1024
             if use_numa:
-                e(root, 'maxMemory', str(MAX_MEMORY), {'slots': str(16), 'unit': 'KiB'})
+                e(root, 'maxMemory', str(MAX_MEMORY), {'slots': '64', 'unit': 'KiB'})
                 # e(root,'memory',str(mem),{'unit':'k'})
                 e(root, 'currentMemory', str(mem), {'unit': 'k'})
             else:
