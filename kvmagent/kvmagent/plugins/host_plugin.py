@@ -2069,11 +2069,7 @@ class HostPlugin(kvmagent.KvmAgent):
     @in_bash
     def capacity(self, req):
         rsp = HostCapacityResponse()
-        try:
-            shared_cpu_num = resource_control.ResourceControlManager().get_shared_cpu_num()
-        except resource_control.ResourceControlError as error:
-            logger.warn("failed to get shared cpu count, fallback to host cpu count: %s" % error)
-            shared_cpu_num = None
+        shared_cpu_num = resource_control.ResourceControlManager().get_shared_cpu_num()
         rsp.cpuNum = shared_cpu_num if shared_cpu_num is not None else linux.get_cpu_num()
         rsp.cpuSpeed = linux.get_cpu_speed()
         (used_cpu, used_memory) = vm_plugin.get_cpu_memory_used_by_running_vms()
@@ -4834,7 +4830,7 @@ done
         manager = resource_control.ResourceControlManager()
         self._validate_managed_service_command(cmd)
         rsp = kvmagent.AgentResponse()
-        rsp.services = manager.inspect(cmd.roleType, cmd.handles)
+        rsp.services = manager.inspect(cmd.roleType, cmd.handles, cmd.sliceName)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

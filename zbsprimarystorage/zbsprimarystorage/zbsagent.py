@@ -1,6 +1,7 @@
 __author__ = 'Xingwei Yu'
 
 import base64
+import os
 import pprint
 import traceback
 
@@ -55,23 +56,17 @@ def read_physical_server_serial_number():
     if _physical_server_serial_number is not None:
         return _physical_server_serial_number
 
-    try:
+    if os.path.isfile('/sys/class/dmi/id/product_serial'):
         with open('/sys/class/dmi/id/product_serial') as serial_file:
             serial_number = serial_file.read().strip()
             if serial_number:
                 _physical_server_serial_number = serial_number
                 return _physical_server_serial_number
-    except (IOError, OSError):
-        pass
 
-    try:
-        serial_number = shell.call('dmidecode -s system-serial-number').strip()
-        if serial_number:
-            _physical_server_serial_number = serial_number
-        return _physical_server_serial_number
-    except Exception as error:
-        logger.warn('failed to read physical server serial number: %s' % error)
-        return None
+    serial_number = shell.call('dmidecode -s system-serial-number', exception=False).strip()
+    if serial_number:
+        _physical_server_serial_number = serial_number
+    return _physical_server_serial_number
 
 
 class CbdToNbdRsp(AgentResponse):

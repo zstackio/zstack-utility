@@ -193,7 +193,7 @@ class TestHostPluginCapacity:
             assert rsp['cpuSockets'] == 2
             assert rsp['cpuCoreNum'] == 4
 
-    def test_capacity_falls_back_when_shared_cpu_count_is_unavailable(self):
+    def test_capacity_falls_back_when_no_shared_cpuset_is_available(self):
         plugin = _make_plugin()
         from zstacklib.utils import linux
         from kvmagent.plugins import vm_plugin
@@ -201,8 +201,7 @@ class TestHostPluginCapacity:
         with patch.object(
                 host_plugin.resource_control.ResourceControlManager,
                 'get_shared_cpu_num',
-                side_effect=host_plugin.resource_control.ResourceControlError(
-                    'Failed to read cpuset.cpus.effective')), \
+                return_value=None), \
              patch.object(linux, 'get_cpu_num', return_value=8), \
              patch.object(linux, 'get_cpu_speed', return_value=2400), \
              patch.object(linux, 'get_socket_num', return_value=2), \
@@ -362,9 +361,10 @@ class TestHostPluginResourceControl:
         assert rsp['services'][0]['serviceName'] == 'kvmagent'
         assert rsp['services'][0]['restartRequired'] is True
         manager.inspect.assert_called_once()
-        role_type, handles = manager.inspect.call_args.args
+        role_type, handles, slice_name = manager.inspect.call_args.args
         assert role_type == 'COMPUTE'
         assert [item.serviceName for item in handles] == ['kvmagent', 'virtlogd']
+        assert slice_name == 'zstack-compute.slice'
 
     def test_managed_service_probe_failure_is_returned_to_cloud(self):
         command = self._command()
