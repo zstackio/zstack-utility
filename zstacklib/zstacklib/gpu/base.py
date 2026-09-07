@@ -461,6 +461,7 @@ class GPUBase(object):
 
         Args:
             pci_device_to: PciDeviceTO object representing the GPU device
+            gpu_info_map: Optional pre-collected GPU info map for resolving vendor device identity
 
         Returns:
             tuple: (bool, dict) - (is_supported, capability_info)

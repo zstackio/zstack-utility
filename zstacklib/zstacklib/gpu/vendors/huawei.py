@@ -402,12 +402,12 @@ class Huawei(GPUBase):
             for address in addresses:
                 device = devices_by_address[address]
                 dependencies = {
-                    dependency for dependency in (device.dependentDevices or [])
+                    cls.normalize_pci_address(dependency)
+                    for dependency in (device.dependentDevices or [])
                     if cls.normalize_pci_address(dependency) != address
                 }
                 dependencies.update(
-                    devices_by_address[peer].pciDeviceAddress
-                    for peer in addresses if peer != address)
+                    peer for peer in addresses if peer != address)
                 device.dependentDevices = sorted(dependencies)
 
     # ==========================================================================
@@ -777,7 +777,7 @@ class Huawei(GPUBase):
     # ==========================================================================
 
     @classmethod
-    def detect_vfio_mdev_capability(cls, pci_device_to):
+    def detect_vfio_mdev_capability(cls, pci_device_to, gpu_info_map=None):
         """
         Detect Huawei NPU mdev (mediated device) capability.
 
@@ -796,18 +796,25 @@ class Huawei(GPUBase):
             logger.debug("no npu-smi")
             return False, {}
 
-        r, npu_ids_out = bash_ro("%s info -l" % npu_smi_path)
-        if r != 0:
-            logger.error("npu query gpu is error, %s " % npu_ids_out)
-            return False, {}
+        normalized_addr = cls.normalize_pci_address(addr)
+        gpu_info = (gpu_info_map or {}).get(normalized_addr) or {}
+        mapped_npu_id = gpu_info.get("npuId")
 
-        npu_ids = []
-        for line in npu_ids_out.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if "NPU ID" in line:
-                npu_ids.append(line.split(":")[1].strip())
+        if mapped_npu_id is not None:
+            npu_ids = [mapped_npu_id]
+        else:
+            r, npu_ids_out = bash_ro("%s info -l" % npu_smi_path)
+            if r != 0:
+                logger.error("npu query gpu is error, %s " % npu_ids_out)
+                return False, {}
+
+            npu_ids = []
+            for line in npu_ids_out.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if "NPU ID" in line:
+                    npu_ids.append(line.split(":")[1].strip())
 
         if len(npu_ids) == 0:
             return False, {}
@@ -816,13 +823,14 @@ class Huawei(GPUBase):
         mdev_specs = []
 
         for npu_id in npu_ids:
-            r, o, e = bash_roe("%s info -t board -i %s" % (npu_smi_path, npu_id))
-            if r != 0:
-                logger.error("npu query gpu board is error, %s " % e)
-                continue
-
-            if addr.lower() not in o.lower():
-                continue
+            if mapped_npu_id is None:
+                r, o, e = bash_roe(
+                    "%s info -t board -i %s" % (npu_smi_path, npu_id))
+                if r != 0:
+                    logger.error("npu query gpu board is error, %s " % e)
+                    continue
+                if addr.lower() not in o.lower():
+                    continue
 
             add_found = True
 
