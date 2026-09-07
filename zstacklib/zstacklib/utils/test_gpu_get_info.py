@@ -443,6 +443,64 @@ class TestGPUDevicePrepare(unittest.TestCase):
 class TestGPUDeviceProcessor(unittest.TestCase):
     """Test _gpu_device_processor: only treats device as GPU when gpu_info is valid (ZSTAC-81489)"""
 
+    @patch('zstacklib.gpu.get_gpu_vendor')
+    def test_processor_passes_gpu_info_map_to_mdev_detector(self, mock_get_gpu_vendor):
+        from zstacklib.utils.gpu import _gpu_device_processor
+
+        gpu_info_map = {"0000:43:00.0": {"npuId": "0", "chipId": "1"}}
+        received = []
+
+        class Vendor(object):
+            @classmethod
+            def refine_gpu_type(cls, pci_device_to, device_type, pci_device_mapper):
+                return None
+
+            @classmethod
+            def detect_vfio_mdev_capability(cls, pci_device_to, received_gpu_info_map):
+                received.append(received_gpu_info_map)
+                return True, {
+                    "virtStatus": "VFIO_MDEV_VIRTUALIZABLE",
+                    "virtState": "VIRTUALIZABLE",
+                    "virtMode": "",
+                    "virtCapabilities": ["VFIO_MDEV"],
+                    "mdevSpecifications": [],
+                }
+
+            @classmethod
+            def detect_sriov_capability(cls, pci_device_to, received_gpu_info_map):
+                return False, {}
+
+            @classmethod
+            def detect_tensorfusion_capability(cls, pci_device_to):
+                return False, {}
+
+            @classmethod
+            def post_process_pci_device(cls, pci_device_to):
+                pass
+
+        class MockTO(object):
+            pciDeviceAddress = "0000:43:00.0"
+            type = PCI_CLASS_PROCESSING_ACCEL
+            device = "Device"
+            name = "Device"
+            vendor = "Huawei"
+            virtStatus = ""
+            virtState = ""
+            virtMode = ""
+            virtCapabilities = []
+
+        class MockContext(object):
+            pci_device_mapper = {}
+            opaque = None
+
+        MockContext.gpu_info_map = gpu_info_map
+        mock_get_gpu_vendor.return_value = Vendor
+
+        pci_device = MockTO()
+        self.assertTrue(_gpu_device_processor(pci_device, MockContext()))
+        self.assertEqual(received, [gpu_info_map])
+        self.assertEqual(pci_device.virtStatus, "VFIO_MDEV_VIRTUALIZABLE")
+
     @patch('zstacklib.utils.gpu.get_info')
     def test_processor_returns_false_when_get_info_returns_none(self, mock_get_info):
         """Processor does not treat device as GPU when get_info returns None (no-match)"""

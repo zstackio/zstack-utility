@@ -671,7 +671,7 @@ class NVIDIA(GPUBase):
         return False
 
     @classmethod
-    def detect_vfio_mdev_capability(cls, pci_device_to):
+    def detect_vfio_mdev_capability(cls, pci_device_to, gpu_info_map=None):
         """
         Detect NVIDIA vGPU (VFIO mdev) capability.
 
