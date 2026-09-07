@@ -932,7 +932,8 @@ def _gpu_device_processor(pci_device_to, context):
 
                 # Detect all capabilities independently (no short-circuit)
                 vfio_mdev_supported, vfio_mdev_info = _safe_detect(
-                    "vfio_mdev", vendor_class.detect_vfio_mdev_capability, pci_device_to)
+                    "vfio_mdev", vendor_class.detect_vfio_mdev_capability,
+                    pci_device_to, gpu_info_map)
                 sriov_supported, sriov_info = _safe_detect(
                     "sriov", vendor_class.detect_sriov_capability, pci_device_to, gpu_info_map)
                 tensorfusion_supported, tensorfusion_info = _safe_detect(
