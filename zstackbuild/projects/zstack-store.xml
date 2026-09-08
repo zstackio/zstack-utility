@@ -31,6 +31,8 @@
 
     <target name="assemble-zstack-store" if="build_war_flag">
         <makeDir dir="${imagestorebackupstorage.ansible.dir}" />
+        <copy file="${zstacklib.source}/zstacklib/utils/resource_control.py"
+              todir="${imagestorebackupstorage.ansible.dir}" />
 
         <copy todir="${imagestorebackupstorage.ansible.dir}">
             <fileset dir="${imagestore.bdir}/zstore">

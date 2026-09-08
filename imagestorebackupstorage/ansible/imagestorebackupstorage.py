@@ -2,6 +2,7 @@
 # encoding: utf-8
 import argparse
 import datetime
+import json
 import os.path
 import re
 
@@ -33,6 +34,8 @@ host_uuid = None
 require_python_env = "false"
 skip_packages = ""
 new_add = "false"
+resource_assignment_enabled = False
+resource_assignment_slice_name = 'zstack-imagestore.slice'
 
 # get parameter from shell
 parser = argparse.ArgumentParser(description='Deploy image backupstorage to host')
@@ -42,7 +45,7 @@ parser.add_argument('--private-key', type=str, help='use this file to authentica
 parser.add_argument('-e', type=str, help='set additional variables as key=value or YAML/JSON')
 
 args = parser.parse_args()
-argument_dict = eval(args.e)
+argument_dict = json.loads(args.e)
 
 # update the variable from shell arguments
 locals().update(argument_dict)
@@ -261,18 +264,50 @@ else:
     command = "bash " + dest_pkg
 run_remote_command(command, host_post_info)
 
+if client != 'true':
+    for resource_script in ['resource_control.py', 'resource_control_cli.py']:
+        copy_arg = CopyArg()
+        copy_arg.src = '%s/%s' % (file_root, resource_script)
+        copy_arg.dest = '/usr/local/zstack/imagestore/bin/%s' % resource_script
+        copy_arg.args = 'mode=644'
+        copy(copy_arg, host_post_info)
+
 # if user is not root , Change the owner of the directory to ordinary user
 if fs_rootpath != '' and remote_user != 'root':
     run_remote_command("sudo chown -R -H --dereference %s: %s" % (remote_user, fs_rootpath), host_post_info)
 
 # name: restart image store server
 if client != "true":
+    if resource_assignment_enabled:
+        if not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.slice$', resource_assignment_slice_name):
+            error('Invalid resource assignment slice[%s]' % resource_assignment_slice_name)
+        service = ('[Unit]\nDescription=ZStack Image Store\nAfter=network.target\n\n'
+                   '[Service]\nType=simple\n'
+                   'ExecStart=/usr/local/zstack/imagestore/bin/zstore '
+                   '-conf /usr/local/zstack/imagestore/bin/zstore.yaml '
+                   '-logfile /var/log/zstack/zstack-store/zstore.log\n'
+                   'LimitNOFILE=4096\nKillMode=control-group\n\n'
+                   '[Install]\nWantedBy=multi-user.target\n')
+        command = "printf %s > /etc/systemd/system/zstack-imagestorebackupstorage.service" % shell_quote(service)
+        run_remote_command(command, host_post_info)
+        for unit in ['zstack-imagestorebackupstorage.service', 'bs_collectd_exporter.service']:
+            drop_in_dir = '/etc/systemd/system/%s.d' % unit
+            drop_in = drop_in_dir + '/50-zstack-resource-assignment.conf'
+            content = '[Service]\nSlice=%s\n' % resource_assignment_slice_name
+            command = 'mkdir -p %s; test -e %s || printf %s > %s' % (
+                shell_quote(drop_in_dir), shell_quote(drop_in), shell_quote(content), shell_quote(drop_in))
+            run_remote_command(command, host_post_info)
+        run_remote_command('systemctl daemon-reload', host_post_info)
     # integrate zstack-store with init.d
     run_remote_command("/bin/cp -f /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage /etc/init.d/", host_post_info)
     if host_info.distro in RPM_BASED_OS:
         command = "/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start && chkconfig zstack-imagestorebackupstorage on"
     elif host_info.distro in DEB_BASED_OS:
         command = "update-rc.d zstack-imagestorebackupstorage start 97 3 4 5 . stop 3 0 1 2 6 . && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && /usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage start"
+    command = ('if test -f /etc/systemd/system/zstack-imagestorebackupstorage.service; then '
+               '/usr/local/zstack/imagestore/bin/zstack-imagestorebackupstorage stop && '
+               'systemctl enable zstack-imagestorebackupstorage.service && '
+               'systemctl start zstack-imagestorebackupstorage.service; else %s; fi') % command
     run_remote_command(command, host_post_info)
 
 host_post_info.start_time = start_time

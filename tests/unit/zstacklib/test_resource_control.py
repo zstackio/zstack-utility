@@ -1,3 +1,4 @@
+import io
 import os
 from unittest.mock import Mock
 
@@ -5,12 +6,42 @@ import pytest
 
 from zstacklib.utils import resource_control
 from zstacklib.utils.resource_control import (
-    MemoryControllerUnavailableError,
     ResourceControlError,
     ResourceControlManager,
-    ResourceControlUnavailableError,
-    SystemdControlGroupNotFoundError,
 )
+
+
+@pytest.mark.parametrize('smt', ['present', 'missing', 'empty'])
+def test_shared_cpu_topology_preserves_numa_online_cpus_and_smt(monkeypatch, smt):
+    root = '/sys/devices/system'
+    files = {
+        root + '/cpu/online': '0-3,8-11,^11\n',
+        root + '/node/node0/cpulist': '0-1,8-9\n',
+        root + '/node/node2/cpulist': '2-3,10-11\n',
+    }
+    for cpu in [0, 1, 2, 3, 8, 9, 10]:
+        files[root + '/cpu/cpu%s/topology/thread_siblings_list' % cpu] = '%s,%s\n' % (cpu % 8, cpu % 8 + 8)
+    path = root + '/cpu/cpu2/topology/thread_siblings_list'
+    if smt == 'missing':
+        del files[path]
+    elif smt == 'empty':
+        files[path] = '\n'
+    monkeypatch.setattr(resource_control, 'open', lambda path: io.StringIO(files[path]), raising=False)
+    monkeypatch.setattr(resource_control.os.path, 'isfile', lambda path: path in files)
+    monkeypatch.setattr(resource_control.glob, 'glob', lambda _: [root + '/node/node0', root + '/node/node2'])
+
+    nodes = resource_control.get_cpu_topology()
+    assert set(nodes) == {'0', '2'}, 'Sparse NUMA node IDs must not truncate enumeration'
+    assert nodes['0']['coreGroups'] == [['0', '8'], ['1', '9']], 'Preserve CPU0 siblings for allocation'
+    assert nodes['2']['cpus'] == ['2', '3', '10', '11'], 'KVM still needs the full node CPU list'
+    assert nodes['2']['onlineCpus'] == ['2', '3', '10'], 'Offline CPUs must not be allocatable'
+    assert nodes['2']['coreGroups'] == ([['2', '10'], ['3']] if smt == 'present' else []), \
+        'Missing or empty SMT facts must not invent core groups'
+
+    monkeypatch.setattr(resource_control.glob, 'glob', lambda _: [])
+    nodes = resource_control.get_cpu_topology()
+    assert set(nodes) == {'0'}, 'Non-NUMA Image Store servers still need a CPU planning domain'
+    assert nodes['0']['onlineCpus'] == ['0', '1', '2', '3', '8', '9', '10']
 
 
 def handle(value):
@@ -27,6 +58,20 @@ def optional_handle(value):
     item = handle(value)
     item["optional"] = True
     return item
+
+
+@pytest.mark.parametrize("slice_name, handles", [
+    ("../../attacker.slice", [handle("agent.service")]),
+    ("zstack-compute.slice", [dict(handle("agent.service"), value="../../attacker.service")]),
+    ("zstack-compute.slice", [handle("agent.service"), handle("agent.service")]),
+    ("zstack-compute.slice", [dict(handle("agent.service"), optional=None)]),
+    ("zstack-compute.slice", [dict(handle("agent.service"), serviceName=None)]),
+    ("zstack-compute.slice", [dict(handle("agent.service"), restartable=None)]),
+    ("zstack-compute.slice", []),
+])
+def test_service_command_rejects_unsafe_or_ambiguous_targets(slice_name, handles):
+    with pytest.raises(ResourceControlError):
+        ResourceControlManager.validate_service_command(slice_name, handles)
 
 
 def prepare_restart(manager, monkeypatch):
@@ -46,7 +91,7 @@ def test_release_with_only_optional_handles_is_an_idempotent_success(monkeypatch
 
     result = manager.release("MANAGEMENT", [optional_handle("collectd.service")])
 
-    assert result["synced"], "释放不存在的可选 Handle 必须保持幂等成功"
+    assert result["synced"], "Releasing absent optional handles must remain idempotent"
 
 
 def test_release_keeps_service_slice_membership(monkeypatch):
@@ -59,8 +104,6 @@ def test_release_keeps_service_slice_membership(monkeypatch):
     monkeypatch.setattr(manager, "_find_memory_backend", lambda: ("CGROUP_V2_MEMORY", "/sys/fs/cgroup"))
     monkeypatch.setattr(manager, "_remove_drop_in", remove_drop_in)
     monkeypatch.setattr(manager, "_active_slice_target", lambda *_args: "/sys/fs/cgroup/zstack-compute.slice")
-    monkeypatch.setattr(
-        manager, "_active_controller_slice_target", lambda *_args: "/sys/fs/cgroup/zstack-compute.slice")
     monkeypatch.setattr(manager, "_release_cpu_boundary", release_cpu)
     monkeypatch.setattr(manager, "_apply_memory_target", release_memory)
     monkeypatch.setattr(manager, "_systemctl", systemctl)
@@ -69,8 +112,7 @@ def test_release_keeps_service_slice_membership(monkeypatch):
 
     assert result["synced"]
     remove_drop_in.assert_called_once_with(manager._drop_in_path("zstack-compute.slice"))
-    release_cpu.assert_called_once_with(
-        "/sys/fs/cgroup", "CGROUP_V2_CPUSET", "/sys/fs/cgroup/zstack-compute.slice")
+    release_cpu.assert_called_once_with("/sys/fs/cgroup", "CGROUP_V2_CPUSET", "/sys/fs/cgroup/zstack-compute.slice")
     release_memory.assert_called_once_with(
         "CGROUP_V2_MEMORY", "/sys/fs/cgroup", "/sys/fs/cgroup/zstack-compute.slice", 0)
     systemctl.assert_called_once_with(["daemon-reload"], 30)
@@ -86,6 +128,121 @@ def test_first_role_to_write_a_service_slice_keeps_ownership(tmp_path, monkeypat
 
     with open(manager._drop_in_path("node_exporter.service")) as stream:
         assert stream.read() == "[Service]\nSlice=zstack-management.slice\n"
+
+
+@pytest.mark.parametrize("slice_name", ["zstack-compute.slice", "role-custom.slice", "role:custom.slice"])
+def test_configured_slice_round_trip_preserves_valid_names(tmp_path, slice_name):
+    manager = ResourceControlManager()
+    manager.SYSTEMD_UNIT_ROOT = str(tmp_path)
+    service = handle("node_exporter.service")
+
+    assert manager._configure_systemd_service(service, slice_name)
+    assert manager._configured_slice(service["value"]) == slice_name
+    assert not manager._configure_systemd_service(service, "another.slice")
+    assert manager._configured_slice(service["value"]) == slice_name
+
+
+@pytest.mark.parametrize("slice_name", ["../role.slice", "/role.slice", "role/name.slice", "-role.slice"])
+def test_configured_slice_rejects_invalid_names(tmp_path, slice_name):
+    manager = ResourceControlManager()
+    manager.SYSTEMD_UNIT_ROOT = str(tmp_path)
+    path = manager._drop_in_path("node_exporter.service")
+    manager._write_drop_in(path, "[Service]\nSlice=%s\n" % slice_name)
+
+    assert manager._configured_slice("node_exporter.service") is None
+
+
+@pytest.mark.parametrize("cpu_backend,memory_backend", [
+    ("CGROUP_V1_CPUSET", "CGROUP_V1_MEMORY"),
+    ("CGROUP_V1_CPUSET", "CGROUP_V2_MEMORY"),
+    ("CGROUP_V2_CPUSET", "CGROUP_V1_MEMORY"),
+])
+@pytest.mark.parametrize("changed", [False, True])
+@pytest.mark.parametrize("cpu_failure", [False, True])
+def test_release_without_cpu_slice_clears_role_memory_and_reloads(
+        tmp_path, monkeypatch, cpu_backend, memory_backend, changed, cpu_failure):
+    manager = ResourceControlManager()
+    manager.SYSTEMD_UNIT_ROOT = str(tmp_path / "systemd")
+    service = handle("node_exporter.service")
+    manager._configure_systemd_service(service, "zstack-compute.slice")
+    if changed:
+        manager._configure_systemd_slice(cpu_backend, memory_backend, "zstack-compute.slice", "2-3", manager.MEBIBYTE)
+    memory_root = str(tmp_path / "memory")
+    memory_target = os.path.join(memory_root, "zstack-compute.slice")
+    os.makedirs(memory_target)
+    limit_name = "memory.max" if memory_backend == "CGROUP_V2_MEMORY" else "memory.limit_in_bytes"
+    for path, value in [(os.path.join(memory_root, limit_name), "9223372036854771712"),
+                        (os.path.join(memory_target, limit_name), str(manager.MEBIBYTE))]:
+        with open(path, "w") as stream:
+            stream.write(value)
+    monkeypatch.setattr(manager, "_backend", lambda: (cpu_backend, "/cpuset"))
+    monkeypatch.setattr(manager, "_find_memory_backend", lambda: (memory_backend, memory_root))
+    monkeypatch.setattr(manager, "_active_slice_target",
+                        lambda root, _slice: memory_target if root == memory_root else None)
+    systemctl = Mock()
+    monkeypatch.setattr(manager, "_systemctl", systemctl)
+    fallback = Mock(return_value={"state": "DISABLED", "cpuSet": "", "memory": 0})
+    if cpu_failure:
+        fallback.side_effect = ResourceControlError("CPU release failed")
+    monkeypatch.setattr(manager, "_release_non_systemd_handle", fallback)
+
+    if cpu_failure:
+        with pytest.raises(ResourceControlError, match="CPU release failed"):
+            manager.release("COMPUTE", [service], "zstack-compute.slice")
+    else:
+        assert manager.release("COMPUTE", [service], "zstack-compute.slice")["synced"]
+
+    with open(os.path.join(memory_target, limit_name)) as stream:
+        assert stream.read() == ("max" if memory_backend == "CGROUP_V2_MEMORY" else "9223372036854771712")
+    assert manager._configured_slice(service["value"]) == "zstack-compute.slice"
+    assert not os.path.exists(manager._drop_in_path("zstack-compute.slice"))
+    if changed:
+        systemctl.assert_called_once_with(["daemon-reload"], 30)
+    else:
+        systemctl.assert_not_called()
+
+
+@pytest.mark.parametrize("properties,message", [
+    ({"LoadState": "not-found"}, "does not exist"),
+    ({"LoadState": "loaded", "ActiveState": "inactive"}, "is not active"),
+])
+@pytest.mark.parametrize("optional", [False, True])
+def test_slice_apply_reports_required_service_failure(monkeypatch, properties, message, optional):
+    manager = ResourceControlManager()
+    service = optional_handle("node_exporter.service") if optional else handle("node_exporter.service")
+    monkeypatch.setattr(manager, "_backend", lambda: ("CGROUP_V2_CPUSET", "/cpuset"))
+    monkeypatch.setattr(manager, "validate_cpu_set", lambda value: value)
+    monkeypatch.setattr(manager, "_prune_systemd_service_drop_ins", lambda *_args: False)
+    monkeypatch.setattr(manager, "_configure_systemd_slice", lambda *_args: False)
+    monkeypatch.setattr(manager, "_configure_systemd_service", lambda *_args: False)
+    monkeypatch.setattr(manager, "_configured_slice", lambda *_args: "zstack-compute.slice")
+    monkeypatch.setattr(manager, "_ensure_active_slice_target", lambda *_args: "/cpuset/zstack-compute.slice")
+    monkeypatch.setattr(manager, "_apply_cpu_boundary", lambda *_args: "2-3")
+    monkeypatch.setattr(manager, "_systemd_properties", lambda *_args: properties)
+
+    if optional:
+        assert not manager.apply("COMPUTE", "2-3", [service], None, "zstack-compute.slice")["synced"]
+    else:
+        with pytest.raises(ResourceControlError) as error:
+            manager.apply("COMPUTE", "2-3", [service], None, "zstack-compute.slice")
+        assert str(error.value) == "Systemd unit[node_exporter.service] %s" % message
+
+
+def test_release_reports_role_memory_failure_after_reloading_removed_configuration(monkeypatch):
+    manager = ResourceControlManager()
+    monkeypatch.setattr(manager, "_remove_drop_in", lambda *_args: True)
+    monkeypatch.setattr(manager, "_active_slice_target", lambda *_args: "/memory/zstack-compute.slice")
+    monkeypatch.setattr(
+        manager, "_apply_memory_target", Mock(side_effect=ResourceControlError("Memory release failed")))
+    systemctl = Mock()
+    monkeypatch.setattr(manager, "_systemctl", systemctl)
+
+    with pytest.raises(ResourceControlError, match="Memory release failed"):
+        manager._release_systemd_slice(
+            "/cpuset", "CGROUP_V1_CPUSET", "COMPUTE", "zstack-compute.slice",
+            [handle("node_exporter.service")], "CGROUP_V1_MEMORY", "/memory")
+
+    systemctl.assert_called_once_with(["daemon-reload"], 30)
 
 
 def test_inspect_omits_a_service_owned_by_another_role(monkeypatch):
@@ -111,7 +268,7 @@ def test_role_memory_limit_is_applied_once_at_slice_boundary(monkeypatch):
     monkeypatch.setattr(manager, "_configure_systemd_service", lambda *_args: False)
     monkeypatch.setattr(manager, "_configured_slice", lambda _unit: "zstack-management.slice")
     monkeypatch.setattr(manager, "_ensure_active_slice_target", lambda *_args: "/sys/fs/cgroup/zstack-management.slice")
-    monkeypatch.setattr(manager, "_active_controller_slice_target",
+    monkeypatch.setattr(manager, "_active_slice_target",
                         lambda *_args: "/sys/fs/cgroup/zstack-management.slice")
     monkeypatch.setattr(manager, "_apply_to_group", lambda *_args: "0-3")
     apply_memory = Mock(return_value=4 * 1024 * 1024 * 1024)
@@ -136,7 +293,7 @@ def test_role_memory_limit_is_applied_once_at_slice_boundary(monkeypatch):
         "CGROUP_V2_MEMORY", "/sys/fs/cgroup",
         "/sys/fs/cgroup/zstack-management.slice",
         4 * 1024 * 1024 * 1024)
-    assert result["synced"], "Role Slice 的 CPU 和内存边界均生效后才能返回 synced"
+    assert result["synced"], "Sync requires both role CPU and memory boundaries"
 
 
 def test_v2_exclusive_boundary_changes_partition_without_moving_processes(tmp_path):
@@ -185,7 +342,7 @@ def test_exclusive_boundary_requires_role_slice(monkeypatch):
     manager = ResourceControlManager()
     monkeypatch.setattr(manager, "_backend", lambda: ("CGROUP_V2_CPUSET", "/cgroup2"))
     monkeypatch.setattr(manager, "_memory_backend", Mock(
-        side_effect=MemoryControllerUnavailableError("No available memory controller was found")))
+        side_effect=ResourceControlError("No available memory controller was found")))
     monkeypatch.setattr(manager, "validate_cpu_set", lambda value: value)
     monkeypatch.setattr(manager, "_prune_systemd_service_drop_ins", lambda *_args: False)
     monkeypatch.setattr(manager, "_configure_systemd_slice", lambda *_args: False)
@@ -211,7 +368,7 @@ def test_memory_only_role_does_not_apply_cpu_boundary(monkeypatch):
     monkeypatch.setattr(manager, "_configure_systemd_service", lambda *_args: False)
     monkeypatch.setattr(manager, "_configured_slice", lambda _unit: "zstack-management.slice")
     monkeypatch.setattr(manager, "_ensure_active_slice_target", lambda *_args: "/sys/fs/cgroup/zstack-management.slice")
-    monkeypatch.setattr(manager, "_active_controller_slice_target",
+    monkeypatch.setattr(manager, "_active_slice_target",
                         lambda *_args: "/sys/fs/cgroup/zstack-management.slice")
     monkeypatch.setattr(manager, "_apply_to_group", apply_cpu)
     monkeypatch.setattr(manager, "_apply_memory_target", lambda *_args: 2 * 1024 ** 3)
@@ -225,9 +382,9 @@ def test_memory_only_role_does_not_apply_cpu_boundary(monkeypatch):
 
     result = manager.apply("MANAGEMENT", None, [handle("zstack.service")], 2 * 1024 ** 3, "zstack-management.slice")
 
-    assert result["synced"], "仅设置内存时必须独立完成内存边界同步"
+    assert result["synced"], "Memory-only assignments must sync independently"
     apply_cpu.assert_not_called()
-    assert configure_slice.call_args.args[3] is None, "未设置 CPU 时 systemd Slice 不得写入 AllowedCPUs"
+    assert configure_slice.call_args.args[3] is None, "Unset CPU must not write AllowedCPUs"
 
 
 def test_apply_stages_service_slice_without_restarting_running_service(monkeypatch):
@@ -241,7 +398,7 @@ def test_apply_stages_service_slice_without_restarting_running_service(monkeypat
     monkeypatch.setattr(manager, "_configured_slice", lambda _unit: "zstack-compute.slice")
     monkeypatch.setattr(manager, "_systemctl", lambda args, _timeout: commands.append(args) or "")
     monkeypatch.setattr(manager, "_ensure_active_slice_target", lambda *_args: "/sys/fs/cgroup/zstack-compute.slice")
-    monkeypatch.setattr(manager, "_active_controller_slice_target",
+    monkeypatch.setattr(manager, "_active_slice_target",
                         lambda *_args: "/sys/fs/cgroup/zstack-compute.slice")
     monkeypatch.setattr(manager, "_apply_to_group", lambda *_args: "0-3")
     monkeypatch.setattr(manager, "_apply_memory_target", lambda *_args: 2 * 1024 ** 3)
@@ -257,7 +414,7 @@ def test_apply_stages_service_slice_without_restarting_running_service(monkeypat
     result = manager.apply("COMPUTE", "0-3", [handle("node_exporter.service")], 2 * 1024 ** 3, "zstack-compute.slice")
 
     assert commands == [["daemon-reload"]]
-    assert not result["synced"], "仅写入 drop-in、进程尚未进入 Slice 时不能返回 synced"
+    assert not result["synced"], "Staged membership must remain unsynced before restart"
 
 
 def test_legacy_systemd_hybrid_keeps_cpu_fallback_and_stages_role_memory(monkeypatch):
@@ -271,7 +428,7 @@ def test_legacy_systemd_hybrid_keeps_cpu_fallback_and_stages_role_memory(monkeyp
     monkeypatch.setattr(manager, "_configured_slice", lambda _unit: "zstack-compute.slice")
     monkeypatch.setattr(manager, "_ensure_active_slice_target", lambda *_args: None)
     monkeypatch.setattr(manager, "_apply_non_systemd_handle", cpu_fallback)
-    monkeypatch.setattr(manager, "_active_controller_slice_target", lambda *_args: "/memory/zstack-compute.slice")
+    monkeypatch.setattr(manager, "_active_slice_target", lambda *_args: "/memory/zstack-compute.slice")
     monkeypatch.setattr(manager, "_apply_memory_target", lambda *_args: 2 * 1024 ** 3)
     monkeypatch.setattr(manager, "_control_group_in_target", lambda *_args: False)
     monkeypatch.setattr(manager, "_systemd_properties", lambda unit: {
@@ -285,7 +442,7 @@ def test_legacy_systemd_hybrid_keeps_cpu_fallback_and_stages_role_memory(monkeyp
     result = manager.apply("COMPUTE", "0-3", [service], 2 * 1024 ** 3, "zstack-compute.slice")
 
     assert cpu_fallback.call_count == 1
-    assert not result["synced"], "遗留 systemd 服务重启前必须保持 Unsynced"
+    assert not result["synced"], "Legacy services must remain unsynced before restart"
 
 
 def test_legacy_systemd_release_reports_cpu_fallback_failure(monkeypatch):
@@ -293,14 +450,12 @@ def test_legacy_systemd_release_reports_cpu_fallback_failure(monkeypatch):
     service = handle("node_exporter.service")
     monkeypatch.setattr(manager, "_remove_drop_in", lambda *_args: False)
     monkeypatch.setattr(manager, "_active_slice_target", lambda *_args: None)
-    monkeypatch.setattr(manager, "_release_non_systemd_handle", lambda *_args: {
-        "state": "ERROR", "cpuSet": None, "memory": None})
+    monkeypatch.setattr(
+        manager, "_release_non_systemd_handle", Mock(side_effect=ResourceControlError("CPU release failed")))
 
-    result = manager._release_systemd_slice(
-        "/cpuset", "CGROUP_V1_CPUSET", "COMPUTE",
-        "zstack-compute.slice", [service], None, None)
-
-    assert not result["synced"], "释放遗留 cpuset 失败时不能报告 Synced"
+    with pytest.raises(ResourceControlError, match="CPU release failed"):
+        manager._release_systemd_slice(
+            "/cpuset", "CGROUP_V1_CPUSET", "COMPUTE", "zstack-compute.slice", [service], None, None)
 
 
 def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(monkeypatch):
@@ -315,7 +470,7 @@ def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(mo
     monkeypatch.setattr(manager, "_configured_slice", lambda _unit: "zstack-compute.slice")
     monkeypatch.setattr(manager, "_ensure_active_slice_target", lambda *_args: None)
     monkeypatch.setattr(manager, "_apply_non_systemd_handle", cpu_fallback)
-    monkeypatch.setattr(manager, "_active_controller_slice_target", lambda *_args: "/memory/zstack-compute.slice")
+    monkeypatch.setattr(manager, "_active_slice_target", lambda *_args: "/memory/zstack-compute.slice")
     monkeypatch.setattr(manager, "_apply_memory_target", apply_memory)
     monkeypatch.setattr(manager, "_control_group_in_target", lambda *_args: True)
     monkeypatch.setattr(manager, "_systemd_properties", lambda _unit: {
@@ -330,7 +485,7 @@ def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(mo
 
     assert cpu_fallback.call_count == 1
     apply_memory.assert_called_once_with("CGROUP_V1_MEMORY", "/memory", "/memory/zstack-compute.slice", 2 * 1024 ** 3)
-    assert result["synced"], "v1 CPU 和内存总体边界都生效后必须返回 synced"
+    assert result["synced"], "Applied v1 CPU and memory boundaries must sync"
 
 
 def test_restart_fully_stops_units_before_start_so_new_slice_is_applied(monkeypatch):
@@ -353,6 +508,29 @@ def test_restart_fully_stops_units_before_start_so_new_slice_is_applied(monkeypa
         ["start", "prometheus.service"],
     ]
     assert in_target.call_count == 2
+
+
+def test_restart_failure_does_not_touch_remaining_services(monkeypatch):
+    manager = ResourceControlManager()
+    prepare_restart(manager, monkeypatch)
+    services = [handle(name + ".service") for name in ["first", "second", "third"]]
+    for service in services:
+        service["restartable"] = True
+    commands = []
+
+    def systemctl(args, _timeout):
+        commands.append(args)
+        if args == ["start", "second.service"]:
+            raise ResourceControlError("second service failed to start")
+        return ""
+
+    monkeypatch.setattr(manager, "_systemd_properties", lambda _unit: {"LoadState": "loaded", "ActiveState": "active"})
+    monkeypatch.setattr(manager, "_systemctl", systemctl)
+    with pytest.raises(ResourceControlError, match="second service failed to start"):
+        manager.restart("zstack-compute.slice", services)
+    assert commands == [["stop", "first.service"], ["start", "first.service"],
+                        ["stop", "second.service"], ["start", "second.service"]], (
+        "failure must leave unprocessed services running: actual=%s" % commands)
 
 
 def test_restart_reports_service_outside_configured_slice(monkeypatch):
@@ -520,7 +698,7 @@ def test_inspect_propagates_backend_failure_to_role(monkeypatch):
     monkeypatch.setattr(
         manager,
         "_backend",
-        Mock(side_effect=ResourceControlUnavailableError("No available cpuset controller was found")),
+        Mock(side_effect=ResourceControlError("No available cpuset controller was found")),
     )
 
     with pytest.raises(ResourceControlError) as error:
@@ -606,7 +784,7 @@ def test_inspect_reports_restart_required_until_service_enters_role_slice(tmp_pa
     monkeypatch.setattr(manager, "_v2_roots", lambda: [root])
     monkeypatch.setattr(
         manager, "_memory_backend",
-        lambda: (_ for _ in ()).throw(MemoryControllerUnavailableError("No available memory controller was found")))
+        lambda: (_ for _ in ()).throw(ResourceControlError("No available memory controller was found")))
     monkeypatch.setattr(manager, "_drop_in_path", lambda _unit: drop_in)
     monkeypatch.setattr(manager, "_systemd_properties", lambda unit: {
         "LoadState": "loaded",
@@ -616,13 +794,13 @@ def test_inspect_reports_restart_required_until_service_enters_role_slice(tmp_pa
 
     pending = manager.inspect("COMPUTE", [handle("node_exporter.service")])[0]
     assert pending["restartRequired"] is True, (
-        "已写入 Role Slice 配置但仍运行在旧 cgroup 的服务必须提示重启: "
+        "Services still in the previous cgroup must require restart: "
         "expected=True actual=%s" % pending.get("restartRequired"))
 
     current["group"] = ("/zstack.slice/zstack-compute.slice/node_exporter.service")
     ready = manager.inspect("COMPUTE", [handle("node_exporter.service")])[0]
     assert ready["restartRequired"] is False, (
-        "服务进入目标 Role Slice 后必须清除重启提示: "
+        "Services in the configured role slice must clear the restart hint: "
         "expected=False actual=%s" % ready.get("restartRequired"))
 
 
@@ -651,7 +829,7 @@ def test_inspect_reports_cpu_inherited_from_role_slice(tmp_path, monkeypatch):
     usage = manager.inspect("COMPUTE", [handle("zstack-kvmagent.service")])[0]
 
     assert usage["state"] == "RUNNING"
-    assert usage["cpuSet"] == "2-5", ("service cgroup 未启用 cpuset controller 时必须展示 Role Slice 的继承 CPU 范围")
+    assert usage["cpuSet"] == "2-5", ("Show inherited role CPUs when the service has no cpuset controller")
     assert usage["cpuTime"] == 123000
     assert usage["memory"] == 96 * 1024 ** 2
 
@@ -860,7 +1038,7 @@ def test_apply_memory_limit_v2_rejects_limit_below_current_usage(tmp_path):
 
     assert "is below current usage" in str(error.value)
     with open(memory_max) as stream:
-        assert stream.read() == "max", ("低于当前用量的上限必须在写 memory.max 前拒绝，不能 OOM 杀死 Consumer")
+        assert stream.read() == "max", ("Reject limits below usage before writing memory.max")
 
 
 def test_apply_memory_limit_v2_accounts_for_resident_memory_after_process_move(tmp_path, monkeypatch):
@@ -878,7 +1056,7 @@ def test_apply_memory_limit_v2_accounts_for_resident_memory_after_process_move(t
 
     assert "is below current usage" in str(error.value)
     with open(os.path.join(target, "memory.max")) as stream:
-        assert stream.read() == "max", ("迁移不会同步迁移已有 memory charge，必须用 PID RSS 阻止自杀式限额")
+        assert stream.read() == "max", ("Use PID RSS to reject unsafe limits before moving existing charges")
 
 
 def test_resident_memory_usage_sums_process_rss(monkeypatch):
@@ -917,7 +1095,7 @@ def test_apply_memory_limit_v1_rejects_limit_below_current_usage(tmp_path, monke
 
     assert "is below current usage" in str(error.value)
     with open(os.path.join(memory_target, "memory.limit_in_bytes")) as stream:
-        assert stream.read() == "9223372036854771712", ("低于当前用量的 v1 上限必须在写入前拒绝")
+        assert stream.read() == "9223372036854771712", ("Reject v1 limits below usage before writing")
 
 
 def test_apply_propagates_memory_controller_unavailable(tmp_path, monkeypatch):
@@ -929,12 +1107,12 @@ def test_apply_propagates_memory_controller_unavailable(tmp_path, monkeypatch):
     monkeypatch.setattr(
         manager,
         "_memory_backend",
-        lambda: (_ for _ in ()).throw(MemoryControllerUnavailableError("No available memory controller was found")))
+        lambda: (_ for _ in ()).throw(ResourceControlError("No available memory controller was found")))
     monkeypatch.setattr(manager, "_resolve", lambda *_args: target)
     monkeypatch.setattr(manager, "_apply_to_group", lambda *_args: "0-3")
     monkeypatch.setattr(manager, "validate_cpu_set", lambda value: value)
 
-    with pytest.raises(MemoryControllerUnavailableError) as error:
+    with pytest.raises(ResourceControlError) as error:
         manager.apply("MANAGEMENT", "0-3", [handle("zstack.service")], manager.MEBIBYTE)
 
     assert str(error.value) == "No available memory controller was found"
@@ -981,7 +1159,7 @@ def test_hybrid_apply_uses_memory_controller_independently_from_cpuset(
 
     result = manager.apply("MANAGEMENT", "0-3", [handle("zstack.service")], 3 * manager.MEBIBYTE)
 
-    assert result["synced"], "hybrid 环境中独立的 CPU 和内存控制器都生效后必须同步"
+    assert result["synced"], "Hybrid assignments must sync after both controllers apply"
     limit_name = ("memory.max" if memory_backend == "CGROUP_V2_MEMORY" else "memory.limit_in_bytes")
     with open(os.path.join(memory_target, limit_name)) as stream:
         assert stream.read() == str(3 * manager.MEBIBYTE)
@@ -1013,13 +1191,7 @@ def test_hybrid_v2_cpuset_moves_systemd_members_from_v1_hierarchy(tmp_path, monk
     monkeypatch.setattr(resource_control.os.path, "isdir", lambda path: path == "/proc/987654" or real_isdir(path))
 
     resolved = manager._resolve_systemd_fallback(
-        root,
-        "CGROUP_V2_CPUSET",
-        "MANAGEMENT",
-        handle("zstack.service"),
-        "/system.slice/zstack.service",
-        False,
-        target)
+        root, "CGROUP_V2_CPUSET", handle("zstack.service"), "/system.slice/zstack.service", target)
 
     assert resolved == target
     with open(os.path.join(target, "cgroup.procs")) as stream:

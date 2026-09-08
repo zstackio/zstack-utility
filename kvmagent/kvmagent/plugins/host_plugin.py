@@ -1593,10 +1593,6 @@ class HostPlugin(kvmagent.KvmAgent):
     GET_MANAGED_SERVICE_USAGE_PATH = "/host/resourcecontrol/services"
     RESTART_MANAGED_SERVICES_PATH = "/host/resourcecontrol/restart"
     RESOURCE_CONTROL_ROLE_TYPE = "COMPUTE"
-    RESOURCE_CONTROL_MAX_HANDLES = 64
-    RESOURCE_CONTROL_SYSTEMD_UNIT_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.service$')
-    RESOURCE_CONTROL_SERVICE_NAME_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$')
-    RESOURCE_CONTROL_SLICE_PATTERN = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.slice$')
     ATTACH_VOLUME_PATH = "/host/volume/attach"
     DETACH_VOLUME_PATH = "/host/volume/detach"
     UPDATE_VM_CONSOLE_PASSWORD_LIVE_PATH = "/host/vm/updateConsolePassword/live"
@@ -4807,7 +4803,7 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         manager = resource_control.ResourceControlManager()
         rsp = kvmagent.AgentResponse()
-        self._validate_apply_resource_control_command(cmd)
+        self._validate_managed_service_command(cmd)
         result = manager.apply(cmd.roleType, cmd.cpuSet, cmd.handles, cmd.memory, cmd.sliceName, cmd.isolationMode)
         for key, value in result.items():
             setattr(rsp, key, value)
@@ -4818,7 +4814,7 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         manager = resource_control.ResourceControlManager()
         rsp = kvmagent.AgentResponse()
-        self._validate_release_resource_control_command(cmd)
+        self._validate_managed_service_command(cmd)
         result = manager.release(cmd.roleType, cmd.handles, cmd.sliceName)
         for key, value in result.items():
             setattr(rsp, key, value)
@@ -4838,142 +4834,40 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         manager = resource_control.ResourceControlManager()
         self._validate_managed_service_command(cmd)
-        self._validate_restartable_service_handles(cmd.handles)
         manager.restart(cmd.sliceName, cmd.handles)
         return jsonobject.dumps(kvmagent.AgentResponse())
-
-    def _validate_apply_resource_control_command(self, cmd):
-        self._validate_managed_service_command(cmd)
-        if cmd.isolationMode not in (None, 'SHARED', 'EXCLUSIVE'):
-            raise resource_control.ResourceControlError(
-                'Isolation mode[%s] must be SHARED or EXCLUSIVE' %
-                cmd.isolationMode)
-
-    def _validate_release_resource_control_command(self, cmd):
-        self._validate_managed_service_command(cmd)
 
     def _validate_managed_service_command(self, cmd):
         if cmd.roleType != self.RESOURCE_CONTROL_ROLE_TYPE:
             raise resource_control.ResourceControlError('RoleType[%s] is not supported by the KVM agent' % cmd.roleType)
-        slice_name = cmd.sliceName
-        if not isinstance(slice_name, str) or not self.RESOURCE_CONTROL_SLICE_PATTERN.match(slice_name):
-            raise resource_control.ResourceControlError('SliceName[%s] is not a valid systemd slice' % slice_name)
-        handles = cmd.handles
-        if not handles or len(handles) > self.RESOURCE_CONTROL_MAX_HANDLES:
-            raise resource_control.ResourceControlError(
-                'Service handles must contain between 1 and %s items' %
-                self.RESOURCE_CONTROL_MAX_HANDLES)
-
-        identities = set()
-        for handle in handles:
-            handle_type = handle.handleType
-            value = handle.value
-            optional = handle.optional
-            service_name = handle.serviceName
-            restartable = handle.restartable
-            if not isinstance(optional, bool):
-                raise resource_control.ResourceControlError('Optional must be a boolean for service[%s]' % service_name)
-            if (not isinstance(service_name, str)
-                    or not self.RESOURCE_CONTROL_SERVICE_NAME_PATTERN.match(service_name)
-                    or not isinstance(restartable, bool)):
-                raise resource_control.ResourceControlError(
-                    'Service handle[%s] has an invalid serviceName or '
-                    'restartable value' % value)
-            identity = (handle_type, value)
-            if identity in identities:
-                raise resource_control.ResourceControlError(
-                    'Service handle[%s:%s] is duplicated' %
-                    (handle_type, value))
-            identities.add(identity)
-
-            if handle_type == 'SYSTEMD_UNIT':
-                if (not isinstance(value, str) or not self.RESOURCE_CONTROL_SYSTEMD_UNIT_PATTERN.match(value)):
-                    raise resource_control.ResourceControlError('Systemd unit handle value[%s] is invalid' % value)
-                continue
-            raise resource_control.ResourceControlError(
-                'Resource consumer handle type[%s] is unsupported' %
-                handle_type)
-
-    def _validate_restartable_service_handles(self, handles):
-        if any(handle.handleType != 'SYSTEMD_UNIT' or not handle.restartable for handle in handles):
-            raise resource_control.ResourceControlError('Only restartable systemd units can be restarted')
+        resource_control.ResourceControlManager.validate_service_command(cmd.sliceName, cmd.handles)
 
     @kvmagent.replyerror
     def get_numa_topology(self, req):
         class NumaTopology:
             def __init__(self):
-                self.nodes = {}
-                self.online_cpus = set(self.get_cpu_list('/sys/devices/system/cpu/online'))
+                self.nodes = resource_control.get_cpu_topology()
                 self.get_topology()
 
             def __call__(self, *args, **kwargs):
                 return self.nodes
 
             def get_topology(self):
-                node_id = 0
-                while True:
-                    node_path = os.path.join(
-                        NODE_INFO_PATH, "node{}".format(node_id))
+                for node_id, node in list(self.nodes.items()):
+                    node_path = os.path.join(NODE_INFO_PATH, "node{}".format(node_id))
                     if not os.path.isdir(node_path):
-                        break
+                        del self.nodes[node_id]
+                        continue
 
-                    cpulist_path = os.path.join(node_path, "cpulist")
                     meminfo_path = os.path.join(node_path, "meminfo")
                     distance_path = os.path.join(node_path, "distance")
 
                     size, free = self.get_meminfo(meminfo_path)
-                    cpus = self.get_cpu_list(cpulist_path)
-                    online_cpus = sorted([cpu for cpu in cpus if cpu in self.online_cpus], key=int)
-                    self.nodes[str(node_id)] = {
-                        "cpus": cpus,
-                        "onlineCpus": online_cpus,
-                        "coreGroups": self.get_core_groups(online_cpus),
+                    node.update({
                         "free": free,
                         "size": size,
                         "distance": self.get_distance(distance_path)
-                    }
-
-                    node_id += 1
-
-            @staticmethod
-            def get_cpu_list(info_path):
-                data = None
-                with open(info_path, "r") as f:
-                    data = f.read()
-
-                if data is None or (not data):
-                    return []
-
-                data = data.strip()
-                cpu_list = []
-                info = data.split(",")
-                for i in info:
-                    if "-" in i:
-                        temp = i.split("-")
-                        cpu_list.extend([str(cpu_id) for cpu_id in range(
-                            int(temp[0]), int(temp[1]) + 1)])
-                    elif "^" in i:
-                        cpu_list.remove(i[1:])
-                    else:
-                        cpu_list.append(i)
-                return cpu_list
-
-            def get_core_groups(self, online_cpus):
-                core_groups = set()
-                online_cpu_set = set(online_cpus)
-                for cpu in online_cpus:
-                    siblings_path = os.path.join(
-                        '/sys/devices/system/cpu', 'cpu{}'.format(cpu),
-                        'topology', 'thread_siblings_list')
-                    if not os.path.isfile(siblings_path):
-                        return []
-                    siblings = tuple(sorted(
-                        [sibling for sibling in self.get_cpu_list(siblings_path)
-                         if sibling in online_cpu_set], key=int))
-                    if not siblings:
-                        return []
-                    core_groups.add(siblings)
-                return [list(group) for group in sorted(core_groups, key=lambda group: int(group[0]))]
+                    })
 
             @staticmethod
             def get_meminfo(info_path):
