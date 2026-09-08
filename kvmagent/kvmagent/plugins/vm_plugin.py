@@ -42,6 +42,7 @@ from collections import deque
 import zstacklib.utils.ip as ip
 import zstacklib.utils.iptables as iptables
 import zstacklib.utils.lock as lock
+from zstacklib.utils import hugepages
 from zstacklib.utils import sizeunit
 from zstacklib.hardware.pci.passthrough import check_device_in_use
 
@@ -54,7 +55,6 @@ from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins import host_pushgateway
 from kvmagent.plugins import vm_artifact
 from kvmagent.plugins import zbs_storage_plugin
-from kvmagent.plugins import zbs_vhost_target
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
 from zstacklib.utils import bash, plugin, iscsi, gpu, traceable_shell
@@ -3721,7 +3721,6 @@ class Vm(object):
         flag = (0, libvirt.VIR_DOMAIN_START_PAUSED)[create_paused]
         domain = define_xml()
         self.domain = domain
-        zbs_vhost_target.ensure_hugepages_for_domain(self.domain_xml)
         self.domain.createWithFlags(flag)
         if create_paused:
             self._wait_for_vm_paused(timeout)
@@ -8743,6 +8742,9 @@ class VmPlugin(kvmagent.KvmAgent):
 
             wait_console = True if not cmd.addons or cmd.addons['noConsole'] is not True else False
             self._prepare_ebtables_for_mocbr(cmd)
+            if cmd.useHugePage:
+                page_size = hugepages.get_default_page_size()
+                hugepages.ensure_free_hugepages(hugepages.mem_to_pages(cmd.memory, page_size), page_size)
             vm.start(cmd.timeout, cmd.createPaused, wait_console)
             for nic in cmd.nics:
                 if nic.isolated:

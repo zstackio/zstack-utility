@@ -4,6 +4,7 @@ import os.path
 from kvmagent import kvmagent
 from kvmagent.plugins import zbs_vhost_target
 from kvmagent.plugins.zbs_vhost_rpc import ZbsVhostRpc
+from zstacklib.utils import hugepages
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
@@ -212,7 +213,7 @@ class ZbsStoragePlugin(kvmagent.KvmAgent):
         rsp = kvmagent.AgentResponse()
         zbs_vhost_target.ensure_docker()
         zbs_vhost_target.ensure_2m_hugetlbfs_mount()
-        zbs_vhost_target.ensure_free_hugepages(
+        hugepages.ensure_free_hugepages(
             cmd.hugepageNr if cmd.hugepageNr else zbs_vhost_target.DEFAULT_VHOST_TARGET_HUGEPAGE_NR)
         return jsonobject.dumps(rsp)
 
