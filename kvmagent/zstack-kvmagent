@@ -75,9 +75,14 @@ enable_qemukvm_coredump() {
 
 rm_ebtables_dangling_lock() {
         lockfile=$1
-        test -e $lockfile || return
-        lsof $lockfile 2>/dev/null >/dev/null && return
-        unlink $lockfile
+        test -e "$lockfile" || return
+        output=$(timeout -k 1 10 lsof -S 5 -- "$lockfile" 2>&1)
+        ret=$?
+        if [ "$ret" -eq 1 ] && [ -z "$output" ]; then
+                unlink "$lockfile"
+        elif [ "$ret" -ne 0 ]; then
+                echo "Cannot verify ebtables lock $lockfile; keeping it (exit $ret)" >&2
+        fi
 }
 
 #create journal log dir
