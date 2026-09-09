@@ -1052,12 +1052,12 @@ set_tomcat_config() {
   </GlobalNamingResources>
 
   <Service name="Catalina">
+    <Executor name="tomcatThreadPool" namePrefix="catalina-exec-" maxThreads="$new_max_thread_num" minSpareThreads="$new_min_spare_threads" prestartminSpareThreads="true" maxQueueSize="$new_max_queue_size" />
     <Connector executor="tomcatThreadPool" port="$current_port" protocol="HTTP/1.1"
                connectionTimeout="$new_timeout"
                redirectPort="8443"
                maxParameterCount="1000"
                maxHttpHeaderSize="65536" URIEncoding="UTF-8" useBodyEncodingForURI="UTF-8" />
-       <Executor name="tomcatThreadPool" namePrefix="catalina-exec-" maxThreads="$new_max_thread_num" minSpareThreads="$new_min_spare_threads" prestartminSpareThreads="true" maxQueueSize="$new_max_queue_size" />
     <Engine name="Catalina" defaultHost="localhost">
 
       <Realm className="org.apache.catalina.realm.LockOutRealm">
