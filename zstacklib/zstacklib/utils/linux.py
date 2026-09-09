@@ -1725,6 +1725,10 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
         logger.debug("can not find bridge %s" % bridge_name)
         return
 
+    if is_network_ip_using(bridge_name):
+        logger.debug("cannot delete bridge %s because it has an IP address" % bridge_name)
+        return
+
     if is_vif_on_bridge(bridge_name, interface):
         route_info = _get_dev_route_info(bridge_name) if move_route else None
 

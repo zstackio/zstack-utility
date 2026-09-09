@@ -77,13 +77,15 @@ class TestIpv6RouteRestore(unittest.TestCase):
         )
 
     @patch.object(linux, 'is_network_device_existing', return_value=True)
+    @patch.object(linux, 'is_network_ip_using', return_value=False)
     @patch.object(linux, 'is_vif_on_bridge', return_value=True)
     @patch.object(linux, 'delete_bridge')
     @patch.object(linux, '_get_dev_route_info')
     @patch.object(linux, '_restore_dev_route')
     @patch.object(linux.shell, 'call')
-    def test_delete_novlan_bridge_restores_ipv6_route_info(
-            self, shell_call, restore_route, get_route_info, delete_bridge, is_vif, is_existing):
+    def test_delete_novlan_bridge_restores_snapshot_after_guard_race(
+            self, shell_call, restore_route, get_route_info, delete_bridge,
+            is_vif, is_ip_using, is_existing):
         route_info = {
             'ipv4_addresses': [],
             'ipv6_addresses': ['2001:db8::10/64'],
@@ -95,6 +97,7 @@ class TestIpv6RouteRestore(unittest.TestCase):
 
         linux.delete_novlan_bridge('br_zsn1', 'zsn1')
 
+        is_ip_using.assert_called_once_with('br_zsn1')
         delete_bridge.assert_called_once_with('br_zsn1')
         restore_route.assert_called_once_with('zsn1', route_info)
 

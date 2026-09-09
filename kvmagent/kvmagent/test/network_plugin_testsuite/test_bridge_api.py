@@ -109,7 +109,8 @@ class TestBridgeApi(TestCase):
         vniId = 1000
         br_name = "br_" + interF + "_" + str(vniId)
 
-        r, o = bash.bash_ro("ip a show %s|grep inet|grep -v inet6|awk 'NR==1{print $2}'|awk -F '/' 'NR==1{print $1}' | sed 's/ //g'" % interF)
+        ip_interface = linux.find_bridge_having_physical_interface(interF) or interF
+        r, o = bash.bash_ro("ip a show %s|grep inet|grep -v inet6|awk 'NR==1{print $2}'|awk -F '/' 'NR==1{print $1}' | sed 's/ //g'" % ip_interface)
         vtepIp = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
         rsp = network_plugin_utils.create_vxlan_bridge(
             bridgeName=br_name,
