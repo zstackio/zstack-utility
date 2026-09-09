@@ -2801,6 +2801,8 @@ def enable_multipath():
 @bash.in_bash
 @linux.retry(times=3, sleep_time=1)
 def disable_multipath():
+    bash.bash_r("systemctl disable multipathd.socket")
+    bash.bash_r("systemctl stop multipathd.socket")
     bash.bash_roe("systemctl disable multipathd")
     bash.bash_roe("systemctl stop multipathd")
 
