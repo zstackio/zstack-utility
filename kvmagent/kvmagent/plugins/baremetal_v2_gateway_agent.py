@@ -407,32 +407,40 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         linux.rm_file_force(self.DNSMASQ_CONF_PATH)
         linux.rm_file_force(self.DNSMASQ_PID_PATH)
 
+    @lock.lock('bm2-dnsmasq')
     def _append_dnsmasq_configuration(self, instance_obj):
         """ Create dnsmasq configuration
         """
         if instance_obj.provision_mac is None:
             return
 
-        host = '{mac_addr},{ip_addr},set:instance,set:{uuid}\n'.format(
-            mac_addr=instance_obj.provision_mac,
-            ip_addr=instance_obj.provision_ip,
-            uuid=instance_obj.uuid)
+        hosts = ['{mac},{ip},set:instance,set:{uuid}\n'.format(
+            mac=instance_obj.provision_mac, ip=instance_obj.provision_ip, uuid=instance_obj.uuid)]
+        for info in instance_obj.extra_provision_nic_infos:
+            host = '{mac},{ip},set:instance,set:{uuid}\n'.format(
+                mac=info.provision_mac, ip=info.provision_ip, uuid=instance_obj.uuid)
+            if host not in hosts:
+                hosts.append(host)
 
-        with open(self.DNSMASQ_HOSTS_PATH, 'a+') as f:
-            f.seek(0)
-            if host not in f.read():
-                f.write(host)
-
-        if len(instance_obj.extra_provision_nic_infos) > 0:
-            for info in instance_obj.extra_provision_nic_infos:
-                host = '{mac_addr},{ip_addr},set:instance,set:{uuid}\n'.format(
-                    mac_addr=info.provision_mac,
-                    ip_addr=info.provision_ip,
-                    uuid=instance_obj.uuid)
-                with open(self.DNSMASQ_HOSTS_PATH, 'a+') as f:
-                    f.seek(0)
-                    if host not in f.read():
-                        f.write(host)
+        # Reinspection may replace a NIC while retaining the instance and its IP.
+        # Replace this instance's complete host set instead of retaining old MACs.
+        existing = []
+        if os.path.exists(self.DNSMASQ_HOSTS_PATH):
+            with open(self.DNSMASQ_HOSTS_PATH) as f:
+                existing = [line for line in f if 'set:' + instance_obj.uuid not in line.strip().split(',')]
+        with tempfile.NamedTemporaryFile(mode='w', dir=os.path.dirname(self.DNSMASQ_HOSTS_PATH), delete=False) as f:
+            temporary_path = f.name
+            try:
+                f.writelines(existing + hosts)
+                f.flush()
+                if os.path.exists(self.DNSMASQ_HOSTS_PATH):
+                    shutil.copymode(self.DNSMASQ_HOSTS_PATH, temporary_path)
+                else:
+                    os.chmod(temporary_path, 0o644)
+                os.rename(temporary_path, self.DNSMASQ_HOSTS_PATH)
+            finally:
+                if os.path.exists(temporary_path):
+                    os.unlink(temporary_path)
 
         opts_template = self._load_template('dnsmasq.opts')
         opts = opts_template.render(
