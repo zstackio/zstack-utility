@@ -30,6 +30,18 @@ def _make_req(body_dict=None):
     return {http.REQUEST_BODY: body, http.REQUEST_HEADER: {}}
 
 
+@pytest.mark.parametrize('qemu_version, libvirt_version, expected', [
+    ('5.1.0', '1.0.6', True),
+    ('6.2.0', '6.2.0', True),
+    ('5.0.1', '6.2.0', False),
+    ('6.2.0', '1.0.5', False),
+])
+def test_memory_backing_support_is_based_on_versions(qemu_version, libvirt_version, expected):
+    with patch.object(vm_plugin.qemu, 'get_version', return_value=qemu_version), \
+            patch.object(vm_plugin, 'get_libvirt_version', return_value=libvirt_version):
+        assert vm_plugin.is_memory_backing_supported() is expected
+
+
 vm_plugin.http = http
 vm_plugin.jsonobject = jsonobject
 
@@ -3561,6 +3573,47 @@ class TestVmStartCmdXmlBuild:
         assert '<hugepages' not in xml_str
         assert '<nosharepages' not in xml_str
 
+    def test_memory_backing_numa_uses_private_ram_backend(self):
+        cmd = self._build_start_cmd(use_numa=True)
+        cmd.MemAccess = 'private'
+        cmd.useHugePage = False
+        cmd.noSharePages = False
+
+        with patch.object(vm_plugin, 'HOST_ARCH', 'aarch64'), \
+                patch.object(vm_plugin, 'is_memory_backing_supported', return_value=True):
+            xml_str = self._build_start_vm_xml(cmd)
+        root = ET.fromstring(xml_str)
+
+        access = root.find('./memoryBacking/access')
+        assert access is not None
+        assert access.get('mode') == 'private'
+        assert root.find('./memoryBacking/source') is None
+
+    def test_memory_backing_numa_rejects_unsupported_arm(self):
+        cmd = self._build_start_cmd(use_numa=True)
+        cmd.MemAccess = 'private'
+        cmd.useHugePage = False
+        cmd.noSharePages = False
+
+        with patch.object(vm_plugin, 'HOST_ARCH', 'aarch64'), \
+                patch.object(vm_plugin, 'is_memory_backing_supported', return_value=False), \
+                pytest.raises(vm_plugin.kvmagent.KvmError, match='Aarch64 NUMA is not supported'):
+            self._build_start_vm_xml(cmd)
+
+    def test_memory_backing_numa_keeps_legacy_xml_on_x86(self):
+        cmd = self._build_start_cmd(use_numa=True)
+        cmd.MemAccess = 'private'
+        cmd.useHugePage = False
+        cmd.noSharePages = False
+
+        with patch.object(vm_plugin, 'HOST_ARCH', 'x86_64'), \
+                patch.object(vm_plugin, 'is_memory_backing_supported', return_value=False):
+            xml_str = self._build_start_vm_xml(cmd)
+        root = ET.fromstring(xml_str)
+
+        assert root.find('./memoryBacking') is None
+        assert root.find('./cpu/numa/cell') is not None
+
     def test_memory_backing_memaccess_does_not_substring_match(self):
         cmd = self._build_start_cmd(use_numa=False)
         cmd.MemAccess = 'sh'
@@ -3721,6 +3774,7 @@ class TestVmStartCmdXmlBuild:
                 patch.object(vm_plugin, 'cmp', lambda a, b: (a > b) - (a < b), create=True), \
                 patch.object(vm_plugin, 'is_hv_freq_supported', return_value=False), \
                 patch.object(vm_plugin, 'is_hv_synic_supported', return_value=False), \
+                patch.object(vm_plugin, 'is_memory_backing_supported', return_value=True), \
                 patch.object(vm_plugin, 'range', self._RangeCompat), \
                 patch.object(vm_plugin.kvmagent, 'get_host_os_type', return_value='ky10'), \
                 patch.object(vm_plugin, 'e', side_effect=_e_with_text), \
