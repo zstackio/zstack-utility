@@ -48,7 +48,7 @@ class WorkerExecutor(object):
         raise NotImplementedError
 
     def reap_dead(self, worker):
-        """Clean up a dead worker's resources (zombie process or stopped container)."""
+        """Clean up a dead worker's resources. Return False when cleanup must be deferred."""
         raise NotImplementedError
 
     def cleanup_residual_workers_by_vm(self, vm_uuid, known_workers=None):

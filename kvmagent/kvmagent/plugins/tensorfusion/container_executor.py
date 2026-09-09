@@ -7,10 +7,12 @@ strategy into TensorFusionService.
 @author: tensorfusion
 '''
 
+import errno
 import json
 import os
 import subprocess
 import threading
+import time
 
 from zstacklib.utils import log
 from zstacklib.utils.pci import normalize_pci_address
@@ -19,6 +21,52 @@ from kvmagent.plugins.tensorfusion.models import Worker
 from kvmagent.plugins.tensorfusion.base_executor import WorkerExecutor
 
 logger = log.get_logger(__name__)
+
+SENSITIVE_ENV_KEYS = frozenset(('TF_LICENSE', 'TF_LICENSE_SIGN'))
+
+
+def _command_for_log(cmd):
+    sanitized = []
+    for arg in cmd:
+        key, separator, _ = arg.partition('=')
+        if separator and key in SENSITIVE_ENV_KEYS:
+            sanitized.append('%s=*****' % key)
+        else:
+            sanitized.append(arg)
+    return ' '.join(sanitized)
+
+
+def _redact_sensitive_values(text, cmd, env=None):
+    redacted = text
+    sensitive_values = []
+    for arg in cmd:
+        key, separator, value = arg.partition('=')
+        if separator and key in SENSITIVE_ENV_KEYS and value:
+            sensitive_values.append(value)
+    for key in SENSITIVE_ENV_KEYS:
+        value = (env or {}).get(key)
+        if value:
+            sensitive_values.append(value)
+    for value in sorted(sensitive_values, key=len, reverse=True):
+        redacted = redacted.replace(value, '*****')
+    return redacted
+
+
+def _shared_memory_ready(path, expected_size):
+    try:
+        return os.path.getsize(path) >= expected_size
+    except OSError:
+        return False
+
+
+def _remove_shared_memory_file(path):
+    try:
+        os.remove(path)
+        return True
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            return True
+        raise
 
 
 class DockerCommandError(Exception):
@@ -40,9 +88,15 @@ class ContainerExecutor(WorkerExecutor):
 
     WORKER_IMAGE = 'tf-worker:latest'
     CONTAINER_PREFIX = 'tf-worker-'
-    STARTUP_WAIT_SEC = 5
+    STARTUP_WAIT_SEC = 10
+    STARTUP_POLL_INTERVAL_SEC = 0.2
     STOP_TIMEOUT_SEC = 5
     DOCKER_CMD_TIMEOUT = 30
+    DOCKER_RUN_TIMEOUT = 90
+    DOCKER_REAP_TIMEOUT = 5
+    ROLLBACK_RETRY_WINDOW_SEC = 5
+    ROLLBACK_RETRY_INTERVAL_SEC = 0.5
+    ROLLBACK_REMOVE_TIMEOUT_SEC = 1
 
     # Docker labels used for filtering and identification.
     LABEL_MARKER = 'tf-worker'
@@ -69,6 +123,7 @@ class ContainerExecutor(WorkerExecutor):
         cuda_index = detail['cuda_index']
         device_uuid = request.device_uuid
         container_name = self._container_name(request.vm_uuid)
+        shm_path = self.SHM_PREFIX + 'tf_%s' % device_uuid
 
         # Verify the worker image is available locally.
         if not self._image_exists():
@@ -89,8 +144,10 @@ class ContainerExecutor(WorkerExecutor):
         enable_log = request.enable_log if request.enable_log is not None else self.DEFAULT_ENABLE_LOG
         log_level = request.log_level or self.DEFAULT_LOG_LEVEL
 
-        # Clean up any leftover container with the same name.
-        self._docker_quiet(['rm', '-f', container_name])
+        if not self._remove_container(container_name):
+            raise Exception('failed to remove existing worker container %s' % container_name)
+        if not self._remove_shared_memory(shm_path):
+            raise Exception('failed to remove existing worker shared memory %s' % shm_path)
 
         cmd = self._build_run_cmd(
             device_uuid=device_uuid,
@@ -104,23 +161,30 @@ class ContainerExecutor(WorkerExecutor):
             log_file=log_file,
             enable_log=enable_log,
             log_level=log_level,
-            license_value=request.license,
-            license_sign=request.license_sign,
             protocol=request.protocol or 'shmem',
         )
+        docker_env = {
+            'TF_LICENSE': request.license or '',
+            'TF_LICENSE_SIGN': request.license_sign or '',
+        }
 
-        logger.info('starting worker container: docker %s' % ' '.join(cmd))
+        logger.info('starting worker container: %s' % _command_for_log(['docker'] + cmd))
 
+        run_error = None
         try:
-            container_id = self._docker(cmd).strip()
+            container_id = self._docker(
+                cmd, timeout=self.DOCKER_RUN_TIMEOUT, env=docker_env).strip()
         except Exception as e:
-            self._docker_quiet(['rm', '-f', container_name])
-            raise Exception('failed to start worker container %s: %s' % (container_name, e)) from e
+            run_error = _redact_sensitive_values(str(e), cmd, docker_env)
+        if run_error is not None:
+            self._rollback_failed_start(container_name, shm_path)
+            raise Exception('failed to start worker container %s: %s' %
+                            (container_name, run_error))
 
         # Verify the container is actually running.
         info = self._inspect_container(container_name)
         if not info:
-            self._docker_quiet(['rm', '-f', container_name])
+            self._rollback_failed_start(container_name, shm_path)
             raise Exception('container %s started but inspect failed' % container_name)
 
         state = info.get('State', {})
@@ -137,13 +201,33 @@ class ContainerExecutor(WorkerExecutor):
                         worker_logs = ''.join(lines[-20:])
             except Exception:
                 pass
-            self._docker_quiet(['rm', '-f', container_name])
-            diag = docker_logs or worker_logs or '<empty>'
+            self._rollback_failed_start(container_name, shm_path)
+            diag = _redact_sensitive_values(
+                docker_logs or worker_logs or '<empty>', cmd, docker_env)
             raise Exception(
                 'worker container %s exited immediately (exit_code=%s). logs:\n%s' %
                 (container_name, exit_code, diag))
 
-        shm_path = self.SHM_PREFIX + 'tf_%s' % device_uuid
+        if (request.protocol or 'shmem') == 'shmem':
+            expected_shm_size = shm_size_mb * self.BYTES_PER_MB
+            deadline = time.time() + self.STARTUP_WAIT_SEC
+            while time.time() < deadline and not _shared_memory_ready(shm_path, expected_shm_size):
+                time.sleep(self.STARTUP_POLL_INTERVAL_SEC)
+            if not _shared_memory_ready(shm_path, expected_shm_size):
+                docker_logs = self._docker_quiet(['logs', '--tail', '20', container_name])
+                self._rollback_failed_start(container_name, shm_path)
+                diag = _redact_sensitive_values(docker_logs or '<empty>', cmd, docker_env)
+                raise Exception(
+                    'worker container %s did not create shared memory %s within %ds. logs:\n%s' %
+                    (container_name, shm_path, self.STARTUP_WAIT_SEC, diag))
+            ready_info = self._inspect_container(container_name)
+            if not ready_info or not ready_info.get('State', {}).get('Running', False):
+                docker_logs = self._docker_quiet(['logs', '--tail', '20', container_name])
+                self._rollback_failed_start(container_name, shm_path)
+                diag = _redact_sensitive_values(docker_logs or '<empty>', cmd, docker_env)
+                raise Exception(
+                    'worker container %s exited before shared memory became ready. logs:\n%s' %
+                    (container_name, diag))
 
         worker = Worker()
         worker.device_uuid = device_uuid
@@ -169,30 +253,21 @@ class ContainerExecutor(WorkerExecutor):
 
     def stop(self, worker):
         """Stop and remove a Worker container, then clean up shared memory."""
-        container_name = worker.container_name
-        if not container_name:
-            logger.warning('stop: worker %s has no container_name, skipping' % worker.device_uuid)
-            return
+        container_id = getattr(worker, 'container_id', None)
+        container_name = getattr(worker, 'container_name', None)
+        target = container_id or container_name
+        if not target:
+            raise Exception('worker %s has no container identity' % worker.device_uuid)
 
-        logger.info('stopping worker container %s (device=%s)' % (container_name, worker.device_uuid))
-
+        logger.info('stopping worker container %s (device=%s)' % (target, worker.device_uuid))
         try:
-            self._docker(['stop', '-t', str(self.STOP_TIMEOUT_SEC), container_name])
+            self._docker(['stop', '-t', str(self.STOP_TIMEOUT_SEC), target])
         except Exception as e:
-            logger.warning('docker stop failed for %s: %s, forcing removal' % (container_name, e))
+            logger.warning('docker stop failed for %s: %s, forcing removal' % (target, e))
 
-        self._docker_quiet(['rm', '-f', container_name])
-
-        # Clean up shared memory file.
-        shm_path = getattr(worker, 'shared_memory_path', None)
-        if not shm_path:
-            shm_path = self.SHM_PREFIX + 'tf_%s' % worker.device_uuid
-        if os.path.exists(shm_path):
-            try:
-                os.remove(shm_path)
-                logger.debug('removed shared memory file: %s' % shm_path)
-            except OSError as e:
-                logger.warning('failed to remove shared memory file %s: %s' % (shm_path, e))
+        if not self._remove_container(target):
+            raise Exception('failed to remove worker container %s' % target)
+        self._remove_shared_memory(self._worker_shared_memory_path(worker))
 
     @classmethod
     def is_alive(cls, worker):
@@ -266,19 +341,30 @@ class ContainerExecutor(WorkerExecutor):
         container_name = getattr(worker, 'container_name', None)
         target = container_id or container_name
         if not target:
-            return
-        self._docker_quiet(['rm', '-f', target])
+            return False
+        if self.is_alive(worker):
+            logger.warning('skip reaping worker %s container %s: container is still running' %
+                           (worker.device_uuid, target))
+            return False
+        if not self._remove_container(target):
+            raise Exception('failed to reap worker container %s' % target)
+        self._remove_shared_memory(self._worker_shared_memory_path(worker))
         logger.debug('reaped dead worker container %s (id=%s, name=%s)' %
                      (target, container_id, container_name))
+        return True
 
     def cleanup_residual_workers_by_vm(self, vm_uuid, known_workers=None):
         # type: (str, list) -> int
         """Remove residual containers for a VM that are not in known_workers."""
-        known_names = set()
+        known_ids = set()
+        known_names_without_id = set()
         for w in (known_workers or []):
+            container_id = getattr(w, 'container_id', None)
             name = getattr(w, 'container_name', None)
-            if name:
-                known_names.add(name)
+            if container_id:
+                known_ids.add(container_id)
+            elif name:
+                known_names_without_id.add(name)
 
         try:
             output = self._docker([
@@ -301,7 +387,8 @@ class ContainerExecutor(WorkerExecutor):
                 if not info:
                     continue
                 name = info.get('Name', '').lstrip('/')
-                if name in known_names:
+                actual_id = info.get('Id') or cid
+                if actual_id in known_ids or name in known_names_without_id:
                     continue
 
                 # Extract device_uuid from env for shm cleanup.
@@ -309,17 +396,10 @@ class ContainerExecutor(WorkerExecutor):
                 env = {e.split('=', 1)[0]: e.split('=', 1)[1] for e in env_list if '=' in e}
                 device_uuid = env.get('TF_DEVICE_UUID')
 
-                self._docker_quiet(['rm', '-f', cid])
-
-                if device_uuid:
-                    shm_path = self.SHM_PREFIX + 'tf_%s' % device_uuid
-                    if os.path.exists(shm_path):
-                        try:
-                            os.remove(shm_path)
-                        except OSError:
-                            pass
-
-                cleaned += 1
+                shm_path = self.SHM_PREFIX + 'tf_%s' % device_uuid if device_uuid else None
+                if self._remove_container(cid):
+                    self._remove_shared_memory(shm_path)
+                    cleaned += 1
             except Exception as e:
                 logger.warning('cleanup_residual: failed to clean container %s: %s' % (cid, e))
 
@@ -332,51 +412,54 @@ class ContainerExecutor(WorkerExecutor):
     # Docker command helpers
     # ------------------------------------------------------------------
 
-    def _docker(self, args, timeout=None):
+    def _docker(self, args, timeout=None, env=None):
         """Execute a docker command and return stdout. Raises on failure."""
         timeout = timeout or self.DOCKER_CMD_TIMEOUT
-        cmd = ['docker'] + args
-        try:
-            proc = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                close_fds=True)
-            stdout, stderr = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-            raise Exception('docker command timed out (%ds): %s' % (timeout, ' '.join(cmd)))
+        return self._execute_docker(args, timeout, env)
 
-        stdout_str = stdout.decode('utf-8', 'ignore').strip() if stdout else ''
-        stderr_str = stderr.decode('utf-8', 'ignore').strip() if stderr else ''
-
-        if proc.returncode != 0:
-            raise DockerCommandError(proc.returncode, ' '.join(cmd), stderr_str)
-        return stdout_str
-
-    def _docker_quiet(self, args, timeout=None):
+    def _docker_quiet(self, args, timeout=None, env=None):
         """Execute a docker command, returning stdout. Errors are logged but not raised."""
         try:
-            return self._docker(args, timeout=timeout)
+            return self._docker(args, timeout=timeout, env=env)
         except Exception as e:
             logger.debug('docker command (quiet) failed: %s' % e)
             return ''
 
     @classmethod
-    def _docker_class(cls, args, timeout=30):
+    def _docker_class(cls, args, timeout=30, env=None):
         """Class-level docker command for use in classmethods (e.g. is_alive)."""
+        return cls._execute_docker(args, timeout, env)
+
+    @classmethod
+    def _execute_docker(cls, args, timeout, env=None):
         cmd = ['docker'] + args
+        command_for_log = _command_for_log(cmd)
+        process_env = None
+        if env is not None:
+            process_env = os.environ.copy()
+            process_env.update(env)
+        timed_out = False
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                close_fds=True)
+                close_fds=True, env=process_env)
             stdout, stderr = proc.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
-            raise
+            timed_out = True
+            try:
+                proc.kill()
+            except Exception:
+                pass
+            try:
+                proc.wait(timeout=cls.DOCKER_REAP_TIMEOUT)
+            except Exception:
+                pass
+        if timed_out:
+            raise Exception('docker command timed out (%ds): %s' % (timeout, command_for_log))
         if proc.returncode != 0:
             stderr_str = stderr.decode('utf-8', 'ignore').strip() if stderr else ''
-            raise DockerCommandError(proc.returncode, ' '.join(cmd), stderr_str)
+            stderr_str = _redact_sensitive_values(stderr_str, cmd, env)
+            raise DockerCommandError(proc.returncode, command_for_log, stderr_str)
         return stdout.decode('utf-8', 'ignore').strip() if stdout else ''
 
     # ------------------------------------------------------------------
@@ -398,6 +481,62 @@ class ContainerExecutor(WorkerExecutor):
             return None
         except Exception:
             return None
+
+    def _rollback_failed_start(self, container_name, shm_path):
+        deadline = time.time() + self.ROLLBACK_RETRY_WINDOW_SEC
+        removed = False
+        while True:
+            removed = self._remove_container(
+                container_name, timeout=self.ROLLBACK_REMOVE_TIMEOUT_SEC)
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                break
+            time.sleep(min(self.ROLLBACK_RETRY_INTERVAL_SEC, remaining))
+
+        if not removed:
+            logger.warning('worker container %s cleanup remains pending after failed start' %
+                           container_name)
+            return False
+        self._remove_shared_memory(shm_path)
+        return True
+
+    def _remove_container(self, container_target, timeout=None):
+        removed = False
+        try:
+            args = ['rm', '-f', container_target]
+            if timeout is None:
+                self._docker(args)
+            else:
+                self._docker(args, timeout=timeout)
+            removed = True
+        except DockerCommandError as e:
+            stderr_lower = e.stderr.lower()
+            removed = ('no such object' in stderr_lower or
+                       'no such container' in stderr_lower)
+        except Exception as e:
+            logger.warning('failed to remove worker container %s: %s' %
+                           (container_target, e))
+
+        if not removed:
+            logger.warning('worker container %s removal is unconfirmed' % container_target)
+            return False
+        return True
+
+    @classmethod
+    def _worker_shared_memory_path(cls, worker):
+        return (getattr(worker, 'shared_memory_path', None) or
+                cls.SHM_PREFIX + 'tf_%s' % worker.device_uuid)
+
+    @staticmethod
+    def _remove_shared_memory(shm_path):
+        if not shm_path:
+            return True
+        try:
+            return _remove_shared_memory_file(shm_path)
+        except OSError as e:
+            logger.warning('failed to remove shared memory file %s: %s' %
+                           (shm_path, e))
+            return False
 
     def _image_exists(self):
         """Check if the worker Docker image is available locally."""
@@ -424,8 +563,7 @@ class ContainerExecutor(WorkerExecutor):
 
     def _build_run_cmd(self, device_uuid, vm_uuid, pci_address, cuda_index,
                        container_name, memory_mb, sm_percent_limit, shm_size_mb,
-                       log_file, enable_log, log_level, license_value, license_sign,
-                       protocol='shmem'):
+                       log_file, enable_log, log_level, protocol='shmem'):
         """Build the full ``docker run`` argument list."""
         cmd = [
             'run', '-d',
@@ -449,8 +587,8 @@ class ContainerExecutor(WorkerExecutor):
             '-e', 'TF_LOG_LEVEL=%s' % log_level,
             '-e', 'TF_LOG_PATH=%s' % log_file,
             # License.
-            '-e', 'TF_LICENSE=%s' % (license_value or ''),
-            '-e', 'TF_LICENSE_SIGN=%s' % (license_sign or ''),
+            '-e', 'TF_LICENSE',
+            '-e', 'TF_LICENSE_SIGN',
             # Resource limits.
             '-e', 'TF_GPU_MEMORY_LIMIT=%d' % (memory_mb or 0),
             '-e', 'TF_CUDA_SM_PERCENT_LIMIT=%d' % (sm_percent_limit or 0),

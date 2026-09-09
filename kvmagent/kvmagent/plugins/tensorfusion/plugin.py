@@ -6,6 +6,7 @@ TensorFusion KVM Agent Plugin - HTTP API for GPU virtualization worker managemen
 
 import threading
 import time
+import traceback
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
@@ -19,9 +20,18 @@ from kvmagent.plugins.tensorfusion.service import TensorFusionService
 logger = log.get_logger(__name__)
 
 
+def _redact_worker_credentials(text, cmd):
+    redacted = text
+    values = [value for value in (cmd.license, cmd.licenseSign) if value]
+    for value in sorted(values, key=len, reverse=True):
+        redacted = redacted.replace(value, '*****')
+    return redacted
+
+
 # --- Request / Response classes ---
 
 class CreateWorkerCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields('license', 'licenseSign')
     def __init__(self):
         super(CreateWorkerCmd, self).__init__()
         self.vmUuid = None
@@ -180,7 +190,7 @@ class TensorFusionPlugin(kvmagent.KvmAgent):
         http_server = kvmagent.get_http_server()
 
         # All endpoints registered as async
-        http_server.register_async_uri(self.CREATE_WORKER, self.create_worker)
+        http_server.register_async_uri(self.CREATE_WORKER, self.create_worker, cmd=CreateWorkerCmd())
         http_server.register_async_uri(self.DESTROY_WORKER, self.destroy_worker)
         http_server.register_async_uri(self.DESTROY_WORKERS_BY_VM, self.destroy_workers_by_vm)
         http_server.register_async_uri(self.CLEANUP, self.cleanup)
@@ -348,16 +358,28 @@ class TensorFusionPlugin(kvmagent.KvmAgent):
 
     # --- Async handlers ---
 
-    @kvmagent.replyerror
     def create_worker(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = CreateWorkerRsp()
+        cmd = None
+        try:
+            cmd = jsonobject.loads(req[http.REQUEST_BODY])
+            rsp = CreateWorkerRsp()
 
-        create_req = self._to_create_request(cmd)
-        worker = self._service.create_worker(create_req)
-        rsp.worker = worker.to_dict()
+            create_req = self._to_create_request(cmd)
+            worker = self._service.create_worker(create_req)
+            rsp.worker = worker.to_dict()
+            return jsonobject.dumps(rsp)
+        except Exception as e:
+            error = str(e)
+            content = traceback.format_exc()
+            if cmd is not None:
+                error = _redact_worker_credentials(error, cmd)
+                content = _redact_worker_credentials(content, cmd)
 
-        return jsonobject.dumps(rsp)
+            rsp = kvmagent.AgentResponse()
+            rsp.success = False
+            rsp.error = error
+            logger.warn('%s\n%s' % (error, content))
+            return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
     def destroy_worker(self, req):

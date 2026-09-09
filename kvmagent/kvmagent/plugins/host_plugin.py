@@ -3314,6 +3314,8 @@ done
 
     def _get_nvidia_vfio_mdev_info(self, to):
         addr = to.pciDeviceAddress
+        if to.type == "Audio_Controller":
+            return False
         check_mdev_folder = '/sys/bus/pci/devices/%s/mdev_supported_types' % addr
         legacy_mdev_dir_exists = os.path.isdir(check_mdev_folder)
         check_virtfn_folder = '/sys/bus/pci/devices/%s/virtfn0/mdev_supported_types' % addr

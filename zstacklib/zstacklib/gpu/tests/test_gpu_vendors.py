@@ -261,7 +261,8 @@ class TestNVIDIA(unittest.TestCase):
             return 1, '', 'error'
 
         with patch('zstacklib.gpu.vendors.nvidia.bash_roe', side_effect=fake_bash_roe), \
-             patch('os.path.isdir', return_value=False):
+             patch('os.path.isdir', return_value=False), \
+             patch('os.path.exists', return_value=True):
             supported, info = NVIDIA.detect_vfio_mdev_capability(pci_to)
 
         self.assertFalse(supported)
@@ -284,7 +285,8 @@ class TestNVIDIA(unittest.TestCase):
             return 0, '', ''
 
         with patch('zstacklib.gpu.vendors.nvidia.bash_roe', side_effect=fake_bash_roe), \
-             patch('os.path.isdir', return_value=False):
+             patch('os.path.isdir', return_value=False), \
+             patch('os.path.exists', return_value=True):
             supported, info = NVIDIA.detect_vfio_mdev_capability(pci_to)
 
         self.assertTrue(supported)
@@ -304,7 +306,8 @@ class TestNVIDIA(unittest.TestCase):
             return 0, '', ''
 
         with patch('zstacklib.gpu.vendors.nvidia.bash_roe', side_effect=fake_bash_roe), \
-             patch('os.path.isdir', return_value=False):
+             patch('os.path.isdir', return_value=False), \
+             patch('os.path.exists', return_value=True):
             supported, info = NVIDIA.detect_vfio_mdev_capability(pci_to)
 
         self.assertTrue(supported)
@@ -320,9 +323,17 @@ class TestNVIDIA(unittest.TestCase):
 
         pci_device = type('PciDeviceTO', (), {'pciDeviceAddress': '0000:3b:00.0'})()
 
-        with patch("zstacklib.gpu.vendors.nvidia.bash_roe",
-                   return_value=(0, "00000000:3B:00.0, 570.124.06\n", "")), \
-             patch("zstacklib.gpu.vendors.nvidia.os.path.exists", return_value=True):
+        def run_command(command):
+            if '--query-gpu=pci.bus_id,driver_version' in command:
+                return 0, "00000000:3B:00.0, 570.124.06\n", ""
+            if command in ('which docker', 'which nvidia-ctk',
+                           'docker image inspect tf-worker:latest'):
+                return 0, '', ''
+            return 1, '', 'unexpected command'
+
+        with patch("zstacklib.gpu.vendors.nvidia.bash_roe", side_effect=run_command), \
+             patch.object(NVIDIA, "_is_bound_to_vfio", return_value=False), \
+             patch("zstacklib.gpu.vendors.nvidia.os.path.exists", return_value=False):
             supported, info = NVIDIA.detect_tensorfusion_capability(pci_device)
 
         self.assertTrue(supported)
@@ -341,15 +352,16 @@ class TestNVIDIA(unittest.TestCase):
 
         with patch("zstacklib.gpu.vendors.nvidia.bash_roe",
                    return_value=(0, "00000000:3B:00.0, 565.43.01\n", "")), \
-             patch("zstacklib.gpu.vendors.nvidia.os.path.exists", return_value=True):
+             patch.object(NVIDIA, "_is_bound_to_vfio", return_value=False), \
+             patch("zstacklib.gpu.vendors.nvidia.os.path.exists", return_value=False):
             supported, info = NVIDIA.detect_tensorfusion_capability(pci_device)
 
         self.assertFalse(supported)
         self.assertEqual(info.get("virtStatus"), "TENSORFUSION_NOT_SUPPORTED")
         self.assertIn("570.x", info.get("reason", ""))
 
-    def test_detect_tensorfusion_capability_rejects_missing_worker_binary(self):
-        """TensorFusion capability should reject hosts without tensor-fusion-worker installed."""
+    def test_detect_tensorfusion_capability_rejects_missing_worker_image(self):
+        """TensorFusion capability should reject hosts without the worker image."""
         from zstacklib.gpu.vendors.nvidia import NVIDIA
         try:
             from unittest.mock import patch
@@ -358,14 +370,23 @@ class TestNVIDIA(unittest.TestCase):
 
         pci_device = type('PciDeviceTO', (), {'pciDeviceAddress': '0000:3b:00.0'})()
 
-        with patch("zstacklib.gpu.vendors.nvidia.bash_roe",
-                   return_value=(0, "00000000:3B:00.0, 570.124.06\n", "")), \
+        def run_command(command):
+            if '--query-gpu=pci.bus_id,driver_version' in command:
+                return 0, "00000000:3B:00.0, 570.124.06\n", ""
+            if command in ('which docker', 'which nvidia-ctk'):
+                return 0, '', ''
+            if command == 'docker image inspect tf-worker:latest':
+                return 1, '', 'image not found'
+            return 1, '', 'unexpected command'
+
+        with patch("zstacklib.gpu.vendors.nvidia.bash_roe", side_effect=run_command), \
+             patch.object(NVIDIA, "_is_bound_to_vfio", return_value=False), \
              patch("zstacklib.gpu.vendors.nvidia.os.path.exists", return_value=False):
             supported, info = NVIDIA.detect_tensorfusion_capability(pci_device)
 
         self.assertFalse(supported)
         self.assertEqual(info.get("virtStatus"), "TENSORFUSION_NOT_SUPPORTED")
-        self.assertIn("tensor-fusion-worker", info.get("reason", ""))
+        self.assertIn("tf-worker:latest", info.get("reason", ""))
 
 class TestAMD(unittest.TestCase):
     """Test AMD vendor implementation"""

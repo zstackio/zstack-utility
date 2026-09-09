@@ -452,7 +452,7 @@ class GPUBase(object):
         capability_info['virtCapabilities'] = list(virt_capabilities or [])
 
     @classmethod
-    def detect_vfio_mdev_capability(cls, pci_device_to):
+    def detect_vfio_mdev_capability(cls, pci_device_to, prepared_context=None):
         """
         Detect if the GPU device supports VFIO mdev (mediated device) virtualization.
 
@@ -489,7 +489,7 @@ class GPUBase(object):
         return False, {}
 
     @classmethod
-    def detect_tensorfusion_capability(cls, pci_device_to):
+    def detect_tensorfusion_capability(cls, pci_device_to, prepared_context=None):
         """
         Detect if the GPU device supports TensorFusion virtualization.
 

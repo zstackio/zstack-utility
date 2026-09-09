@@ -17,6 +17,7 @@ import threading
 import time
 
 from zstacklib.utils import log
+from zstacklib.gpu.operation_gate import gpu_operation_gate
 from kvmagent.plugins.tensorfusion.base_executor import WorkerExecutor
 
 logger = log.get_logger(__name__)
@@ -156,8 +157,8 @@ class WorkerRestartMonitor(object):
                 'WorkerRestartMonitor: worker %s exceeded max retries '
                 '(%d crashes within %ds window), giving up' % (
                     device_uuid, count, CrashState.CRASH_WINDOW))
-            current_worker = self._store.remove(device_uuid, expected_worker=w)
-            if current_worker is None:
+            current_worker = self._store.get(device_uuid)
+            if current_worker is not w:
                 self.clear(device_uuid)
                 logger.info('WorkerRestartMonitor: worker %s changed before give-up, skipping stale fault handling' %
                             device_uuid)
@@ -168,7 +169,7 @@ class WorkerRestartMonitor(object):
                     self._notified_events.add(device_uuid)
                 self._push_event(current_worker, count, 'fault')
 
-            self._give_up(current_worker, already_removed=True)
+            self._give_up(current_worker)
             return
 
         logger.warning(
@@ -204,12 +205,33 @@ class WorkerRestartMonitor(object):
                             device_uuid)
                 return
 
+            current_worker = self._store.get(device_uuid)
+            if current_worker is not w:
+                self.clear(device_uuid)
+                logger.info('WorkerRestartMonitor: worker %s changed during backoff, skipping stale restart' %
+                            device_uuid)
+                return
+
             # Reap the old dead process to prevent zombie.
             try:
-                self._executor.reap_dead(w)
+                with gpu_operation_gate.critical():
+                    if self._store.get(device_uuid) is not w:
+                        self.clear(device_uuid)
+                        logger.info('WorkerRestartMonitor: worker %s changed during backoff, skipping stale restart' %
+                                    device_uuid)
+                        return
+                    reaped = self._executor.reap_dead(w)
             except Exception as e:
                 logger.warning('WorkerRestartMonitor: failed to reap dead worker %s (%s): %s' %
                             (device_uuid, _worker_label(w), e))
+                self._store.set_restarting(device_uuid, False, expected_worker=w)
+                return
+            if reaped is False:
+                logger.warning('WorkerRestartMonitor: worker %s (%s) is still running, skipping restart' %
+                            (device_uuid, _worker_label(w)))
+                self.clear(device_uuid)
+                self._store.set_restarting(device_uuid, False, expected_worker=w)
+                return
 
             # Guard: worker may have been intentionally destroyed or replaced while we waited.
             current_worker = self._store.get(device_uuid)
@@ -261,30 +283,45 @@ class WorkerRestartMonitor(object):
                 if thread is threading.current_thread():
                     self._restart_threads.pop(device_uuid, None)
 
-    def _give_up(self, w, already_removed=False):
+    def _give_up(self, w):
         device_uuid = w.device_uuid
-        if not already_removed:
-            current_worker = self._store.remove(device_uuid, expected_worker=w)
-            if current_worker is None:
-                self.clear(device_uuid)
-                logger.info('WorkerRestartMonitor: worker %s changed before give-up cleanup, skipping stale purge' %
-                            device_uuid)
-                return
-            w = current_worker
-
         # Reap the dead process to prevent zombie.
         try:
-            self._executor.reap_dead(w)
+            with gpu_operation_gate.critical():
+                if self._store.get(device_uuid) is not w:
+                    self.clear(device_uuid)
+                    logger.info('WorkerRestartMonitor: worker %s changed before give-up cleanup, skipping stale purge' %
+                                device_uuid)
+                    return False
+                reaped = self._executor.reap_dead(w)
+                if reaped is False:
+                    logger.warning('WorkerRestartMonitor: worker %s is still running during give_up' %
+                                device_uuid)
+                    self.clear(device_uuid)
+                    self._store.set_restarting(device_uuid, False, expected_worker=w)
+                    return False
+
+                removed = self._store.remove(device_uuid, expected_worker=w)
+                if removed is not None:
+                    self._tracker.release(removed.pci_address, device_uuid)
         except Exception as e:
             logger.warning('WorkerRestartMonitor: failed to reap dead worker %s '
                         'during give_up: %s' % (device_uuid, e))
-        self._tracker.release(w.pci_address, device_uuid)
+            self._store.set_restarting(device_uuid, False, expected_worker=w)
+            return False
+        if removed is None:
+            self.clear(device_uuid)
+            logger.info('WorkerRestartMonitor: worker %s changed before give-up cleanup, skipping stale purge' %
+                        device_uuid)
+            return False
+
         with self._lock:
             self._states.pop(device_uuid, None)
             self._notified_events.discard(device_uuid)
         logger.error(
             'WorkerRestartMonitor: purged dead worker %s, '
             'GPU memory released; management plane will confirm Fault on next sync' % device_uuid)
+        return True
 
     def _push_event(self, w, crash_count, event_type):
         """Push event notification to management node. No-op if no notifier configured."""

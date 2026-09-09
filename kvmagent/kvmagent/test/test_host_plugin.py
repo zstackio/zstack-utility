@@ -88,6 +88,16 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
         self.assertEqual(to.virtStatus, "UNVIRTUALIZABLE")
         self.assertEqual(to.virtState, "UNVIRTUALIZABLE")
 
+    def test_nvidia_audio_function_skips_legacy_vfio_probe(self):
+        plugin = host_plugin.HostPlugin()
+        to = self._make_to()
+        to.pciDeviceAddress = "0000:1d:00.1"
+        to.vendor = host_plugin.VendorEnum.NVIDIA
+        to.type = "Audio_Controller"
+        with mock.patch.object(host_plugin, 'bash_roe') as bash_roe:
+            self.assertFalse(plugin._get_vfio_mdev_info(to))
+        bash_roe.assert_not_called()
+
     def test_fallback_both_supported_virtualizable(self):
         """No virtStatus, both supported -> VFIO_MDEV_VIRTUALIZABLE."""
         plugin = host_plugin.HostPlugin()
