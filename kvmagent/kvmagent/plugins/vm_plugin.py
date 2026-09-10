@@ -11763,7 +11763,7 @@ host side snapshot files chian:
 
                 r, o, e = bash.bash_roe("timeout -k 5 %d virsh detach-device %s %s" %
                                         (detach_timeout, cmd.vmUuid, xml_path))
-                if r != 0 and "is already in the process of unplug" not in "%s, %s" % (o, e):
+                if r not in (0, 124) and "is already in the process of unplug" not in "%s, %s" % (o, e):
                     raise Exception("detach-device failed: %s, %s" % (o, e))
 
             request_detach()

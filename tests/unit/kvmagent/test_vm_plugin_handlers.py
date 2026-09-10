@@ -2192,6 +2192,34 @@ class TestHotUnplugPciDeviceHandler:
         detach_commands = [call.args[0] for call in detach.call_args_list if 'detach-device' in call.args[0]]
         assert detach_commands == ['timeout -k 5 60 virsh detach-device vm-uuid /tmp/pci.xml']
 
+    def test_zstac_86669_does_not_retry_timed_out_detach_request(self, monkeypatch):
+        plugin = _make_vm_plugin()
+        plugin.timeout_object = MagicMock()
+        mock_vm = MagicMock(state=vm_plugin.Vm.VM_STATE_RUNNING)
+        monkeypatch.setattr(vm_plugin, 'get_vm_by_uuid', MagicMock(return_value=mock_vm))
+        monkeypatch.setattr(vm_plugin, 'get_vm_by_uuid_no_retry', MagicMock(return_value=mock_vm))
+        monkeypatch.setattr(vm_plugin.linux, 'write_to_temp_file', MagicMock(return_value='/tmp/pci.xml'))
+        monkeypatch.setattr(vm_plugin.linux.time, 'sleep', MagicMock())
+        monkeypatch.setattr(vm_plugin.gpu, 'get_all_gpu_infos_by_pci', MagicMock(return_value={}))
+        monkeypatch.setattr(vm_plugin.linux, 'wait_callback_success', MagicMock(return_value=True))
+
+        def bash_roe(command):
+            if 'dumpxml' in command:
+                return 0, 'device is attached', ''
+            if 'detach-device' in command:
+                return 124, '', ''
+            return 0, '', ''
+
+        detach = MagicMock(side_effect=bash_roe)
+        monkeypatch.setattr(vm_plugin.bash, 'bash_roe', detach)
+
+        req = _make_req({'vmUuid': 'vm-uuid', 'pciDeviceAddress': '0000:00:01.0'})
+        rsp = json.loads(plugin.hot_unplug_pci_device(req))
+
+        assert rsp['success'] is True, rsp
+        detach_commands = [call.args[0] for call in detach.call_args_list if 'detach-device' in call.args[0]]
+        assert detach_commands == ['timeout -k 5 60 virsh detach-device vm-uuid /tmp/pci.xml']
+
     def test_zstac_86669_treats_already_unplugging_as_async_progress(self, monkeypatch):
         plugin = _make_vm_plugin()
         plugin.timeout_object = MagicMock()
