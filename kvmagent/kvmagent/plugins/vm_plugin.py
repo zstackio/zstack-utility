@@ -14059,21 +14059,26 @@ host side snapshot files chian:
 
         def check_lv(file, vm, device):
             logger.debug("sblk max actual size factor %s" % MAX_ACTUAL_SIZE_FACTOR)
-            virtual_size, image_offest, _ = vm.domain.blockInfo(device)
+            virtual_size, image_offset, _ = vm.domain.blockInfo(device)
             lv_size = int(lvm.get_lv_size(file))
-            # image_offest = int(bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % file).strip())
+            # image_offset = int(bash.bash_o("qemu-img check %s | grep 'Image end offset' | awk -F ': ' '{print $2}'" % file).strip())
             # virtual_size = int(linux.qcow2_virtualsize(file))
-            return int(lv_size) < int(virtual_size) * MAX_ACTUAL_SIZE_FACTOR, image_offest, lv_size, virtual_size
+            return int(lv_size) < int(virtual_size) * MAX_ACTUAL_SIZE_FACTOR, image_offset, lv_size, virtual_size
 
         @bash.in_bash
         def extend_lv(event_str, path, vm, device):
-            # type: (str, str, Vm, object) -> object
-            r, image_offest, lv_size, virtual_size = check_lv(path, vm, device)
-            logger.debug("lv %s image offest: %s, lv size: %s, virtual size: %s" %
-                         (path, image_offest, lv_size, virtual_size))
+            # type: (str, str, Vm, object) -> bool
+            r, image_offset, lv_size, virtual_size = check_lv(path, vm, device)
+            logger.debug("lv %s image offset: %s, lv size: %s, virtual size: %s" %
+                         (path, image_offset, lv_size, virtual_size))
             if not r:
                 logger.debug("lv %s is larager than virtual size * %s, skip extend for event %s" % (path, MAX_ACTUAL_SIZE_FACTOR, event_str))
-                return
+                return False
+
+            if image_offset > 0 and lv_size - image_offset > self.auto_extend_size:
+                logger.debug("lv %s image offset: %s, lv size: %s, remaining space exceeds %s, skip extend for event %s" %
+                             (path, image_offset, lv_size, self.auto_extend_size, event_str))
+                return False
 
             extend_size = lv_size + self.auto_extend_size
             try:
@@ -14082,6 +14087,7 @@ host side snapshot files chian:
                 logger.warn("extend lv[%s] to size[%s] failed" % (path, extend_size))
             else:
                 logger.debug("lv %s extend to %s sucess" % (path, extend_size))
+            return True
 
         @thread.AsyncThread
         @lock.lock("sharedblock-extend-vm-%s" % dom.name())
@@ -14107,6 +14113,7 @@ host side snapshot files chian:
                 return
 
             fixed = False
+            extend_attempted = False
 
             def get_path_by_device(device_name, vm):
                 for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -14120,7 +14127,8 @@ host side snapshot files chian:
                         syslog.syslog("disk %s:%s of vm %s got ENOSPC" % (device, path, vm_uuid))
                         if not lvm.lv_exists(path):
                             continue
-                        extend_lv(event_str, path, vm, device)
+                        if extend_lv(event_str, path, vm, device):
+                            extend_attempted = True
                         fixed = True
             except Exception as e:
                 syslog.syslog(str(e))
@@ -14129,6 +14137,9 @@ host side snapshot files chian:
                 syslog.syslog("resume vm %s" % vm_uuid)
                 vm.domain.resume()
                 touchQmpSocketWhenExists(vm_uuid)
+                if not extend_attempted:
+                    # Hold the VM lock to throttle repeated ENOSPC suspend handling.
+                    time.sleep(5)
 
         event_str = LibvirtEventManager.event_to_string(event)
         if event_str not in (LibvirtEventManager.EVENT_SUSPENDED,):
