@@ -127,6 +127,55 @@ def _use_shell_runner(monkeypatch, directory):
 
 
 class TestSelinuxInstallation:
+    @pytest.mark.parametrize("repo", ["false", "zstack-mn"])
+    @pytest.mark.parametrize("major, candidates", [
+        (3, ["python3-libselinux", "libselinux-python3"]),
+        (2, ["python2-libselinux", "libselinux-python"]),
+    ])
+    @pytest.mark.parametrize("installed_index", [0, 1])
+    def test_installed_selinux_provider_skips_yum_without_repositories(
+        self, monkeypatch, tmp_path, repo, major, candidates, installed_index
+    ):
+        rpm_calls = tmp_path / "rpm-calls"
+        yum_calls = tmp_path / "yum-calls"
+        _write_executable(tmp_path, "rpm", 'printf "%s\\n" "$*" >> "%s"; '
+                          '[ "$*" = "-q --whatprovides %s" ] || exit 1; '
+                          'printf "vendor-selinux-binding-1.0\\n"' % ("%s", rpm_calls, candidates[installed_index]))
+        _write_executable(tmp_path, "yum", 'printf "%s\\n" "$*" >> "%s"; exit 1' % ("%s", yum_calls))
+        _use_shell_runner(monkeypatch, tmp_path)
+        lib = _zstack_lib()
+        monkeypatch.setattr(lib, "_get_system_python_major", lambda: major)
+
+        lib._install_selinux(repo)
+
+        assert not yum_calls.exists(), "Installed binding must not require an enabled repository"
+        assert rpm_calls.read_text().splitlines() == [
+            "-q --whatprovides %s" % package for package in candidates[:installed_index + 1]
+        ]
+
+    @pytest.mark.parametrize("major, wrong_binding, candidates", [
+        (3, "python2-libselinux", ["python3-libselinux", "libselinux-python3"]),
+        (2, "python3-libselinux", ["python2-libselinux", "libselinux-python"]),
+    ])
+    def test_wrong_python_major_binding_does_not_skip_install(
+        self, monkeypatch, tmp_path, major, wrong_binding, candidates
+    ):
+        calls = tmp_path / "calls"
+        _write_executable(tmp_path, "rpm", 'printf "rpm %s\\n" "$*" >> "%s"; '
+                          '[ "$*" = "-q --whatprovides %s" ]' % ("%s", calls, wrong_binding))
+        _write_executable(tmp_path, "yum", 'printf "yum %s\\n" "$*" >> "%s"' % ("%s", calls))
+        _use_shell_runner(monkeypatch, tmp_path)
+        lib = _zstack_lib()
+        monkeypatch.setattr(lib, "_get_system_python_major", lambda: major)
+
+        lib._install_selinux("false")
+
+        assert calls.read_text().splitlines() == [
+            "rpm -q --whatprovides %s" % candidates[0],
+            "rpm -q --whatprovides %s" % candidates[1],
+            "yum install -y %s" % candidates[0],
+        ]
+
     @pytest.mark.parametrize("output, major", [("3\n", 3), ("2\n", 2)])
     def test_system_python_major_uses_one_remote_command(
         self, monkeypatch, output, major
@@ -205,6 +254,8 @@ class TestSelinuxInstallation:
         lib._install_selinux("zstack-mn")
 
         assert commands == [
+            "rpm -q --whatprovides python3-libselinux >/dev/null 2>&1 || "
+            "rpm -q --whatprovides libselinux-python3 >/dev/null 2>&1 || "
             "yum --disablerepo=* --enablerepo=zstack-mn install -y "
             "python3-libselinux || "
             "yum --disablerepo=* --enablerepo=zstack-mn install -y "
@@ -227,6 +278,8 @@ class TestSelinuxInstallation:
         lib._install_selinux("false")
 
         assert commands == [
+            "rpm -q --whatprovides python2-libselinux >/dev/null 2>&1 || "
+            "rpm -q --whatprovides libselinux-python >/dev/null 2>&1 || "
             "yum install -y python2-libselinux || "
             "yum install -y libselinux-python",
         ]
@@ -248,38 +301,29 @@ class TestSelinuxInstallation:
             lib._install_selinux("false")
 
         assert commands == [
+            "rpm -q --whatprovides python3-libselinux >/dev/null 2>&1 || "
+            "rpm -q --whatprovides libselinux-python3 >/dev/null 2>&1 || "
             "yum install -y python3-libselinux || "
             "yum install -y libselinux-python3",
         ]
 
-    @pytest.mark.parametrize(
-        "major, repo, failed, expected",
-        [
-            (3, "zstack-mn", [], ["python3-libselinux"]),
-            (
-                3,
-                "zstack-mn",
-                ["python3-libselinux"],
-                ["python3-libselinux", "libselinux-python3"],
-            ),
-            (
-                2,
-                "false",
-                ["python2-libselinux"],
-                ["python2-libselinux", "libselinux-python"],
-            ),
-        ],
-    )
+    @pytest.mark.parametrize("repo", ["false", "zstack-mn"])
+    @pytest.mark.parametrize("first_install_fails", [False, True])
+    @pytest.mark.parametrize("major, candidates", [
+        (3, ["python3-libselinux", "libselinux-python3"]),
+        (2, ["python2-libselinux", "libselinux-python"]),
+    ])
     def test_selinux_package_candidate_fallbacks(
-        self, monkeypatch, tmp_path, major, repo, failed, expected
+        self, monkeypatch, tmp_path, major, repo, first_install_fails, candidates
     ):
         calls = tmp_path / "yum-calls"
-        failure_cases = "|".join(failed) or "__none__"
+        failure_cases = candidates[0] if first_install_fails else "__none__"
+        _write_executable(tmp_path, "rpm", "exit 1")
         _write_executable(
             tmp_path,
             "yum",
             "for arg do package=$arg; done; "
-            "printf '%s\\n' \"$package\" >> '%s'; "
+            "printf '%s\\n' \"$*\" >> '%s'; "
             "case \"$package\" in %s) exit 1;; esac"
             % ("%s", calls, failure_cases),
         )
@@ -289,10 +333,13 @@ class TestSelinuxInstallation:
 
         lib._install_selinux(repo)
 
-        assert calls.read_text().splitlines() == expected
+        options = "" if repo == "false" else "--disablerepo=* --enablerepo=zstack-mn "
+        installed = candidates if first_install_fails else candidates[:1]
+        assert calls.read_text().splitlines() == ["%sinstall -y %s" % (options, package) for package in installed]
 
     def test_selinux_both_candidates_fail(self, monkeypatch, tmp_path):
         calls = tmp_path / "yum-calls"
+        _write_executable(tmp_path, "rpm", "exit 1")
         _write_executable(
             tmp_path,
             "yum",
