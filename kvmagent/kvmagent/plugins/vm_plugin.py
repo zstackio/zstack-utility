@@ -11729,54 +11729,52 @@ host side snapshot files chian:
             r, o, e = bash.bash_roe(cmd)
             return o != ""
 
-        @linux.retry(3, 2)
         def detach_pci_device_from_vm(cmd, xml_path, vm_domain):
-            if not find_pci_device(cmd.vmUuid, cmd.pciDeviceAddress):
-                return
+            detach_timeout = 60
 
-            # Pre-detach if GPU - optimized: check vendor first for fast path
-            # If vendor is known GPU vendor, directly call pre_detach; otherwise try all vendors
-            is_gpu_device = False
-            if cmd.vendor:
-                from zstacklib.gpu.base import VendorEnum
-                gpu_vendors = {VendorEnum.NVIDIA, VendorEnum.AMD, VendorEnum.HUAWEI,
-                              VendorEnum.INTEL,
-                              VendorEnum.HAIGUANG, VendorEnum.TIANSHU, VendorEnum.VASTAI,
-                              VendorEnum.ENFLAME, VendorEnum.ALIBABA, VendorEnum.KUNLUNXIN}
-                if cmd.vendor in gpu_vendors:
+            @linux.retry(3, 2)
+            def request_detach():
+                if not find_pci_device(cmd.vmUuid, cmd.pciDeviceAddress):
+                    return
+
+                # Pre-detach if GPU - optimized: check vendor first for fast path
+                # If vendor is known GPU vendor, directly call pre_detach; otherwise try all vendors
+                is_gpu_device = False
+                if cmd.vendor:
+                    from zstacklib.gpu.base import VendorEnum
+                    gpu_vendors = {VendorEnum.NVIDIA, VendorEnum.AMD, VendorEnum.HUAWEI,
+                                  VendorEnum.INTEL,
+                                  VendorEnum.HAIGUANG, VendorEnum.TIANSHU, VendorEnum.VASTAI,
+                                  VendorEnum.ENFLAME, VendorEnum.ALIBABA, VendorEnum.KUNLUNXIN}
+                if cmd.vendor and cmd.vendor in gpu_vendors:
                     # Known GPU vendor, verify via get_info() (only queries that vendor)
                     gpu_info = gpu.get_info(pci_address=cmd.pciDeviceAddress, vendor_name=cmd.vendor)
                     is_gpu_device = gpu_info is not None
                 else:
-                    # Vendor not in known set: fallback to batch query all vendors
-                    # This ensures devices detected by GPU CLI are not missed
+                    # Unknown or unspecified vendor: try all vendors in one batch query
                     gpu_info_map = gpu.get_all_gpu_infos_by_pci()
                     normalized_pci = pci.normalize_pci_address(cmd.pciDeviceAddress)
                     is_gpu_device = normalized_pci in gpu_info_map if normalized_pci else False
-            else:
-                # Unknown vendor: Try to get info from all vendors (batch query)
-                # This uses the same unified interface as other GPU checks
-                gpu_info_map = gpu.get_all_gpu_infos_by_pci()
-                normalized_pci = pci.normalize_pci_address(cmd.pciDeviceAddress)
-                is_gpu_device = normalized_pci in gpu_info_map if normalized_pci else False
 
-            if is_gpu_device:
-                return_code, output = gpu.pre_detach_from_vm(vm_domain, cmd.vmUuid, cmd.vendor)
-                if return_code != 0:
-                    raise Exception("pre_detach_from_vm failed: %s" % output)
+                if is_gpu_device:
+                    return_code, output = gpu.pre_detach_from_vm(vm_domain, cmd.vmUuid, cmd.vendor)
+                    if return_code != 0:
+                        raise Exception("pre_detach_from_vm failed: %s" % output)
 
-            # Perform detach-device
-            r, o, e = bash.bash_roe("timeout -k 5 60 virsh detach-device %s %s" % (cmd.vmUuid, xml_path))
-            if r != 0:
-                raise Exception("detach-device failed: %s, %s" % (o, e))
+                r, o, e = bash.bash_roe("timeout -k 5 %d virsh detach-device %s %s" %
+                                        (detach_timeout, cmd.vmUuid, xml_path))
+                if r not in (0, 124) and "is already in the process of unplug" not in "%s, %s" % (o, e):
+                    raise Exception("detach-device failed: %s, %s" % (o, e))
 
-            # Verify device is actually detached
+            request_detach()
+
             if not linux.wait_callback_success(
                     lambda args: not find_pci_device(args[0], args[1]),
                     [cmd.vmUuid, cmd.pciDeviceAddress],
-                    timeout=5
+                    timeout=detach_timeout
             ):
-                raise Exception("device still exists after detach")
+                raise Exception("pci device %s still exists on vm %s after %d seconds" %
+                                (cmd.pciDeviceAddress, cmd.vmUuid, detach_timeout))
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotUnplugPciDeviceRsp()
