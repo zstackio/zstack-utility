@@ -8712,7 +8712,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
 
             if vm:
-                if vm.state == Vm.VM_STATE_RUNNING:
+                if vm.state == Vm.VM_STATE_RUNNING and linux.find_vm_pid_by_uuid(cmd.vmInstanceUuid):
                     # http://jira.zstack.io/browse/ZSTAC-26937
                     #raise kvmagent.KvmError(
                     #    'vm[uuid:%s, name:%s] is already running' % (cmd.vmInstanceUuid, vm.get_name()))
