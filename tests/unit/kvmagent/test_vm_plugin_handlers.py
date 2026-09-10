@@ -3535,6 +3535,51 @@ class TestVmStartCmdXmlBuild:
             vm = vm_plugin.Vm.from_StartVmCmd(cmd)
         return vm.domain_xml.decode() if isinstance(vm.domain_xml, bytes) else vm.domain_xml
 
+    @pytest.mark.parametrize('host_arch,machine_type', [
+        ('x86_64', 'pc'),
+        ('x86_64', 'q35'),
+        ('mips64el', 'loongson7a'),
+        ('loongarch64', 'virt'),
+    ])
+    @pytest.mark.parametrize('use_numa', [False, True])
+    def test_start_xml_supports_sixty_four_memory_slots(self, monkeypatch, host_arch, machine_type, use_numa):
+        monkeypatch.setattr(vm_plugin, 'HOST_ARCH', host_arch)
+        monkeypatch.setattr(vm_plugin.kvmagent, 'host_arch', host_arch)
+        cmd = self._build_start_cmd(use_numa=use_numa)
+        cmd.machineType = machine_type
+        root = vm_plugin.etree.fromstring(self._build_start_vm_xml(cmd))
+        maximum = root.find('maxMemory')
+        if use_numa:
+            assert maximum.get('slots') == '64'
+            assert maximum.get('unit') == 'KiB'
+            assert maximum.text == str(vm_plugin.MAX_MEMORY)
+        else:
+            assert maximum is None
+            assert root.find('memory').text == str(cmd.memory // 1024)
+        assert root.find('currentMemory').text == str(cmd.memory // 1024)
+
+    @pytest.mark.parametrize('use_numa', [False, True])
+    @pytest.mark.parametrize('max_memory', [64 * 1024 ** 2, 16 * 1024 ** 3])
+    def test_arm_start_xml_supports_sixty_four_memory_slots(self, monkeypatch, use_numa, max_memory):
+        monkeypatch.setattr(vm_plugin, 'HOST_ARCH', 'aarch64')
+        monkeypatch.setattr(vm_plugin.kvmagent, 'host_arch', 'aarch64')
+        monkeypatch.setattr(vm_plugin.kvmagent, 'get_host_os_type', lambda: 'redhat')
+        monkeypatch.setattr(vm_plugin, 'MAX_MEMORY', max_memory)
+        cmd = self._build_start_cmd(use_numa=use_numa)
+        cmd.machineType = 'virt'
+        root = vm_plugin.etree.fromstring(self._build_start_vm_xml(cmd))
+        assert root.find('os/type').get('arch') == 'aarch64'
+        assert root.find('os/type').get('machine') == 'virt'
+        maximum = root.find('maxMemory')
+        if use_numa:
+            assert maximum.get('slots') == '64'
+            assert maximum.get('unit') == 'KiB'
+            assert maximum.text == str(max_memory)
+        else:
+            assert maximum is None
+            assert root.find('memory').text == str(cmd.memory // 1024)
+        assert root.find('currentMemory').text == str(cmd.memory // 1024)
+
     def test_zstac_88044_cpu_vendor_probe_excludes_hostdev_only_from_probe_xml(self):
         cmd = self._build_start_cmd(use_numa=False)
         cmd.nestedVirtualization = 'host-passthrough'
