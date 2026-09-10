@@ -2862,8 +2862,8 @@ class ZstackLib(object):
         candidates = self._SELINUX_BINDING_PACKAGES[major]
         yum = 'yum' if zstack_repo == 'false' else \
             'yum --disablerepo=* --enablerepo=%s' % zstack_repo
-        commands = ['%s install -y %s' % (yum, package)
-                    for package in candidates]
+        commands = ['rpm -q --whatprovides %s >/dev/null 2>&1' % package for package in candidates]
+        commands.extend('%s install -y %s' % (yum, package) for package in candidates)
         run_remote_command(' || '.join(commands), self.host_post_info)
 
     def _basic_rpm_set(self):
