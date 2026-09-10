@@ -3653,7 +3653,14 @@ class Vm(object):
         def restore_from_file(conn):
             return conn.restoreFlags(path, self.domain_xml)
 
+        # when restoring from a memory snapshot, we directly use the domain_xml built from cmd
+        # therefore, we only need to persist this domain_xml
+        @LibvirtAutoReconnect
+        def define_xml(conn):
+            return conn.defineXML(self.domain_xml)
+
         logger.debug('restoring vm:\n%s' % self.domain_xml)
+        define_xml()
         restore_from_file()
 
     def _patch_cpu_xml_from_saved_image(self, path):
