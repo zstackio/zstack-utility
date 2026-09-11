@@ -5,6 +5,8 @@ Key contract: `zbsadm vhost create-bdev --volume <pool>/<file>_zbs_` strips the
 `_zbs_` marker before libcbd opens the file, so the argument carries the suffix
 while the real ZBS file name has none.
 """
+import json
+import shlex
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -25,43 +27,33 @@ def _lscpu(*rows):
     return "CPU NODE SOCKET CORE\n%s\n" % "\n".join(rows)
 
 
-class TestCreateVhostBdev:
-    def test_appends_zbs_suffix_to_volume_arg(self):
-        with patch.object(zbsutils.shell, 'call'):
-            zbsutils.create_vhost_bdev("10.0.0.9", 22, "root", "pwd",
-                                       "lpool1", "vol-uuid-1", "vhost-blk-1")
-            cmd = _last_cmd()
-            assert "--volume lpool1/vol-uuid-1_zbs_ " in cmd
-            assert "--volume lpool1/vol-uuid-1 " not in cmd
+class TestVhostCommands:
+    @pytest.mark.parametrize("port,username,password", [(22, "root", "pwd"), (2222, "admin", "p@ss w'rd")])
+    @pytest.mark.parametrize("wrapper,operation,args,options", [
+        (zbsutils.deploy_vhost, "deploy", ("[4,5,6,7]", 2, "/dev/hugepages2m"),
+         ["--cpuset", "[4,5,6,7]", "--silent", "--hugepage-size", "2", "--hugepage-dir", "/dev/hugepages2m"]),
+        (zbsutils.destroy_vhost, "destroy", (), ["--silent"]),
+        (zbsutils.create_vhost_bdev, "create-bdev", ("lpool1", "vol-uuid-1", "vhost-blk-1"),
+         ["--volume", "lpool1/vol-uuid-1_zbs_", "--name", "vhost-blk-1", "--silent"]),
+        (zbsutils.delete_vhost_bdev, "delete-bdev", ("vhost-blk-1",), ["--name", "vhost-blk-1", "--silent"]),
+    ])
+    def test_uses_host_config_without_credentials(self, port, username, password, wrapper, operation, args, options):
+        with patch.object(zbsutils.shell, 'call', return_value="result"), \
+             patch.object(zbsutils.linux, 'shellquote', side_effect=_real_quote):
+            assert wrapper("10.0.0.9", port, username, password, *args) == "result"
+            expected = [zbsutils.ZBSADM_BIN_PATH, "vhost", operation, "--host", "10.0.0.9"] + options
+            assert shlex.split(_last_cmd()) == expected
+            assert password not in _last_cmd()
 
-    def test_targets_host_and_names_bdev(self):
-        with patch.object(zbsutils.shell, 'call'):
-            zbsutils.create_vhost_bdev("10.0.0.9", 2222, "admin", "pwd",
-                                       "lpool1", "vol-uuid-1", "vhost-blk-1")
-            cmd = _last_cmd()
-            assert cmd.startswith(zbsutils.ZBSADM_BIN_PATH + " vhost create-bdev")
-            assert "--host 10.0.0.9" in cmd
-            assert "--port 2222" in cmd
-            assert "-u admin" in cmd
-            assert "--name vhost-blk-1" in cmd
 
-    def test_shellquotes_password(self):
+class TestDeployClient:
+    def test_preserves_ssh_credentials_and_password_quoting(self):
         with patch.object(zbsutils.shell, 'call'), \
              patch.object(zbsutils.linux, 'shellquote', side_effect=_real_quote):
-            zbsutils.create_vhost_bdev("10.0.0.9", 22, "root", "p@ss w'rd",
-                                       "lpool1", "vol-uuid-1", "vhost-blk-1")
-            cmd = _last_cmd()
-            assert "-p 'p@ss w'\\''rd'" in cmd
-
-
-class TestDeleteVhostBdev:
-    def test_deletes_by_name_on_host(self):
-        with patch.object(zbsutils.shell, 'call'):
-            zbsutils.delete_vhost_bdev("10.0.0.9", 22, "root", "pwd", "vhost-blk-1")
-            cmd = _last_cmd()
-            assert cmd.startswith(zbsutils.ZBSADM_BIN_PATH + " vhost delete-bdev")
-            assert "--host 10.0.0.9" in cmd
-            assert "--name vhost-blk-1" in cmd
+            zbsutils.deploy_client("10.0.0.9", 2222, "admin", "p@ss w'rd")
+            assert shlex.split(_last_cmd()) == [
+                zbsutils.ZBSADM_BIN_PATH, "client", "deploy", "--host", "10.0.0.9", "--port", "2222",
+                "-u", "admin", "-p", "p@ss w'rd", "--silent"]
 
 
 class TestVhostAutoCpuset:
@@ -201,8 +193,7 @@ class TestDeployVhost:
                           return_value="/dev/hugepages2m"):
             zbsutils.deploy_vhost("10.0.0.9", 22, "root", "pwd")
             assert _last_cmd() == (
-                "/usr/local/bin/zbsadm vhost deploy --host 10.0.0.9 --port 22 "
-                "-u root -p 'pwd' --cpuset '[4,5,6,7]' --silent "
+                "/usr/local/bin/zbsadm vhost deploy --host 10.0.0.9 --cpuset '[4,5,6,7]' --silent "
                 "--hugepage-dir /dev/hugepages2m")
             auto_cpuset.assert_called_once_with("10.0.0.9", 22, "root", "pwd")
 
@@ -271,6 +262,41 @@ class TestDeployVhost:
             wait_ready.assert_called_once_with("10.0.0.9", 22, "root", "pwd")
             assert zbsagent.jsonobject.loads(out).success is True
 
+    def test_custom_credentials_reach_cpuset_mount_and_ready_probes(self):
+        body = json.dumps(dict(hostIp="10.0.0.9", sshPort=2222, sshUsername="admin", sshPassword="p@ss w'rd"))
+        topology = _lscpu("4 0 0 0", "5 0 0 1", "6 0 0 2", "7 0 0 3")
+        with patch.object(zbsutils.shell, 'call', return_value=_OK), \
+             patch.object(zbsutils.linux, 'sshpass_run', side_effect=[
+                 (0, topology, ""), (0, "", ""), (0, "", ""), (0, "", "")]) as ssh:
+            out = zbsagent.ZbsAgent().deploy_vhost(_req(body))
+            assert zbsagent.jsonobject.loads(out).success is True
+            assert shlex.split(_last_cmd()) == [
+                zbsutils.ZBSADM_BIN_PATH, "vhost", "deploy", "--host", "10.0.0.9", "--cpuset", "[4,5,6,7]",
+                "--silent", "--hugepage-dir", "/dev/hugepages2m"]
+            assert ssh.call_count == 4
+            for args, kwargs in ssh.call_args_list:
+                assert args[:2] == ("10.0.0.9", "p@ss w'rd")
+                assert kwargs == dict(user="admin", port=2222)
+            commands = [call.args[2] for call in ssh.call_args_list]
+            assert commands[0] == zbsutils.VHOST_CPU_TOPOLOGY_CMD
+            assert commands[1].startswith("findmnt")
+            assert "mount -t hugetlbfs -o pagesize=2M" in commands[2]
+            assert "docker ps" in commands[3] and "/var/zbsvhost/sockets/admin.sock" in commands[3]
+
+    @pytest.mark.parametrize("failure", [Exception("host not found"),
+                                       '{"success":false,"error":{"message":"private_key_file required"}}'])
+    def test_cli_failure_reaches_response_without_ready_poll(self, failure):
+        body = '{"hostIp":"10.0.0.9","sshPort":22,"sshUsername":"root","sshPassword":"pwd"}'
+        with patch.object(zbsutils.shell, 'call', side_effect=[failure]), \
+             patch.object(zbsutils, 'vhost_auto_cpuset', return_value="[4,5,6,7]"), \
+             patch.object(zbsutils, 'ensure_2m_hugetlbfs_mount', return_value="/dev/hugepages2m"), \
+             patch.object(zbsutils, 'wait_vhost_target_ready') as wait_ready:
+            response = zbsagent.jsonobject.loads(zbsagent.ZbsAgent().deploy_vhost(_req(body)))
+            assert response.success is False
+            reason = str(failure) if isinstance(failure, Exception) else "private_key_file required"
+            assert reason in response.error
+            wait_ready.assert_not_called()
+
     def test_ready_timeout_fails_deploy(self):
         body = '{"hostIp":"10.0.0.9","sshPort":22,"sshUsername":"root","sshPassword":"pwd"}'
         with patch.object(zbsutils, 'deploy_vhost', return_value=_OK), \
@@ -297,15 +323,6 @@ class TestDeployVhost:
             assert "name=^/zbsvhost-10.0.0.9$" in cmd
             assert "/var/zbsvhost/sockets/admin.sock" in cmd
             assert sleep.call_count == 2
-
-
-class TestDestroyVhost:
-    def test_targets_host(self):
-        with patch.object(zbsutils.shell, 'call'):
-            zbsutils.destroy_vhost("10.0.0.9", 22, "root", "pwd")
-            cmd = _last_cmd()
-            assert cmd.startswith(zbsutils.ZBSADM_BIN_PATH + " vhost destroy")
-            assert "--host 10.0.0.9" in cmd
 
 
 class TestVhostSocketPath:
