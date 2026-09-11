@@ -182,22 +182,11 @@ class Huawei(GPUBase):
         return gpu_infos
 
     @classmethod
-    def parse_chip_info_summary(cls, output):
-        """Parse healthy chip PCI addresses from the ``npu-smi info`` table.
-
-        On dual-chip devices such as Ascend 910C, ``info -t board`` only
-        reports the PCI address of chip 0.  The summary table reports both
-        chips, so use it to discover the secondary PCI function without
-        treating Warning or otherwise unhealthy chips as nominal.
-
-        See docs/hardware-tools/npu-smi-output.md#910c_normal_npu-smi-info_output
-        for the complete real output captured from the 910C environment.
-
-        See docs/hardware-tools/npu-smi-output.md#910b_normal_npu-smi-info_output
-        for the complete real output captured from the 910B environment.
-        """
+    def _parse_chip_info_summary_rows(cls, output):
+        """Parse Huawei summary chip rows with their health state."""
         gpu_infos = []
         npu_id = None
+        npu_name = None
         health = None
         power = None
 
@@ -215,30 +204,37 @@ class Huawei(GPUBase):
                 cells[1])
             if pci_match:
                 chip_fields = cells[0].split()
-                current_npu_id, current_health, current_power = (
-                    npu_id, health, power)
-                npu_id, health, power = None, None, None
+                current_npu_id, current_npu_name, current_health, current_power = (
+                    npu_id, npu_name, health, power)
+                npu_id, npu_name, health, power = None, None, None, None
 
                 if (current_npu_id is None or current_health is None
-                        or len(chip_fields) < 2):
+                        or not chip_fields):
+                    continue
+                if (len(chip_fields) < 2
+                        and not (current_npu_name or "").upper().startswith("910B")):
                     continue
 
-                chip_id, physical_id = chip_fields[0], chip_fields[1]
-                if current_health.upper() == "OK":
-                    memory = None
-                    memory_usages = re.findall(r"(\d+)\s*/\s*(\d+)", cells[2])
-                    if memory_usages:
-                        memory = "%s MB" % memory_usages[-1][1]
+                chip_id = chip_fields[0]
+                physical_id = chip_fields[1] if len(chip_fields) > 1 else None
+                memory = None
+                memory_usages = re.findall(r"(\d+)\s*/\s*(\d+)", cells[2])
+                if memory_usages:
+                    memory = "%s MB" % memory_usages[-1][1]
 
-                    gpu_infos.append(GPUInfo(
+                extra = {
+                    "npuId": current_npu_id,
+                    "chipId": chip_id,
+                }
+                if physical_id is not None:
+                    extra["physicalId"] = physical_id
+                gpu_infos.append((
+                    GPUInfo(
                         pci_address=cls.normalize_pci_address(cells[1]),
                         memory=memory,
                         power=current_power,
-                        extra={
-                            "npuId": current_npu_id,
-                            "chipId": chip_id,
-                            "physicalId": physical_id,
-                        }))
+                        extra=extra),
+                    current_health.upper() == "OK"))
 
                 continue
 
@@ -251,12 +247,33 @@ class Huawei(GPUBase):
                 continue
 
             npu_id = npu_fields[0]
+            npu_name = npu_fields[1] if len(npu_fields) > 1 else None
             health = health_fields[0]
             power_fields = cells[2].split()
             power = "%s W" % power_fields[0] if power_fields and re.match(
                 r"^[0-9]+(?:\.[0-9]+)?$", power_fields[0]) else None
 
         return gpu_infos
+
+    @classmethod
+    def parse_chip_info_summary(cls, output):
+        """Parse healthy chip PCI addresses from the ``npu-smi info`` table.
+
+        On dual-chip devices such as Ascend 910C, ``info -t board`` only
+        reports the PCI address of chip 0.  The summary table reports both
+        chips, so use it to discover the secondary PCI function without
+        treating Warning or otherwise unhealthy chips as nominal.
+
+        See docs/hardware-tools/npu-smi-output.md#910c_normal_npu-smi-info_output
+        for the complete real output captured from the 910C environment.
+
+        See docs/hardware-tools/npu-smi-output.md#910b_normal_npu-smi-info_output
+        for the complete real output captured from the 910B environment.
+        """
+        return [
+            info for info, is_healthy in cls._parse_chip_info_summary_rows(output)
+            if is_healthy
+        ]
 
     @classmethod
     def get_basic_info(cls):
@@ -320,13 +337,16 @@ class Huawei(GPUBase):
             logger.debug("Failed to get Huawei NPU summary info: %s" % e)
             return all_gpu_infos
 
-        summary_infos = cls.parse_chip_info_summary(o)
+        summary_rows = cls._parse_chip_info_summary_rows(o)
         existing_by_pci = {
             info.pci_address.lower(): info for info in all_gpu_infos
             if info.pci_address
         }
-        for summary_info in summary_infos:
+        for summary_info, is_healthy in summary_rows:
             pci_address = summary_info.pci_address.lower()
+            if not is_healthy:
+                continue
+
             npu_id = summary_info.extra.get("npuId")
             if pci_address in existing_by_pci:
                 existing_by_pci[pci_address].extra.update(summary_info.extra)
@@ -347,6 +367,33 @@ class Huawei(GPUBase):
     # ==========================================================================
 
     @classmethod
+    def get_rank_table_device_ids(cls, gpu_info_map, pci_addresses):
+        """Choose HCCN IDs for summary-classified Huawei devices."""
+        device_ids = set()
+        for pci_addr in pci_addresses:
+            device_info = gpu_info_map.get(pci_addr) or {}
+            physical_id = str(device_info.get("physicalId", ""))
+            npu_id = str(device_info.get("npuId", ""))
+            chip_id = str(device_info.get("chipId", ""))
+            if physical_id.isdigit():
+                device_ids.add(physical_id)
+            elif chip_id.isdigit() and npu_id.isdigit():
+                device_ids.add(npu_id)
+
+        return sorted(device_ids, key=int)
+
+    @classmethod
+    def get_aios_rank_table(cls, gpu_info_map, pci_addresses):
+        """Build a rank table for the selected Huawei PCI devices."""
+        from zstacklib.utils.gpu import get_huawei_gpu_aios_rank_table_dict
+
+        device_ids = cls.get_rank_table_device_ids(
+            gpu_info_map, pci_addresses)
+        if not device_ids:
+            return None
+        return get_huawei_gpu_aios_rank_table_dict(device_ids)
+
+    @classmethod
     def enrich_addon_info(cls, gpu_info_map, pci_addresses):
         """Add productName and opaque.aiosRankTable for Huawei NPUs."""
         if not pci_addresses:
@@ -357,7 +404,6 @@ class Huawei(GPUBase):
         from zstacklib.utils.gpu import (
             get_huawei_gpu_product_name_cmd,
             get_huawei_product_type,
-            get_huawei_gpu_aios_rank_table_dict,
         )
         r, o, e = bash_roe(get_huawei_gpu_product_name_cmd(npu_ids[0]))
         if r == 0 and o and "not support" not in o:
@@ -367,7 +413,8 @@ class Huawei(GPUBase):
                     if pci_addr in gpu_info_map:
                         gpu_info_map[pci_addr]["productName"] = product_type
         try:
-            aios_rank_table = get_huawei_gpu_aios_rank_table_dict(npu_ids)
+            aios_rank_table = cls.get_aios_rank_table(
+                gpu_info_map, pci_addresses)
             if aios_rank_table:
                 for pci_addr in pci_addresses:
                     if pci_addr not in gpu_info_map:
@@ -451,7 +498,9 @@ class Huawei(GPUBase):
         for info in cls.parse_chip_info_summary(output):
             npu_id = info.extra.get("npuId")
             chip_id = info.extra.get("chipId")
-            if npu_id in npu_ids and chip_id is not None:
+            physical_id = info.extra.get("physicalId")
+            if (npu_id in npu_ids and chip_id is not None
+                    and physical_id is not None):
                 chips_by_npu.setdefault(npu_id, []).append(chip_id)
         return chips_by_npu
 
@@ -709,68 +758,6 @@ class Huawei(GPUBase):
             return True
 
         return False
-
-    # ==========================================================================
-    # AIOS Rank Table (for cluster interconnect)
-    # ==========================================================================
-
-    @classmethod
-    def get_aios_rank_table(cls, npu_ids):
-        """
-        Get AIOS rank table for cluster interconnect.
-
-        This is stored in addonInfo["opaque"]["aiosRankTable"].
-        """
-        if not npu_ids:
-            return None
-
-        device_ips = {}
-        device_netmasks = {}
-
-        for npu_id in npu_ids:
-            if not npu_id.isdigit():
-                continue
-
-            r, o, _ = bash_roe("hccn_tool -i %s -ip -g" % npu_id)
-
-            ip = None
-            netmask = None
-
-            if r == 0 and o:
-                # Parse IP address
-                ip_match = re.search(r'ipaddr:(\d+\.\d+\.\d+\.\d+)', o)
-                if ip_match:
-                    ip = ip_match.group(1)
-
-                # Parse netmask
-                netmask_match = re.search(r'netmask:(\d+\.\d+\.\d+\.\d+)', o)
-                if netmask_match:
-                    netmask = netmask_match.group(1)
-
-            # Fallback defaults
-            if not ip:
-                ip = "10.20.0.%s" % (int(npu_id) + 2)
-            if not netmask:
-                netmask = "255.255.0.0"
-
-            device_ips[npu_id] = ip
-            device_netmasks[npu_id] = netmask
-
-        rank_table = {
-            "server_count": len(npu_ids),
-            "server_list": []
-        }
-
-        for npu_id in npu_ids:
-            server_info = {
-                "device_id": npu_id,
-                "host": device_ips.get(npu_id, ""),
-                "device_ip": device_ips.get(npu_id, ""),
-                "netmask": device_netmasks.get(npu_id, "")
-            }
-            rank_table["server_list"].append(server_info)
-
-        return rank_table
 
     # ==========================================================================
     # Virtualization Capabilities Detection
