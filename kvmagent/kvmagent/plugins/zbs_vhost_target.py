@@ -4,9 +4,9 @@ import os
 import shlex
 import socket
 import threading
-import xml.etree.ElementTree as ET
 
 from zstacklib.system.filesystem import read_file, safe_write
+from zstacklib.utils import hugepages
 from zstacklib.utils import bash
 from zstacklib.utils import log
 
@@ -22,9 +22,6 @@ def _locked(fn):
             return fn(*args, **kwargs)
     return wrapper
 
-HUGEPAGE_DIR = "/sys/kernel/mm/hugepages/hugepages-2048kB"
-HUGEPAGE_NR_PATH = HUGEPAGE_DIR + "/nr_hugepages"
-HUGEPAGE_FREE_PATH = HUGEPAGE_DIR + "/free_hugepages"
 DEFAULT_VHOST_TARGET_HUGEPAGE_DIR = "/dev/hugepages2m"
 DEFAULT_SOCKET_DIR = "/var/tmp/vhost-sockets"
 DEFAULT_CONTROL_SOCK = "/var/tmp/vhost-sockets/vhost.sock"
@@ -32,7 +29,6 @@ DEFAULT_CLIENT_CONF = "/etc/zbs/client.conf"
 DEFAULT_CONTAINER_NAME = "zbs-vhost"
 DEFAULT_HUGEPAGE_NR = 256
 DEFAULT_VHOST_TARGET_HUGEPAGE_NR = 1024
-HUGEPAGE_SIZE_BYTES = 2 * 1024 * 1024
 DEFAULT_CORE_COUNT = 2
 DOCKER_CE_INSTALL_CMD = "yum --disablerepo=zstack-local --enablerepo=zstack-mn install -y docker-ce docker-ce-cli containerd.io"
 DOCKER_ENGINE_INSTALL_CMD = "yum --disablerepo=zstack-local --enablerepo=zstack-mn install -y docker-engine"
@@ -103,69 +99,6 @@ def pull_image(image):
     bash.bash_errorout("docker pull %s" % shlex.quote(image))
 
 
-def mem_to_pages(nbytes):
-    return (int(nbytes) + HUGEPAGE_SIZE_BYTES - 1) // HUGEPAGE_SIZE_BYTES
-
-
-_MEM_UNIT_BYTES = {
-    "b": 1, "bytes": 1,
-    "k": 1024, "kib": 1024, "kb": 1024,
-    "m": 1024 ** 2, "mib": 1024 ** 2, "mb": 1024 ** 2,
-    "g": 1024 ** 3, "gib": 1024 ** 3, "gb": 1024 ** 3,
-    "t": 1024 ** 4, "tib": 1024 ** 4, "tb": 1024 ** 4,
-}
-
-
-def domain_vhostuser_present(domain_xml):
-    try:
-        root = ET.fromstring(domain_xml)
-    except ET.ParseError:
-        return False
-    return any(d.get("type") == "vhostuser" for d in root.iter("disk"))
-
-
-def domain_memory_bytes(domain_xml):
-    mem = ET.fromstring(domain_xml).find("memory")
-    if mem is None or not (mem.text or "").strip():
-        return 0
-    unit = (mem.get("unit") or "k").lower()
-    return int(mem.text.strip()) * _MEM_UNIT_BYTES.get(unit, 1024)
-
-
-def _read_hugepage_nr():
-    if not os.path.exists(HUGEPAGE_NR_PATH):
-        raise Exception("hugepage sysfs not found: %s" % HUGEPAGE_NR_PATH)
-    return int(bash.bash_o("cat %s" % HUGEPAGE_NR_PATH).strip() or "0")
-
-
-def _read_hugepage_free():
-    # per-pool sysfs, not /proc/meminfo: meminfo's HugePages_Free reports only the
-    # kernel default hugepage size, which on aarch64 (64KB base page) is 512MB, not the
-    # 2MB pool this target uses; reading meminfo makes the 2MB grow look like it failed.
-    if not os.path.exists(HUGEPAGE_FREE_PATH):
-        raise Exception("hugepage sysfs not found: %s" % HUGEPAGE_FREE_PATH)
-    return int(bash.bash_o("cat %s" % HUGEPAGE_FREE_PATH).strip() or "0")
-
-
-def _compact_memory():
-    bash.bash_o("sync; echo 3 > /proc/sys/vm/drop_caches; echo 1 > /proc/sys/vm/compact_memory")
-
-
-@_locked
-def ensure_free_hugepages(need_pages):
-    free = _read_hugepage_free()
-    if free >= need_pages:
-        return
-    total = _read_hugepage_nr()
-    target = total + (need_pages - free)
-    _compact_memory()
-    bash.bash_o("echo %d > %s" % (target, HUGEPAGE_NR_PATH))
-    got = _read_hugepage_free()
-    if got < need_pages:
-        raise Exception("failed to free %d hugepages, only %d free after growing to %d; "
-                        "free up memory on the host" % (need_pages, got, target))
-
-
 def find_2m_hugetlbfs_mount():
     out = bash.bash_o("findmnt -rn -t hugetlbfs -o TARGET,OPTIONS")
     for line in out.splitlines():
@@ -189,19 +122,9 @@ def ensure_2m_hugetlbfs_mount(mount_dir=DEFAULT_VHOST_TARGET_HUGEPAGE_DIR):
     return mount_dir
 
 
-def ensure_hugepages_for_domain(domain_xml):
-    if not domain_vhostuser_present(domain_xml):
-        return
-    ensure_free_hugepages(mem_to_pages(domain_memory_bytes(domain_xml)))
-
-
 @_locked
 def reclaim_hugepages(slack=0):
-    free = _read_hugepage_free()
-    total = _read_hugepage_nr()
-    keep = (total - free) + slack
-    if keep < total:
-        bash.bash_o("echo %d > %s" % (keep, HUGEPAGE_NR_PATH))
+    hugepages.reclaim_hugepages(slack)
 
 
 def image_present(image):
@@ -312,7 +235,7 @@ def ensure_target(image, cores=None, socket_dir=DEFAULT_SOCKET_DIR, control_sock
         cores = compute_cores(core_count)
 
     load_image(image, image_tar, image_url)
-    ensure_free_hugepages(hugepage_nr)
+    hugepages.ensure_free_hugepages(hugepage_nr)
     if not os.path.exists(socket_dir):
         os.makedirs(socket_dir)
 
