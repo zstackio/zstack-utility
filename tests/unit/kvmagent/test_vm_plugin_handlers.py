@@ -1167,17 +1167,19 @@ class TestBlockPullHandler:
 
 @pytest.mark.kvmagent
 class TestCheckRecoverHandler:
-    @pytest.mark.parametrize(('state', 'expected'), [
-        (vm_plugin.Vm.VM_STATE_RUNNING, 'done'),
-        (vm_plugin.Vm.VM_STATE_PAUSED, 'interrupted'),
+    @pytest.mark.parametrize(('state', 'has_nbd', 'expected'), [
+        (vm_plugin.Vm.VM_STATE_RUNNING, False, 'done'),
+        (vm_plugin.Vm.VM_STATE_PAUSED, False, 'done'),
+        (vm_plugin.Vm.VM_STATE_RUNNING, True, 'interrupted'),
+        (vm_plugin.Vm.VM_STATE_PAUSED, True, 'interrupted'),
     ])
-    def test_check_recover(self, state, expected):
+    def test_check_recover(self, state, has_nbd, expected):
         plugin = _make_vm_plugin()
         mock_vm = MagicMock(state=state)
-        mock_vm.domain_xmlobject.devices.get_child_node_as_list = MagicMock(return_value=[])
+        mock_vm.domain_xmlobject.devices.get_child_node_as_list = MagicMock(return_value=[MagicMock()])
         vm_plugin.VM_RECOVER_TASKS = {}
         vm_plugin.get_vm_by_uuid = MagicMock(return_value=mock_vm)
-        vm_plugin.is_nbd_disk = MagicMock(return_value=False)
+        vm_plugin.is_nbd_disk = MagicMock(return_value=has_nbd)
 
         req = _make_req({'vmUuid': 'vm-uuid'})
         result = plugin.check_recover(req)
@@ -2472,7 +2474,7 @@ class TestRecoverVolumesHandler:
         rsp = json.loads(result)
 
         assert rsp['success'] is True
-        assert events == ['pause', 'recover', 'check', 'resume']
+        assert events == ['recover', 'check']
 
 
 @pytest.mark.kvmagent
@@ -4021,7 +4023,7 @@ class TestVmStartCmdXmlBuild:
                 patch.object(vm_plugin.etree, 'tostring', side_effect=orig_tostring):
             vm = vm_plugin.Vm.from_StartVmCmd(cmd)
 
-        assert cmd.createPaused is True
+        assert not cmd.createPaused
         xml_str = vm.domain_xml.decode() if isinstance(vm.domain_xml, bytes) else vm.domain_xml
         root = vm_plugin.etree.fromstring(xml_str)
         root_driver = self._driver_by_target(root, 'vda')
