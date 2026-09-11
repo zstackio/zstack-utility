@@ -632,6 +632,9 @@ class Huawei(GPUBase):
         if not pci_address:
             return None
 
+        if mem_util is None:
+            mem_util = hbm_usage_rate
+
         metrics = GPUMetrics(
             pci_address=pci_address,
             serial_number=serial_number,

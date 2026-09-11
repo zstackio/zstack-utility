@@ -913,6 +913,34 @@ Real-time Power(W) : 152
         self.assertTrue(any("-i 1 -c 0" in cmd for cmd in commands))
         self.assertTrue(any("-i 1 -c 1" in cmd for cmd in commands))
 
+    def test_collect_910c_metrics_uses_hbm_rate_as_memory_utilization(self):
+        try:
+            from unittest.mock import patch
+        except ImportError:
+            from mock import patch
+        from zstacklib.gpu.vendors.huawei import Huawei
+
+        metric_output = """
+PCIe Bus Info : 0000:9D:00.0
+Aicore Usage Rate(%) : 0
+DDR Capacity(MB) : 0
+DDR Usage Rate(%) : 0
+HBM Capacity(MB) : 65536
+HBM Usage Rate(%) : 4
+Temperature(C) : 34
+Real-time Power(W) : 164.3
+"""
+
+        with patch("zstacklib.gpu.vendors.huawei.get_npu_smi_path",
+                   return_value="/usr/local/sbin/npu-smi"), \
+                patch("zstacklib.gpu.vendors.huawei.bash_roe",
+                      return_value=(0, metric_output, "")):
+            metric = Huawei._collect_metrics_for_npu("0", "0")
+
+        self.assertEqual(metric.pci_address, "0000:9d:00.0")
+        self.assertEqual(metric.memory_utilization, 4.0)
+        self.assertEqual(metric.extra["host_gpu_hbm_rate"], 4.0)
+
     def test_collect_metrics_keeps_910b_single_chip_query(self):
         """910B summary rows must keep the legacy per-NPU metric command."""
         try:
