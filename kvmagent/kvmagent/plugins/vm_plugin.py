@@ -5329,9 +5329,6 @@ class Vm(object):
             if is_external_shared_storage():
                 flag |= libvirt.VIR_MIGRATE_UNSAFE
 
-        if use_tls and hasattr(libvirt, 'VIR_MIGRATE_TLS'):
-            flag |= libvirt.VIR_MIGRATE_TLS
-
         stage = get_task_stage(cmd)
         timeout = get_timeout(cmd)
         class MigrateDaemon(plugin.TaskDaemon):
