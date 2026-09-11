@@ -87,6 +87,8 @@ else:
     command = 'mkdir -p %s %s' % (sftp_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
+run_remote_command("rm -rf %s/*" % sftp_root, host_post_info)
+
 if host_info.distro in RPM_BASED_OS:
     install_pkgs = 'openssh-clients'
     py3_rpms = ' python3.11 python3.11-devel python3.11-pip libffi-devel openssl-devel'
@@ -162,7 +164,7 @@ copy(copy_arg, host_post_info)
 copy_arg = CopyArg()
 copy_arg.src = "%s/sftp-iptables" % file_root
 copy_arg.dest = "%s/sftp-iptables" % sftp_root
-sftp_copy_result = copy(copy_arg, host_post_info)
+copy(copy_arg, host_post_info)
 
 # name: install sftp
 if sftp_copy_result != "changed:False":
