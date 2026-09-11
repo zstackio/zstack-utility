@@ -158,9 +158,7 @@ def deploy_vhost(ip, port, username, password, cpuset=None, hugepage_size=None, 
         cpuset = vhost_auto_cpuset(ip, port, username, password)
     if not hugepage_dir:
         hugepage_dir = ensure_2m_hugetlbfs_mount(ip, port, username, password)
-    cmd = "%s vhost deploy --host %s --port %s -u %s -p %s --cpuset %s --silent" % (
-        ZBSADM_BIN_PATH, ip, port, username, linux.shellquote(password),
-        linux.shellquote(cpuset))
+    cmd = "%s vhost deploy --host %s --cpuset %s --silent" % (ZBSADM_BIN_PATH, ip, linux.shellquote(cpuset))
     if hugepage_size:
         cmd += " --hugepage-size %s" % hugepage_size
     if hugepage_dir:
@@ -186,20 +184,17 @@ def wait_vhost_target_ready(ip, port, username, password, retries=VHOST_DEPLOY_R
 
 
 def destroy_vhost(ip, port, username, password):
-    return shell.call("%s vhost destroy --host %s --port %s -u %s -p %s --silent" % (
-        ZBSADM_BIN_PATH, ip, port, username, linux.shellquote(password)))
+    return shell.call("%s vhost destroy --host %s --silent" % (ZBSADM_BIN_PATH, ip))
 
 
 def create_vhost_bdev(ip, port, username, password, logical_pool, volume, bdev_name):
     return shell.call(
-        "%s vhost create-bdev --host %s --port %s -u %s -p %s --volume %s/%s%s --name %s --silent" % (
-            ZBSADM_BIN_PATH, ip, port, username, linux.shellquote(password),
-            logical_pool, volume, VHOST_VOLUME_SUFFIX, bdev_name))
+        "%s vhost create-bdev --host %s --volume %s/%s%s --name %s --silent" % (
+            ZBSADM_BIN_PATH, ip, logical_pool, volume, VHOST_VOLUME_SUFFIX, bdev_name))
 
 
 def delete_vhost_bdev(ip, port, username, password, bdev_name):
-    return shell.call("%s vhost delete-bdev --host %s --port %s -u %s -p %s --name %s --silent" % (
-        ZBSADM_BIN_PATH, ip, port, username, linux.shellquote(password), bdev_name))
+    return shell.call("%s vhost delete-bdev --host %s --name %s --silent" % (ZBSADM_BIN_PATH, ip, bdev_name))
 
 
 def vhost_socket_path(bdev_name):
