@@ -685,10 +685,6 @@ def collect_raid_state():
                                                  ['slot_number', 'disk_group']),
     }
 
-    r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
-    if r == 0 and o.strip() != "":
-        return collect_sas_raid_state(metrics, o)
-
     r, o = bash_ro("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
     if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
         return collect_mega_raid_state(metrics, o)
@@ -697,6 +693,10 @@ def collect_raid_state():
         "arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
     if r == 0 and o.strip() != "":
         return collect_arcconf_raid_state(metrics, o)
+
+    r, o = bash_ro("sas3ircu list | grep -A 8 'Index' | awk '{print $1}'")
+    if r == 0 and o.strip() != "":
+        return collect_sas_raid_state(metrics, o)
 
     return list(metrics.values())
 
@@ -837,7 +837,11 @@ def collect_mega_raid_state(metrics, infos):
             if not match:
                 continue
             vd_state = data[attr][0]["State"]
-            disk_group = data[attr][0]["DG/VD"].split("/")[0]
+            disk_group = data[attr][0]["DG/VD"]
+            if disk_group:
+                disk_group = disk_group.split("/")[0]
+            else:
+                disk_group = data[attr][0]["VD"]
             converted_vd_state = convert_raid_state_to_int(vd_state)
             metrics['raid_state'].add_metric([disk_group], converted_vd_state)
             handle_raid_state(disk_group, converted_vd_state, vd_state)

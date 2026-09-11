@@ -481,6 +481,8 @@ def install_kvm_pkg():
             _skip_list.extend(["open-iscsi"])
             _dep_list = [ pkg for pkg in dep_list.split() if pkg not in _skip_list ]
             dep_list = ' '.join(_dep_list)
+            if 'storcli' in _dep_list:
+                update_list += ' storcli'
 
             # name: install/update kvm related packages on RedHat based OS from user defined repo
             command = ("echo {1} >/var/lib/zstack/dependencies && yum --disablerepo=* --enablerepo={0} clean metadata >/dev/null && \
