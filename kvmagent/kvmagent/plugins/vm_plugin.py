@@ -4070,6 +4070,7 @@ class Vm(object):
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'}
+                driver_elements['discard'] = 'unmap'
                 if is_virtio_blk(volume) and volume.multiQueues:
                     driver_elements["queues"] = volume.multiQueues
                 if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
@@ -7366,6 +7367,7 @@ class Vm(object):
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'}
+                driver_elements['discard'] = 'unmap'
                 if is_virtio_blk(_v) and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
                 if (not _v.useVirtioSCSI) and _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
@@ -10152,8 +10154,9 @@ class VmPlugin(kvmagent.KvmAgent):
 
         def block_volume(_v):
             disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
-            e(disk, 'driver', None,
-              {'name': 'qemu', 'type': driver_type, 'cache': 'none', 'io': 'native'})
+            driver_elements = {'name': 'qemu', 'type': driver_type, 'cache': 'none', 'io': 'native'}
+            driver_elements['discard'] = 'unmap'
+            e(disk, 'driver', None, driver_elements)
             e(disk, 'source', None, {'dev': _v.installPath})
             return disk
 

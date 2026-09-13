@@ -3,6 +3,7 @@
 @author: Frank
 '''
 import unittest
+from unittest import mock
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -39,6 +40,18 @@ class Test(unittest.TestCase):
         vm.data_volumes = cmd.dataVolumePath
         vm.qemu_args = ['-append', 'mgmtNicIp=192.168.0.216', 'mgmtNicNetmask=255.255.255.0']
         print(vm.to_xml(True))
+
+    def testBlockVolumeDiscard(self):
+        cmd = vm_utils.create_startvm_body_jsonobject()
+        cmd.rootVolume.deviceType = 'block'
+        cmd.rootVolume.installPath = '/dev/zstack-vg/root-volume'
+        with mock.patch('kvmagent.plugins.vm_plugin.linux.get_img_fmt', return_value='qcow2'):
+            vm = vm_plugin.Vm.from_StartVmCmd(cmd)
+
+        disk = etree.fromstring(vm.domain_xml).xpath(
+            "./devices/disk[source[@dev='/dev/zstack-vg/root-volume']]"
+        )[0]
+        self.assertEqual('unmap', disk.find('driver').get('discard'))
 
 
 if __name__ == "__main__":
