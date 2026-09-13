@@ -1764,12 +1764,16 @@ def is_new_ovmf_supported():
 def is_high_mmio_size_supported():
     return NumericVersion(qemu_img.get_release_version()) >= NumericVersion("6.2.0-902")
 
-def is_memory_backing_supported():
-    # QEMU removed -numa node,mem= in 5.1.0.  The memoryBacking/access
+def is_memory_backing_supported(memfd=False):
+    libvirt_version = NumericVersion(get_libvirt_version())
+    if memfd:
+        return libvirt_version >= NumericVersion("4.10.0")
+
+    # QEMU removed -numa node,mem= in 5.1.0. The memoryBacking/access
     # element has been supported by libvirt since 1.0.6 and makes libvirt
     # generate the compatible memdev form instead.
     return (NumericVersion(qemu.get_version()) >= NumericVersion("5.1.0") and
-            NumericVersion(get_libvirt_version()) >= NumericVersion("1.0.6"))
+            libvirt_version >= NumericVersion("1.0.6"))
 
 
 @linux.with_arch(todo_list=['x86_64'])
@@ -6525,8 +6529,6 @@ class Vm(object):
         numa_nodes = cmd.addons.numaNodes
         machine_type = get_machineType(cmd.machineType)
         use_numa_memory_backing = use_numa and HOST_ARCH == 'aarch64'
-        if use_numa_memory_backing and not is_memory_backing_supported():
-            raise kvmagent.KvmError("Aarch64 NUMA is not supported by the current QEMU and libvirt versions.")
         if HOST_ARCH == "aarch64" and cmd.bootMode == 'Legacy':
             raise kvmagent.KvmError("Aarch64 does not support legacy, please change boot mode to UEFI instead of Legacy on your VM or Image.")
         if cmd.architecture and cmd.architecture != HOST_ARCH:
@@ -6561,6 +6563,9 @@ class Vm(object):
             volumes_for_iothread_vq_mapping, manual_iothread_ids
         )
         vm_artifact_views = vm_artifact.parse_vm_artifact_views(cmd.addons)
+        use_memfd_backing = cmd.MemAccess == "shared" or bool(vm_artifact_views)
+        if use_numa_memory_backing and not is_memory_backing_supported(use_memfd_backing):
+            raise kvmagent.KvmError("Aarch64 NUMA is not supported by the current QEMU and libvirt versions.")
 
         def make_root():
             root = etree.Element('domain')

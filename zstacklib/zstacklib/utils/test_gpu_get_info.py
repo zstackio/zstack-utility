@@ -78,6 +78,8 @@ class TestGetInfo(unittest.TestCase):
                     serial_number="1322519087621"
                 )
             ]
+            mock_plugin.get_info_by_pci.side_effect = \
+                lambda _: mock_plugin.get_basic_info.return_value
 
             mock_get_vendor.return_value = mock_plugin
             mock_mapping.return_value = {"NVIDIA": "NVIDIA"}
@@ -113,6 +115,8 @@ class TestGetInfo(unittest.TestCase):
                     }
                 )
             ]
+            mock_plugin.get_info_by_pci.side_effect = \
+                lambda _: mock_plugin.get_basic_info.return_value
             mock_plugin.enrich_addon_info.side_effect = (
                 lambda info_map, _: info_map["0000:81:00.0"].update({
                     "productName": "Atlas 800",
@@ -248,6 +252,8 @@ class TestGetInfo(unittest.TestCase):
                     serial_number="OTHER_PCI"
                 )
             ]
+            mock_plugin.get_info_by_pci.side_effect = \
+                lambda _: mock_plugin.get_basic_info.return_value
             mock_get_vendor.return_value = mock_plugin
             mock_mapping.return_value = {"NVIDIA": "NVIDIA"}
 
@@ -436,6 +442,8 @@ class TestGetAllGPUInfosByPCI(unittest.TestCase):
                     serial_number="SN002"
                 )
             ]
+            mock_nvidia.get_info_by_pci.side_effect = \
+                lambda _: mock_nvidia.get_basic_info.return_value
 
             mock_get_vendors.return_value = [mock_nvidia]
 
@@ -751,6 +759,8 @@ class TestSupplementGpuInfoMapFromPci(unittest.TestCase):
         mock_huawei.get_basic_info.return_value = [
             GPUInfo(pci_address="0000:82:00.0", memory="8192 MB", serial_number="SN1")
         ]
+        mock_huawei.get_info_by_pci.side_effect = \
+            lambda _: mock_huawei.get_basic_info.return_value
         mock_get_vendors.return_value = [mock_huawei]
 
         result = get_all_gpu_infos_by_pci()

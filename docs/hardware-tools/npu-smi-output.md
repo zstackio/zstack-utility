@@ -1,18 +1,18 @@
-# Huawei NPU `npu-smi` 输出记录
+# Huawei NPU `npu-smi` Output Records
 
-本文档只记录不同硬件型号、不同场景下执行 `npu-smi` 命令得到的真实输出，供代码解析、测试和问题排查参考。
+This document records real output from running `npu-smi` on different hardware models and in different scenarios. It is used as a reference for parsing, tests, and troubleshooting.
 
-记录 ID 格式：`$硬件型号_$场景_$npu-smi简称_output`
+Record ID format: `$hardware_model_$scenario_$npu-smi_short_name_output`
 
-- 硬件型号使用小写，例如 `910c`、`910b`
-- 场景使用简短英文，例如 `normal`、`warning`
-- 原始输出保持采集格式，不修改字段内容
+- Use lowercase hardware model names, such as `910c` and `910b`.
+- Use concise English scenario names, such as `normal` and `warning`.
+- Preserve the original output format and field values exactly as collected.
 
 ## 910C
 
 ### id: `910c_normal_npu-smi-info_output`
 
-执行的命令：
+Command executed:
 
 ```bash
 npu-smi info
@@ -84,7 +84,7 @@ npu-smi info
 
 ### id: `910b_normal_npu-smi-info_output`
 
-执行的命令：
+Command executed:
 
 ```bash
 npu-smi info
@@ -127,9 +127,9 @@ npu-smi info
 +===========================+===============+======================================================================+
 ```
 
-## 记录索引
+## Record Index
 
-| 硬件型号 | 场景 | 命令 | 记录 ID |
+| Hardware model | Scenario | Command | Record ID |
 |---|---|---|---|
 | 910C | normal | `npu-smi info` | `910c_normal_npu-smi-info_output` |
 | 910B | normal | `npu-smi info` | `910b_normal_npu-smi-info_output` |

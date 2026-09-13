@@ -30,16 +30,19 @@ def _make_req(body_dict=None):
     return {http.REQUEST_BODY: body, http.REQUEST_HEADER: {}}
 
 
-@pytest.mark.parametrize('qemu_version, libvirt_version, expected', [
-    ('5.1.0', '1.0.6', True),
-    ('6.2.0', '6.2.0', True),
-    ('5.0.1', '6.2.0', False),
-    ('6.2.0', '1.0.5', False),
+@pytest.mark.parametrize('memfd, qemu_version, libvirt_version, expected', [
+    (False, '5.1.0', '1.0.6', True),
+    (False, '6.2.0', '6.2.0', True),
+    (False, '5.0.1', '6.2.0', False),
+    (False, '6.2.0', '1.0.5', False),
+    (True, '5.0.1', '4.10.0', True),
+    (True, '6.2.0', '4.9.0', False),
 ])
-def test_memory_backing_support_is_based_on_versions(qemu_version, libvirt_version, expected):
+def test_memory_backing_support_is_based_on_versions(
+        memfd, qemu_version, libvirt_version, expected):
     with patch.object(vm_plugin.qemu, 'get_version', return_value=qemu_version), \
             patch.object(vm_plugin, 'get_libvirt_version', return_value=libvirt_version):
-        assert vm_plugin.is_memory_backing_supported() is expected
+        assert vm_plugin.is_memory_backing_supported(memfd) is expected
 
 
 vm_plugin.http = http
