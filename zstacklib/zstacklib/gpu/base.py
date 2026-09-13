@@ -261,6 +261,17 @@ class GPUBase(object):
         return cls.parse_basic_info(o)
 
     @classmethod
+    def get_info_by_pci(cls, pci_address):
+        """Collect information for the PCI device's logical device group.
+
+        The default keeps the existing host-wide collection contract.  Vendor
+        implementations may override this when one PCI function represents a
+        logical device with additional related functions, such as Huawei
+        Ascend 910C's two-chip NPU.
+        """
+        return cls.get_basic_info()
+
+    @classmethod
     @abc.abstractmethod
     def parse_basic_info(cls, output):
         """

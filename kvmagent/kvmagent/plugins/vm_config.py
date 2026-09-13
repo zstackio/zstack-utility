@@ -414,7 +414,16 @@ class VmConfigPlugin(kvmagent.KvmAgent):
             if npu_info_board_output is None:
                 continue
 
-            npu_infos.extend(gpu.parse_huawei_gpu_output_by_npu_id(npu_info_board_output))
+            board_infos = gpu.parse_huawei_gpu_output_by_npu_id(
+                npu_info_board_output)
+            for board_info in board_infos:
+                board_info["npuId"] = npu_id
+            npu_infos.extend(board_infos)
+
+        summary_output = qga.guest_exec_cmd_no_exitcode("npu-smi info")
+        if summary_output is not None:
+            npu_infos = gpu.merge_huawei_gpu_chip_infos(
+                npu_infos, summary_output)
 
         return self.map_pci_addresses_in_gpu_info(npu_infos, qga)
 

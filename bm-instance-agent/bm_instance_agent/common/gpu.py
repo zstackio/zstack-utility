@@ -115,7 +115,10 @@ def parse_huawei_gpu_output_by_npu_id(output):
     if total_memory > 0:
         gpuinfo["memory"] = "%s MB" % total_memory
 
-    gpuinfos.append(gpuinfo)
+    # Do not pass an empty pseudo-device to PCI matching when board output is
+    # truncated or otherwise malformed.
+    if gpuinfo.get("pciAddress"):
+        gpuinfos.append(gpuinfo)
     return gpuinfos
 
 
