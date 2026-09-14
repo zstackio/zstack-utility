@@ -1,7 +1,6 @@
-import pytest
 from unittest.mock import patch
 
-from zstacklib.utils import http, jsonobject, hugepages
+from zstacklib.utils import hugepages
 from kvmagent.plugins import zbs_vhost_target as t
 from kvmagent.plugins import zbs_storage_plugin
 
@@ -33,19 +32,11 @@ class TestEnsure2mHugetlbfsMount:
 
 
 
-class TestPrepareVhostTargetEnv:
-    def test_ensures_2m_mount_and_free_hugepages(self):
-        body = '{"hugepageNr":1024}'
-        req = {http.REQUEST_BODY: body}
-        with patch.object(t, 'ensure_docker'), \
-             patch.object(t, 'ensure_2m_hugetlbfs_mount') as ensure_mount, \
-             patch.object(hugepages, 'ensure_free_hugepages') as ensure_free:
-            out = zbs_storage_plugin.ZbsStoragePlugin().prepare_vhost_target_env(req)
-            rsp = jsonobject.loads(out)
-            assert rsp.success is True
-            ensure_mount.assert_called_once_with()
-            ensure_free.assert_called_once_with(1024)
-
+def test_prepare_endpoint_is_retired():
+    with patch.object(zbs_storage_plugin.kvmagent, 'get_http_server') as server:
+        zbs_storage_plugin.ZbsStoragePlugin().start()
+        paths = [call.args[0] for call in server.return_value.register_async_uri.call_args_list]
+        assert '/zbs/primarystorage/vhost/target/prepareenv' not in paths
 
 
 def test_reclaim_waits_for_target_startup_lock():
