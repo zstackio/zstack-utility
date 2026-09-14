@@ -216,8 +216,7 @@ class ZbsAgent(plugin.TaskManager):
     EXPAND_VOLUME_PATH = "/zbs/primarystorage/volume/expand"
     FLATTEN_VOLUME_PATH = "/zbs/primarystorage/volume/flatten"
     GET_VOLUME_CLIENTS_PATH = "/zbs/primarystorage/volume/clients"
-    DEPLOY_VHOST_PATH = "/zbs/primarystorage/vhost/deploy"
-    DESTROY_VHOST_PATH = "/zbs/primarystorage/vhost/destroy"
+    CHECK_VHOST_PATH = "/zbs/primarystorage/vhost/check"
     CREATE_VHOST_BDEV_PATH = "/zbs/primarystorage/vhost/bdev/create"
     DELETE_VHOST_BDEV_PATH = "/zbs/primarystorage/vhost/bdev/delete"
 
@@ -248,8 +247,7 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.DELETE_SNAPSHOT_PATH, self.delete_snapshot)
         self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
         self.http_server.register_sync_uri(self.GET_VOLUME_CLIENTS_PATH, self.get_volume_clients)
-        self.http_server.register_async_uri(self.DEPLOY_VHOST_PATH, self.deploy_vhost)
-        self.http_server.register_async_uri(self.DESTROY_VHOST_PATH, self.destroy_vhost)
+        self.http_server.register_async_uri(self.CHECK_VHOST_PATH, self.check_vhost)
         self.http_server.register_async_uri(self.CREATE_VHOST_BDEV_PATH, self.create_vhost_bdev)
         self.http_server.register_async_uri(self.DELETE_VHOST_BDEV_PATH, self.delete_vhost_bdev)
 
@@ -718,33 +716,12 @@ class ZbsAgent(plugin.TaskManager):
         return jsonobject.dumps(rsp)
 
     @replyerror
-    def deploy_vhost(self, req):
+    def check_vhost(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        hugepage_size = cmd.hugepageSize if cmd.hasattr('hugepageSize') else None
-        hugepage_dir = cmd.hugepageDir if cmd.hasattr('hugepageDir') else None
-        o = zbsutils.deploy_vhost(cmd.hostIp, cmd.sshPort, cmd.sshUsername, cmd.sshPassword,
-                                  hugepage_size=hugepage_size, hugepage_dir=hugepage_dir)
-        r = jsonobject.loads(o)
-        if not r.success:
-            raise Exception('failed to deploy vhost target on host[%s], error[%s]' % (
-                cmd.hostIp, r.error.message))
         if not zbsutils.wait_vhost_target_ready(cmd.hostIp, cmd.sshPort, cmd.sshUsername, cmd.sshPassword):
-            raise Exception('deployed vhost target on host[%s] but target is not ready' % cmd.hostIp)
-
-        return jsonobject.dumps(rsp)
-
-    @replyerror
-    def destroy_vhost(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
-
-        o = zbsutils.destroy_vhost(cmd.hostIp, cmd.sshPort, cmd.sshUsername, cmd.sshPassword)
-        r = jsonobject.loads(o)
-        if not r.success:
-            raise Exception('failed to destroy vhost target on host[%s], error[%s]' % (
-                cmd.hostIp, r.error.message))
+            raise Exception('vhost target on host[%s] is not ready; check its deployment and status in ZStone' % cmd.hostIp)
 
         return jsonobject.dumps(rsp)
 

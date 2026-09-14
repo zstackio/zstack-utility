@@ -1,12 +1,10 @@
 __author__ = 'Xingwei Yu'
 
-from collections import defaultdict
 import os
 import time
 from zstacklib.utils.version import NumericVersion
 
 import zstacklib.utils.jsonobject as jsonobject
-from zstacklib.utils import form
 
 from zstacklib.utils.bash import *
 
@@ -27,11 +25,8 @@ VHOST_SOCKET_DIR = "/var/zbsvhost/sockets"
 VHOST_VOLUME_SUFFIX = "_zbs_"
 VHOST_TARGET_CONTAINER_PREFIX = "zbsvhost-"
 VHOST_ADMIN_SOCK_NAME = "admin.sock"
-VHOST_DEPLOY_READY_RETRIES = 40
-VHOST_DEPLOY_READY_INTERVAL_SECONDS = 0.5
-DEFAULT_VHOST_TARGET_HUGEPAGE_DIR = "/dev/hugepages2m"
-DEFAULT_VHOST_TARGET_CPU_COUNT = 4
-VHOST_CPU_TOPOLOGY_CMD = "LC_ALL=C lscpu --online -e=CPU,NODE,SOCKET,CORE"
+VHOST_CHECK_READY_RETRIES = 40
+VHOST_CHECK_READY_INTERVAL_SECONDS = 0.5
 
 
 class ClientInfo(object):
@@ -89,85 +84,8 @@ def deploy_client(ip, port, username, password):
         ZBSADM_BIN_PATH, ip, port, username, linux.shellquote(password)))
 
 
-def _select_vhost_cpus(topology):
-    numa_nodes = defaultdict(list)
-    for cpu_topology in topology:
-        numa_nodes[cpu_topology[1]].append(cpu_topology)
-
-    selected_node = max(
-        numa_nodes.values(),
-        key=lambda cpus: (len(cpus), max(cpu[0] for cpu in cpus)))
-    physical_cores = defaultdict(list)
-    for cpu, _, socket, core in selected_node:
-        physical_cores[(socket, core)].append(cpu)
-
-    selected = []
-    core_groups = sorted(physical_cores.values(), key=max, reverse=True)
-    for siblings in core_groups[:DEFAULT_VHOST_TARGET_CPU_COUNT]:
-        selected.append(max(siblings))
-
-    if len(selected) < DEFAULT_VHOST_TARGET_CPU_COUNT:
-        remaining = sorted(
-            (cpu[0] for cpu in selected_node if cpu[0] not in selected),
-            reverse=True)
-        selected.extend(remaining[:DEFAULT_VHOST_TARGET_CPU_COUNT - len(selected)])
-    return sorted(selected)
-
-
-def vhost_auto_cpuset(ip, port, username, password):
-    ret, out, err = linux.sshpass_run(
-        ip, password, VHOST_CPU_TOPOLOGY_CMD, user=username, port=int(port))
-    if ret != 0:
-        detail = (err or "").strip() or (out or "").strip() or "no command output"
-        raise Exception("failed to query vhost CPU topology on host[%s], exit code[%s]: %s" %
-                        (ip, ret, detail))
-
-    try:
-        topology = [tuple(int(row[key]) for key in ("CPU", "NODE", "SOCKET", "CORE"))
-                    for row in form.load(out)]
-        cpus = _select_vhost_cpus(topology)
-    except (KeyError, TypeError, ValueError) as error:
-        raise Exception("failed to select vhost CPUs on host[%s]: %s" % (ip, error))
-    return "[%s]" % ",".join(str(cpu) for cpu in cpus)
-
-
-def find_2m_hugetlbfs_mount(ip, port, username, password):
-    cmd = "findmnt -rn -t hugetlbfs -o TARGET,OPTIONS | awk '\\$2 ~ /(^|,)pagesize=2M(,|$)/ {print \\$1; exit}'"
-    ret, out, err = linux.sshpass_run(ip, password, cmd, user=username, port=int(port))
-    if ret != 0:
-        raise Exception("failed to find 2M hugetlbfs mount on host[%s]: %s" % (ip, err))
-    return out.strip() if out else None
-
-
-def ensure_2m_hugetlbfs_mount(ip, port, username, password, mount_dir=DEFAULT_VHOST_TARGET_HUGEPAGE_DIR):
-    existing = find_2m_hugetlbfs_mount(ip, port, username, password)
-    if existing:
-        return existing
-
-    quoted_mount_dir = linux.shellquote(mount_dir)
-    cmd = "mkdir -p %s && mount -t hugetlbfs -o pagesize=2M none %s" % (
-        quoted_mount_dir, quoted_mount_dir)
-    ret, _, err = linux.sshpass_run(ip, password, cmd, user=username, port=int(port))
-    if ret != 0:
-        raise Exception("failed to mount 2M hugetlbfs on host[%s], dir[%s]: %s" % (ip, mount_dir, err))
-    return mount_dir
-
-
-def deploy_vhost(ip, port, username, password, cpuset=None, hugepage_size=None, hugepage_dir=None):
-    if not cpuset:
-        cpuset = vhost_auto_cpuset(ip, port, username, password)
-    if not hugepage_dir:
-        hugepage_dir = ensure_2m_hugetlbfs_mount(ip, port, username, password)
-    cmd = "%s vhost deploy --host %s --cpuset %s --silent" % (ZBSADM_BIN_PATH, ip, linux.shellquote(cpuset))
-    if hugepage_size:
-        cmd += " --hugepage-size %s" % hugepage_size
-    if hugepage_dir:
-        cmd += " --hugepage-dir %s" % hugepage_dir
-    return shell.call(cmd)
-
-
-def wait_vhost_target_ready(ip, port, username, password, retries=VHOST_DEPLOY_READY_RETRIES,
-                            interval=VHOST_DEPLOY_READY_INTERVAL_SECONDS):
+def wait_vhost_target_ready(ip, port, username, password, retries=VHOST_CHECK_READY_RETRIES,
+                            interval=VHOST_CHECK_READY_INTERVAL_SECONDS):
     container_name = VHOST_TARGET_CONTAINER_PREFIX + ip
     control_sock = "%s/%s" % (VHOST_SOCKET_DIR, VHOST_ADMIN_SOCK_NAME)
     cmd = "docker ps --filter %s --filter status=running -q | grep -q . && test -S %s" % (
@@ -181,10 +99,6 @@ def wait_vhost_target_ready(ip, port, username, password, retries=VHOST_DEPLOY_R
         time.sleep(interval)
 
     return False
-
-
-def destroy_vhost(ip, port, username, password):
-    return shell.call("%s vhost destroy --host %s --silent" % (ZBSADM_BIN_PATH, ip))
 
 
 def create_vhost_bdev(ip, port, username, password, logical_pool, volume, bdev_name):

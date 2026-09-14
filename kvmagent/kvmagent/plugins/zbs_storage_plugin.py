@@ -4,7 +4,6 @@ import os.path
 from kvmagent import kvmagent
 from kvmagent.plugins import zbs_vhost_target
 from kvmagent.plugins.zbs_vhost_rpc import ZbsVhostRpc
-from zstacklib.utils import hugepages
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
@@ -75,7 +74,6 @@ class ZbsStoragePlugin(kvmagent.KvmAgent):
     VHOST_DEACTIVATE_PATH = "/zbs/primarystorage/vhost/deactivate"
     VHOST_RESIZE_PATH = "/zbs/primarystorage/vhost/resize"
     VHOST_TARGET_HEALTH_PATH = "/zbs/primarystorage/vhost/target/health"
-    PREPARE_VHOST_TARGET_ENV_PATH = "/zbs/primarystorage/vhost/target/prepareenv"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -86,7 +84,6 @@ class ZbsStoragePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.VHOST_DEACTIVATE_PATH, self.vhost_deactivate)
         http_server.register_async_uri(self.VHOST_RESIZE_PATH, self.vhost_resize)
         http_server.register_async_uri(self.VHOST_TARGET_HEALTH_PATH, self.vhost_target_health)
-        http_server.register_async_uri(self.PREPARE_VHOST_TARGET_ENV_PATH, self.prepare_vhost_target_env)
 
     @kvmagent.replyerror
     @bash.in_bash
@@ -205,18 +202,6 @@ class ZbsStoragePlugin(kvmagent.KvmAgent):
         rsp = VhostTargetHealthRsp()
         rsp.targetRunning = zbs_vhost_target.target_running(self._control_sock(cmd), cmd.containerName)
         return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    @bash.in_bash
-    def prepare_vhost_target_env(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = kvmagent.AgentResponse()
-        zbs_vhost_target.ensure_docker()
-        zbs_vhost_target.ensure_2m_hugetlbfs_mount()
-        hugepages.ensure_free_hugepages(
-            cmd.hugepageNr if cmd.hugepageNr else zbs_vhost_target.DEFAULT_VHOST_TARGET_HUGEPAGE_NR)
-        return jsonobject.dumps(rsp)
-
 
     def stop(self):
         pass
