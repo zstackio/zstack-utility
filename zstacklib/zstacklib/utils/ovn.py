@@ -666,7 +666,7 @@ class VsCtl(object):
     @bash.in_bash
     def getNicRxQueueDescNumConfig(self, nicName):
         try:
-            r, o, e = bash.bash_roe(CtlBin + "get Interface {} options:rxq_desc".format(nicName))
+            r, o, e = bash.bash_roe(CtlBin + "get Interface {} options:n_rxq_desc".format(nicName))
             if r != 0:
                 return True, None
             return False, o.strip("\n").strip('"')
@@ -676,11 +676,9 @@ class VsCtl(object):
 
     @bash.in_bash
     def setNicRxQueueConfig(self, nicName, queueNum, queueDescNum):
-        queueCmd = CtlBin + " --no-wait set Interface {} options:n_rxq={}".format(nicName, queueNum)
-        r1 = bash.bash_r(queueCmd)
-        bufferCmd = CtlBin + " --no-wait set Interface {} options:rxq_desc={}".format(nicName, queueDescNum)
-        r2 = bash.bash_r(bufferCmd)
-        return 0 if r1 == 0 and r2 == 0 else 1
+        cmd = CtlBin + "--no-wait set Interface {} options:n_rxq={} options:n_rxq_desc={} " \
+              "-- remove Interface {} options rxq_desc".format(nicName, queueNum, queueDescNum, nicName)
+        return bash.bash_r(cmd)
 
     @bash.in_bash
     def bindCpuCores(self, lMask, pmdMask):
