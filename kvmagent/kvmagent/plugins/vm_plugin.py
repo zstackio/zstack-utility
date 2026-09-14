@@ -7629,7 +7629,6 @@ class Vm(object):
                 logger.info("vm[%s] is recovering with disks: %s" % (cmd.vmInstanceUuid, list(rvols.keys())))
                 global VM_RECOVER_DICT
                 VM_RECOVER_DICT[cmd.vmInstanceUuid] = rvols
-                cmd.createPaused = True
 
         def make_nics():
             if not cmd.nics:
@@ -10060,7 +10059,7 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             vm = get_vm_by_uuid(cmd.vmUuid)
             disks = vm.domain_xmlobject.devices.get_child_node_as_list('disk')
-            rsp.status = 'interrupted' if vm.state != Vm.VM_STATE_RUNNING or any(is_nbd_disk(d) for d in disks) else 'done'
+            rsp.status = 'interrupted' if any(is_nbd_disk(d) for d in disks) else 'done'
 
         return jsonobject.dumps(rsp)
 
@@ -10107,11 +10106,8 @@ class VmPlugin(kvmagent.KvmAgent):
             try:
                 with t:
                     VM_RECOVER_TASKS[cmd.vmUuid] = t
-                    vm = get_vm_by_uuid(cmd.vmUuid)
-                    vm.pause()
                     t.recover_vm_volumes()
                     check_volume_recover_results()
-                    vm.resume()
 
                 logger.info("recovery completed. VM: " + cmd.vmUuid)
             finally:
