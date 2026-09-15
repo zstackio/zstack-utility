@@ -1343,31 +1343,54 @@ def _list_blocking_rpmdb_users(include_lock_files=False):
     cmd = r"""
 dbpath="$(rpm --eval '%{_dbpath}' 2>/dev/null)"
 [ -n "$dbpath" ] || exit 2
-include_lock_files="__INCLUDE_LOCK_FILES__"
-pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
-for fd in /proc/[0-9]*/fd/*; do
-    target="$(readlink "$fd" 2>/dev/null)" || continue
-    case "$target" in
-        "$dbpath"/__db.*)
-            [ "$include_lock_files" = "true" ] || continue
-            pid="${fd#/proc/}"
-            pid="${pid%%/*}"
-            ;;
-        "$dbpath"/*)
-            pid="${fd#/proc/}"
-            pid="${pid%%/*}"
-            ;;
-        *)
-            continue
-            ;;
-    esac
+rpmdb_python=""
+for candidate in python3 python2 python /usr/libexec/platform-python; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        rpmdb_python="$candidate"
+        break
+    fi
+done
+if [ -z "$rpmdb_python" ]; then
+    echo "cannot find Python for rpmdb user scan" >&2
+    exit 2
+fi
+"$rpmdb_python" - "$dbpath" "__INCLUDE_LOCK_FILES__" "$$" "$PPID" <<'PY'
+import glob
+import os
+import sys
 
-    [ "$pid" = "$$" ] && continue
-    [ "$pid" = "$PPID" ] && continue
-    proc_pgid="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ')"
-    [ -n "$pgid" ] && [ "$proc_pgid" = "$pgid" ] && continue
-    echo "$pid"
-done | sort -u
+dbpath, include_lock_files, shell_pid, parent_pid = sys.argv[1:]
+prefix = dbpath + '/'
+lock_prefix = prefix + '__db.'
+pgid = os.getpgrp()
+pids = []
+for proc in glob.glob('/proc/[0-9]*'):
+    pid = os.path.basename(proc)
+    if not pid.isdigit() or pid in (shell_pid, parent_pid):
+        continue
+    try:
+        fds = os.listdir(proc + '/fd')
+    except OSError:
+        continue
+    for fd in fds:
+        try:
+            target = os.readlink(proc + '/fd/' + fd)
+        except OSError:
+            continue
+        if not target.startswith(prefix):
+            continue
+        if include_lock_files != 'true' and target.startswith(lock_prefix):
+            continue
+        try:
+            if os.getpgid(int(pid)) == pgid:
+                break
+        except OSError:
+            pass
+        pids.append(pid)
+        break
+for pid in sorted(pids):
+    print(pid)
+PY
 """.replace("__INCLUDE_LOCK_FILES__",
             "true" if include_lock_files else "false")
     r, o, e = bash_roe(cmd)
