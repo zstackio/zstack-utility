@@ -2184,7 +2184,14 @@ class LvLockOperator(object):
 
             after_lock_type = LvmlockdLockType.NULL if len(self.exists_locks) == 0 else max(self.exists_locks)
             if after_lock_type == LvmlockdLockType.NULL:
-                _deactive_lv(self.abs_path, raise_exception=False)
+                try:
+                    _deactive_lv(self.abs_path, raise_exception=False)
+                except Exception as e:
+                    if "in use" not in str(e):
+                        raise
+                    logger.warn("lv [path:%s] in use, skip deactivation: %s" % (self.abs_path, e))
+                    self._init()
+                    after_lock_type = LvmlockdLockType.NULL if len(self.exists_locks) == 0 else max(self.exists_locks)
             elif after_lock_type == LvmlockdLockType.SHARE:
                 _active_lv(self.abs_path, True)
 
