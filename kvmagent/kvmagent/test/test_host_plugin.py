@@ -14,6 +14,7 @@ import unittest
 
 from kvmagent import kvmagent
 from kvmagent.plugins import host_plugin
+from zstacklib.gpu.base import VendorEnum
 from zstacklib.utils import http
 from zstacklib.utils import uuidhelper
 from zstacklib.utils import jsonobject
@@ -77,6 +78,29 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
     def _make_context(self, gpu_info_map=None):
         return type('Context', (), {'gpu_info_map': gpu_info_map})()
 
+    def test_huawei_fallback_passes_gpu_info_map_to_vendor_detector(self):
+        plugin = host_plugin.HostPlugin()
+        to = self._make_to()
+        to.vendor = VendorEnum.HUAWEI
+        to.mdevSpecifications = []
+        gpu_info_map = {to.pciDeviceAddress: {"npuId": "0", "chipId": "1"}}
+        capability_info = {
+            "virtStatus": "VFIO_MDEV_VIRTUALIZABLE",
+            "virtState": "VIRTUALIZABLE",
+            "virtMode": "",
+            "virtCapabilities": ["VFIO_MDEV"],
+            "mdevSpecifications": [{"Name": "vir12_3c_32g"}],
+        }
+
+        with mock.patch(
+                'zstacklib.gpu.vendors.huawei.Huawei.detect_vfio_mdev_capability',
+                return_value=(True, capability_info)) as detect:
+            self.assertTrue(plugin._get_vfio_mdev_info(to, gpu_info_map))
+
+        detect.assert_called_once_with(to, gpu_info_map)
+        self.assertEqual(to.virtStatus, "VFIO_MDEV_VIRTUALIZABLE")
+        self.assertEqual(to.mdevSpecifications, [{"Name": "vir12_3c_32g"}])
+
     def test_fallback_neither_supported(self):
         """No virtStatus, neither vfio_mdev nor sriov -> UNVIRTUALIZABLE."""
         plugin = host_plugin.HostPlugin()
@@ -103,7 +127,7 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
         plugin = host_plugin.HostPlugin()
         to = self._make_to()
 
-        def vfio_mdev(to):
+        def vfio_mdev(to, gpu_info_map=None):
             to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
             return True
 
@@ -124,7 +148,7 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
         plugin = host_plugin.HostPlugin()
         to = self._make_to()
 
-        def vfio_mdev(to):
+        def vfio_mdev(to, gpu_info_map=None):
             to.virtStatus = "VFIO_MDEV_VIRTUALIZED"
             return True
 
@@ -162,7 +186,7 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
         plugin = host_plugin.HostPlugin()
         to = self._make_to()
 
-        def vfio_mdev(to):
+        def vfio_mdev(to, gpu_info_map=None):
             to.virtStatus = "VFIO_MDEV_VIRTUALIZABLE"
             return True
 
@@ -190,7 +214,7 @@ class TestHostPluginVirtStatusFallback(unittest.TestCase):
         plugin = host_plugin.HostPlugin()
         to = self._make_to()
 
-        def vfio_mdev(to):
+        def vfio_mdev(to, gpu_info_map=None):
             return False
 
         def sriov(to, gpu_info_map=None):

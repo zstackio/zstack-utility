@@ -8,6 +8,7 @@ from oslo_concurrency import processutils
 from oslo_log import log as logging
 from stevedore import driver
 from zstacklib.utils import network_ipv6
+from zstacklib.utils import pci
 
 from .__init__ import __version__
 from bm_instance_agent.common import utils as bm_utils
@@ -446,8 +447,11 @@ class AgentManager(object):
 
     def _get_addon_info_from_gpu_infos(self, gpu_infos, pci_device_address):
         addon_info = {}
+        target_address = pci.normalize_pci_address(pci_device_address)
         for gpuinfo in gpu_infos:
-            if pci_device_address not in gpuinfo.get("pciAddress"):
+            info_address = pci.normalize_pci_address(
+                gpuinfo.get("pciAddress"))
+            if not target_address or target_address != info_address:
                 continue
             addon_info["memory"] = gpuinfo.get("memory")
             addon_info["power"] = gpuinfo.get("power")
@@ -522,7 +526,8 @@ class AgentManager(object):
             LOG.warning("no npu-smi")
             return
 
-        r, npu_ids_out = bm_utils.shell_cmd(gpu.get_huawei_gpu_npu_id_cmd(), False)
+        r, npu_ids_out, e = bm_utils.shell_cmd(
+            gpu.get_huawei_gpu_npu_id_cmd(), False)
         if r != 0:
             LOG.error("npu query gpu is error, %s" % npu_ids_out)
             return
@@ -536,15 +541,28 @@ class AgentManager(object):
             if r != 0:
                 LOG.error("npu query gpu board is error, %s" % e)
                 return
-            npu_infos.extend(gpu.parse_huawei_gpu_output_by_npu_id(o))
+            board_infos = gpu.parse_huawei_gpu_output_by_npu_id(o)
+            for board_info in board_infos:
+                board_info["npuId"] = npu_id
+            npu_infos.extend(board_infos)
+
+        r, o, e = bm_utils.shell_cmd("npu-smi info", False)
+        if r == 0:
+            from zstacklib.utils.gpu import merge_huawei_gpu_chip_infos
+            npu_infos = merge_huawei_gpu_chip_infos(npu_infos, o)
 
         device = None
         name = None
+        target_address = pci.normalize_pci_address(pci_device_address)
         for npu_info in npu_infos:
-            if pci_device_address not in npu_info.get("pciAddress"):
+            info_address = pci.normalize_pci_address(
+                npu_info.get("pciAddress"))
+            if not target_address or target_address != info_address:
                 continue
 
-            r, o, e = bm_utils.shell_cmd(gpu.get_huawei_gpu_product_name_cmd(npu_ids), False)
+            r, o, e = bm_utils.shell_cmd(
+                gpu.get_huawei_gpu_product_name_cmd(npu_info.get("npuId")),
+                False)
             if r != 0:
                 LOG.error("npu-smi query gpu product type is error, %s " % e)
                 return

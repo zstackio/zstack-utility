@@ -6,8 +6,11 @@ Huawei NPU Vendor Implementation (Python 2/3 Compatible)
 import os
 import re
 
+from zstacklib.gpu.vendors import huawei_common
+
 from zstacklib.utils import log
 from zstacklib.utils.bash import bash_roe, bash_ro
+from zstacklib.utils.npu import get_npu_smi_path
 from zstacklib.gpu.base import (
     GPUBase,
     GPUInfo,
@@ -36,6 +39,15 @@ class Huawei(GPUBase):
 
     DEVICE_TYPES = {"Processing accelerators"}
     IS_GPU_VENDOR = True
+
+    @classmethod
+    def get_npu_smi_cmd(cls):
+        """Return a resolved command after callers have checked availability."""
+        return get_npu_smi_path() or cls.CLI_TOOL
+
+    @classmethod
+    def is_available(cls):
+        return get_npu_smi_path() is not None
 
     # ==========================================================================
     # PCI-only fallback (no npu-smi): match by vendor_id + class + device name
@@ -79,7 +91,7 @@ class Huawei(GPUBase):
 
     @classmethod
     def get_npu_ids(cls):
-        r, o, _ = bash_roe("npu-smi info -l")
+        r, o, _ = bash_roe("%s info -l" % cls.get_npu_smi_cmd())
         if r != 0:
             return []
 
@@ -105,13 +117,13 @@ class Huawei(GPUBase):
         """
         This is not used directly - we override get_basic_info.
         """
-        return "npu-smi info -l"
+        return "%s info -l" % cls.get_npu_smi_cmd()
 
     @classmethod
     def get_basic_info_cmd_for_npu(cls, npu_id, is_windows=False):
         """Get command for specific NPU ID"""
-        cmd = "npu-smi info -t board -i {0};npu-smi info -i {0} -t memory;npu-smi info -t power -i {0}".format(
-            npu_id)
+        cmd = "{0} info -t board -i {1};{0} info -i {1} -t memory;{0} info -t power -i {1}".format(
+            cls.get_npu_smi_cmd(), npu_id)
         if is_windows:
             cmd = cmd.replace(" ", "|")
         return cmd
@@ -172,58 +184,168 @@ class Huawei(GPUBase):
         return gpu_infos
 
     @classmethod
-    def get_basic_info(cls):
-        """
-        Override to handle multi-device enumeration.
+    def _parse_chip_info_summary_rows(cls, output):
+        """Compatibility adapter for existing GPUInfo/health tuple callers."""
+        return [(chip.info, chip.healthy)
+                for chip in huawei_common.parse_summary(output)]
 
-        Steps:
-        1. Get NPU ID list
-        2. Query each NPU individually
-        3. Combine results
+    @classmethod
+    def parse_chip_info_summary(cls, output):
+        """Parse healthy chip PCI addresses from the ``npu-smi info`` table.
+
+        On dual-chip devices such as Ascend 910C, ``info -t board`` only
+        reports the PCI address of chip 0.  The summary table reports both
+        chips, so use it to discover the secondary PCI function without
+        treating Warning or otherwise unhealthy chips as nominal.
+
+        See docs/hardware-tools/npu-smi-output.md#910c_normal_npu-smi-info_output
+        for the complete real output captured from the 910C environment.
+
+        See docs/hardware-tools/npu-smi-output.md#910b_normal_npu-smi-info_output
+        for the complete real output captured from the 910B environment.
         """
+        return [
+            info for info, is_healthy in cls._parse_chip_info_summary_rows(output)
+            if is_healthy
+        ]
+
+    @classmethod
+    def get_info_by_pci(cls, pci_address):
+        """Collect only the logical NPU group containing ``pci_address``.
+
+        The summary is the only host-wide query.  Once it maps the requested
+        PCI function to an NPU ID, board/memory/power information is collected
+        for that NPU only.  The model handler then decides whether the result
+        contains one 910B chip or both 910C chips.
+        """
+        target_pci = cls.normalize_pci_address(pci_address)
+        if not target_pci or not cls.is_available():
+            return super(Huawei, cls).get_info_by_pci(pci_address)
+
+        r, output, error = bash_roe("%s info" % cls.get_npu_smi_cmd())
+        if r != 0 or not output:
+            logger.debug("Failed to get Huawei NPU summary info: %s" % error)
+            return super(Huawei, cls).get_info_by_pci(pci_address)
+
+        chips = huawei_common.parse_summary(output)
+        target_chip = next((
+            chip for chip in chips if chip.info.pci_address == target_pci
+        ), None)
+        if target_chip is None or not target_chip.healthy:
+            return super(Huawei, cls).get_info_by_pci(pci_address)
+
+        target_npu_id = target_chip.info.extra.get("npuId")
+        if target_npu_id is None:
+            return super(Huawei, cls).get_info_by_pci(pci_address)
+
+        board_records = []
+        board_r, board_output, board_error = bash_roe(
+            cls.get_basic_info_cmd_for_npu(target_npu_id))
+        if board_r == 0:
+            for info in cls.parse_basic_info(board_output):
+                info.extra["npuId"] = target_npu_id
+                board_records.append(huawei_common.gpu_info_to_record(info))
+        else:
+            logger.debug(
+                "Failed to get NPU %s info: %s" %
+                (target_npu_id, board_error))
+
+        target_chips = [
+            chip for chip in chips
+            if chip.info.extra.get("npuId") == target_npu_id
+        ]
+        groups = huawei_common.group_npus(board_records, target_chips)
+        group = groups.get(str(target_npu_id))
+        if group is None:
+            return super(Huawei, cls).get_info_by_pci(pci_address)
+
+        records = huawei_common.merge_basic_info(board_records, target_chips)
+        all_npu_ids = sorted({
+            str(chip.info.extra.get("npuId")) for chip in chips
+            if str(chip.info.extra.get("npuId", "")).isdigit()
+        })
+        for record in records:
+            if record.get("pciAddress") != target_pci:
+                continue
+            chip_id = group.handler.get_isolation_chip_id(record)
+            try:
+                record["isIsolated"] = cls.check_npu_isolation(
+                    target_npu_id, all_npu_ids, chip_id=chip_id,
+                    physical_id=record.get("physicalId"))
+            except Exception as ex:
+                logger.debug(
+                    "Failed to check isolation for NPU %s chip %s: %s" %
+                    (target_npu_id, chip_id, ex))
+                record["isIsolated"] = False
+            break
+
+        return [huawei_common.record_to_gpu_info(record)
+                for record in records]
+
+    @classmethod
+    def get_basic_info(cls):
+        """Collect board observations, then merge each logical NPU's model."""
         if not cls.is_available():
             return []
-
         npu_ids = cls.get_npu_ids()
         if not npu_ids:
-            logger.debug("No NPU IDs found")
             return []
 
-        all_gpu_infos = []
-        npu_id_map = {}  # pci_address -> npu_id
-
+        boards = []
         for npu_id in npu_ids:
-            cmd = cls.get_basic_info_cmd_for_npu(npu_id)
-            r, o, e = bash_roe(cmd)
+            r, output, error = bash_roe(cls.get_basic_info_cmd_for_npu(npu_id))
             if r != 0:
-                logger.error("Failed to get NPU %s info: %s" % (npu_id, e))
+                logger.error("Failed to get NPU %s info: %s" % (npu_id, error))
                 continue
+            for info in cls.parse_basic_info(output):
+                info.extra["npuId"] = npu_id
+                boards.append(huawei_common.gpu_info_to_record(info))
 
-            gpu_infos = cls.parse_basic_info(o)
+        r, output, error = bash_roe("%s info" % cls.get_npu_smi_cmd())
+        if r != 0:
+            logger.debug("Failed to get Huawei NPU summary info: %s" % error)
+        chips = huawei_common.parse_summary(output) if r == 0 else []
+        groups = huawei_common.group_npus(boards, chips)
+        records = huawei_common.merge_basic_info(boards, chips)
 
-            # Store NPU ID mapping
-            for info in gpu_infos:
-                if info.pci_address:
-                    npu_id_map[info.pci_address.lower()] = npu_id
-                    # Store NPU ID in extra field
-                    info.extra["npuId"] = npu_id
-
-                    # Check isolation status
-                    try:
-                        is_isolated = cls.check_npu_isolation(npu_id, npu_ids)
-                        info.extra["isIsolated"] = is_isolated
-                    except Exception as ex:
-                        logger.debug(
-                            "Failed to check isolation for NPU %s: %s" % (npu_id, ex))
-                        info.extra["isIsolated"] = False
-
-            all_gpu_infos.extend(gpu_infos)
-
-        return all_gpu_infos
+        isolation_by_chip = {}
+        for record in records:
+            npu_id = record.get("npuId")
+            group = groups[str(npu_id) if npu_id is not None else None]
+            chip_id = group.handler.get_isolation_chip_id(record)
+            key = (npu_id, chip_id)
+            if key not in isolation_by_chip:
+                try:
+                    isolation_by_chip[key] = cls.check_npu_isolation(
+                        npu_id, npu_ids, chip_id=chip_id,
+                        physical_id=record.get("physicalId"))
+                except Exception as ex:
+                    logger.debug(
+                        "Failed to check isolation for NPU %s chip %s: %s" %
+                        (npu_id, chip_id, ex))
+                    isolation_by_chip[key] = False
+            record["isIsolated"] = isolation_by_chip[key]
+        return [huawei_common.record_to_gpu_info(record) for record in records]
 
     # ==========================================================================
     # Addon Info Enrichment (productName, opaque)
     # ==========================================================================
+
+    @classmethod
+    def get_rank_table_device_ids(cls, gpu_info_map, pci_addresses):
+        """Choose HCCN IDs using each selected logical NPU's model rules."""
+        return huawei_common.rank_table_ids(gpu_info_map, pci_addresses)
+
+    @classmethod
+    def get_aios_rank_table(cls, gpu_info_map, pci_addresses):
+        """Build a rank table for the selected Huawei PCI devices."""
+        from zstacklib.utils.gpu import get_huawei_gpu_aios_rank_table_dict
+
+        device_ids = cls.get_rank_table_device_ids(
+            gpu_info_map, pci_addresses)
+        if not device_ids:
+            return None
+        return get_huawei_gpu_aios_rank_table_dict(device_ids)
 
     @classmethod
     def enrich_addon_info(cls, gpu_info_map, pci_addresses):
@@ -236,17 +358,27 @@ class Huawei(GPUBase):
         from zstacklib.utils.gpu import (
             get_huawei_gpu_product_name_cmd,
             get_huawei_product_type,
-            get_huawei_gpu_aios_rank_table_dict,
         )
-        r, o, e = bash_roe(get_huawei_gpu_product_name_cmd(npu_ids[0]))
-        if r == 0 and o and "not support" not in o:
+        addresses_by_npu = {}
+        for pci_addr in pci_addresses:
+            info = gpu_info_map.get(pci_addr) or {}
+            npu_id = info.get("npuId")
+            if npu_id is not None:
+                addresses_by_npu.setdefault(str(npu_id), []).append(pci_addr)
+
+        # Product type is a logical-NPU property.  Query each selected NPU so
+        # mixed hosts do not inherit the model name of the first NPU.
+        for npu_id, addresses in addresses_by_npu.items():
+            r, o, e = bash_roe(get_huawei_gpu_product_name_cmd(npu_id))
+            if r != 0 or not o or "not support" in o:
+                continue
             product_type = get_huawei_product_type(o)
             if product_type:
-                for pci_addr in pci_addresses:
-                    if pci_addr in gpu_info_map:
-                        gpu_info_map[pci_addr]["productName"] = product_type
+                for pci_addr in addresses:
+                    gpu_info_map[pci_addr]["productName"] = product_type
         try:
-            aios_rank_table = get_huawei_gpu_aios_rank_table_dict(npu_ids)
+            aios_rank_table = cls.get_aios_rank_table(
+                gpu_info_map, pci_addresses)
             if aios_rank_table:
                 for pci_addr in pci_addresses:
                     if pci_addr not in gpu_info_map:
@@ -258,6 +390,36 @@ class Huawei(GPUBase):
             logger.debug(
                 "Failed to batch collect Huawei aios rank table: %s" % ex)
 
+    @classmethod
+    def enrich_pci_device_dependencies(cls, pci_devices, gpu_info_map):
+        devices_by_address = {
+            cls.normalize_pci_address(device.pciDeviceAddress): device
+            for device in pci_devices
+        }
+        addresses_by_npu = {}
+        for address, info in (gpu_info_map or {}).items():
+            npu_id = info.get("npuId")
+            normalized_address = cls.normalize_pci_address(address)
+            if (npu_id is None
+                    or normalized_address not in devices_by_address):
+                continue
+            addresses_by_npu.setdefault(npu_id, set()).add(
+                normalized_address)
+
+        for addresses in addresses_by_npu.values():
+            if len(addresses) < 2:
+                continue
+            for address in addresses:
+                device = devices_by_address[address]
+                dependencies = {
+                    cls.normalize_pci_address(dependency)
+                    for dependency in (device.dependentDevices or [])
+                    if cls.normalize_pci_address(dependency) != address
+                }
+                dependencies.update(
+                    peer for peer in addresses if peer != address)
+                device.dependentDevices = sorted(dependencies)
+
     # ==========================================================================
     # Prometheus Metrics Collection
     # ==========================================================================
@@ -265,20 +427,64 @@ class Huawei(GPUBase):
     @classmethod
     def get_metric_cmd(cls, is_windows=False):
         """Not used directly - we override collect_metrics"""
-        return "npu-smi info -l"
+        return "%s info -l" % cls.get_npu_smi_cmd()
 
     @classmethod
-    def get_metric_cmd_for_npu(cls, npu_id):
-        """Get metrics command for specific NPU.
+    def get_metric_cmd_for_npu(cls, npu_id, chip_id=None):
+        """Get metrics command for a specific NPU/chip.
         Include board so combined output has PCIe Bus Info and Serial Number
         (usages/memory/temp/power alone may not contain them -> pci_address
         stays empty -> _collect_metrics_for_npu returns None -> no monitoring).
         """
-        return ("npu-smi info -t board -i {0};"
-                "npu-smi info -t usages -i {0};"
-                "npu-smi info -t memory -i {0};"
-                "npu-smi info -t temp -i {0};"
-                "npu-smi info -t power -i {0}".format(npu_id))
+        chip_option = "" if chip_id is None else " -c %s" % chip_id
+        return ("{0} info -t board -i {1}{2};"
+                "{0} info -t usages -i {1}{2};"
+                "{0} info -t memory -i {1}{2};"
+                "{0} info -t temp -i {1}{2};"
+                "{0} info -t power -i {1}{2}".format(
+                    cls.get_npu_smi_cmd(), npu_id, chip_option))
+
+    @classmethod
+    def get_metric_targets(cls, npu_ids):
+        """One summary query yields per-NPU command selectors for mixed hosts."""
+        r, output, error = bash_roe("%s info" % cls.get_npu_smi_cmd())
+        if r != 0:
+            logger.debug("Failed to get Huawei NPU summary info: %s" % error)
+        groups = huawei_common.group_npus(
+            chips=huawei_common.parse_summary(output) if r == 0 else [])
+        targets = {}
+        for npu_id in npu_ids:
+            group = groups.get(str(npu_id), huawei_common.HuaweiNpuGroup(npu_id))
+            targets[npu_id] = group.handler.get_metric_targets(group)
+        return targets
+
+    @classmethod
+    def get_metric_chip_ids(cls, npu_ids):
+        """Compatibility API: report only explicit chip selectors."""
+        return {
+            npu_id: [chip for chip in targets if chip is not None]
+            for npu_id, targets in cls.get_metric_targets(npu_ids).items()
+            if any(chip is not None for chip in targets)
+        }
+
+    @classmethod
+    def get_npu_board_serial_number(cls, npu_id):
+        """Get the logical NPU board serial without a chip selector.
+
+        On Ascend 910C, the ``-c`` board query returns a chip PCI address but
+        omits ``Serial Number``.  The non-chip board query retains the board
+        serial shared by both chips.
+        """
+        r, output, error = bash_roe(
+            "%s info -t board -i %s" % (cls.get_npu_smi_cmd(), npu_id))
+        if r != 0:
+            logger.debug("Failed to get Huawei NPU board serial: %s" % error)
+            return None
+
+        for line in output.splitlines():
+            if "Serial Number" in line:
+                return line.partition(":")[2].strip() or None
+        return None
 
     @classmethod
     def parse_metrics(cls, output):
@@ -303,17 +509,25 @@ class Huawei(GPUBase):
 
         all_metrics = []
 
+        targets_by_npu = cls.get_metric_targets(npu_ids)
         for npu_id in npu_ids:
-            metrics = cls._collect_metrics_for_npu(npu_id)
-            if metrics:
-                all_metrics.append(metrics)
+            chip_ids = targets_by_npu[npu_id]
+            board_serial_number = None
+            if any(chip_id is not None for chip_id in chip_ids):
+                board_serial_number = cls.get_npu_board_serial_number(npu_id)
+            for chip_id in chip_ids:
+                metrics = cls._collect_metrics_for_npu(npu_id, chip_id)
+                if metrics:
+                    if not metrics.serial_number and board_serial_number:
+                        metrics.serial_number = board_serial_number
+                    all_metrics.append(metrics)
 
         return all_metrics
 
     @classmethod
-    def _collect_metrics_for_npu(cls, npu_id):
-        """Collect metrics for a single NPU"""
-        cmd = cls.get_metric_cmd_for_npu(npu_id)
+    def _collect_metrics_for_npu(cls, npu_id, chip_id=None):
+        """Collect metrics for a single NPU chip."""
+        cmd = cls.get_metric_cmd_for_npu(npu_id, chip_id)
         r, o, _ = bash_roe(cmd)
         if r != 0:
             return None
@@ -379,6 +593,9 @@ class Huawei(GPUBase):
         if not pci_address:
             return None
 
+        if mem_util is None:
+            mem_util = hbm_usage_rate
+
         metrics = GPUMetrics(
             pci_address=pci_address,
             serial_number=serial_number,
@@ -437,7 +654,8 @@ class Huawei(GPUBase):
     # ==========================================================================
 
     @classmethod
-    def check_npu_isolation(cls, npu_id, all_npu_ids):
+    def check_npu_isolation(
+            cls, npu_id, all_npu_ids, chip_id=None, physical_id=None):
         """
         Check if NPU is isolated using hccs health status, with topo-based
         fallback when hccs health line is missing from output.
@@ -446,12 +664,19 @@ class Huawei(GPUBase):
         Detection methods:
           1. Primary: `npu-smi info -t hccs` — health status != OK means isolated
           2. Fallback: `npu-smi info -t topo` — zero HCCS connections means isolated
+
+        Ascend 910B topology rows are keyed by NPU ID. Ascend 910C rows are
+        keyed by physical ID, so callers must pass the summary's physicalId
+        when it is available.
         """
-        if not npu_id or not all_npu_ids or len(all_npu_ids) <= 1:
+        if (not npu_id or not all_npu_ids
+                or (len(all_npu_ids) <= 1 and chip_id is None)):
             return False
 
         # Primary: hccs health status
-        cmd = "npu-smi info -t hccs -i %s -c 0" % npu_id
+        target_chip_id = chip_id if chip_id is not None else "0"
+        cmd = "%s info -t hccs -i %s -c %s" % (
+            cls.get_npu_smi_cmd(), npu_id, target_chip_id)
         r, o, e = bash_roe(cmd)
 
         if r == 0 and o:
@@ -468,112 +693,29 @@ class Huawei(GPUBase):
 
         # Fallback: topo matrix — count HCCS connections for this NPU
         logger.debug("hccs health not available for NPU %s, trying topo fallback" % npu_id)
-        return cls._check_isolation_by_topo(npu_id)
+        return cls._check_isolation_by_topo(npu_id, physical_id)
 
     @classmethod
-    def _check_isolation_by_topo(cls, npu_id):
+    def _check_isolation_by_topo(cls, npu_id, physical_id=None):
         """
         Fallback isolation detection via topo matrix.
         An isolated NPU has zero HCCS connections (all links show SYS or PHB).
         """
-        cmd = "npu-smi info -t topo -i %s" % npu_id
+        cmd = "%s info -t topo -i %s" % (cls.get_npu_smi_cmd(), npu_id)
         r, o, e = bash_roe(cmd)
 
         if r != 0 or not o:
             logger.debug("Failed to get topo for NPU %s: %s" % (npu_id, e))
             return False
 
-        target_prefix = ("NPU%s" % npu_id).upper()
-        hccs_count = None
-        for line in o.splitlines():
-            # Data rows start with NPU<id> at column 0 (no leading whitespace).
-            # The header line is indented, so we check the raw (unstripped) line.
-            if not line.startswith(target_prefix):
-                continue
-            parts = line.split()
-            if not parts or parts[0].upper() != target_prefix:
-                continue
-            hccs_count = sum(1 for part in parts[1:] if part.upper() == "HCCS")
-            break
-
-        if hccs_count is None:
-            logger.debug("NPU %s row not found in topo output" % npu_id)
-            return False
-
-        if hccs_count == 0:
-            logger.debug("NPU %s has 0 HCCS connections in topo (isolated)" % npu_id)
-            return True
-
-        return False
-
-    # ==========================================================================
-    # AIOS Rank Table (for cluster interconnect)
-    # ==========================================================================
-
-    @classmethod
-    def get_aios_rank_table(cls, npu_ids):
-        """
-        Get AIOS rank table for cluster interconnect.
-
-        This is stored in addonInfo["opaque"]["aiosRankTable"].
-        """
-        if not npu_ids:
-            return None
-
-        device_ips = {}
-        device_netmasks = {}
-
-        for npu_id in npu_ids:
-            if not npu_id.isdigit():
-                continue
-
-            r, o, _ = bash_roe("hccn_tool -i %s -ip -g" % npu_id)
-
-            ip = None
-            netmask = None
-
-            if r == 0 and o:
-                # Parse IP address
-                ip_match = re.search(r'ipaddr:(\d+\.\d+\.\d+\.\d+)', o)
-                if ip_match:
-                    ip = ip_match.group(1)
-
-                # Parse netmask
-                netmask_match = re.search(r'netmask:(\d+\.\d+\.\d+\.\d+)', o)
-                if netmask_match:
-                    netmask = netmask_match.group(1)
-
-            # Fallback defaults
-            if not ip:
-                ip = "10.20.0.%s" % (int(npu_id) + 2)
-            if not netmask:
-                netmask = "255.255.0.0"
-
-            device_ips[npu_id] = ip
-            device_netmasks[npu_id] = netmask
-
-        rank_table = {
-            "server_count": len(npu_ids),
-            "server_list": []
-        }
-
-        for npu_id in npu_ids:
-            server_info = {
-                "device_id": npu_id,
-                "host": device_ips.get(npu_id, ""),
-                "device_ip": device_ips.get(npu_id, ""),
-                "netmask": device_netmasks.get(npu_id, "")
-            }
-            rank_table["server_list"].append(server_info)
-
-        return rank_table
+        return huawei_common.topology_isolated(o, npu_id, physical_id)
 
     # ==========================================================================
     # Virtualization Capabilities Detection
     # ==========================================================================
 
     @classmethod
-    def detect_vfio_mdev_capability(cls, pci_device_to):
+    def detect_vfio_mdev_capability(cls, pci_device_to, gpu_info_map=None):
         """
         Detect Huawei NPU mdev (mediated device) capability.
 
@@ -587,22 +729,30 @@ class Huawei(GPUBase):
         if not os.path.isdir(check_mdev_folder):
             return False, {}
 
-        if shell.run("which npu-smi") != 0:
+        npu_smi_path = get_npu_smi_path()
+        if not npu_smi_path:
             logger.debug("no npu-smi")
             return False, {}
 
-        r, npu_ids_out = bash_ro("npu-smi info -l")
-        if r != 0:
-            logger.error("npu query gpu is error, %s " % npu_ids_out)
-            return False, {}
+        normalized_addr = cls.normalize_pci_address(addr)
+        gpu_info = (gpu_info_map or {}).get(normalized_addr) or {}
+        mapped_npu_id = gpu_info.get("npuId")
 
-        npu_ids = []
-        for line in npu_ids_out.splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            if "NPU ID" in line:
-                npu_ids.append(line.split(":")[1].strip())
+        if mapped_npu_id is not None:
+            npu_ids = [mapped_npu_id]
+        else:
+            r, npu_ids_out = bash_ro("%s info -l" % npu_smi_path)
+            if r != 0:
+                logger.error("npu query gpu is error, %s " % npu_ids_out)
+                return False, {}
+
+            npu_ids = []
+            for line in npu_ids_out.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                if "NPU ID" in line:
+                    npu_ids.append(line.split(":")[1].strip())
 
         if len(npu_ids) == 0:
             return False, {}
@@ -611,17 +761,18 @@ class Huawei(GPUBase):
         mdev_specs = []
 
         for npu_id in npu_ids:
-            r, o, e = bash_roe("npu-smi info -t board -i %s" % npu_id)
-            if r != 0:
-                logger.error("npu query gpu board is error, %s " % e)
-                continue
-
-            if addr.lower() not in o.lower():
-                continue
+            if mapped_npu_id is None:
+                r, o, e = bash_roe(
+                    "%s info -t board -i %s" % (npu_smi_path, npu_id))
+                if r != 0:
+                    logger.error("npu query gpu board is error, %s " % e)
+                    continue
+                if addr.lower() not in o.lower():
+                    continue
 
             add_found = True
 
-            r, o, e = bash_roe("npu-smi info -t template-info -i %s" % npu_id)
+            r, o, e = bash_roe("%s info -t template-info -i %s" % (npu_smi_path, npu_id))
 
             if r != 0:
                 logger.error("npu query gpu template-info is error, %s " % e)
@@ -676,6 +827,9 @@ class Huawei(GPUBase):
 
         Returns tuple: (is_supported, capability_info)
         """
+        if cls.is_multi_chip_npu(pci_device_to, gpu_info_map):
+            return False, {}
+
         addr = pci_device_to.pciDeviceAddress
         dev = os.path.join("/sys/bus/pci/devices/", addr)
         totalvfs = os.path.join(dev, "sriov_totalvfs")
@@ -712,3 +866,21 @@ class Huawei(GPUBase):
             return True, capability_info
 
         return False, {}
+
+    @classmethod
+    def is_multi_chip_npu(cls, pci_device_to, gpu_info_map):
+        if not gpu_info_map:
+            return False
+
+        pci_address = cls.normalize_pci_address(
+            pci_device_to.pciDeviceAddress)
+        gpu_info = gpu_info_map.get(pci_address)
+        if not gpu_info:
+            return False
+
+        npu_id = gpu_info.get("npuId")
+        if npu_id is None:
+            return False
+
+        groups = huawei_common.group_npus(gpu_info_map.values())
+        return groups[str(npu_id)].handler.multi_chip

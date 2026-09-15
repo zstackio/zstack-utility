@@ -400,7 +400,17 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
     def get_vm_hauwei_gpu_info_by_guesttool(self, qga):
         gpuinfos = []
-        npu_id_output = qga.guest_exec_cmd_no_exitcode(gpu.get_huawei_gpu_npu_id_cmd())
+        iswindows = "mswindows" in qga.os
+        resolve_cmd = "where.exe|npu-smi" if iswindows else "command -v npu-smi"
+        npu_smi_output = qga.guest_exec_cmd_no_exitcode(resolve_cmd, exception=False)
+        npu_smi_path = None
+        if npu_smi_output:
+            npu_smi_path = next((line.strip() for line in npu_smi_output.splitlines()
+                                 if line.strip()), None)
+        npu_smi_path = npu_smi_path or "npu-smi"
+
+        npu_id_output = qga.guest_exec_cmd_no_exitcode(
+            gpu.get_huawei_gpu_npu_id_cmd(npu_smi_path, iswindows))
         if npu_id_output is None:
             return gpuinfos
 
@@ -410,11 +420,24 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
         npu_infos = []
         for npu_id in npu_ids:
-            npu_info_board_output = qga.guest_exec_cmd_no_exitcode(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
+            npu_info_board_output = qga.guest_exec_cmd_no_exitcode(
+                gpu.get_huawei_gpu_basic_info_cmd(
+                    npu_id, iswindows=iswindows, npu_smi_path=npu_smi_path))
             if npu_info_board_output is None:
                 continue
 
-            npu_infos.extend(gpu.parse_huawei_gpu_output_by_npu_id(npu_info_board_output))
+            board_infos = gpu.parse_huawei_gpu_output_by_npu_id(
+                npu_info_board_output)
+            for board_info in board_infos:
+                board_info["npuId"] = npu_id
+            npu_infos.extend(board_infos)
+
+        summary_cmd = gpu.get_huawei_gpu_summary_cmd(
+            npu_smi_path, iswindows)
+        summary_output = qga.guest_exec_cmd_no_exitcode(summary_cmd)
+        if summary_output is not None:
+            npu_infos = gpu.merge_huawei_gpu_chip_infos(
+                npu_infos, summary_output)
 
         return self.map_pci_addresses_in_gpu_info(npu_infos, qga)
 

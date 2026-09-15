@@ -261,6 +261,17 @@ class GPUBase(object):
         return cls.parse_basic_info(o)
 
     @classmethod
+    def get_info_by_pci(cls, pci_address):
+        """Collect information for the PCI device's logical device group.
+
+        The default keeps the existing host-wide collection contract.  Vendor
+        implementations may override this when one PCI function represents a
+        logical device with additional related functions, such as Huawei
+        Ascend 910C's two-chip NPU.
+        """
+        return cls.get_basic_info()
+
+    @classmethod
     @abc.abstractmethod
     def parse_basic_info(cls, output):
         """
@@ -461,6 +472,7 @@ class GPUBase(object):
 
         Args:
             pci_device_to: PciDeviceTO object representing the GPU device
+            gpu_info_map: Optional pre-collected GPU info map for resolving vendor device identity
 
         Returns:
             tuple: (bool, dict) - (is_supported, capability_info)
@@ -545,6 +557,11 @@ class GPUBase(object):
             gpu_info_map: dict mapping normalized PCI address -> GPU info dict (mutated in place)
             pci_addresses: list of normalized PCI addresses that belong to this vendor
         """
+        pass
+
+    @classmethod
+    def enrich_pci_device_dependencies(cls, pci_devices, gpu_info_map):
+        """Enrich PCI dependencies using vendor-specific device topology."""
         pass
 
     # ==========================================================================

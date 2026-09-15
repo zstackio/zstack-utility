@@ -4,6 +4,7 @@ import re
 
 from zstacklib.utils import thread
 from zstacklib.utils.bash import *
+from zstacklib.utils.npu import get_npu_smi_path
 from enum import Enum
 import json
 
@@ -24,6 +25,11 @@ from zstacklib.gpu.base import (
 from zstacklib.utils.qga import VmQga
 
 logger = log.get_logger(__name__)
+
+
+def _get_npu_smi_cmd():
+    """Keep legacy command builders usable after their availability checks."""
+    return get_npu_smi_path() or "npu-smi"
 
 
 class VmGpuStatus(Enum):
@@ -279,8 +285,19 @@ def parse_huawei_gpu_output_by_npu_id(output):
     if total_memory > 0:
         gpuinfo["memory"] = "%s MB" % total_memory
 
-    gpuinfos.append(gpuinfo)
+    # A failed or truncated board query must not create an empty pseudo-device.
+    # VM/BM callers map every returned item by PCI address.
+    if gpuinfo.get("pciAddress"):
+        gpuinfos.append(gpuinfo)
     return gpuinfos
+
+
+def merge_huawei_gpu_chip_infos(npu_infos, summary_output):
+    """Legacy dictionary adapter over the shared per-NPU merge rules."""
+    from zstacklib.gpu.vendors import huawei_common
+
+    return huawei_common.merge_basic_info(
+        npu_infos, huawei_common.parse_summary(summary_output))
 
 
 def get_huawei_product_type(output):
@@ -583,39 +600,52 @@ def get_tianshu_gpu_product_name_cmd(iswindows=False):
     return cmd
 
 
-def get_huawei_gpu_npu_id_cmd():
-    return "npu-smi info -l"
+def get_huawei_gpu_npu_id_cmd(npu_smi_path=None, iswindows=False):
+    cmd = "%s info -l" % (npu_smi_path or _get_npu_smi_cmd())
+    if iswindows:
+        cmd = cmd.replace(" ", "|")
+    return cmd
 
 
-def get_huawei_gpu_basic_info_cmd(npu_id, iswindows=False):
-    cmd = "npu-smi info -t board -i {0};npu-smi info -i {0} -t memory;npu-smi info -t power -i {0}".format(
-        npu_id)
+def get_huawei_gpu_summary_cmd(npu_smi_path=None, iswindows=False):
+    cmd = "%s info" % (npu_smi_path or _get_npu_smi_cmd())
+    if iswindows:
+        cmd = cmd.replace(" ", "|")
+    return cmd
+
+
+def get_huawei_gpu_basic_info_cmd(npu_id, iswindows=False, npu_smi_path=None):
+    cmd = "{0} info -t board -i {1};{0} info -i {1} -t memory;{0} info -t power -i {1}".format(
+        npu_smi_path or _get_npu_smi_cmd(), npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd
 
 
 def get_huawei_gpu_product_name_cmd(npu_id, iswindows=False):
-    cmd = "npu-smi info -t product -i {0}".format(npu_id)
+    cmd = "{0} info -t product -i {1}".format(_get_npu_smi_cmd(), npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd
 
 
-def get_huawei_gpu_aios_rank_table_dict(npu_ids, iswindows=False):
-    for npu_id in npu_ids:
-        if not npu_id.isdigit():
-            raise ValueError("NPU ID must be a digit, got: {}".format(npu_id))
+def get_huawei_gpu_aios_rank_table_dict(device_ids, iswindows=False):
+    for device_id in device_ids:
+        if not device_id.isdigit():
+            raise ValueError("Device ID must be a digit, got: {}".format(device_id))
 
-    # Build the command to get IP addresses for each NPU ID using hccn_tool
+    # Build the command to get IP addresses for each physical device ID.
     device_ips = {}
     device_netmasks = {}
-    for npu_id in npu_ids:
+    for device_id in device_ids:
         # output example:
         # hccn_tool -i 6 -ip -g
         # ipaddr:172.20.9.77
         # netmask:255.255.0.0
-        r, o, e = bash_roe("hccn_tool -i %s -ip -g" % npu_id)
+        cmd = "hccn_tool -i %s -ip -g" % device_id
+        if not iswindows:
+            cmd = "timeout -k 1s 10s %s" % cmd
+        r, o, e = bash_roe(cmd)
 
         ip = None
         netmask = None
@@ -643,35 +673,37 @@ def get_huawei_gpu_aios_rank_table_dict(npu_ids, iswindows=False):
         # Use fallback IP if no IP found
         if not ip:
             logger.warning(
-                "Could not retrieve IP for NPU ID %s, using default format" % npu_id)
-            ip = "10.20.0.%s" % (int(npu_id) + 2)
+                "Could not retrieve IP for Huawei device ID %s, using default format" % device_id)
+            ip = "10.20.0.%s" % (int(device_id) + 2)
         if not netmask:
             logger.warning(
-                "Could not retrieve netmask for NPU ID %s, using default" % npu_id)
+                "Could not retrieve netmask for Huawei device ID %s, using default" % device_id)
             netmask = "255.255.0.0"
 
-        device_ips[npu_id] = ip
-        device_netmasks[npu_id] = netmask
+        device_ips[device_id] = ip
+        device_netmasks[device_id] = netmask
 
     # Build rank table dictionary
     rank_table = {
-        "server_count": len(npu_ids),
+        "server_count": len(device_ids),
         "server_list": []
     }
 
-    for _, npu_id in enumerate(npu_ids):
+    for device_id in device_ids:
         server_info = {
-            "device_id": npu_id,
-            "host": device_ips[npu_id],
-            "device_ip": device_ips[npu_id],
-            "netmask": device_netmasks[npu_id]
+            "device_id": device_id,
+            "host": device_ips[device_id],
+            "device_ip": device_ips[device_id],
+            "netmask": device_netmasks[device_id]
         }
         rank_table["server_list"].append(server_info)
 
     return rank_table
 
 
-def check_huawei_npu_is_isolated(npu_id, all_npu_ids, iswindows=False):
+def check_huawei_npu_is_isolated(
+        npu_id, all_npu_ids, iswindows=False, chip_id=None,
+        physical_id=None):
     """
     Check whether a Huawei NPU is isolated using `npu-smi info -t hccs`,
     with topo-based fallback when hccs health line is missing.
@@ -679,17 +711,23 @@ def check_huawei_npu_is_isolated(npu_id, all_npu_ids, iswindows=False):
     Detection methods:
       1. Primary: hccs health status != OK means isolated
       2. Fallback: topo matrix with zero HCCS connections means isolated
+
+    Ascend 910B topology rows are keyed by NPU ID. Ascend 910C rows are
+    keyed by physical ID, supplied from the summary when available.
     """
-    if not npu_id or not all_npu_ids or len(all_npu_ids) <= 1:
+    if (not npu_id or not all_npu_ids
+            or (len(all_npu_ids) <= 1 and chip_id is None)):
         return False
 
     try:
-        r, _, _ = bash_roe("which npu-smi")
-        if r != 0:
+        npu_smi_path = get_npu_smi_path()
+        if not npu_smi_path:
             logger.debug("npu-smi not found, cannot check isolation status")
             return False
 
-        cmd = "npu-smi info -t hccs -i {0} -c 0".format(npu_id)
+        target_chip_id = chip_id if chip_id is not None else "0"
+        cmd = "{0} info -t hccs -i {1} -c {2}".format(
+            npu_smi_path, npu_id, target_chip_id)
         if iswindows:
             cmd = cmd.replace(" ", "|")
 
@@ -711,7 +749,8 @@ def check_huawei_npu_is_isolated(npu_id, all_npu_ids, iswindows=False):
         # Fallback: topo matrix
         logger.debug(
             "hccs health not available for NPU %s, trying topo fallback" % npu_id)
-        return _check_npu_isolation_by_topo(npu_id, iswindows)
+        return _check_npu_isolation_by_topo(
+            npu_id, iswindows, physical_id=physical_id)
 
     except Exception as ex:
         logger.warning("failed to check NPU %s isolation status: %s" %
@@ -719,12 +758,13 @@ def check_huawei_npu_is_isolated(npu_id, all_npu_ids, iswindows=False):
         return False
 
 
-def _check_npu_isolation_by_topo(npu_id, iswindows=False):
+def _check_npu_isolation_by_topo(
+        npu_id, iswindows=False, physical_id=None):
     """
     Fallback isolation detection via topo matrix.
     An isolated NPU has zero HCCS connections (all links show SYS or PHB).
     """
-    cmd = "npu-smi info -t topo -i {0}".format(npu_id)
+    cmd = "{0} info -t topo -i {1}".format(_get_npu_smi_cmd(), npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
 
@@ -733,21 +773,8 @@ def _check_npu_isolation_by_topo(npu_id, iswindows=False):
         logger.debug("failed to get topo for NPU %s: %s" % (npu_id, e))
         return False
 
-    hccs_count = 0
-    for line in o.splitlines():
-        stripped = line.strip()
-        if not stripped.upper().startswith("NPU"):
-            continue
-        parts = stripped.split()
-        for part in parts[1:]:
-            if part.upper() == "HCCS":
-                hccs_count += 1
-
-    if hccs_count == 0:
-        logger.debug("NPU %s has 0 HCCS connections in topo (isolated)" % npu_id)
-        return True
-
-    return False
+    from zstacklib.gpu.vendors import huawei_common
+    return huawei_common.topology_isolated(o, npu_id, physical_id)
 
 
 def is_valid_video_controller(device):
@@ -932,7 +959,8 @@ def _gpu_device_processor(pci_device_to, context):
                         pci_device_to, vendor_context)
                 else:
                     vfio_mdev_supported, vfio_mdev_info = _safe_detect(
-                        "vfio_mdev", vendor_class.detect_vfio_mdev_capability, pci_device_to)
+                        "vfio_mdev", vendor_class.detect_vfio_mdev_capability,
+                        pci_device_to, gpu_info_map)
                 sriov_supported, sriov_info = _safe_detect(
                     "sriov", vendor_class.detect_sriov_capability, pci_device_to, gpu_info_map)
                 if vendor_context is not None:
@@ -1494,7 +1522,22 @@ def get_info(pci_address=None, pci_device=None, vendor_name=None):
             if plugin and plugin.is_available():
                 nvidia_plugin_attempted = vendor_name == VendorEnum.NVIDIA
                 # Use plugin to collect information
-                gpu_infos = plugin.get_basic_info()
+                gpu_infos = plugin.get_info_by_pci(pci_address)
+                if vendor_name == VendorEnum.HUAWEI:
+                    huawei_info_map = {}
+                    for gpu_info in gpu_infos:
+                        normalized_gpu_pci = normalize_pci_address(
+                            gpu_info.pci_address)
+                        if normalized_gpu_pci and _is_function_0(
+                                normalized_gpu_pci):
+                            huawei_info_map[normalized_gpu_pci] = \
+                                gpu_info.to_addon_dict()
+
+                    if pci_address in huawei_info_map:
+                        plugin.enrich_addon_info(
+                            huawei_info_map, sorted(huawei_info_map))
+                        return huawei_info_map[pci_address]
+
                 for gpu_info in gpu_infos:
                     # Normalize plugin returned pci_address for consistent comparison
                     normalized_gpu_pci = normalize_pci_address(
@@ -1506,37 +1549,7 @@ def get_info(pci_address=None, pci_device=None, vendor_name=None):
                         result = gpu_info.to_addon_dict()
 
                         # Handle vendor-specific extra fields
-                        if vendor_name == VendorEnum.HUAWEI:
-                            # Huawei special handling: npuId, isIsolated already in extra
-                            result.update(gpu_info.extra)
-
-                            # Collect product name and aios rank table (using legacy functions)
-                            try:
-                                npu_ids = plugin.get_npu_ids()  # Class method
-                                if npu_ids:
-                                    r, o, e = bash_roe(
-                                        get_huawei_gpu_product_name_cmd(npu_ids))
-                                    if r == 0 and o and "not support" not in o:
-                                        product_type = get_huawei_product_type(
-                                            o)
-                                        if product_type:
-                                            result["productName"] = product_type
-
-                                    # Collect aios rank table
-                                    try:
-                                        aios_rank_table = get_huawei_gpu_aios_rank_table_dict(
-                                            npu_ids)
-                                        if aios_rank_table:
-                                            result["opaque"] = {
-                                                "aiosRankTable": aios_rank_table}
-                                    except Exception as e:
-                                        logger.debug(
-                                            "Failed to get aios rank table: %s" % str(e))
-                            except Exception as e:
-                                logger.debug(
-                                    "Failed to get Huawei product name: %s" % str(e))
-
-                        elif vendor_name == VendorEnum.TIANSHU:
+                        if vendor_name == VendorEnum.TIANSHU:
                             # Tianshu special handling: product name
                             try:
                                 r, o, e = bash_roe(
@@ -1698,9 +1711,15 @@ def _collect_haiguang_legacy(pci_address):
 
 
 def _collect_huawei_legacy(pci_address):
-    """Huawei legacy collection (includes special fields)"""
-    r, o, e = bash_roe("which npu-smi")
-    if r != 0:
+    """Collect Huawei information without the vendor plugin."""
+    from zstacklib.gpu.vendors.huawei import Huawei
+
+    pci_address = pci.normalize_pci_address(pci_address)
+    if not pci_address:
+        return None
+
+    npu_smi_path = get_npu_smi_path()
+    if not npu_smi_path:
         return None
 
     r, npu_ids_out = bash_ro(get_huawei_gpu_npu_id_cmd())
@@ -1712,63 +1731,67 @@ def _collect_huawei_legacy(pci_address):
         return None
 
     npu_infos = []
-    npu_id_map = {}
     for npu_id in npu_ids:
         r, o, e = bash_roe(get_huawei_gpu_basic_info_cmd(npu_id))
         if r != 0:
             continue
+        for info in parse_huawei_gpu_output_by_npu_id(o):
+            pci_addr = pci.normalize_pci_address(info.get("pciAddress"))
+            if not pci_addr:
+                continue
+            info["pciAddress"] = pci_addr
+            info["npuId"] = npu_id
+            npu_infos.append(info)
 
-        parsed_infos = parse_huawei_gpu_output_by_npu_id(o)
-        for info in parsed_infos:
-            pci_addr = info.get("pciAddress", "")
-            if pci_addr:
-                npu_id_map[pci_addr.lower()] = npu_id
-        npu_infos.extend(parsed_infos)
+    r, o, e = bash_roe("%s info" % npu_smi_path)
+    if r == 0:
+        npu_infos = merge_huawei_gpu_chip_infos(npu_infos, o)
 
-    # Find matching GPU
-    for npu_info in npu_infos:
-        if pci_address not in npu_info.get("pciAddress", "").lower():
-            continue
+    npu_info = next((
+        info for info in npu_infos
+        if pci.normalize_pci_address(info.get("pciAddress")) == pci_address
+    ), None)
+    if npu_info is None:
+        return None
 
-        result = {
-            "memory": npu_info.get("memory"),
-            "power": npu_info.get("power"),
-            "serialNumber": npu_info.get("serialNumber"),
-            "isDriverLoaded": True,
+    result = dict(npu_info)
+    result.pop("pciAddress", None)
+    result["isDriverLoaded"] = True
+    npu_id = npu_info.get("npuId")
+
+    if npu_id:
+        try:
+            from zstacklib.gpu.vendors import huawei_common
+            group = huawei_common.group_npus(npu_infos)[str(npu_id)]
+            chip_id = group.handler.get_isolation_chip_id(npu_info)
+            result["isIsolated"] = check_huawei_npu_is_isolated(
+                npu_id, npu_ids, chip_id=chip_id,
+                physical_id=npu_info.get("physicalId"))
+        except Exception:
+            result["isIsolated"] = False
+
+    try:
+        r, o, e = bash_roe(get_huawei_gpu_product_name_cmd(npu_id))
+        if r == 0 and o and "not support" not in o:
+            product_type = get_huawei_product_type(o)
+            if product_type:
+                result["productName"] = product_type
+    except Exception as ex:
+        logger.debug("Failed to get Huawei product name: %s" % str(ex))
+
+    try:
+        gpu_info_map = {
+            info.get("pciAddress"): info for info in npu_infos
+            if info.get("pciAddress")
         }
+        aios_rank_table = Huawei.get_aios_rank_table(
+            gpu_info_map, sorted(gpu_info_map))
+        if aios_rank_table:
+            result["opaque"] = {"aiosRankTable": aios_rank_table}
+    except Exception as ex:
+        logger.debug("Failed to get aios rank table: %s" % str(ex))
 
-        # Add Huawei special fields
-        matched_npu_id = npu_id_map.get(pci_address)
-        if matched_npu_id:
-            result["npuId"] = matched_npu_id
-            try:
-                is_isolated = check_huawei_npu_is_isolated(
-                    matched_npu_id, npu_ids)
-                result["isIsolated"] = is_isolated
-            except Exception as ex:
-                result["isIsolated"] = False
-
-        # Collect product name
-        try:
-            r, o, e = bash_roe(get_huawei_gpu_product_name_cmd(npu_ids))
-            if r == 0 and o and "not support" not in o:
-                product_type = get_huawei_product_type(o)
-                if product_type:
-                    result["productName"] = product_type
-        except Exception as e:
-            logger.debug("Failed to get Huawei product name: %s" % str(e))
-
-        # Collect aios rank table
-        try:
-            aios_rank_table = get_huawei_gpu_aios_rank_table_dict(npu_ids)
-            if aios_rank_table:
-                result["opaque"] = {"aiosRankTable": aios_rank_table}
-        except Exception as e:
-            logger.debug("Failed to get aios rank table: %s" % str(e))
-
-        return result
-
-    return None
+    return result
 
 
 def _collect_tianshu_legacy(pci_address):
@@ -2211,6 +2234,11 @@ def get_all_metrics():
     return results
 
 
+def _enrich_gpu_pci_device_dependencies(pci_devices, context):
+    from zstacklib.gpu import enrich_pci_device_dependencies
+    enrich_pci_device_dependencies(pci_devices, context.gpu_info_map)
+
+
 def _gpu_device_prepare(context):
     """
     GPU device ops preparation hook (Linux kernel style).
@@ -2225,8 +2253,6 @@ def _gpu_device_prepare(context):
     Returns:
         callable or None: Post-prepare hook (device_list, context) -> None, or None
     """
-    import os
-
     # Batch collect GPU info
     gpu_info_map = get_all_gpu_infos_by_pci()
 
@@ -2247,10 +2273,7 @@ def _gpu_device_prepare(context):
             continue
         context.gpu_vendor_context[vendor_class.VENDOR_NAME] = prepare(gpu_info_map)
 
-    # No post-prepare hook needed anymore
-    # SR-IOV detection is now handled by vendor methods in GPU device ops
-    # gpu_info_map is available in context for vendor methods to use
-    return None
+    return _enrich_gpu_pci_device_dependencies
 
 
 # Register GPU device operations on module import (Linux kernel style)
