@@ -4046,7 +4046,10 @@ class StartCmd(Command):
         def clean_pycache():
             ansible_files_dir = os.path.join(os.path.expanduser('~zstack'), "ansible/files")
             if os.path.isdir(ansible_files_dir):
-                for root, dirs, _ in os.walk(ansible_files_dir):
+                for root, dirs, files in os.walk(ansible_files_dir):
+                    for filename in files:
+                        if filename.endswith(('.pyc', '.pyo')):
+                            os.remove(os.path.join(root, filename))
                     for d in dirs:
                         if d == '__pycache__':
                             pycache_dir = os.path.join(root, d)
