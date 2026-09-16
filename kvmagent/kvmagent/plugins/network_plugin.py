@@ -452,7 +452,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             exception=False).strip()
         return output == 'no'
 
-    def _write_nm_conf(self, conf_name, devices, config_nm=True):
+    def _write_nm_conf(self, conf_name, devices, config_nm=True, preserve_dns=False):
         path = self._get_nm_conf_path(conf_name)
         if not devices:
             raise ValueError('NetworkManager config devices cannot be empty')
@@ -465,6 +465,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 device_specs.append('interface-name:%s' % device)
         config = '[keyfile]\nunmanaged-devices+=%s\n' % ';'.join(device_specs)
 
+        if preserve_dns:
+            config += '\n[main]\nrc-manager=unmanaged\n'
+
         temporary_path = '%s.tmp' % path
         try:
             with open(temporary_path, 'w') as fd:
@@ -476,21 +479,26 @@ class NetworkPlugin(kvmagent.KvmAgent):
             if os.path.exists(temporary_path):
                 os.unlink(temporary_path)
         if config_nm:
-            self._config_nm_devices(devices)
+            self._config_nm_devices(devices, preserve_dns)
 
-    def _config_nm_devices(self, devices):
+    def _config_nm_devices(self, devices, preserve_dns=False):
         if not self._is_nm_running():
             return
 
-        # Set controllers unmanaged before their ports to preserve master relations.
-        for device in devices:
-            if not linux.is_network_device_existing(device):
-                continue
-            if self._is_device_unmanaged(device):
-                continue
-            shell.call('nmcli device set %s managed no' % device)
+        resolv_conf = linux.read_file('/etc/resolv.conf') if preserve_dns else None
+        try:
+            # Set controllers unmanaged before their ports to preserve master relations.
+            for device in devices:
+                if not linux.is_network_device_existing(device):
+                    continue
+                if self._is_device_unmanaged(device):
+                    continue
+                shell.call('nmcli device set %s managed no' % device)
 
-        shell.call('nmcli general reload 1')
+            shell.call('nmcli general reload 1')
+        finally:
+            if resolv_conf is not None:
+                linux.write_file('/etc/resolv.conf', resolv_conf)
         self._check_unmanaged_devices(devices)
 
     def _check_unmanaged_devices(self, devices):
@@ -508,15 +516,20 @@ class NetworkPlugin(kvmagent.KvmAgent):
             if device and linux.is_network_device_existing(device):
                 shell.call('ip link set dev %s up' % device)
 
-    def _ensure_base_nm_conf(self, physical_device):
+    def _ensure_base_nm_conf(self, physical_device, cloud_devices=None):
         root_uplink, _ = self._get_root_uplink_devices(physical_device)
         conf_path = self._get_nm_conf_path(root_uplink)
         # zs-nic-to-bond updates the same base config.
         with lock.FileLock('%s.lock' % conf_path, lock.Flock()):
             _, devices = self._get_root_uplink_devices(physical_device)
-            if os.path.isfile(conf_path):
+            route_devices = devices + [physical_device] + (cloud_devices or [])
+            preserve_dns = not os.path.islink('/etc/resolv.conf') and any(
+                shell.run("ip route show default dev %s | grep -q '^default '" % device) == 0
+                for device in route_devices if linux.is_network_device_existing(device))
+            current_config = linux.read_file(conf_path) if os.path.isfile(conf_path) else None
+            if current_config and (not preserve_dns or 'rc-manager=unmanaged' in current_config):
                 return root_uplink, devices
-            self._write_nm_conf(root_uplink, devices)
+            self._write_nm_conf(root_uplink, devices, preserve_dns=preserve_dns)
             self._set_devices_up(devices)
         return root_uplink, devices
 
@@ -531,7 +544,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         return devices
 
     def _write_l2_nm_conf(self, physical_device, conf_name, cloud_devices):
-        root_uplink, base_devices = self._ensure_base_nm_conf(physical_device)
+        root_uplink, base_devices = self._ensure_base_nm_conf(physical_device, cloud_devices)
         devices = self._build_l2_nm_devices(physical_device, root_uplink, cloud_devices)
         self._write_nm_conf(conf_name, devices)
         self._set_devices_up(base_devices + devices)
