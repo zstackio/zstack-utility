@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import shlex
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -12,12 +13,14 @@ from kvmagent.plugins import vm_plugin
 
 @pytest.fixture(autouse=True)
 def real_xmlobject(monkeypatch):
-    path = Path(__file__).resolve().parents[3] / 'zstacklib/zstacklib/utils/xmlobject.py'
-    spec = importlib.util.spec_from_file_location('iso_tray_xmlobject', path)
-    xmlobject = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(xmlobject)
-    monkeypatch.setattr(vm_plugin, 'xmlobject', xmlobject)
-    return xmlobject
+    for name in ('xmlobject', 'qmp'):
+        path = Path(__file__).resolve().parents[3] / ('zstacklib/zstacklib/utils/%s.py' % name)
+        spec = importlib.util.spec_from_file_location('iso_tray_' + name, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        monkeypatch.setattr(vm_plugin, name, module)
+    vm_plugin.qmp.QEMU_VERSION = '6.2.0'
+    return vm_plugin.xmlobject
 
 
 @pytest.mark.parametrize('bus,machine,arch', [
@@ -49,19 +52,21 @@ def test_repeated_iso_changes_open_only_target_tray(monkeypatch, real_xmlobject,
     vm.domain_xmlobject = xmlobject.loads(vm.domain.XMLDesc(0))
     monkeypatch.setattr(vm_plugin, 'get_vm_by_uuid', lambda uuid: vm)
     monkeypatch.setattr(vm_plugin.linux, 'wait_callback_success', lambda check, *args: check(None))
-    monkeypatch.setattr(vm_plugin, 'get_vm_blocks', MagicMock(return_value=blocks))
 
-    def open_tray(uuid, command):
-        command = json.loads(command)
-        assert uuid == vm.uuid
+    def monitor_command(command):
+        args = shlex.split(command)
+        assert args[:3] == ['virsh', 'qemu-monitor-command', vm.uuid]
+        command = json.loads(args[3])
+        if command['execute'] == 'query-block':
+            return 0, json.dumps({'return': blocks}), ''
         assert command['execute'] == 'blockdev-open-tray'
         selected = [block for block in blocks if block['qdev'] == command['arguments']['id']]
         assert len(selected) == 1
         selected[0]['tray_open'] = True
-        return 0, '', ''
+        return 0, '{"return": {}, "id": "libvirt-909"}', ''
 
-    qmp = MagicMock(side_effect=open_tray)
-    monkeypatch.setattr(vm_plugin, 'execute_qmp_command', qmp)
+    transport = MagicMock(side_effect=monitor_command)
+    monkeypatch.setattr(vm_plugin.qmp.bash, 'bash_roe', transport)
 
     def update_medium(xml, flags):
         requested = ET.fromstring(xml)
@@ -82,7 +87,8 @@ def test_repeated_iso_changes_open_only_target_tray(monkeypatch, real_xmlobject,
             for index in range(3):
                 iso = SimpleNamespace(deviceId=index, path='/test.iso', isEmpty=False, protocol=None)
                 getattr(vm, action)(SimpleNamespace(vmUuid=vm.uuid, deviceId=index, iso=iso))
-    assert qmp.call_count == vm.domain.updateDeviceFlags.call_count == 12
+    assert transport.call_count == 24
+    assert vm.domain.updateDeviceFlags.call_count == 12
 
 
 @pytest.mark.parametrize('disks', [
@@ -106,18 +112,22 @@ def test_unidentified_tray_does_not_open_other_devices(monkeypatch, alias, block
     query = MagicMock(return_value=blocks)
     command = MagicMock()
     monkeypatch.setattr(vm_plugin, 'get_vm_blocks', query)
-    monkeypatch.setattr(vm_plugin, 'execute_qmp_command', command)
+    monkeypatch.setattr(vm_plugin.qmp.bash, 'bash_roe', command)
     vm_plugin.Vm.__new__(vm_plugin.Vm).open_cdrom_tray('vm-iso-tray', alias)
     command.assert_not_called()
     if alias is None:
         query.assert_not_called()
 
 
-def test_qmp_failure_keeps_existing_libvirt_fallback(monkeypatch):
+@pytest.mark.parametrize('response', [
+    (1, '', 'open-tray failed'),
+    (0, '{"error": {"class": "DeviceNotFound", "desc": "Device not found"}}', ''),
+])
+def test_qmp_failure_keeps_existing_libvirt_fallback(monkeypatch, response):
     query = MagicMock(side_effect=RuntimeError('query-block failed'))
-    command = MagicMock(return_value=(1, '', 'open-tray failed'))
+    command = MagicMock(return_value=response)
     monkeypatch.setattr(vm_plugin, 'get_vm_blocks', query)
-    monkeypatch.setattr(vm_plugin, 'execute_qmp_command', command)
+    monkeypatch.setattr(vm_plugin.qmp.bash, 'bash_roe', command)
     vm = vm_plugin.Vm.__new__(vm_plugin.Vm)
     vm.open_cdrom_tray('vm-iso-tray', 'ide0-0-1')
     command.assert_not_called()
