@@ -332,7 +332,7 @@ class TestNetworkPluginNmL2Guard:
         finally:
             plugin_mod.NM_CONF_DIR = original_dir
 
-        plugin._config_nm_devices.assert_called_once_with(['eth0'])
+        plugin._config_nm_devices.assert_called_once_with(['eth0'], False)
 
     def test_config_nm_devices_keeps_dependency_order_before_reload(self):
         plugin = _make_plugin()
@@ -353,6 +353,29 @@ class TestNetworkPluginNmL2Guard:
             'nmcli general reload 1',
         ]
         plugin._check_unmanaged_devices.assert_called_once_with(['bond0', 'eth1', 'br0'])
+
+    def test_config_nm_devices_restores_dns_when_reload_fails(self):
+        plugin = _make_plugin()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        shell = cast(_ShellModule, cast(object, importlib.import_module("zstacklib.utils.shell")))
+        plugin._is_nm_running = MagicMock(return_value=True)
+        plugin._is_device_unmanaged = MagicMock(return_value=False)
+        linux.is_network_device_existing = MagicMock(return_value=True)
+        linux.read_file = MagicMock(return_value='nameserver 223.5.5.5\n')
+        linux.write_file = MagicMock()
+
+        def shell_call(cmd):
+            if cmd == 'nmcli general reload 1':
+                raise RuntimeError('reload failed')
+            return ''
+
+        shell.call = MagicMock(side_effect=shell_call)
+
+        with pytest.raises(RuntimeError, match='reload failed'):
+            plugin._config_nm_devices(['eth0'], preserve_dns=True)
+
+        linux.write_file.assert_called_once_with(
+            '/etc/resolv.conf', 'nameserver 223.5.5.5\n')
 
     def test_bond_uplink_contains_root_and_slaves(self):
         plugin = _make_plugin()
@@ -406,6 +429,8 @@ class TestNetworkPluginNmL2Guard:
         plugin._get_nm_conf_path = MagicMock(return_value='/run/NetworkManager/conf.d/zstack-l2-bond0.conf')
         plugin._write_nm_conf = MagicMock()
         plugin._set_devices_up = MagicMock()
+        shell = cast(_ShellModule, cast(object, importlib.import_module("zstacklib.utils.shell")))
+        shell.run = MagicMock(return_value=1)
 
         plugin_mod = importlib.import_module("kvmagent.plugins.network_plugin")
         with patch.object(plugin_mod.lock, 'FileLock'), patch('os.path.isfile', return_value=False):
@@ -413,7 +438,7 @@ class TestNetworkPluginNmL2Guard:
 
         assert root == 'bond0'
         assert devices == ['bond0', 'eth1', 'eth2']
-        plugin._write_nm_conf.assert_called_once_with('bond0', devices)
+        plugin._write_nm_conf.assert_called_once_with('bond0', devices, preserve_dns=False)
 
     def test_ensure_base_conf_does_not_rewrite_existing_conf(self):
         plugin = _make_plugin()
@@ -421,13 +446,44 @@ class TestNetworkPluginNmL2Guard:
         plugin._get_nm_conf_path = MagicMock(return_value='/run/NetworkManager/conf.d/zstack-l2-bond0.conf')
         plugin._write_nm_conf = MagicMock()
         plugin._set_devices_up = MagicMock()
-
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.read_file = MagicMock(return_value='[keyfile]\n')
         plugin_mod = importlib.import_module("kvmagent.plugins.network_plugin")
         with patch.object(plugin_mod.lock, 'FileLock'), patch('os.path.isfile', return_value=True):
             plugin._ensure_base_nm_conf('bond0')
 
         plugin._write_nm_conf.assert_not_called()
         plugin._set_devices_up.assert_not_called()
+
+    def test_ensure_base_conf_adds_dns_guard_for_existing_bridge_default_route(self, tmp_path):
+        plugin_mod = importlib.import_module("kvmagent.plugins.network_plugin")
+        plugin = _make_plugin()
+        plugin._get_root_uplink_devices = MagicMock(return_value=('bond0', ['bond0', 'eth1']))
+        plugin._config_nm_devices = MagicMock()
+        plugin._set_devices_up = MagicMock()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        shell = cast(_ShellModule, cast(object, importlib.import_module("zstacklib.utils.shell")))
+        linux.is_network_device_existing = MagicMock(return_value=True)
+        shell.run = MagicMock(side_effect=lambda cmd: 0 if 'br0' in cmd else 1)
+        original_dir = plugin_mod.NM_CONF_DIR
+        plugin_mod.NM_CONF_DIR = str(tmp_path)
+        conf_path = tmp_path / 'zstack-l2-bond0.conf'
+        conf_path.write_text(
+            '[keyfile]\nunmanaged-devices+=interface-name:bond0;interface-name:eth1\n')
+
+        try:
+            with patch.object(plugin_mod.lock, 'FileLock'), patch('os.path.islink', return_value=False):
+                root, devices = plugin._ensure_base_nm_conf('bond0', ['br0'])
+        finally:
+            plugin_mod.NM_CONF_DIR = original_dir
+
+        assert root == 'bond0'
+        assert devices == ['bond0', 'eth1']
+        assert conf_path.read_text() == (
+            '[keyfile]\nunmanaged-devices+=interface-name:bond0;interface-name:eth1\n\n'
+            '[main]\nrc-manager=unmanaged\n')
+        plugin._config_nm_devices.assert_called_once_with(devices, True)
+        plugin._set_devices_up.assert_called_once_with(devices)
 
     def test_write_l2_conf_does_not_copy_base_devices(self):
         plugin = _make_plugin()
