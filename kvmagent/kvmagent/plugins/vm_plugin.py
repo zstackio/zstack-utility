@@ -5708,11 +5708,8 @@ class Vm(object):
             logger.warn("skip opening cdrom tray: qdev %s not found on vm %s" % (alias_name, vm_uuid))
             return
 
-        r, _, err = execute_qmp_command(vm_uuid,
-                                        '{ "execute": "blockdev-open-tray", "arguments":{"id": "%s"}}' % alias_name)
-        if r != 0 or err:
-            logger.warning("failed to open tray for cdrom %s, error: %s" % (alias_name, err))
-        else:
+        result = qmp.execute_qmp_command(vm_uuid, "blockdev-open-tray", raise_exception=False, id=alias_name)
+        if result is not None:
             logger.debug("opened tray for cdrom %s on vm %s" % (alias_name, vm_uuid))
 
     def attach_iso(self, cmd):
