@@ -452,7 +452,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             exception=False).strip()
         return output == 'no'
 
-    def _write_nm_conf(self, conf_name, devices, config_nm=True, preserve_dns=False):
+    def _write_nm_conf(self, conf_name, devices, preserve_dns=False):
         path = self._get_nm_conf_path(conf_name)
         if not devices:
             raise ValueError('NetworkManager config devices cannot be empty')
@@ -468,6 +468,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if preserve_dns:
             config += '\n[main]\nrc-manager=unmanaged\n'
 
+        if os.path.isfile(path):
+            with open(path) as fd:
+                if fd.read() == config:
+                    return
+
+        self._write_nm_conf_content(path, config)
+
+    @staticmethod
+    def _write_nm_conf_content(path, config):
         temporary_path = '%s.tmp' % path
         try:
             with open(temporary_path, 'w') as fd:
@@ -478,16 +487,15 @@ class NetworkPlugin(kvmagent.KvmAgent):
         finally:
             if os.path.exists(temporary_path):
                 os.unlink(temporary_path)
-        if config_nm:
-            self._config_nm_devices(devices, preserve_dns)
 
     def _config_nm_devices(self, devices, preserve_dns=False):
         if not self._is_nm_running():
             return
 
-        resolv_conf = linux.read_file('/etc/resolv.conf') if preserve_dns else None
+        resolv_conf = (linux.read_file('/etc/resolv.conf')
+                       if preserve_dns and not os.path.islink('/etc/resolv.conf') else None)
         try:
-            # Set controllers unmanaged before their ports to preserve master relations.
+            # Keep controllers before their ports to preserve master relations.
             for device in devices:
                 if not linux.is_network_device_existing(device):
                     continue
@@ -498,7 +506,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             shell.call('nmcli general reload 1')
         finally:
             if resolv_conf is not None:
-                linux.write_file('/etc/resolv.conf', resolv_conf)
+                linux.write_file('/etc/resolv.conf', resolv_conf, create_if_not_exist=True)
         self._check_unmanaged_devices(devices)
 
     def _check_unmanaged_devices(self, devices):
@@ -516,23 +524,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
             if device and linux.is_network_device_existing(device):
                 shell.call('ip link set dev %s up' % device)
 
-    def _ensure_base_nm_conf(self, physical_device, cloud_devices=None):
-        root_uplink, _ = self._get_root_uplink_devices(physical_device)
-        conf_path = self._get_nm_conf_path(root_uplink)
-        # zs-nic-to-bond updates the same base config.
-        with lock.FileLock('%s.lock' % conf_path, lock.Flock()):
-            _, devices = self._get_root_uplink_devices(physical_device)
-            route_devices = devices + [physical_device] + (cloud_devices or [])
-            preserve_dns = not os.path.islink('/etc/resolv.conf') and any(
-                shell.run("ip route show default dev %s | grep -q '^default '" % device) == 0
-                for device in route_devices if linux.is_network_device_existing(device))
-            current_config = linux.read_file(conf_path) if os.path.isfile(conf_path) else None
-            if current_config and (not preserve_dns or 'rc-manager=unmanaged' in current_config):
-                return root_uplink, devices
-            self._write_nm_conf(root_uplink, devices, preserve_dns=preserve_dns)
-            self._set_devices_up(devices)
-        return root_uplink, devices
-
     @staticmethod
     def _build_l2_nm_devices(physical_device, root_uplink, cloud_devices):
         devices = []
@@ -543,25 +534,71 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 devices.append(device)
         return devices
 
-    def _write_l2_nm_conf(self, physical_device, conf_name, cloud_devices):
-        root_uplink, base_devices = self._ensure_base_nm_conf(physical_device, cloud_devices)
-        devices = self._build_l2_nm_devices(physical_device, root_uplink, cloud_devices)
-        self._write_nm_conf(conf_name, devices)
-        self._set_devices_up(base_devices + devices)
-        return base_devices + devices
+    def _write_l2_nm_conf(self, physical_device, conf_name, cloud_devices, restart_nm=False):
+        root_uplink, base_devices = self._get_root_uplink_devices(physical_device)
+        l2_devices = self._build_l2_nm_devices(physical_device, root_uplink, cloud_devices)
+        devices = base_devices + l2_devices
 
-    def _remove_l2_nm_conf(self, physical_device, conf_name, cloud_devices):
-        root_uplink, _ = self._get_root_uplink_devices(physical_device)
-        devices = self._build_l2_nm_devices(physical_device, root_uplink, cloud_devices)
+        # Preserve the existing DNS handling for the uplink.
+        base_conf_path = self._get_nm_conf_path(root_uplink)
+        base_conf = None
+        if os.path.isfile(base_conf_path):
+            with open(base_conf_path) as fd:
+                base_conf = fd.read()
+        preserve_dns = bool(base_conf and 'rc-manager=unmanaged' in base_conf)
+        if not preserve_dns and not os.path.islink('/etc/resolv.conf'):
+            preserve_dns = any(
+                shell.run("ip route show default dev %s | grep -q '^default '" % device) == 0
+                for device in devices if linux.is_network_device_existing(device))
+
+        # Do not start or reload an already stopped NetworkManager.
+        nm_was_active = shell.run('systemctl is-active --quiet NetworkManager') == 0
+        if not nm_was_active:
+            self._write_nm_conf(conf_name, l2_devices)
+            self._write_nm_conf(root_uplink, base_devices, preserve_dns=preserve_dns)
+            self._set_devices_up(devices)
+            return devices
+
+        # Only a NoVlan handoff may restart NM; repeated requests stay online.
+        existing_devices = [device for device in devices if linux.is_network_device_existing(device)]
+        need_restart_nm = restart_nm and any(
+            not self._is_device_unmanaged(device) for device in existing_devices)
+        if not need_restart_nm:
+            self._write_nm_conf(conf_name, l2_devices)
+            self._write_nm_conf(root_uplink, base_devices, preserve_dns=preserve_dns)
+            self._config_nm_devices(devices, preserve_dns)
+            self._set_devices_up(devices)
+            return devices
+
+        # Publish the NoVlan rules without an online managed-state transition.
+        resolv_conf = (linux.read_file('/etc/resolv.conf')
+                       if not os.path.islink('/etc/resolv.conf') else None)
+        try:
+            bash_errorout('systemctl stop NetworkManager')
+            self._write_nm_conf(conf_name, l2_devices)
+            self._write_nm_conf(root_uplink, base_devices, preserve_dns=preserve_dns)
+        finally:
+            start_rc, _, start_error = bash_roe('systemctl start NetworkManager')
+            nm_ready = start_rc == 0 and linux.wait_callback_success(
+                lambda _: self._is_nm_running(), timeout=30, interval=0.2)
+            if resolv_conf is not None:
+                linux.write_file('/etc/resolv.conf', resolv_conf, create_if_not_exist=True)
+            if start_rc != 0:
+                raise RuntimeError('failed to start NetworkManager: %s' % start_error)
+            if not nm_ready:
+                raise RuntimeError('NetworkManager did not become ready after start')
+
+        self._check_unmanaged_devices(existing_devices)
+        self._set_devices_up(devices)
+        return devices
+
+    def _remove_l2_nm_conf(self, conf_name):
         conf_path = self._get_nm_conf_path(conf_name)
         if os.path.exists(conf_path):
             os.unlink(conf_path)
         if not self._is_nm_running():
             return
         shell.call('nmcli general reload 1')
-        for device in devices:
-            if linux.is_network_device_existing(device):
-                shell.call('nmcli device set %s managed yes' % device, exception=False)
 
     def modifySysConfiguration(self, name, old_value, new_value):
         sysconf_path = "/etc/sysctl.conf"
@@ -1238,8 +1275,9 @@ configure lldp status rx-only \n
             if new_vlan not in transition_devices:
                 transition_devices.append(new_vlan)
 
-        self._write_l2_nm_conf(
-            cmd.physicalInterfaceName, cmd.bridgeName, transition_devices)
+        devices = self._write_l2_nm_conf(
+            cmd.physicalInterfaceName, cmd.bridgeName, transition_devices,
+            restart_nm=not cmd.newVlan)
         self._ifup_device_if_down(cmd.physicalInterfaceName)
 
         old_interface = cmd.physicalInterfaceName
@@ -1267,8 +1305,9 @@ configure lldp status rx-only \n
             final_devices = [cmd.bridgeName]
             if cmd.newVlan:
                 final_devices.append(new_interface)
-            self._write_l2_nm_conf(
+            devices = self._write_l2_nm_conf(
                 cmd.physicalInterfaceName, cmd.bridgeName, final_devices)
+        self._check_unmanaged_devices(devices)
         logger.debug('successfully update bridge[%s] vlan interface from device[%s] to device[%s]'
                      % (cmd.bridgeName, old_interface, new_interface))
 
@@ -1291,7 +1330,7 @@ configure lldp status rx-only \n
 
     def create_novlan_bridge_with_nm(self, cmd, rsp):
         devices = self._write_l2_nm_conf(
-            cmd.physicalInterfaceName, cmd.bridgeName, [cmd.bridgeName])
+            cmd.physicalInterfaceName, cmd.bridgeName, [cmd.bridgeName], restart_nm=True)
         self.create_novlan_bridge(cmd, rsp)
         if rsp.success:
             self._check_unmanaged_devices(devices)
@@ -1716,8 +1755,7 @@ configure lldp status rx-only \n
         if linux.is_network_device_existing(cmd.bridgeName):
             logger.debug('keep NetworkManager config because bridge[%s] is still in use' % cmd.bridgeName)
             return
-        self._remove_l2_nm_conf(
-            cmd.physicalInterfaceName, cmd.bridgeName, [cmd.bridgeName])
+        self._remove_l2_nm_conf(cmd.bridgeName)
         logger.debug('successfully delete bridge[%s] with physical interface[%s]' % (
             cmd.bridgeName, cmd.physicalInterfaceName))
 
@@ -1746,9 +1784,7 @@ configure lldp status rx-only \n
             if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
                 linux.delete_vlan_bridge(cmd.bridgeName, vlanInterfName)
                 if not linux.is_network_device_existing(cmd.bridgeName):
-                    self._remove_l2_nm_conf(
-                        cmd.physicalInterfaceName, cmd.bridgeName,
-                        [cmd.bridgeName, vlanInterfName])
+                    self._remove_l2_nm_conf(cmd.bridgeName)
             else:
                 linux.delete_vlan_bridge(cmd.bridgeName, vlanInterfName)
             logger.debug('successfully delete vlan bridge[name:%s, vlan:%s] from device[%s]' % (
@@ -1772,8 +1808,7 @@ configure lldp status rx-only \n
         try:
             if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
                 linux.delete_vlan_eth(vlanInterfName)
-                self._remove_l2_nm_conf(
-                    cmd.physicalInterfaceName, vlanInterfName, [vlanInterfName])
+                self._remove_l2_nm_conf(vlanInterfName)
             else:
                 linux.delete_vlan_eth(vlanInterfName)
             logger.debug('successfully delete vlan eth[name:%s, vlan:%s] from device[%s]' % (
