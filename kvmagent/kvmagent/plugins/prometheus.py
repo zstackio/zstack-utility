@@ -2640,12 +2640,14 @@ modules:
             if "collectd_exporter" in cmd.binaryPath:
                 start_collectd_exporter(cmd)
             elif "ipmi_exporter" in cmd.binaryPath:
-                if not is_virtual_machine() and is_support_bmc():
-                    start_ipmi_exporter(cmd)
-                else:
+                if is_virtual_machine():
                     logger.info(
                         "Current environment is a virtualized environment, skipping ipmi_exporter startup")
                     continue
+                if not is_support_bmc():
+                    logger.info("BMC capability probe failed, skipping ipmi_exporter startup")
+                    continue
+                start_ipmi_exporter(cmd)
             elif "process_exporter" in cmd.binaryPath:
                 start_process_exporter(cmd)
             elif "zstack_service_exporter" in cmd.binaryPath:
