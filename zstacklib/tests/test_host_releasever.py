@@ -83,6 +83,10 @@ class TestGetHostReleasever:
         hi = _host_info('centos', 'Core', '7.9.2009')
         assert zstacklib.get_host_releasever(hi) == 'c79'
 
+    def test_alibaba_openanolis_edition_maps_to_alinux4(self):
+        hi = _host_info('Alibaba', 'OpenAnolis Edition', '4')
+        assert zstacklib.get_host_releasever(hi) == 'alinux4'
+
     def test_unknown_distro_falls_back_to_mn_release(self):
         hi = _host_info('centos', 'Core', '6.5')
         assert zstacklib.get_host_releasever(hi) == 'h84r'

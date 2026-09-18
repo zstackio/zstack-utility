@@ -573,6 +573,7 @@ def get_host_releasever(host_info):
         "uniontech os 20.06r": "uos20r",
         "uniontech os 20.06": "uos20r",
         "alibaba cloud linux pro edition 4": "alinux4",
+        "alibaba openanolis edition 4": "alinux4",
     }
     # _key = " ".join(ansible_distribution).lower()
     _releasever = supported_release_info.get(host_info.ansible_distribution)
