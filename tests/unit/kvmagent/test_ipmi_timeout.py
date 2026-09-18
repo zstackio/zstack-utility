@@ -72,7 +72,8 @@ import os, signal, sys, time
 with open(os.environ['IPMI_CALLS'], 'a') as stream:
     stream.write(' '.join(sys.argv[1:]) + '\\n')
 if os.environ.get('IPMI_HANG') in ('all', sys.argv[1]):
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    if not os.environ.get('IPMI_ACCEPT_TERM'):
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
     signal.alarm(10)
     child = os.fork()
     if child == 0:
@@ -84,6 +85,7 @@ if os.environ.get('IPMI_HANG') in ('all', sys.argv[1]):
         time.sleep(0.01)
 elif sys.argv[1] == 'mc':
     print('Firmware Revision : 1.23')
+    sys.exit(int(os.environ.get('IPMI_EXIT', '0')))
 elif sys.argv[1] == 'lan':
     if sys.argv[-1] != '2':
         sys.exit(1)
@@ -140,7 +142,13 @@ def test_hung_ipmi_is_bounded_and_partial_output_is_not_a_hardware_alarm(hardwar
     assert all(not metric.samples for name, metric in metrics.items() if name != 'ipmi_status')
     namespace['send_cpu_status_alarm_to_mn'].assert_not_called()
     assert len((hardware.path / 'calls').read_text().splitlines()) == 1
-    for pid in (hardware.path / 'pids').read_text().splitlines():
+    assert_probe_processes_stopped(hardware.path)
+
+
+def assert_probe_processes_stopped(path):
+    pids = (path / 'pids').read_text().splitlines()
+    assert len(pids) == 2, 'both the hung command and its child must have started'
+    for pid in pids:
         stat = Path('/proc') / pid / 'stat'
         deadline = time.monotonic() + 3
         while True:
@@ -203,3 +211,118 @@ def test_submillisecond_ipmi_budget_never_disables_timeout(monkeypatch):
     monkeypatch.setattr(host_plugin, 'bash_roe', command)
     host_plugin.HostPlugin.__new__(host_plugin.HostPlugin)._collect_ipmi_info(SimpleNamespace())
     command.assert_called_once_with('timeout -k 5s 0.001s ipmitool mc info')
+
+
+def load_definitions(path, names, namespace):
+    # The suite mocks linux/shell globally. Execute the production definitions
+    # with real subprocesses, without importing unrelated host initialization.
+    tree = ast.parse(path.read_text())
+    body = [node for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name in names]
+    assert len(body) == len(names)
+    for node in body:
+        node.decorator_list = []
+    exec(compile(ast.Module(body=body, type_ignores=[]), str(path), 'exec'), namespace)
+    return SimpleNamespace(**namespace)
+
+
+@pytest.fixture
+def bmc_probe():
+    logger = MagicMock()
+    shell = load_definitions(ROOT / 'zstacklib/zstacklib/utils/shell.py',
+                             ('get_process', 'ShellError', 'ShellCmd'),
+                             dict(subprocess=subprocess, log=SimpleNamespace(get_logger=lambda _: logger)))
+    return load_definitions(ROOT / 'zstacklib/zstacklib/utils/linux.py',
+                            ('is_support_bmc',), dict(shell=shell, logger=logger))
+
+
+@pytest.mark.parametrize('accept_term, return_codes', [('1', (124,)), ('', (137, -9))])
+def test_bmc_probe_timeout_reaps_process_group(hardware, bmc_probe, monkeypatch, accept_term, return_codes):
+    monkeypatch.setenv('IPMI_ACCEPT_TERM', accept_term)
+    commands = []
+    shell_cmd = bmc_probe.shell.ShellCmd
+
+    def record_command(command):
+        cmd = shell_cmd(command)
+        commands.append(cmd)
+        return cmd
+
+    monkeypatch.setattr(bmc_probe.shell, 'ShellCmd', record_command)
+    started = time.monotonic()
+    assert bmc_probe.is_support_bmc() is False
+    assert time.monotonic() - started < 5
+    assert (hardware.path / 'calls').read_text().splitlines() == ['mc info']
+    assert commands[0].return_code in return_codes
+    bmc_probe.logger.warn.assert_called_once()
+    assert_probe_processes_stopped(hardware.path)
+
+
+@pytest.mark.parametrize('exit_code, supported', [('0', True), ('1', False)])
+def test_bmc_probe_uses_exit_status_even_with_valid_output(hardware, bmc_probe, monkeypatch, exit_code, supported):
+    monkeypatch.setenv('IPMI_HANG', '')
+    monkeypatch.setenv('IPMI_EXIT', exit_code)
+    assert bmc_probe.is_support_bmc() is supported
+    bmc_probe.logger.warn.assert_not_called()
+
+
+def test_bmc_probe_retries_after_timeout(hardware, bmc_probe, monkeypatch):
+    assert bmc_probe.is_support_bmc() is False
+    assert_probe_processes_stopped(hardware.path)
+    monkeypatch.setenv('IPMI_HANG', '')
+    assert bmc_probe.is_support_bmc() is True
+    assert (hardware.path / 'calls').read_text().splitlines() == ['mc info', 'mc info']
+
+
+@pytest.mark.parametrize('hang', ['all', ''])
+def test_prometheus_module_registration_survives_bmc_probe(hardware, bmc_probe, monkeypatch, hang):
+    from kvmagent import kvmagent
+    from zstacklib.utils import misc
+
+    monkeypatch.setenv('IPMI_HANG', hang)
+    monkeypatch.setattr(host_plugin.linux, 'is_support_bmc', bmc_probe.is_support_bmc)
+    monkeypatch.setattr(misc, 'isHyperConvergedHost', lambda: False)
+    register = MagicMock()
+    monkeypatch.setattr(kvmagent, 'register_prometheus_collector', register)
+    spec = importlib.util.spec_from_file_location('ipmi_test_prometheus',
+                                                ROOT / 'kvmagent/kvmagent/plugins/prometheus.py')
+    module = importlib.util.module_from_spec(spec)
+    started = time.monotonic()
+    spec.loader.exec_module(module)
+    assert time.monotonic() - started < 5
+    assert module.is_support_bmc is bmc_probe.is_support_bmc
+    registered = [call.args[0].__name__ for call in register.call_args_list]
+    assert ('collect_equipment_state_from_ipmi' in registered) is (not hang)
+    assert 'collect_raid_state' in registered
+    assert (hardware.path / 'calls').read_text().splitlines() == ['mc info']
+    if hang:
+        assert_probe_processes_stopped(hardware.path)
+
+
+@pytest.mark.parametrize('hang', ['all', ''])
+def test_exporter_start_continues_after_bmc_probe(hardware, bmc_probe, monkeypatch, hang):
+    from kvmagent.plugins import prometheus
+
+    monkeypatch.setenv('IPMI_HANG', hang)
+    monkeypatch.setattr(prometheus, 'is_support_bmc', bmc_probe.is_support_bmc)
+    monkeypatch.setattr(prometheus, 'is_virtual_machine', lambda: False)
+    monkeypatch.setattr(prometheus.lock, 'file_lock', lambda *a, **kw: lambda f: f)
+    monkeypatch.setattr(prometheus, 'os', SimpleNamespace(
+        path=SimpleNamespace(dirname=os.path.dirname, join=os.path.join, exists=lambda _: False),
+        listdir=lambda _: [], chmod=MagicMock()))
+    monkeypatch.setattr(prometheus.linux, 'write_file', MagicMock())
+    monkeypatch.setattr(prometheus.shell, 'run', lambda _: 1)
+    start = MagicMock()
+    monkeypatch.setattr(prometheus, 'bash_errorout', start)
+    req = {prometheus.http.REQUEST_BODY: json.dumps({'cmds': [
+        {'binaryPath': str(hardware.path / name), 'startupArguments': ''}
+        for name in ('ipmi_exporter', 'node_exporter')
+    ]})}
+    started = time.monotonic()
+    response = prometheus.PrometheusPlugin.__new__(prometheus.PrometheusPlugin).start_prometheus_exporter(req)
+    assert time.monotonic() - started < 5
+    assert json.loads(response)['success'] is True
+    commands = [call.args[0] for call in start.call_args_list]
+    assert 'systemctl daemon-reload && systemctl restart node_exporter.service' in commands
+    assert ('systemctl daemon-reload && systemctl restart ipmi_exporter.service' in commands) is (not hang)
+    if hang:
+        assert_probe_processes_stopped(hardware.path)

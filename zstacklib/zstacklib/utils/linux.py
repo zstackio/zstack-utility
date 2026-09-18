@@ -3578,8 +3578,11 @@ def is_virtual_machine():
     return any(name.lower() in product_name.lower() for name in virtual_machine_names)
 
 def is_support_bmc():
-    cmd = shell.ShellCmd("ipmitool mc info")
+    cmd = shell.ShellCmd("timeout -k 5s 30s ipmitool mc info")
     cmd(is_exception=False)
+    # ShellCmd reports SIGKILL as -9 if bash execs timeout directly.
+    if cmd.return_code in (124, 137, -9):
+        logger.warn("BMC capability probe timed out, skipping IPMI monitoring")
     if cmd.return_code != 0:
         return False
     return True
