@@ -98,7 +98,7 @@ def test_colorize_output_preserves_status_color_without_mutating_environment(
 
 
 def test_status_commands_use_explicit_renderer_for_status_states():
-    expected_calls = {'ShowStatusCmd': 3, 'UiStatusCmd': 7}
+    expected_calls = {'ShowStatusCmd': 3, 'UiStatusCmd': 8}
 
     for class_name, count in expected_calls.items():
         assert len(_class_function_calls(class_name, 'colorize_output')) == count

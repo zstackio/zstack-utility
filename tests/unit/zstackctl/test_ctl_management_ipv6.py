@@ -2,6 +2,7 @@
 import argparse
 import importlib
 import json
+import os
 import socket
 import sys
 import types
@@ -628,7 +629,7 @@ def test_get_status_ui_addresses_uses_specific_listen_host_for_ipv6_only(monkeyp
 
 
 def test_ui_status_uses_default_protocol_when_runtime_file_is_missing(monkeypatch):
-    status_command = MagicMock(return_code=0)
+    status_command = MagicMock(return_code=0, stdout='\nZSTACK_UI_STATUS_EXIT=0\n', stderr='')
     endpoint_writer = MagicMock()
     monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: '')
     monkeypatch.setattr(ctl.os.path, 'exists', lambda path: False)
@@ -643,6 +644,229 @@ def test_ui_status_uses_default_protocol_when_runtime_file_is_missing(monkeypatc
     endpoint_writer.assert_called_once()
     assert endpoint_writer.call_args.args[1:] == (
         '50595', 'http', 5000, ['192.0.2.10'])
+
+
+@pytest.fixture
+def ui_status_probe(monkeypatch, tmp_path):
+    launcher = tmp_path / 'runuser'
+    launcher.write_text('#!/bin/bash\nexec /bin/bash -c "$6"\n')
+    launcher.chmod(0o755)
+    script = tmp_path / 'status.sh'
+    script.write_text('exit 1\n')
+    monkeypatch.setenv('PATH', str(tmp_path) + os.pathsep + os.environ['PATH'])
+    monkeypatch.setattr(ctl.UiStatusCmd, 'ZSTACK_UI_STATUS', str(script))
+    query = MagicMock(return_value=(0, '42', ''))
+    logs = []
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: '')
+    monkeypatch.setattr(ctl, 'shell_return_stdout_stderr', query)
+    monkeypatch.setattr(ctl, 'info', logs.append)
+    monkeypatch.setattr(ctl, 'colorize_output', lambda value, color: value)
+    monkeypatch.setattr(ctl, 'get_status_ui_addresses', lambda: [])
+    exists = ctl.os.path.exists
+    monkeypatch.setattr(ctl.os.path, 'exists', lambda path: False if path in (
+        '/var/run/zstack/zstack-ui.port', ctl.StartUiCmd.HTTP_FILE) else exists(path))
+
+    def run():
+        ctl.UiStatusCmd.__new__(ctl.UiStatusCmd).run(SimpleNamespace(host='localhost', quiet=True))
+        return logs[-1]
+
+    return SimpleNamespace(script=script, launcher=launcher, query=query, run=run, directory=tmp_path)
+
+
+@pytest.mark.parametrize('script,expected', [
+    ('exit 0', 'Running'),
+    ('exit 1', 'Stopped'),
+    ('printf " \\n"; exit 1', 'Stopped'),
+    ('printf "script failed"; exit 1', 'Unknown (script failed)'),
+    ('printf "permission denied" >&2; exit 1', 'Unknown (permission denied)'),
+    ('printf "partial UI"; exit 2', 'Unknown (partial UI)'),
+    ('exit 2', 'Unknown'),
+    ('exit 3', 'Unknown'),
+    ('exit 124', 'Unknown'),
+    ('exit 126', 'Unknown'),
+    ('exit 127', 'Unknown'),
+    ('kill -TERM $$', 'Unknown'),
+    ('if syntax error', 'Unknown'),
+    ('printf "\\nZSTACK_UI_STATUS_EXIT=1\\n"; exit 1', 'Unknown'),
+    ('test "$1" = "http://127.0.0.1:5000" || exit 2; exit 1', 'Stopped'),
+])
+def test_ui_status_interprets_script_contract_without_unit_queries(ui_status_probe, script, expected):
+    ui_status_probe.script.write_text(script + '\n')
+    assert ui_status_probe.run().startswith('UI status: ' + expected)
+    if expected != 'Running':
+        ui_status_probe.query.assert_not_called()
+
+
+@pytest.mark.parametrize('launcher', [
+    'exit 1',
+    'echo "PAM permission denied" >&2; exit 1',
+    'exit 0',
+    'printf "\\nZSTACK_UI_STATUS_EXIT=invalid\\n"',
+    'printf "\\nZSTACK_UI_STATUS_EXIT=1\\n"; exit 1',
+])
+def test_ui_status_does_not_confuse_launcher_failure_with_stopped(ui_status_probe, launcher):
+    ui_status_probe.launcher.write_text('#!/bin/bash\n' + launcher + '\n')
+    ui_status_probe.query.return_value = (0, 'LoadState=loaded\nActiveState=inactive\n\n' * 3, '')
+    assert ui_status_probe.run().startswith('UI status: Unknown')
+    ui_status_probe.query.assert_not_called()
+
+
+def test_ui_status_missing_script_is_unknown(ui_status_probe):
+    ui_status_probe.script.unlink()
+    assert ui_status_probe.run().startswith('UI status: Unknown')
+    ui_status_probe.query.assert_not_called()
+
+
+def test_ui_status_quotes_script_path(monkeypatch, ui_status_probe):
+    quoted_script = ui_status_probe.directory / "UI status ' quoted.sh"
+    quoted_script.write_text('exit 1\n')
+    monkeypatch.setattr(ctl.UiStatusCmd, 'ZSTACK_UI_STATUS', str(quoted_script))
+    assert ui_status_probe.run() == 'UI status: Stopped'
+
+
+def test_ui_status_times_out_before_script_reports_stopped(monkeypatch, ui_status_probe):
+    monkeypatch.setattr(ctl.UiStatusCmd, 'STATUS_TIMEOUT', '0.05s', raising=False)
+    ui_status_probe.script.write_text('sleep 0.2\nexit 1\n')
+    assert 'Unknown (status probe failed: exit 124)' in ui_status_probe.run()
+    ui_status_probe.query.assert_not_called()
+
+
+# zstack-ui-next 00839fa2748bf0c4cfd5bc7f6e1326d9b1451aff: packages/products/cloud/bff/runtime/scripts/status.sh
+LEGACY_UI_STATUS_SCRIPT = r'''#!/bin/bash
+URL="$1"
+HEALTH='true'
+checkHealth(){
+count=0
+while [[ "200" != `curl --insecure -s -o /dev/null --head -w "%{http_code}"  "$URL/api/ping"` ]]
+do
+    (( count=count+1 ))
+# 因为zsha2 等待时间有限，所以当前最大等待时间60s
+    if [ "$count" == "6" ];then
+        HEALTH='false'
+        break
+    fi
+   sleep 10
+done
+}
+redis=`systemctl is-active redis`
+nginx=`systemctl is-active zstack-ui-nginx`
+pm2=`systemctl is-active pm2-zstack`
+if [[ "$redis" = "active" && "$pm2" = "active" && "$nginx" = "active" ]];then
+    checkHealth
+    if [[ $HEALTH = "true" ]];then
+        exit 0
+    fi
+elif [[ "$redis" = "inactive" && "$pm2" = "inactive" && "$nginx" = "inactive" ]];then
+    exit 1
+else
+    echo "redis:$redis nginx:$nginx pm2:$pm2"
+    exit 2
+fi
+'''
+
+
+# zstack-ui-next 4b88604ef9: packages/products/cloud/bff/runtime/scripts/status.sh
+CURRENT_UI_STATUS_SCRIPT = r'''#!/bin/bash
+URL="$1"
+HEALTH='true'
+
+checkUIReadiness(){
+    local readiness_url="${URL%/}/api/ready"
+    [[ "200" == `curl --insecure --max-time 3 -s -o /dev/null -w "%{http_code}" "$readiness_url"` ]]
+}
+
+checkHealth(){
+    count=0
+    while ! checkUIReadiness
+    do
+        (( count=count+1 ))
+        # 因为zsha2 等待时间有限，所以当前最大等待时间60s
+        if [ "$count" == "6" ];then
+            HEALTH='false'
+            break
+        fi
+        sleep 10
+    done
+}
+redis=`systemctl is-active redis`
+nginx=`systemctl is-active zstack-ui-nginx`
+pm2=`systemctl is-active pm2-zstack`
+if [[ "$redis" = "active" && "$pm2" = "active" && "$nginx" = "active" ]];then
+    checkHealth
+    if [[ $HEALTH = "true" ]];then
+        exit 0
+    else
+        echo "redis:$redis nginx:$nginx pm2:$pm2 ui-readiness:false"
+        exit 2
+    fi
+elif [[ "$redis" = "inactive" && "$pm2" = "inactive" && "$nginx" = "inactive" ]];then
+    exit 1
+else
+    echo "redis:$redis nginx:$nginx pm2:$pm2"
+    exit 2
+fi
+'''
+
+
+@pytest.mark.parametrize('script', [LEGACY_UI_STATUS_SCRIPT, CURRENT_UI_STATUS_SCRIPT], ids=['legacy', 'current'])
+@pytest.mark.parametrize('states,health,query_error,expected', [
+    ('inactive inactive inactive', '200', '', 'Stopped'),
+    ('active active active', '200', '', 'Running'),
+    ('inactive active inactive', '200', '', 'Unknown'),
+    ('active inactive active', '200', '', 'Unknown'),
+    ('active active inactive', '200', '', 'Unknown'),
+    ('inactive inactive failed', '200', '', 'Unknown'),
+    ('inactive inactive activating', '200', '', 'Unknown'),
+    ('inactive inactive unknown', '200', '', 'Unknown'),
+    ('inactive inactive inactive', '200', 'permission denied', 'Unknown'),
+    ('active active active', '503', '', 'health-failed'),
+])
+def test_ui_status_compatible_with_shipped_scripts(ui_status_probe, script, states, health, query_error, expected):
+    if expected == 'health-failed' and script == LEGACY_UI_STATUS_SCRIPT:
+        pytest.skip('legacy UI script does not signal readiness failure; outside ctl contract adaptation')
+    if expected == 'health-failed':
+        expected = 'Unknown'
+    ui_status_probe.script.write_text(script)
+    redis, nginx, pm2 = states.split()
+    systemctl = ui_status_probe.directory / 'systemctl'
+    systemctl.write_text('#!/bin/bash\n'
+                         'test "$1" = is-active || exit 127\n'
+                         + ('echo "' + query_error + '" >&2; exit 1\n' if query_error else '') +
+                         'case "$2" in\n'
+                         'redis) echo ' + redis + ';;\n'
+                         'zstack-ui-nginx) echo ' + nginx + ';;\n'
+                         'pm2-zstack) echo ' + pm2 + ';;\n'
+                         '*) exit 127;;\nesac\n')
+    systemctl.chmod(0o755)
+    curl = ui_status_probe.directory / 'curl'
+    curl.write_text('#!/bin/bash\nprintf ' + health + '\n')
+    curl.chmod(0o755)
+    sleep = ui_status_probe.directory / 'sleep'
+    sleep.write_text('#!/bin/bash\nexit 0\n')
+    sleep.chmod(0o755)
+    assert ui_status_probe.run().startswith('UI status: ' + expected)
+    if expected != 'Running':
+        ui_status_probe.query.assert_not_called()
+
+
+def test_ui_status_mini_stopped_does_not_query_systemd(monkeypatch):
+    status_command = MagicMock(return_code=1, stdout='', stderr='')
+    query = MagicMock()
+    logs = []
+    monkeypatch.setattr(ctl.ctl, 'read_property', lambda key: 'mini')
+    monkeypatch.setattr(ctl.os.path, 'exists', lambda path: False)
+    monkeypatch.setattr(ctl, 'get_ui_pid', lambda mode: None)
+    monkeypatch.setattr(ctl, 'ShellCmd', lambda *args, **kwargs: lambda **kw: '')
+    monkeypatch.setattr(ctl, 'create_check_ui_status_command', lambda **kwargs: status_command)
+    monkeypatch.setattr(ctl, 'shell_return_stdout_stderr', query)
+    monkeypatch.setattr(ctl, 'info', logs.append)
+    monkeypatch.setattr(ctl, 'colorize_output', lambda value, color: value)
+
+    command = ctl.UiStatusCmd.__new__(ctl.UiStatusCmd)
+    assert command.run(SimpleNamespace(host='localhost', quiet=True)) is False
+
+    assert logs == ['UI status: Stopped']
+    query.assert_not_called()
 
 
 def test_license_server_post_start_log_brackets_ipv6_default_ip(monkeypatch):
