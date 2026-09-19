@@ -10,6 +10,10 @@ except ImportError:
 
 from zstacklib.gpu.vendors.huawei import Huawei
 from zstacklib.gpu.vendors import huawei_common
+from zstacklib.gpu.vendors.ascend_one_chip_per_card import (
+    AscendOneChipPerCardHandler)
+from zstacklib.gpu.vendors.ascend_multiple_chips_per_card import (
+    AscendMultipleChipsPerCardHandler)
 from zstacklib.gpu.tests.test_gpu_ascend_910b_vendors import (
     BOARD_OUTPUT as BOARD_910B, SUMMARY_OUTPUT as SUMMARY_910B)
 from zstacklib.gpu.tests.test_gpu_ascend_910c_vendors import (
@@ -46,15 +50,17 @@ class TestHuaweiModelDispatch(unittest.TestCase):
     def test_resolve_per_npu_without_product_query(self):
         groups = huawei_common.group_npus(
             chips=huawei_common.parse_summary(MIXED_SUMMARY))
-        self.assertEqual(groups["1"].handler.model, "910B")
-        self.assertEqual(groups["2"].handler.model, "910C")
+        self.assertIs(groups["1"].handler, AscendOneChipPerCardHandler)
+        self.assertIs(groups["2"].handler,
+                      AscendMultipleChipsPerCardHandler)
 
     def test_partial_summary_is_enough_for_910c(self):
         chips = huawei_common.parse_summary(MIXED_SUMMARY)
         groups = huawei_common.group_npus(
             chips=[chip for chip in chips
                    if chip.info.extra.get("chipId") == "1"])
-        self.assertEqual(groups["2"].handler.model, "910C")
+        self.assertIs(groups["2"].handler,
+                      AscendMultipleChipsPerCardHandler)
         self.assertEqual(groups["2"].handler.get_metric_targets(groups["2"]),
                          [None, "1"])
 
@@ -62,7 +68,7 @@ class TestHuaweiModelDispatch(unittest.TestCase):
         boards = [{"pciAddress": "0000:8d:00.0", "npuId": "9",
                    "memory": "131072 MB", "serialNumber": "UNKNOWN"}]
         group = huawei_common.group_npus(boards)["9"]
-        self.assertEqual(group.handler.model, "unknown")
+        self.assertIs(group.handler, huawei_common.UnknownHuaweiHandler)
         self.assertFalse(group.handler.multi_chip)
         self.assertEqual(group.handler.get_metric_targets(group), [None])
         self.assertEqual(huawei_common.merge_basic_info(boards, []), boards)
