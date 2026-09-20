@@ -11345,6 +11345,7 @@ class UiStatusCmd(Command):
     ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
     ZSTACK_UI_STATUS = os.path.join(ZSTACK_UI_HOME, 'scripts/status.sh')
     ZSTACK_UI_SSL = 'http'
+    STATUS_TIMEOUT = '90s'
     def __init__(self):
         super(UiStatusCmd, self).__init__()
         self.name = "ui_status"
@@ -11357,6 +11358,23 @@ class UiStatusCmd(Command):
 
     def _remote_status(self, host):
         shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl ui_status"' % host)
+
+    def _run_status_script(self, url):
+        # runuser can also return 1; trust only a completed status script result.
+        command = ('ui_status_rc=0; bash %s %s || ui_status_rc=$?; '
+                   'printf "\\nZSTACK_UI_STATUS_EXIT=%%s\\n" "$ui_status_rc"') % (
+                       shell_quote(self.ZSTACK_UI_STATUS), shell_quote(url))
+        cmd = ShellCmd('timeout -k 1s %s runuser -l root -s /bin/bash -c %s' % (
+            self.STATUS_TIMEOUT, shell_quote(command)))
+        cmd(False)
+        output, marker, result = cmd.stdout.rpartition('\nZSTACK_UI_STATUS_EXIT=')
+        details = '\n'.join(part.strip() for part in (
+            output if marker else cmd.stdout, cmd.stderr) if part.strip())
+        if cmd.return_code != 0:
+            return None, details or 'status probe failed: exit %s' % cmd.return_code
+        if not marker or result not in ('0\n', '1\n', '2\n'):
+            return None, details or 'invalid status script result'
+        return int(result), details
 
     def run(self, args):
         self.quiet = args.quiet
@@ -11420,11 +11438,12 @@ class UiStatusCmd(Command):
             with open(StartUiCmd.HTTP_FILE, 'r') as fd2:
                 default_protcol = fd2.readline()
                 default_protcol = default_protcol.strip()
-        cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s %s://%s:%s'" %
-                       (UiStatusCmd.ZSTACK_UI_STATUS, default_protcol, '127.0.0.1', port), pipe=False)
-        cmd(False)
-        if cmd.return_code != 0:
-            write_status(cmd.stdout)
+        status, details = self._run_status_script('%s://127.0.0.1:%s' % (default_protcol, port))
+        if status != 0:
+            if status == 1 and not details:
+                write_status(colorize_output('Stopped', 'red'))
+            else:
+                write_status('Unknown%s' % (' (%s)' % details if details else ''))
             return False
         else:
             addresses = get_status_ui_addresses()
