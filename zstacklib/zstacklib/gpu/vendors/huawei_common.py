@@ -1,21 +1,23 @@
 # -*- coding: utf-8 -*-
 """Shared Huawei observations and dispatch for plugin and legacy callers.
 
-This module and the model handlers perform no I/O. Public callers retain their
-command runners, exception boundaries, and result formats. A group belongs to
-one logical NPU in one collection; there is no host-wide model cache.
+This module and the card-layout handlers perform no I/O. Public callers retain
+their command runners, exception boundaries, and result formats. A group
+belongs to one logical NPU in one collection; there is no host-wide model
+cache.
 """
 from collections import OrderedDict
 import re
 
 from zstacklib.gpu.base import GPUBase, GPUInfo
-from zstacklib.gpu.vendors.ascend_910b import Ascend910BHandler
-from zstacklib.gpu.vendors.ascend_910c import Ascend910CHandler
+from zstacklib.gpu.vendors.ascend_one_chip_per_card import (
+    AscendOneChipPerCardHandler)
+from zstacklib.gpu.vendors.ascend_multiple_chips_per_card import (
+    AscendMultipleChipsPerCardHandler)
 
 
-class UnknownHuaweiHandler(Ascend910BHandler):
+class UnknownHuaweiHandler(AscendOneChipPerCardHandler):
     """Preserve board data and the legacy NPU-scoped fallback."""
-    model = "unknown"
 
 
 class HuaweiChipInfo(object):
@@ -59,12 +61,12 @@ def resolve_handler(group):
                     if info.get("chipId") is not None}) > 1
             or any("910C" in str(info.get("productName", "")).upper()
                    for info in infos)):
-        return Ascend910CHandler
+        return AscendMultipleChipsPerCardHandler
     if (any((chip.name or "").upper().startswith("910B")
             for chip in group.chips)
             or any("910B" in str(info.get("productName", "")).upper()
                    for info in infos)):
-        return Ascend910BHandler
+        return AscendOneChipPerCardHandler
     return UnknownHuaweiHandler
 
 
@@ -219,7 +221,8 @@ def rank_table_ids(gpu_info_map, pci_addresses):
 
 
 def topology_isolated(output, npu_id, physical_id=None):
-    handler = Ascend910CHandler if physical_id is not None else UnknownHuaweiHandler
+    handler = (AscendMultipleChipsPerCardHandler
+               if physical_id is not None else UnknownHuaweiHandler)
     target = handler.get_topology_target(npu_id, physical_id)
     if target is None:
         return False

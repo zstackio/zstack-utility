@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Ascend 910B single-chip rules. No command execution or vendor registration."""
+"""Ascend one-chip-per-card rules. No I/O or vendor registration."""
 
 
-class Ascend910BHandler(object):
-    model = "910B"
+class AscendOneChipPerCardHandler(object):
     multi_chip = False
 
     @staticmethod
@@ -15,7 +14,7 @@ class Ascend910BHandler(object):
 
     @staticmethod
     def get_metric_targets(group):
-        # 910B queries stay at logical-NPU scope, without a chip selector.
+        # One-chip cards stay at logical-NPU scope, without a chip selector.
         return [None]
 
     @staticmethod

@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Ascend 910C dual-chip rules. IDs come from observations, never arithmetic."""
+"""Ascend multiple-chips-per-card rules based only on observed IDs."""
 
 
-class Ascend910CHandler(object):
-    model = "910C"
+class AscendMultipleChipsPerCardHandler(object):
     multi_chip = True
 
     @staticmethod
