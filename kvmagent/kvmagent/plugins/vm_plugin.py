@@ -8548,7 +8548,7 @@ def check_mirror_jobs(domain_id, migrate_without_bitmaps):
 
     if migrate_without_bitmaps:
         qmp.execute_qmp_command(domain_id, "migrate-set-capabilities", raise_exception=False,
-                                capabilities=[{"capability": "dirty-bitmaps", "sta te":False}])
+                                capabilities=[{"capability": "dirty-bitmaps", "state":False}])
 
 
 def get_block_file_content_by_disk_name(domain_id, disk_name):
