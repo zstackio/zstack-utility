@@ -7,6 +7,8 @@ import types
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 
 def _load_linux_module():
     repo_root = Path(__file__).resolve().parents[3]
@@ -219,7 +221,170 @@ def test_zstac_87140_restore_existing_ipv6_ra_default_route_without_eexist():
     assert (replace_cmd, True) in calls
 
 
-def test_move_dev_route_migrates_resolved_dns_to_bridge():
+def test_get_dns_config_captures_and_restores_regular_resolv_conf(monkeypatch):
+    linux = _load_linux_module()
+    monkeypatch.setattr(linux.os.path, 'islink', MagicMock(return_value=False))
+    monkeypatch.setattr(
+        linux.os.path, 'isfile',
+        MagicMock(side_effect=lambda path: path == '/etc/resolv.conf'))
+    monkeypatch.setattr(linux, '_is_systemd_resolved_configured', MagicMock(return_value=False))
+    linux.read_file = MagicMock(return_value='nameserver 192.0.2.53\n')
+    linux.write_file = MagicMock()
+
+    config = linux.get_dns_config(['eth0'], preserve_resolv_conf=True)
+
+    assert config == {
+        'resolv_conf': 'nameserver 192.0.2.53\n',
+        'resolved_links': {},
+    }
+    linux.restore_dns_config(config)
+    linux.write_file.assert_called_once_with(
+        '/etc/resolv.conf', 'nameserver 192.0.2.53\n',
+        create_if_not_exist=True)
+
+
+@pytest.mark.parametrize('resolv_conf,expected', [
+    ('/etc/resolv.conf', False),
+    ('/run/systemd/resolve/stub-resolv.conf', True),
+    ('/run/systemd/resolve/resolv.conf', True),
+])
+def test_systemd_resolved_configuration_does_not_depend_on_service_state(
+        monkeypatch, resolv_conf, expected):
+    linux = _load_linux_module()
+    monkeypatch.setattr(linux.os.path, 'realpath', MagicMock(return_value=resolv_conf))
+    linux.shell.run = MagicMock()
+
+    assert linux._is_systemd_resolved_configured() is expected
+    linux.shell.run.assert_not_called()
+
+
+def test_get_dns_config_fails_before_network_change_when_resolv_conf_cannot_be_read(
+        monkeypatch):
+    linux = _load_linux_module()
+    monkeypatch.setattr(linux.os.path, 'islink', MagicMock(return_value=False))
+    monkeypatch.setattr(linux.os.path, 'isfile', MagicMock(return_value=True))
+    monkeypatch.setattr(linux, '_is_systemd_resolved_configured', MagicMock(return_value=False))
+    linux.read_file = MagicMock(return_value=None)
+
+    with pytest.raises(Exception, match='failed to read /etc/resolv.conf'):
+        linux.get_dns_config(['eth0'], preserve_resolv_conf=True)
+
+
+def test_get_dns_config_captures_and_restores_resolved_links_with_dns(monkeypatch):
+    linux = _load_linux_module()
+    calls = []
+    outputs = {
+        'LC_ALL=C resolvectl dns 2': 'Link 2 (eth0): 192.0.2.53 2001:db8::53',
+        'LC_ALL=C resolvectl domain 2': 'Link 2 (eth0): example.test ~.',
+        'LC_ALL=C resolvectl default-route 2': 'Link 2 (eth0): yes',
+        'LC_ALL=C resolvectl dns 3': 'Link 3 (eth1):',
+    }
+
+    def shell_call(command, exception=True):
+        calls.append((command, exception))
+        return outputs.get(command, '')
+
+    monkeypatch.setattr(
+        linux.os.path, 'islink',
+        MagicMock(side_effect=lambda path: path == '/etc/resolv.conf'))
+    monkeypatch.setattr(
+        linux.os.path, 'exists',
+        MagicMock(side_effect=lambda path: path == '/run/systemd/resolve/stub-resolv.conf'))
+    monkeypatch.setattr(linux, '_is_systemd_resolved_configured', MagicMock(return_value=True))
+    linux.is_network_device_existing = MagicMock(
+        side_effect=lambda device: device in ('eth0', 'eth1'))
+    linux.iproute.query_index_by_ifname = MagicMock(
+        side_effect=lambda device: {'eth0': 2, 'eth1': 3}[device])
+    linux.shell.call = MagicMock(side_effect=shell_call)
+
+    config = linux.get_dns_config(['eth0', 'eth1', 'missing'])
+
+    assert config == {
+        'resolved_links': {
+            'eth0': {
+                'dns': ['192.0.2.53', '2001:db8::53'],
+                'domain': ['example.test', '~.'],
+                'default_route': 'yes',
+            },
+        },
+    }
+    assert ('LC_ALL=C resolvectl domain 3', True) not in calls
+    assert ('LC_ALL=C resolvectl default-route 3', True) not in calls
+
+    calls[:] = []
+    linux.restore_dns_config(config)
+
+    assert calls == [
+        ("LC_ALL=C resolvectl dns 2 '192.0.2.53' '2001:db8::53'", True),
+        ("LC_ALL=C resolvectl domain 2 'example.test' '~.'", True),
+        ("LC_ALL=C resolvectl default-route 2 'yes'", True),
+    ]
+
+
+def test_get_dns_config_ignores_resolved_query_failure(monkeypatch):
+    linux = _load_linux_module()
+    monkeypatch.setattr(linux, '_is_systemd_resolved_configured', MagicMock(return_value=True))
+    linux.is_network_device_existing = MagicMock(return_value=True)
+    linux._get_resolved_link_config = MagicMock(
+        side_effect=RuntimeError('systemd-resolved is not running'))
+
+    assert linux.get_dns_config(['eth0']) == {'resolved_links': {}}
+
+
+def test_get_resolved_link_config_uses_ifindex_for_vlan_device():
+    linux = _load_linux_module()
+    linux.iproute.query_index_by_ifname = MagicMock(return_value=7)
+    linux.shell.call = MagicMock(return_value='Link 7 (eth0.100):')
+
+    assert linux._get_resolved_link_config('eth0.100') == {'dns': []}
+    linux.iproute.query_index_by_ifname.assert_called_once_with('eth0.100')
+    linux.shell.call.assert_called_once_with('LC_ALL=C resolvectl dns 7')
+
+
+def test_restore_dns_config_attempts_every_captured_link():
+    linux = _load_linux_module()
+    calls = []
+    config = {
+        'resolv_conf': 'nameserver 203.0.113.53\n',
+        'resolved_links': {
+            'eth0': {'dns': ['192.0.2.53'], 'domain': [], 'default_route': 'yes'},
+            'eth1': {'dns': ['198.51.100.53'], 'domain': ['example.test'], 'default_route': 'no'},
+        },
+    }
+
+    def shell_call(command, exception=True):
+        calls.append(command)
+        if command.startswith('LC_ALL=C resolvectl dns 2'):
+            raise RuntimeError('dns restore failed')
+        return ''
+
+    linux.shell.call = MagicMock(side_effect=shell_call)
+    linux.iproute.query_index_by_ifname = MagicMock(
+        side_effect=lambda device: {'eth0': 2, 'eth1': 3}[device])
+    linux.write_file = MagicMock(side_effect=RuntimeError('file restore failed'))
+
+    with pytest.raises(Exception) as error:
+        linux.restore_dns_config(config)
+
+    assert '/etc/resolv.conf' in str(error.value)
+    assert 'eth0' not in str(error.value)
+    assert "LC_ALL=C resolvectl domain 2 ''" in calls
+    assert "LC_ALL=C resolvectl default-route 2 'yes'" in calls
+    assert "LC_ALL=C resolvectl dns 3 '198.51.100.53'" in calls
+    assert "LC_ALL=C resolvectl domain 3 'example.test'" in calls
+    assert "LC_ALL=C resolvectl default-route 3 'no'" in calls
+
+
+def test_migrate_resolved_dns_ignores_resolvectl_failure(monkeypatch):
+    linux = _load_linux_module()
+    monkeypatch.setattr(linux, '_is_systemd_resolved_configured', MagicMock(return_value=True))
+    linux._get_resolved_link_config = MagicMock(
+        side_effect=RuntimeError('systemd-resolved is not running'))
+
+    linux._migrate_resolved_dns('eth0', 'br_eth0')
+
+
+def test_move_dev_route_migrates_resolved_dns_to_bridge(monkeypatch):
     linux = _load_linux_module()
     calls = []
 
@@ -239,23 +404,32 @@ def test_move_dev_route_migrates_resolved_dns_to_bridge():
             return ""
         if cmd == 'ip addr show dev br_ens3 | grep "inet 172.26.115.202/16"':
             return ""
-        if cmd == 'LC_ALL=C resolvectl dns ens3':
+        if cmd == 'LC_ALL=C resolvectl dns 2':
             return "Link 2 (ens3): 223.5.5.5 8.8.8.8"
-        if cmd == 'LC_ALL=C resolvectl dns br_ens3':
+        if cmd == 'LC_ALL=C resolvectl domain 2':
+            return "Link 2 (ens3): example.test ~."
+        if cmd == 'LC_ALL=C resolvectl default-route 2':
+            return "Link 2 (ens3): yes"
+        if cmd == 'LC_ALL=C resolvectl dns 3':
             return "Link 3 (br_ens3):"
+        if cmd == 'LC_ALL=C resolvectl domain 3':
+            return "Link 3 (br_ens3):"
+        if cmd == 'LC_ALL=C resolvectl default-route 3':
+            return "Link 3 (br_ens3): no"
         return ""
 
-    original_exists = linux.os.path.exists
-    try:
-        linux.os.path.exists = MagicMock(return_value=True)
-        linux.shell.call = MagicMock(side_effect=shell_call)
+    monkeypatch.setattr(linux.os.path, 'exists', MagicMock(return_value=True))
+    monkeypatch.setattr(linux.os.path, 'islink', MagicMock(return_value=True))
+    monkeypatch.setattr(linux, '_is_systemd_resolved_configured', MagicMock(return_value=True))
+    linux.iproute.query_index_by_ifname = MagicMock(
+        side_effect=lambda device: {'ens3': 2, 'br_ens3': 3}[device])
+    linux.shell.call = MagicMock(side_effect=shell_call)
 
-        linux.move_dev_route("ens3", "br_ens3")
+    linux.move_dev_route("ens3", "br_ens3")
 
-        assert ('LC_ALL=C resolvectl dns br_ens3 223.5.5.5 8.8.8.8', True) in calls
-        assert ('LC_ALL=C resolvectl domain br_ens3 "~."', True) in calls
-    finally:
-        linux.os.path.exists = original_exists
+    assert ("LC_ALL=C resolvectl dns 3 '223.5.5.5' '8.8.8.8'", True) in calls
+    assert ("LC_ALL=C resolvectl domain 3 'example.test' '~.'", True) in calls
+    assert ("LC_ALL=C resolvectl default-route 3 'yes'", True) in calls
 
 
 def test_create_bridge_snapshots_routes_before_enslave():

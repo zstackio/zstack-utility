@@ -273,14 +273,22 @@ def nm_environment(tmp_path, monkeypatch):
         start_error=False,
         reload_errors=0,
         default_route_devices=set(),
+        l3_devices=set(),
+        resolved=False,
+        resolved_links={},
     )
 
     monkeypatch.setattr(plugin_mod, 'NM_CONF_DIR', str(tmp_path))
-    monkeypatch.setattr(plugin_mod.os.path, 'islink', lambda path: False)
+    monkeypatch.setattr(
+        plugin_mod.os.path, 'islink',
+        lambda path: state.resolved if path == '/etc/resolv.conf' else False)
     plugin._get_root_uplink_devices = MagicMock(return_value=('eth0', ['eth0']))
     monkeypatch.setattr(
         linux, 'is_network_device_existing',
         MagicMock(side_effect=lambda name: name in state.existing))
+    monkeypatch.setattr(
+        linux, 'is_network_ip_using',
+        MagicMock(side_effect=lambda name: name in state.l3_devices))
     monkeypatch.setattr(
         linux, 'wait_callback_success',
         MagicMock(side_effect=lambda fn, data=None, **kwargs: fn(data)))
@@ -323,6 +331,9 @@ def nm_environment(tmp_path, monkeypatch):
         if command.startswith('nmcli device set ') and command.endswith(' managed no'):
             device = command.split()[3]
             state.managed.discard(device)
+            if state.resolved and device in state.resolved_links:
+                state.resolved_links[device].update(
+                    dns='', domain='', default_route='no')
             return ''
         if command == 'systemctl stop NetworkManager':
             if state.stop_error:
@@ -347,16 +358,38 @@ def nm_environment(tmp_path, monkeypatch):
             return ''
         raise AssertionError('unexpected command: %s' % command)
 
-    def bash_roe(command, **_kwargs):
+    def bash_r(command, **_kwargs):
         try:
-            return 0, call(command), None
-        except RuntimeError as error:
-            return 1, '', str(error)
+            call(command)
+            return 0
+        except RuntimeError:
+            return 1
+
+    def get_dns_config(devices, preserve_resolv_conf=False):
+        state.calls.append('get dns config %s' % ','.join(devices))
+        return {
+            'resolv_conf': ('nameserver 198.51.100.53\n'
+                            if preserve_resolv_conf and not state.resolved else None),
+            'resolved_links': {
+                device: dict(state.resolved_links[device])
+                for device in devices if state.resolved and device in state.resolved_links
+            },
+        }
+
+    def restore_dns_config(config):
+        state.calls.append('restore dns config')
+        if config['resolv_conf'] is not None:
+            linux.write_file(
+                '/etc/resolv.conf', config['resolv_conf'], create_if_not_exist=True)
+        for device, link in config['resolved_links'].items():
+            state.resolved_links[device] = dict(link)
 
     monkeypatch.setattr(shell, 'run', MagicMock(side_effect=run))
     monkeypatch.setattr(shell, 'call', MagicMock(side_effect=call))
+    monkeypatch.setattr(linux, 'get_dns_config', MagicMock(side_effect=get_dns_config))
+    monkeypatch.setattr(linux, 'restore_dns_config', MagicMock(side_effect=restore_dns_config))
     monkeypatch.setattr(plugin_mod, 'bash_errorout', MagicMock(side_effect=call))
-    monkeypatch.setattr(plugin_mod, 'bash_roe', MagicMock(side_effect=bash_roe))
+    monkeypatch.setattr(plugin_mod, 'bash_r', MagicMock(side_effect=bash_r))
     return plugin, state, tmp_path
 
 
@@ -462,17 +495,15 @@ class TestNetworkPluginNmL2:
         shell.run.assert_called_once_with(
             'nmcli -t -f RUNNING general >/dev/null 2>&1')
 
-    def test_config_nm_devices_keeps_device_order_before_reload(self):
+    def test_set_device_unmanaged_keeps_device_order_before_reload(self):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
         shell = cast(_ShellModule, cast(object, importlib.import_module("zstacklib.utils.shell")))
         plugin._is_nm_running = MagicMock(return_value=True)
-        plugin._is_device_unmanaged = MagicMock(return_value=False)
-        plugin._check_unmanaged_devices = MagicMock()
         linux.is_network_device_existing = MagicMock(return_value=True)
         shell.call = MagicMock()
 
-        plugin._config_nm_devices(['bond0', 'eth1', 'br0'])
+        plugin._set_device_unmanaged(['bond0', 'eth1', 'br0'])
 
         assert [item.args[0] for item in shell.call.call_args_list] == [
             'nmcli device set bond0 managed no',
@@ -480,7 +511,6 @@ class TestNetworkPluginNmL2:
             'nmcli device set br0 managed no',
             'nmcli general reload 1',
         ]
-        plugin._check_unmanaged_devices.assert_called_once_with(['bond0', 'eth1', 'br0'])
 
     def test_bond_uplink_contains_root_and_slaves(self):
         plugin = _make_plugin()
@@ -530,6 +560,7 @@ class TestNetworkPluginNmL2:
         linux = importlib.import_module('zstacklib.utils.linux')
         state.existing.add('eth0.2000')
         state.managed.add('eth0.2000')
+        state.default_route_devices.add('eth0')
         original_write = plugin._write_nm_conf
 
         def write_while_stopped(*args, **kwargs):
@@ -549,18 +580,23 @@ class TestNetworkPluginNmL2:
         assert not any('eth0.2000' in command for command in state.calls)
         assert plugin._write_nm_conf.call_args_list == [
             call('br_novlan', ['br_novlan']),
-            call('eth0', ['eth0'], preserve_dns=False),
+            call('eth0', ['eth0'], preserve_dns=True),
         ]
         assert (conf_dir / 'zstack-l2-eth0.conf').read_text() == (
-            '[keyfile]\nunmanaged-devices+=interface-name:eth0\n')
+            '[keyfile]\nunmanaged-devices+=interface-name:eth0\n\n'
+            '[main]\nrc-manager=unmanaged\n')
         assert (conf_dir / 'zstack-l2-br_novlan.conf').read_text() == (
             '[keyfile]\nunmanaged-devices+=interface-name:br_novlan\n')
+        linux.get_dns_config.assert_called_once_with(
+            ['eth0'], preserve_resolv_conf=True)
+        linux.restore_dns_config.assert_called_once()
         linux.write_file.assert_called_once_with(
             '/etc/resolv.conf', 'nameserver 198.51.100.53\n',
             create_if_not_exist=True)
 
     def test_vlan_uses_online_nm_configuration(self, nm_environment):
         plugin, state, _ = nm_environment
+        linux = importlib.import_module('zstacklib.utils.linux')
         state.existing.add('eth0.2000')
         state.managed.add('eth0.2000')
 
@@ -571,6 +607,84 @@ class TestNetworkPluginNmL2:
         assert state.calls.count('nmcli device set eth0 managed no') == 1
         assert state.calls.count('nmcli general reload 1') == 1
         assert not any('eth0.2000' in command for command in state.calls)
+        linux.write_file.assert_not_called()
+
+    @pytest.mark.parametrize('l3_device', ['eth0', 'eth0.100'])
+    def test_vlan_with_l3_configuration_restarts_nm(self, nm_environment, l3_device):
+        plugin, state, conf_dir = nm_environment
+        linux = importlib.import_module('zstacklib.utils.linux')
+        state.existing.add('eth0.100')
+        state.managed.add('eth0.100')
+        state.l3_devices.add(l3_device)
+
+        plugin._write_l2_nm_conf('eth0', 'br_vlan', ['br_vlan', 'eth0.100'])
+
+        assert state.calls.count('systemctl stop NetworkManager') == 1
+        assert state.calls.count('systemctl start NetworkManager') == 1
+        assert not any(command.startswith('nmcli device set ') for command in state.calls)
+        assert 'nmcli general reload 1' not in state.calls
+        assert (conf_dir / 'zstack-l2-eth0.conf').read_text() == (
+            '[keyfile]\nunmanaged-devices+=interface-name:eth0\n')
+        linux.write_file.assert_called_once_with(
+            '/etc/resolv.conf', 'nameserver 198.51.100.53\n', create_if_not_exist=True)
+
+    @pytest.mark.parametrize(
+        'physical_device,base_devices',
+        [('eth0', ['eth0']), ('bond0', ['bond0', 'eth1', 'eth2'])])
+    def test_vlan_preserves_resolved_dns_during_online_handoff(
+            self, nm_environment, physical_device, base_devices):
+        plugin, state, _ = nm_environment
+        plugin._get_root_uplink_devices = MagicMock(
+            return_value=(physical_device, base_devices))
+        state.existing = set(base_devices)
+        state.managed = set(base_devices)
+        state.resolved = True
+        state.resolved_links[physical_device] = {
+            'dns': '198.51.100.53 2001:db8::53',
+            'domain': 'example.test ~.',
+            'default_route': 'yes',
+        }
+
+        plugin._write_l2_nm_conf(
+            physical_device, 'br_vlan', ['br_vlan', '%s.100' % physical_device])
+
+        assert state.resolved_links[physical_device] == {
+            'dns': '198.51.100.53 2001:db8::53',
+            'domain': 'example.test ~.',
+            'default_route': 'yes',
+        }
+        query_index = state.calls.index('get dns config %s' % ','.join(base_devices))
+        unmanage_index = state.calls.index(
+            'nmcli device set %s managed no' % physical_device)
+        reload_index = state.calls.index('nmcli general reload 1')
+        restore_index = state.calls.index('restore dns config')
+        unmanaged_checks = [
+            index for index, command in enumerate(state.calls)
+            if command == 'nmcli -g GENERAL.NM-MANAGED device show %s' % physical_device
+        ]
+        assert query_index < unmanage_index < reload_index < restore_index
+        assert restore_index > max(unmanaged_checks)
+        assert 'systemctl stop NetworkManager' not in state.calls
+        assert 'systemctl start NetworkManager' not in state.calls
+
+    def test_vlan_reload_failure_restores_resolved_dns(self, nm_environment):
+        plugin, state, _ = nm_environment
+        state.resolved = True
+        state.reload_errors = 1
+        state.resolved_links['eth0'] = {
+            'dns': '198.51.100.53',
+            'domain': '~.',
+            'default_route': 'yes',
+        }
+
+        with pytest.raises(RuntimeError, match='reload failed'):
+            plugin._write_l2_nm_conf('eth0', 'br_vlan', ['br_vlan', 'eth0.100'])
+
+        assert state.resolved_links['eth0'] == {
+            'dns': '198.51.100.53',
+            'domain': '~.',
+            'default_route': 'yes',
+        }
 
     def test_novlan_on_unmanaged_uplink_only_reloads_nm(self, nm_environment):
         plugin, state, _ = nm_environment
@@ -608,10 +722,13 @@ class TestNetworkPluginNmL2:
         assert 'systemctl start NetworkManager' not in state.calls
         assert 'nmcli general reload 1' not in state.calls
         assert not any(command.startswith('nmcli -g ') for command in state.calls)
+        linux.get_dns_config.assert_not_called()
+        linux.restore_dns_config.assert_not_called()
         linux.write_file.assert_not_called()
 
     def test_existing_configs_do_not_hide_managed_runtime_state(self, nm_environment):
         plugin, state, conf_dir = nm_environment
+        linux = importlib.import_module('zstacklib.utils.linux')
         (conf_dir / 'zstack-l2-eth0.conf').write_text(
             '[keyfile]\nunmanaged-devices+=interface-name:eth0\n')
         (conf_dir / 'zstack-l2-br0.conf').write_text(
@@ -622,6 +739,10 @@ class TestNetworkPluginNmL2:
         assert state.calls.count('systemctl stop NetworkManager') == 1
         assert state.calls.count('systemctl start NetworkManager') == 1
         assert 'nmcli general reload 1' not in state.calls
+        linux.get_dns_config.assert_called_once_with(
+            ['eth0'], preserve_resolv_conf=True)
+        linux.write_file.assert_called_once_with(
+            '/etc/resolv.conf', 'nameserver 198.51.100.53\n', create_if_not_exist=True)
 
     def test_bond_writes_base_and_current_l2_to_separate_configs(self, nm_environment):
         plugin, state, conf_dir = nm_environment
@@ -692,8 +813,7 @@ class TestNetworkPluginNmL2:
         assert state.active is True
         assert state.calls.count('systemctl stop NetworkManager') == 1
         assert state.calls.count('systemctl start NetworkManager') == 1
-        assert state.calls.count(
-            'nmcli -t -f RUNNING general >/dev/null 2>&1') == 1
+        assert 'nmcli -t -f RUNNING general >/dev/null 2>&1' not in state.calls
 
     def test_config_read_failure_does_not_change_nm_or_files(self, nm_environment):
         plugin, state, conf_dir = nm_environment
@@ -766,25 +886,25 @@ class TestNetworkPluginNmL2:
             '[keyfile]\nunmanaged-devices+=interface-name:br0\n')
         assert 'nmcli general reload 1' not in state.calls
 
-    @pytest.mark.parametrize(('start_error', 'ready_after_start', 'message'), [
-        (True, True, 'start failed'),
-        (False, False, 'NetworkManager did not become ready after start'),
+    @pytest.mark.parametrize(('start_error', 'ready_after_start'), [
+        (True, True),
+        (False, False),
     ])
-    def test_nm_start_failure_prevents_bridge_creation(
-            self, nm_environment, start_error, ready_after_start, message):
+    def test_nm_start_result_does_not_block_bridge_creation(
+            self, nm_environment, start_error, ready_after_start):
         plugin, state, conf_dir = nm_environment
         state.start_error = start_error
         state.ready_after_start = ready_after_start
         plugin.create_novlan_bridge = MagicMock()
 
-        with pytest.raises(RuntimeError, match=message):
-            plugin.create_novlan_bridge_with_nm(
-                SimpleNamespace(physicalInterfaceName='eth0', bridgeName='br0'),
-                SimpleNamespace(success=True))
+        plugin.create_novlan_bridge_with_nm(
+            SimpleNamespace(physicalInterfaceName='eth0', bridgeName='br0'),
+            SimpleNamespace(success=True))
 
-        plugin.create_novlan_bridge.assert_not_called()
+        plugin.create_novlan_bridge.assert_called_once()
         assert (conf_dir / 'zstack-l2-eth0.conf').exists()
         assert (conf_dir / 'zstack-l2-br0.conf').exists()
+        assert state.calls.count('systemctl start NetworkManager') == 1
 
     def test_remove_l2_conf_does_not_remove_base_conf(self):
         plugin = _make_plugin()
@@ -962,6 +1082,7 @@ class TestNetworkPluginNmL2:
         plugin._check_unmanaged_devices = MagicMock()
         plugin._ifup_device_if_down = MagicMock()
         linux.is_network_device_existing = MagicMock(return_value=True)
+        linux.is_network_ip_using = MagicMock(return_value=False)
         linux.create_vlan_eth = MagicMock()
         linux.check_bridge_with_interface = MagicMock()
         linux.ip_link_set_net_device_nomaster = MagicMock()
@@ -991,6 +1112,7 @@ class TestNetworkPluginNmL2:
         plugin._check_unmanaged_devices = MagicMock()
         plugin._ifup_device_if_down = MagicMock()
         linux.is_network_device_existing = MagicMock(return_value=True)
+        linux.is_network_ip_using = MagicMock(return_value=False)
         linux.create_vlan_eth = MagicMock()
         linux.check_bridge_with_interface = MagicMock()
         linux.ip_link_set_net_device_nomaster = MagicMock()
@@ -1041,6 +1163,20 @@ class TestNetworkPluginNmL2:
         linux.delete_vlan_eth.assert_called_once_with('eth0.100')
         plugin._check_unmanaged_devices.assert_called_once_with(['final'])
 
+    def test_update_nm_branch_rejects_target_vlan_with_ip(self):
+        plugin = _make_plugin()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        plugin._write_l2_nm_conf = MagicMock()
+        linux.is_network_ip_using = MagicMock(return_value=True)
+        cmd = SimpleNamespace(
+            bridgeName='br0', physicalInterfaceName='eth0', oldVlan=100,
+            newVlan=200, l2NetworkUuid='l2-uuid')
+
+        with pytest.raises(RuntimeError, match=r'VLAN device\[eth0.200\] with IP'):
+            plugin.update_bridge_vlan_with_nm(cmd)
+
+        plugin._write_l2_nm_conf.assert_not_called()
+
     def test_update_nm_branch_skips_missing_old_vlan(self):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
@@ -1049,6 +1185,7 @@ class TestNetworkPluginNmL2:
         plugin._ifup_device_if_down = MagicMock()
         linux.create_vlan_eth = MagicMock()
         linux.is_network_device_existing = MagicMock(return_value=False)
+        linux.is_network_ip_using = MagicMock(return_value=False)
         linux.check_bridge_with_interface = MagicMock()
         linux.ip_link_set_net_device_nomaster = MagicMock()
         linux.ip_link_set_net_device_master = MagicMock()
@@ -2065,6 +2202,30 @@ class TestNetworkPluginCreateMacVlanEth:
 
         assert rsp['success'] is True
         linux.create_vlan_eth.assert_called_once_with('eth0', 200)
+
+    def test_create_mac_vlan_eth_reuses_existing_vlan_with_ip(self):
+        plugin = _make_plugin()
+        plugin_mod = importlib.import_module('kvmagent.plugins.network_plugin')
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        plugin_mod.kvmagent.get_host_distribution = MagicMock(return_value='kylin')
+        plugin._get_interface_mtu = MagicMock(return_value=1500)
+        plugin._write_l2_nm_conf = MagicMock(return_value=['eth0', 'eth0.100'])
+        plugin._check_unmanaged_devices = MagicMock()
+        linux.is_network_ip_using = MagicMock(return_value=True)
+        linux.create_vlan_eth = MagicMock()
+        linux.set_device_uuid_alias = MagicMock()
+
+        rsp = _load_rsp(plugin.create_mac_vlan_eth(_make_req({
+            'physicalInterfaceName': 'eth0',
+            'vlan': 100,
+            'l2NetworkUuid': 'l2-uuid',
+            'mtu': 1500,
+        })))
+
+        assert rsp['success'] is True
+        plugin._write_l2_nm_conf.assert_called_once_with(
+            'eth0', 'eth0.100', ['eth0.100'])
+        linux.create_vlan_eth.assert_called_once_with('eth0', 100)
 
 
 @pytest.mark.kvmagent

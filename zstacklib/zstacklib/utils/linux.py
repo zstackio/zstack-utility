@@ -1940,42 +1940,128 @@ def _build_ipv6_route(route, dev):
     return _route_with_dev(' '.join(parts), dev)
 
 
+def _is_systemd_resolved_configured():
+    return os.path.realpath('/etc/resolv.conf') in (
+        '/run/systemd/resolve/stub-resolv.conf',
+        '/run/systemd/resolve/resolv.conf')
+
+
+def _get_resolved_link_config(device):
+    ifindex = iproute.query_index_by_ifname(device)
+    if ifindex is None:
+        raise Exception('cannot get interface index for device %s' % device)
+
+    config = {}
+    # resolvectl dns|domain|default-route <ifindex>
+    for setting in ('dns', 'domain', 'default-route'):
+        output = shell.call('LC_ALL=C resolvectl %s %s' % (setting, ifindex))
+        prefix, separator, values = output.partition(':')
+        if not separator or not prefix.startswith('Link '):
+            raise Exception('cannot parse resolved %s for device %s: %s' %
+                            (setting, device, output))
+        config[setting.replace('-', '_')] = values.split()
+        if setting == 'dns' and not config['dns']:
+            return config
+
+    default_route = config['default_route']
+    if len(default_route) != 1 or default_route[0] not in ('yes', 'no'):
+        raise Exception('invalid resolved default-route for device %s: %s' %
+                        (device, ' '.join(default_route)))
+    config['default_route'] = default_route[0]
+    return config
+
+
+def _restore_resolved_link_config(device, config):
+    ifindex = iproute.query_index_by_ifname(device)
+    if ifindex is None:
+        raise Exception('cannot get interface index for device %s' % device)
+
+    errors = []
+    # resolvectl dns|domain|default-route <ifindex> [values...]
+    settings = (('dns', config['dns']), ('domain', config['domain'] or ['']),
+                ('default-route', [config['default_route']]))
+    for setting, values in settings:
+        command = 'LC_ALL=C resolvectl %s %s %s' % (
+            setting, ifindex, ' '.join(shellquote(value) for value in values))
+        try:
+            shell.call(command)
+        except Exception as e:
+            errors.append('%s: %s' % (setting, str(e)))
+    if errors:
+        raise Exception('failed to restore resolved config for device %s: %s' %
+                        (device, '; '.join(errors)))
+
+
+def get_dns_config(devices, preserve_resolv_conf=False):
+    config = {'resolved_links': {}}
+    if (preserve_resolv_conf and not os.path.islink('/etc/resolv.conf') and
+            os.path.isfile('/etc/resolv.conf')):
+        resolv_conf = read_file('/etc/resolv.conf')
+        if resolv_conf is None:
+            raise Exception('failed to read /etc/resolv.conf')
+        config['resolv_conf'] = resolv_conf
+
+    if not _is_systemd_resolved_configured():
+        return config
+
+    checked_devices = set()
+    for device in devices:
+        if not device or device in checked_devices:
+            continue
+        checked_devices.add(device)
+        if not is_network_device_existing(device):
+            continue
+        try:
+            link_config = _get_resolved_link_config(device)
+        except Exception as e:
+            logger.warning('failed to get resolved config for device %s: %s' %
+                           (device, str(e)))
+            continue
+        if link_config['dns']:
+            config['resolved_links'][device] = link_config
+    return config
+
+
+def restore_dns_config(config):
+    errors = []
+    if 'resolv_conf' in config:
+        try:
+            write_file('/etc/resolv.conf', config['resolv_conf'], create_if_not_exist=True)
+        except Exception as e:
+            errors.append('/etc/resolv.conf: %s' % str(e))
+
+    for device, link_config in config.get('resolved_links', {}).items():
+        try:
+            _restore_resolved_link_config(device, link_config)
+        except Exception as e:
+            logger.warning('failed to restore resolved config for device %s: %s' %
+                           (device, str(e)))
+    if errors:
+        raise Exception('failed to restore DNS config: %s' % '; '.join(errors))
+
+
 def _migrate_resolved_dns(src_dev, dest_dev):
     """Migrate systemd-resolved per-link DNS from *src_dev* to *dest_dev*."""
-    # Only act when systemd-resolved is in use
-    if not os.path.exists('/run/systemd/resolve/stub-resolv.conf'):
+    if not _is_systemd_resolved_configured():
         return
 
     try:
-        # resolvectl dns <dev> prints: "Link 2 (enp1s0): 223.5.5.5 8.8.8.8"
-        # Force LC_ALL=C so the format is locale-independent
-        out = shell.call('LC_ALL=C resolvectl dns %s' % src_dev, exception=False)
-        if not out or ':' not in out:
+        source_config = _get_resolved_link_config(src_dev)
+        if not source_config['dns']:
             return
 
-        dns_part = out.split(':', 1)[1].strip()
-        if not dns_part:
+        destination_config = _get_resolved_link_config(dest_dev)
+        if destination_config['dns']:
+            logger.debug("Destination device %s already has DNS [%s], skip migration" %
+                         (dest_dev, ' '.join(destination_config['dns'])))
             return
 
-        dns_servers = dns_part.split()
-        if not dns_servers:
-            return
-
-        # Check if dest already has DNS configured
-        dest_out = shell.call('LC_ALL=C resolvectl dns %s' % dest_dev, exception=False)
-        if dest_out and ':' in dest_out:
-            dest_dns = dest_out.split(':', 1)[1].strip()
-            if dest_dns:
-                logger.debug("Destination device %s already has DNS [%s], skip migration" % (dest_dev, dest_dns))
-                return
-
-        # Apply DNS servers to the bridge device
-        shell.call('LC_ALL=C resolvectl dns %s %s' % (dest_dev, ' '.join(dns_servers)))
-        # Set the bridge as a default-route DNS link so it handles all domains
-        shell.call('LC_ALL=C resolvectl domain %s "~."' % dest_dev)
-        logger.debug("Migrated DNS servers [%s] from %s to %s" % (' '.join(dns_servers), src_dev, dest_dev))
+        _restore_resolved_link_config(dest_dev, source_config)
+        logger.debug("Migrated DNS servers [%s] from %s to %s" %
+                     (' '.join(source_config['dns']), src_dev, dest_dev))
     except Exception as e:
-        logger.warning("Failed to migrate resolved DNS from %s to %s: %s" % (src_dev, dest_dev, str(e)))
+        logger.warning("Failed to migrate resolved DNS from %s to %s: %s" %
+                       (src_dev, dest_dev, str(e)))
 
 
 def pretty_xml(xmlstr):
