@@ -5,6 +5,7 @@ import importlib
 import json
 import os
 import pytest
+import socket
 import sys
 import tempfile
 from typing import Callable, Protocol, cast
@@ -677,6 +678,87 @@ class TestMevocoBatchApplyDhcp:
 
         assert _load_rsp(result)['success'] is True
         assert cast(MagicMock, plugin.do_apply_dhcp).call_args[0][1] is False
+
+
+@pytest.mark.kvmagent
+class TestMevocoBatchUpdateConfigurations:
+    def _make_config_files(self, tmp_path: object) -> tuple[str, str, str]:
+        base = str(tmp_path)
+        return (os.path.join(base, "hosts.dhcp"),
+                os.path.join(base, "hosts.dns"),
+                os.path.join(base, "hosts.option"))
+
+    def _write(self, path: str, content: str) -> None:
+        with open(path, "w", encoding="utf-8") as fd:
+            fd.write(content)
+
+    def _replace_config_file(self, path: str, content: str) -> bool:
+        with open(path, encoding="utf-8") as fd:
+            old_content = fd.read()
+        if old_content == content:
+            return False
+        with open(path, "w", encoding="utf-8") as fd:
+            fd.write(content)
+        return True
+
+    def _ip_keys(self) -> dict[str, set[object]]:
+        return {
+            'macs': {'fa:16:3e:00:00:09'},
+            'tags': {'fa163e000009'},
+            'ips': {(socket.AF_INET, socket.inet_pton(socket.AF_INET, "192.168.0.9"))},
+            'duids': set(),
+        }
+
+    def test_dns_line_with_embedded_nul_is_retained_and_reported(self, tmp_path: object):
+        plugin = _make_plugin()
+        dhcp_path, dns_path, option_path = self._make_config_files(tmp_path)
+        nul_line = "\x00" * 30 + "172.26.121.183 172-26-121-183"
+        self._write(dns_path, nul_line + "\n192.168.0.9 stale-vm\n")
+        self._write(dhcp_path, "fa:16:3e:00:00:09,set:fa163e000009,192.168.0.9,vm9,infinite\n")
+        self._write(option_path, "tag:fa163e000009,option:netmask,255.255.255.0\n")
+        plugin._replace_config_file = MagicMock(side_effect=self._replace_config_file)
+
+        logger_mock = MagicMock()
+        with patch.object(mevoco, "logger", logger_mock):
+            stats = plugin._batch_update_configurations(
+                dhcp_path=dhcp_path, dns_path=dns_path, option_path=option_path, keys=self._ip_keys())
+
+        with open(dns_path, encoding="utf-8") as fd:
+            dns_content = fd.read()
+        assert nul_line in dns_content
+        assert "192.168.0.9 stale-vm" not in dns_content
+        assert stats['removed_dns'] == 1
+        warning = logger_mock.warn.call_args[0][0]
+        assert dns_path in warning
+        assert "line[1]" in warning
+
+    def test_dhcp_line_with_embedded_nul_is_retained_and_reported(self, tmp_path: object):
+        plugin = _make_plugin()
+        dhcp_path, dns_path, option_path = self._make_config_files(tmp_path)
+        nul_line = "\x00" * 4 + "fa:16:3e:00:00:09,set:fa163e000009,192.168.0.9,vm9,infinite"
+        self._write(dhcp_path, nul_line + "\n")
+        self._write(dns_path, "")
+        self._write(option_path, "")
+        plugin._replace_config_file = MagicMock(side_effect=self._replace_config_file)
+
+        logger_mock = MagicMock()
+        with patch.object(mevoco, "logger", logger_mock):
+            stats = plugin._batch_update_configurations(
+                dhcp_path=dhcp_path, dns_path=dns_path, option_path=option_path, keys=self._ip_keys())
+
+        with open(dhcp_path, encoding="utf-8") as fd:
+            dhcp_content = fd.read()
+        assert nul_line in dhcp_content
+        assert stats['removed_dhcp'] == 0
+        warning = logger_mock.warn.call_args[0][0]
+        assert dhcp_path in warning
+        assert "line[1]" in warning
+
+    def test_normalize_ip_key_tolerates_embedded_nul(self):
+        plugin = _make_plugin()
+        assert plugin._normalize_ip_key("192.0.2.1\x00") is None
+        assert plugin._normalize_ip_key("\x00192.0.2.1") is None
+        assert plugin._normalize_ip_key("192.0.2.1") is not None
 
 
 @pytest.mark.kvmagent

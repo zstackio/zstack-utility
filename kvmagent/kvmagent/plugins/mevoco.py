@@ -66,6 +66,10 @@ HOST_ARCH = platform.machine()
 DHCPV6_DUID_UUID_PREFIX = '00:04'
 UUID_HEX_LENGTH = 32
 
+# NUL and other control characters in dnsmasq config files make socket.inet_pton raise
+# ValueError instead of socket.error, which aborts the whole config update.
+UNPRINTABLE_CONFIG_CHARS = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
+
 
 def make_dhcpv6_duid_uuid(vm_uuid):
     if not vm_uuid:
@@ -2833,9 +2837,19 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
         for family in (socket.AF_INET, socket.AF_INET6):
             try:
                 return family, socket.inet_pton(family, candidate)
-            except socket.error:
+            except (socket.error, ValueError):
+                # inet_pton raises ValueError, not socket.error, on embedded NUL
                 pass
         return None
+
+    @staticmethod
+    def _has_unprintable_chars(line):
+        return UNPRINTABLE_CONFIG_CHARS.search(line) is not None
+
+    @staticmethod
+    def _warn_unusable_config_line(path, line_number, raw_line):
+        logger.warn('found unusable characters in dnsmasq config file[%s] line[%s]: %s'
+                    % (path, line_number, repr(raw_line.strip()[:200])))
 
     @staticmethod
     def _normalize_config_lines(lines):
@@ -2893,14 +2907,19 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
         deduplicated_reversed.reverse()
         return deduplicated_reversed, keys
 
-    def _filter_dhcp_config(self, content, keys):
+    def _filter_dhcp_config(self, content, keys, path=None):
         retained = []
         removed = 0
         stale_ips = set()
 
-        for raw_line in content.splitlines():
+        for line_number, raw_line in enumerate(content.splitlines(), 1):
             line = raw_line.strip()
             if not line:
+                continue
+
+            if self._has_unprintable_chars(line):
+                self._warn_unusable_config_line(path, line_number, raw_line)
+                retained.append(raw_line)
                 continue
 
             fields = [field.strip() for field in line.split(',')]
@@ -2948,13 +2967,18 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
 
         return self._normalize_config_lines(retained), removed
 
-    def _filter_dns_config(self, content, ip_keys):
+    def _filter_dns_config(self, content, ip_keys, path=None):
         retained = []
         removed = 0
 
-        for raw_line in content.splitlines():
+        for line_number, raw_line in enumerate(content.splitlines(), 1):
             line = raw_line.strip()
             if not line:
+                continue
+
+            if self._has_unprintable_chars(line):
+                self._warn_unusable_config_line(path, line_number, raw_line)
+                retained.append(raw_line)
                 continue
 
             first = line.split(None, 1)[0]
@@ -2990,10 +3014,10 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
             removed_dns = len([line for line in old_dns.splitlines() if line.strip()])
             removed_option = len([line for line in old_option.splitlines() if line.strip()])
         else:
-            retained_dhcp, removed_dhcp, stale_ips = self._filter_dhcp_config(old_dhcp, keys)
+            retained_dhcp, removed_dhcp, stale_ips = self._filter_dhcp_config(old_dhcp, keys, dhcp_path)
             dns_keys = set(keys['ips'])
             dns_keys.update(stale_ips)
-            retained_dns, removed_dns = self._filter_dns_config(old_dns, dns_keys)
+            retained_dns, removed_dns = self._filter_dns_config(old_dns, dns_keys, dns_path)
             retained_option, removed_option = self._filter_option_config(old_option, keys)
 
             final_dhcp = self._merge_config_content(retained_dhcp, dhcp_conf)
