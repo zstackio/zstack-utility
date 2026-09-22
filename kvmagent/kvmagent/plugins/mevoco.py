@@ -2348,8 +2348,13 @@ mimetype.assign = (
 
         namespace_dhcp = {}
         dhcp_count = 0
+        rebuild = False
 
         for info in cmd.dhcpInfos:
+            # the batch command carries no rebuild flag, it is set on every per-l3 apply command
+            if getattr(info, 'rebuild', False):
+                rebuild = True
+
             for d in info.dhcp:
                 dhcp_count += 1
                 lst = namespace_dhcp.get(d.namespaceName)
@@ -2358,9 +2363,9 @@ mimetype.assign = (
                     namespace_dhcp[d.namespaceName] = lst
                 lst.append(d)
 
-        self.do_apply_dhcp(namespace_dhcp, cmd.rebuild)
+        self.do_apply_dhcp(namespace_dhcp, rebuild)
         logger.debug('batch apply dhcp done, dhcp count: %s, namespace count: %s, rebuild: %s, total: %.3fs' % (
-            dhcp_count, len(namespace_dhcp), cmd.rebuild, time.time() - started_at))
+            dhcp_count, len(namespace_dhcp), rebuild, time.time() - started_at))
         rsp = ApplyDhcpRsp()
         return jsonobject.dumps(rsp)
 
