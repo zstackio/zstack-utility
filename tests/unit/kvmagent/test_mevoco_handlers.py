@@ -607,7 +607,7 @@ class TestMevocoBatchApplyDhcp:
             endIp='fd00::200',
             prefixLength=64,
         )
-        cmd = _Obj(dhcpInfos=[_Obj(dhcp=[dhcp_entry])], rebuild=True)
+        cmd = _Obj(dhcpInfos=[_Obj(dhcp=[dhcp_entry], rebuild=True)])
         with patch.object(mevoco.jsonobject, "loads", return_value=cmd):
             with tempfile.TemporaryDirectory() as temp_dir:
                 with patch.object(mevoco.jsonobject, "dumps", side_effect=lambda obj: json.dumps({"success": True})):
@@ -637,12 +637,46 @@ class TestMevocoBatchApplyDhcp:
 
                     with patch("os.path.exists", return_value=False), \
                             patch("builtins.open", MagicMock()):
-                        req = _make_req({'dhcpInfos': [{'dhcp': [{'namespaceName': 'ns-batch'}]}], 'rebuild': True})
+                        req = _make_req({'dhcpInfos': [{'dhcp': [{'namespaceName': 'ns-batch'}], 'rebuild': True}]})
                         result = plugin.batch_apply_dhcp(req)
                         rsp = _load_rsp(result)
 
         assert rsp['success'] is True
         # bash_errorout is legitimately called for network setup (brctl/iptables)
+
+    def test_batch_apply_dhcp_takes_rebuild_from_nested_command(self):
+        plugin = _make_plugin()
+        _ensure_http()
+        plugin.do_apply_dhcp = MagicMock()
+        req = _make_req({
+            'dhcpInfos': [{
+                'dhcp': [{'namespaceName': 'ns-batch'}],
+                'l3NetworkUuid': 'l3-uuid',
+                'rebuild': True,
+            }]
+        })
+
+        result = plugin.batch_apply_dhcp(req)
+
+        assert _load_rsp(result)['success'] is True
+        assert cast(MagicMock, plugin.do_apply_dhcp).call_args[0][1] is True
+
+    def test_batch_apply_dhcp_stays_incremental_without_rebuild(self):
+        plugin = _make_plugin()
+        _ensure_http()
+        plugin.do_apply_dhcp = MagicMock()
+        req = _make_req({
+            'dhcpInfos': [{
+                'dhcp': [{'namespaceName': 'ns-batch'}],
+                'l3NetworkUuid': 'l3-uuid',
+                'rebuild': False,
+            }]
+        })
+
+        result = plugin.batch_apply_dhcp(req)
+
+        assert _load_rsp(result)['success'] is True
+        assert cast(MagicMock, plugin.do_apply_dhcp).call_args[0][1] is False
 
 
 @pytest.mark.kvmagent
