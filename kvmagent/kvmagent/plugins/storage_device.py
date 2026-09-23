@@ -1,6 +1,5 @@
 import difflib
 import glob
-import ipaddress
 import random
 import re
 import time
@@ -520,12 +519,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 'iqn': parts[-1],
             }
 
-        def is_ip_in_cidr(ip, cidr):
-            try:
-                return ipaddress.ip_address(ip) in ipaddress.ip_network(cidr, strict=False)
-            except ValueError:
-                return False
-
         def records_on_portal(records, iscsiServerIp, iscsiServerPort):
             return [r for r in records if r['ip'] == iscsiServerIp and str(r['port']) == str(iscsiServerPort)]
 
@@ -594,28 +587,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         login_server_ip = cmd.iscsiServerIp
         login_server_port = cmd.iscsiServerPort
         discovered_records = None
-
-        if cmd.dataNetworkCidr:
-            try:
-                discovered_records = discovery_iscsi(cmd.iscsiServerIp, cmd.iscsiServerPort)
-                data_network_records = [r for r in discovered_records if is_ip_in_cidr(r['ip'], cmd.dataNetworkCidr)]
-                if len(data_network_records) > 0:
-                    login_server_ip = data_network_records[0]['ip']
-                    login_server_port = data_network_records[0]['port']
-                    logger.debug("selected iscsi data network portal %s:%s by cidr %s, original portal %s:%s" %
-                                 (login_server_ip, login_server_port, cmd.dataNetworkCidr, cmd.iscsiServerIp, cmd.iscsiServerPort))
-                else:
-                    logger.warn("no iscsi discovery portal matches data network cidr %s, fallback to %s:%s" %
-                                (cmd.dataNetworkCidr, cmd.iscsiServerIp, cmd.iscsiServerPort))
-            except Exception as e:
-                if cmd.iscsiTargets is None or len(cmd.iscsiTargets) == 0:
-                    current_hostname = linux.get_hostname()
-                    rsp.error = "login iscsi server %s:%s on host %s failed, because %s" % \
-                                (cmd.iscsiServerIp, cmd.iscsiServerPort, current_hostname, str(e))
-                    rsp.success = False
-                    return jsonobject.dumps(rsp)
-                logger.warn("unable to discover iscsi data network portal by cidr %s, fallback to %s:%s, because %s" %
-                            (cmd.dataNetworkCidr, cmd.iscsiServerIp, cmd.iscsiServerPort, str(e)))
 
         iqns = cmd.iscsiTargets
         self.clean_iscsi_cache_configuration(path, login_server_ip, login_server_port)
