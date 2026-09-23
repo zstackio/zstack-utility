@@ -4156,6 +4156,8 @@ class Vm(object):
             driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
             if is_virtio_blk(volume) and volume.multiQueues:
                 driver_elements["queues"] = volume.multiQueues
+            if is_virtio_blk(volume) and volume.hasattr("ioThreadId") and volume.ioThreadId:
+                driver_elements["iothread"] = str(volume.ioThreadId)
             driver = e(disk, 'driver', None, driver_elements)
             if not volume.useVirtioSCSI:
                 IothreadVqMappingAllocator.apply(driver, automatic_iothread_vq_mapping_allocator)
@@ -7453,6 +7455,8 @@ class Vm(object):
                 driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
                 if is_virtio_blk(_v) and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
+                if is_virtio_blk(_v) and _v.hasattr("ioThreadId") and _v.ioThreadId:
+                    driver_elements["iothread"] = str(_v.ioThreadId)
                 driver = e(disk, 'driver', None, driver_elements)
                 if not _v.useVirtioSCSI:
                     IothreadVqMappingAllocator.apply(driver, automatic_iothread_vq_mapping_allocators.get(_v.volumeUuid))
@@ -10166,6 +10170,8 @@ class VmPlugin(kvmagent.KvmAgent):
         def cbd_volume(_v):
             disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
             driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
+            if is_virtio_blk(_v) and _v.hasattr("ioThreadId") and _v.ioThreadId:
+                driver_elements["iothread"] = str(_v.ioThreadId)
             driver = e(disk, 'driver', None, driver_elements)
             if not _v.useVirtioSCSI:
                 IothreadVqMappingAllocator.apply(
