@@ -2579,7 +2579,8 @@ done
                                                  and pci_device_mapper.get('PCI bridge') in to.type):
                     to.type = "PCI_Bridge"
                 elif ("Processing accelerators" in to.type or (
-                        pci_device_mapper.get('Processing accelerators') is not None)) and 'Device' in to.device:
+                        pci_device_mapper.get('Processing accelerators') is not None
+                        and pci_device_mapper.get('Processing accelerators') in to.type)) and 'Device' in to.device:
                     to.type = "GPU_Processing_Accelerators"
                 elif (any(vendor in to.description for vendor in gpu_vendors) or '1d94' in to.vendorId ) \
                         and ('Co-processor' in to.type or (pci_device_mapper.get('Co-processor') is not None

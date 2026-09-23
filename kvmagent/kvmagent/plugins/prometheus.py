@@ -1684,9 +1684,13 @@ def collect_hy_gpu_status():
         add_metrics('host_gpu_temperature', card_data.get("Temperature (Sensor junction) (C)"), [pci_device_address, gpu_serial],
                     metrics)
         add_metrics('host_gpu_fan_speed', card_data.get("Fan speed (%)"), [pci_device_address, gpu_serial], metrics)
-        gpu_utilization = card_data.get("DCU use (%)") or card_data.get("HCU use (%)")
+        gpu_utilization = card_data.get("DCU use (%)")
+        if gpu_utilization is None or gpu_utilization == "":
+            gpu_utilization = card_data.get("HCU use (%)")
         add_metrics('host_gpu_utilization', gpu_utilization, [pci_device_address, gpu_serial], metrics)
-        gpu_memory_utilization = card_data.get("DCU memory use (%)") or card_data.get("HCU memory use (%)")
+        gpu_memory_utilization = card_data.get("DCU memory use (%)")
+        if gpu_memory_utilization is None or gpu_memory_utilization == "":
+            gpu_memory_utilization = card_data.get("HCU memory use (%)")
         add_metrics('host_gpu_memory_utilization', gpu_memory_utilization, [pci_device_address, gpu_serial],
                     metrics)
     check_gpu_status_and_save_gpu_status("HY", metrics)

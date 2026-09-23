@@ -1,0 +1,258 @@
+"""Hygon regression tests without a running KVM host.
+
+Run with Python 2.7 and mock, prometheus_client, simplejson, and typing:
+    python -m unittest discover -s kvmagent/kvmagent/test/hygon_testsuite -v
+"""
+import importlib
+import json
+import logging
+import os
+import sys
+import types
+import unittest
+
+import mock
+from prometheus_client.core import GaugeMetricFamily
+
+
+def identity(func):
+    return func
+
+
+def unexpected_command(*args, **kwargs):
+    raise AssertionError("unexpected host command: %r" % (args,))
+
+
+def module(name, **attrs):
+    result = types.ModuleType(name)
+    result.__dict__.update(attrs)
+    return result
+
+
+def load_source_modules():
+    # Import complete production modules. Stub only host/infrastructure
+    # dependencies, retaining real response serialization and metric objects.
+    root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..'))
+    boundaries = {}
+    for name, path in [
+            ('kvmagent', 'kvmagent/kvmagent'),
+            ('kvmagent.plugins', 'kvmagent/kvmagent/plugins'),
+            ('zstacklib', 'zstacklib/zstacklib'),
+            ('zstacklib.utils', 'zstacklib/zstacklib/utils')]:
+        boundaries[name] = module(name, __path__=[os.path.join(root, path)])
+
+    for name in ['lvm', 'ceph', 'iproute', 'sizeunit', 'xmlobject', 'ovs', 'misc']:
+        full_name = 'zstacklib.utils.' + name
+        boundaries[full_name] = module(full_name)
+    for name in ['yaml', 'pyudev', 'psutil']:
+        boundaries[name] = module(name)
+
+    log = module('zstacklib.utils.log', get_logger=logging.getLogger,
+                 get_logfile_path=lambda: '', sensitive_fields=lambda *args: identity)
+    boundaries.update({
+        'zstacklib.utils.log': log,
+        'zstacklib.utils.plugin': module('zstacklib.utils.plugin', Plugin=object),
+        'zstacklib.utils.daemon': module('zstacklib.utils.daemon', Daemon=object),
+        'zstacklib.utils.http': module('zstacklib.utils.http', REQUEST_BODY='body',
+                                      HttpServer=type('HttpServer', (object,), {})),
+        'zstacklib.utils.linux': module('zstacklib.utils.linux', HOST_ARCH='x86_64',
+                                       is_virtual_machine=lambda: False,
+                                       read_file_lines=unexpected_command),
+        'zstacklib.utils.qemu': module('zstacklib.utils.qemu', get_path=lambda: '/usr/bin/qemu-kvm'),
+        'zstacklib.utils.lock': module('zstacklib.utils.lock', lock=lambda *args: identity,
+                                      file_lock=lambda *args: identity),
+        'zstacklib.utils.thread': module('zstacklib.utils.thread', AsyncThread=identity),
+        'zstacklib.utils.iptables': module('zstacklib.utils.iptables', get_iptables_cmd=lambda: 'iptables'),
+        'zstacklib.utils.ebtables': module('zstacklib.utils.ebtables', get_ebtables_cmd=lambda: 'ebtables'),
+        'zstacklib.utils.shell': module('zstacklib.utils.shell', run=unexpected_command,
+                                       run_without_log=unexpected_command),
+        'zstacklib.utils.ip': module('zstacklib.utils.ip', get_nic_supported_max_speed=unexpected_command,
+                                    get_nic_driver_type=unexpected_command,
+                                    get_host_physicl_nics=unexpected_command),
+        'zstacklib.utils.report': module('zstacklib.utils.report', Report=object),
+        'zstacklib.utils.misc': module('zstacklib.utils.misc', isMiniHost=lambda: False,
+                                      isHyperConvergedHost=lambda: False),
+        'kvmagent.plugins.vm_plugin': module('kvmagent.plugins.vm_plugin', LibvirtAutoReconnect=identity),
+        'kvmagent.plugins.imagestore': module('kvmagent.plugins.imagestore', ImageStoreClient=object),
+        'zstacklib.utils.bash': module('zstacklib.utils.bash', in_bash=identity,
+                                      bash_roe=unexpected_command, bash_ro=unexpected_command,
+                                      bash_r=unexpected_command, bash_o=lambda *args: '',
+                                      log=log, json=json),
+    })
+    source_names = ['zstacklib.utils.jsonobject', 'zstacklib.utils.gpu',
+                    'zstacklib.utils.pci', 'kvmagent.kvmagent',
+                    'kvmagent.plugins.host_plugin', 'kvmagent.plugins.prometheus']
+    for name, stub in boundaries.items():
+        parent, _, attribute = name.rpartition('.')
+        if parent in boundaries:
+            setattr(boundaries[parent], attribute, stub)
+    with mock.patch.dict(sys.modules, boundaries):
+        for name in source_names:
+            sys.modules.pop(name, None)
+        loaded = [importlib.import_module(name) for name in source_names]
+    return loaded
+
+
+class TestHygonCompatibility(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.jsonobject, cls.gpu, cls.pci, cls.agent, cls.host, cls.prometheus = load_source_modules()
+
+    def setUp(self):
+        self.prometheus.gpu_devices = {'HY': set()}
+        self.prometheus.hw_status_abnormal_list_record['gpu'] = set()
+        with mock.patch.object(self.host.shell, 'run', return_value=1):
+            self.plugin = self.host.HostPlugin()
+
+    def collect(self, fields):
+        card = {'Serial Number': 'K100-001', 'PCI Bus': '0000:AB:00.0',
+                'Average Graphics Package Power (W)': '120',
+                'Temperature (Sensor junction) (C)': 45}
+        card.update(fields)
+
+        def command(cmd):
+            if cmd == 'lspci -s 0000:ab:00.0':
+                return 0, 'Co-processor: Haiguang Device (rev 01)'
+            self.assertEqual(cmd, 'hy-smi --showuse --showmemuse  --showpower --showtemp --showserial --showbus --json')
+            self.assertNotIn('--showfan', cmd)
+            return 0, json.dumps({'card0': card})
+
+        with mock.patch.object(self.prometheus.shell, 'run_without_log', return_value=0), \
+                mock.patch.object(self.prometheus, 'bash_ro', side_effect=command):
+            metrics = self.prometheus.collect_hy_gpu_status()
+        for metric in metrics:
+            self.assertIsInstance(metric, GaugeMetricFamily)
+        return dict((metric.name, metric.samples) for metric in metrics)
+
+    def assert_utilization(self, fields, utilization, memory):
+        metrics = self.collect(fields)
+        for metric, expected in [('host_gpu_utilization', utilization),
+                                 ('host_gpu_memory_utilization', memory)]:
+            self.assertEqual(len(metrics[metric]), 1, (fields, metric, metrics[metric]))
+            self.assertEqual(metrics[metric][0][2], expected, fields)
+            self.assertEqual(metrics[metric][0][1]['pci_device_address'], '0000:ab:00.0')
+        self.assertEqual(metrics['host_gpu_power_draw'][0][2], 120)
+        self.assertEqual(metrics['host_gpu_temperature'][0][2], 45)
+        self.assertEqual(metrics['host_gpu_status'][0][2], 1)
+        self.assertEqual(metrics['host_gpu_power_draw'][0][1]['gpu_serial'], 'K100-001')
+
+    def test_dcu_values_including_numeric_zero(self):
+        for value in [0, 0.0, '0', 35, '35.5']:
+            self.assert_utilization({'DCU use (%)': value, 'DCU memory use (%)': value},
+                                    float(value), float(value))
+
+    def test_hcu_values_including_numeric_zero(self):
+        for value in [0, 0.0, '0', 35, '35.5']:
+            self.assert_utilization({'HCU use (%)': value, 'HCU memory use (%)': value},
+                                    float(value), float(value))
+
+    def test_dcu_zero_takes_precedence_over_hcu(self):
+        self.assert_utilization({'DCU use (%)': 0, 'DCU memory use (%)': 0.0,
+                                 'HCU use (%)': 42, 'HCU memory use (%)': 43}, 0, 0)
+
+    def test_empty_dcu_values_fall_back_to_hcu(self):
+        for value in [None, '']:
+            self.assert_utilization({'DCU use (%)': value, 'DCU memory use (%)': value,
+                                     'HCU use (%)': 42, 'HCU memory use (%)': 43}, 42, 43)
+
+    def test_missing_or_na_metrics_do_not_hide_other_metrics(self):
+        for fields in [{}, {'DCU use (%)': 'N/A', 'DCU memory use (%)': 'N/A',
+                           'Fan speed (%)': 'N/A'}]:
+            metrics = self.collect(fields)
+            self.assertEqual(metrics['host_gpu_utilization'], [])
+            self.assertEqual(metrics['host_gpu_memory_utilization'], [])
+            self.assertEqual(metrics['host_gpu_fan_speed'], [])
+            self.assertEqual(metrics['host_gpu_power_draw'][0][2], 120)
+
+    def test_supported_fan_value(self):
+        metrics = self.collect({'Fan speed (%)': 35})
+        self.assertEqual(metrics['host_gpu_fan_speed'][0][2], 35)
+
+    def test_missing_hy_smi_and_failed_collection(self):
+        with mock.patch.object(self.prometheus.shell, 'run_without_log', return_value=1), \
+                mock.patch.object(self.prometheus, 'bash_ro') as command:
+            metrics = self.prometheus.collect_hy_gpu_status()
+            self.assertTrue(all(not metric.samples for metric in metrics))
+            command.assert_not_called()
+        with mock.patch.object(self.prometheus.shell, 'run_without_log', return_value=0), \
+                mock.patch.object(self.prometheus, 'bash_ro', return_value=(1, 'unsupported query')):
+            metrics = self.prometheus.collect_hy_gpu_status()
+            self.assertTrue(all(not metric.samples for metric in metrics))
+
+    def classify(self, vendor, pci_class='Co-processor [0b40]', config=None):
+        output = 'Slot:\t0000:81:00.0\nClass:\t%s\nVendor:\t%s\nDevice:\tDevice [6200]\n' % (pci_class, vendor)
+        response = self.host.GetPciDevicesResponse()
+        with mock.patch.object(self.host, 'bash_roe', return_value=(0, output, '')) as command, \
+                mock.patch.object(self.host.linux, 'read_file_lines', return_value=config or []), \
+                mock.patch.object(self.plugin, '_collect_gpu_addoninfo'), \
+                mock.patch.object(self.plugin, '_get_vfio_mdev_info', return_value=False), \
+                mock.patch.object(self.plugin, '_get_sriov_info', return_value=False), \
+                mock.patch.object(self.pci, 'get_pci_resources', return_value={}):
+            self.plugin._collect_format_pci_device_info(response)
+            command.assert_called_once_with('lspci -Dmmnnv')
+        self.assertTrue(response.success)
+        self.assertEqual(len(response.pciDevicesInfo), 1)
+        return response.pciDevicesInfo[0]
+
+    def test_k100_numeric_and_named_vendor(self):
+        for vendor in ['Device [1d94]', 'Haiguang [1d94]']:
+            device = self.classify(vendor)
+            self.assertEqual(device.vendor, 'Haiguang')
+            self.assertEqual(device.vendorId, '1d94')
+            self.assertEqual(device.type, 'GPU_Co_Processor')
+            self.assertTrue(self.pci.is_gpu(device.type))
+
+    def test_unknown_coprocessor_is_generic(self):
+        device = self.classify('Device [1234]')
+        self.assertEqual(device.type, 'Generic')
+        self.assertNotEqual(device.vendor, 'Haiguang')
+        self.assertFalse(self.pci.is_gpu(device.type))
+
+    def test_unrelated_processing_accelerator_mapping_preserves_k100_type(self):
+        device = self.classify('Device [1d94]', config=['Processing accelerators: Custom accelerator'])
+        self.assertEqual(device.type, 'GPU_Co_Processor')
+
+    def test_unrelated_mapping_preserves_unknown_vendor_type(self):
+        device = self.classify('Device [1234]', config=['Processing accelerators: Custom accelerator'])
+        self.assertEqual(device.type, 'Generic')
+
+    def test_matching_class_mapping_and_existing_gpu_classes(self):
+        device = self.classify('Device [1d94]', 'Custom coprocessor [0b40]',
+                               ['Co-processor: Custom coprocessor'])
+        self.assertEqual(device.type, 'GPU_Co_Processor')
+        device = self.classify('Device [1234]', 'Custom accelerator [1200]',
+                               ['Processing accelerators: Custom accelerator'])
+        self.assertEqual(device.type, 'GPU_Processing_Accelerators')
+        for pci_class, expected in [('3D controller [0302]', 'GPU_3D_Controller'),
+                                    ('VGA compatible controller [0300]', 'GPU_Video_Controller')]:
+            self.assertEqual(self.classify('Haiguang [1d94]', pci_class).type, expected)
+
+    def reload(self, vendor, result):
+        request = {self.host.http.REQUEST_BODY: json.dumps({'pciDeviceAddress': '0000:81:00.0', 'vendor': vendor})}
+        with mock.patch.object(self.host, 'bash_roe', return_value=result) as command:
+            response = self.jsonobject.loads(self.plugin.reload_device_driver_on_host(request))
+        return response, command
+
+    def test_driver_reload_success_without_showbus_guard(self):
+        response, command = self.reload('Haiguang', (0, 'loaded', ''))
+        self.assertTrue(response.success)
+        self.assertEqual(response.error, '')
+        command.assert_called_once_with('hy-smi --unloaddriver && hy-smi --loaddriver')
+
+    def test_driver_reload_failures(self):
+        for code in [1, 127]:
+            response, command = self.reload('Haiguang', (code, 'unload failed', 'driver error'))
+            self.assertFalse(response.success)
+            self.assertIn('0000:81:00.0', response.error)
+            self.assertIn('unload failed', response.error)
+            self.assertIn('driver error', response.error)
+            command.assert_called_once_with('hy-smi --unloaddriver && hy-smi --loaddriver')
+
+    def test_non_haiguang_driver_reload_remains_noop(self):
+        response, command = self.reload('NVIDIA', (0, '', ''))
+        self.assertTrue(response.success)
+        command.assert_not_called()
+
+
+if __name__ == '__main__':
+    unittest.main()
