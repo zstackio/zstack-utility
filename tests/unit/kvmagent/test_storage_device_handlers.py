@@ -22,15 +22,21 @@ def _make_plugin():
 
 @pytest.mark.kvmagent
 class TestStorageDeviceIscsiLogin:
-    def test_iscsi_login_selects_data_network_portal(self, monkeypatch):
+    @pytest.mark.parametrize("requested, alternate, cidr", [
+        ("172.24.189.236", "10.0.3.252", "10.0.0.0/22"),
+        ("fd00:5:5:28::7f:42a4", "fd66:6:6:6:1:1:1:4c35", "fd66:6:6:6::/64"),
+    ])
+    def test_iscsi_login_preserves_requested_portal(self, monkeypatch, requested, alternate, cidr):
         plugin = _make_plugin()
         plugin.clean_iscsi_cache_configuration = MagicMock()
         plugin.get_iqn_login_timeout = MagicMock(return_value=10)
         plugin.trigger_events_for_block = MagicMock()
 
+        requested_portal = "[%s]:3260" % requested if ":" in requested else "%s:3260" % requested
+        alternate_portal = "[%s]:3260" % alternate if ":" in alternate else "%s:3260" % alternate
         discovery = "\n".join([
-            "[fd00:5:5:28::7f:42a4]:3260,1 iqn.2018-06.org.19172disk1",
-            "[fd66:6:6:6:1:1:1:4c35]:3260,1 iqn.2018-06.org.19172disk1",
+            requested_portal + ",1 iqn.2018-06.org.19172disk1",
+            alternate_portal + ",1 iqn.2018-06.org.19172disk1",
         ])
 
         login_commands = []
@@ -60,9 +66,9 @@ class TestStorageDeviceIscsiLogin:
         monkeypatch.setattr(storage_device.linux, "set_fail_if_no_path", MagicMock())
 
         req = _make_req({
-            "iscsiServerIp": "fd00:5:5:28::7f:42a4",
+            "iscsiServerIp": requested,
             "iscsiServerPort": "3260",
-            "dataNetworkCidr": "fd66:6:6:6::/64",
+            "dataNetworkCidr": cidr,
             "iscsiTargets": [],
         })
 
@@ -71,11 +77,26 @@ class TestStorageDeviceIscsiLogin:
 
         assert rsp["success"] is True
         assert login_commands
-        assert "-p '[fd66:6:6:6:1:1:1:4c35]:3260'" in login_commands[0]
+        assert len(login_commands) == 1
+        assert "-p '%s'" % requested_portal in login_commands[0]
+        plugin.clean_iscsi_cache_configuration.assert_called_once_with(
+            "/var/lib/iscsi/nodes", requested, "3260")
 
-    def test_iscsi_login_rediscovers_selected_data_portal_after_cache_cleanup(self, monkeypatch):
+        second = _make_req({
+            "iscsiServerIp": alternate,
+            "iscsiServerPort": "3260",
+            "dataNetworkCidr": cidr,
+            "iscsiTargets": [],
+        })
+        assert json.loads(plugin.iscsi_login(second))["success"] is True
+        assert len(login_commands) == 2
+        assert "-p '%s'" % alternate_portal in login_commands[1]
+        assert login_commands[0] != login_commands[1]
+
+    def test_iscsi_login_discovers_requested_portal_after_cache_cleanup(self, monkeypatch):
         plugin = _make_plugin()
-        plugin.clean_iscsi_cache_configuration = MagicMock()
+        operations = []
+        plugin.clean_iscsi_cache_configuration = MagicMock(side_effect=lambda *args: operations.append("cleanup"))
         plugin.get_iqn_login_timeout = MagicMock(return_value=10)
         plugin.trigger_events_for_block = MagicMock()
 
@@ -89,6 +110,7 @@ class TestStorageDeviceIscsiLogin:
 
         def bash_roe(cmd):
             if "discovery" in cmd:
+                operations.append("discovery")
                 discovery_commands.append(cmd)
                 return 0, discovery, ""
             if "--login" in cmd:
@@ -123,8 +145,8 @@ class TestStorageDeviceIscsiLogin:
         rsp = json.loads(result)
 
         assert rsp["success"] is True
-        assert len(discovery_commands) == 2
+        assert operations == ["cleanup", "discovery"]
+        assert len(discovery_commands) == 1
         assert "--portal '[fd00:5:5:28::7f:42a4]:3260'" in discovery_commands[0]
-        assert "--portal '[fd66:6:6:6:1:1:1:4c35]:3260'" in discovery_commands[1]
         assert login_commands
-        assert "-p '[fd66:6:6:6:1:1:1:4c35]:3260'" in login_commands[0]
+        assert "-p '[fd00:5:5:28::7f:42a4]:3260'" in login_commands[0]
