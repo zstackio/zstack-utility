@@ -283,9 +283,10 @@ class TestHostPluginResourceControl:
         command['sliceName'] = '../../attacker.slice'
         cases.append((command, 'not a valid systemd slice'))
 
-        command = self._command()
-        command['isolationMode'] = 'ISOLATED'
-        cases.append((command, 'must be SHARED or EXCLUSIVE'))
+        for invalid_mode in ['ISOLATED', '', False]:
+            command = self._command()
+            command['isolationMode'] = invalid_mode
+            cases.append((command, 'must be SHARED or EXCLUSIVE'))
 
         command = self._command()
         command['handles'][1]['value'] = '../../attacker.service'
@@ -296,14 +297,12 @@ class TestHostPluginResourceControl:
         cases.append((command, 'is duplicated'))
 
         for command, reason in cases:
-            manager = MagicMock()
-            with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            with patch.object(host_plugin.resource_control.ResourceControlManager, '_backend') as backend:
                 rsp = json.loads(plugin_response := _make_plugin().apply_resource_control(_make_req(command)))
 
             assert rsp['success'] is False, plugin_response
             assert reason in rsp['error'], plugin_response
-            manager.apply.assert_not_called()
-            manager.release.assert_not_called()
+            backend.assert_not_called()
 
     def test_release_endpoint_calls_only_release(self):
         command = self._command()
@@ -321,6 +320,41 @@ class TestHostPluginResourceControl:
         assert role_type == 'COMPUTE'
         assert [handle.serviceName for handle in handles] == ['kvmagent', 'virtlogd']
         assert slice_name == 'zstack-compute.slice'
+
+    @pytest.mark.parametrize('action', ['apply', 'release'])
+    def test_resource_control_failure_is_returned_to_cloud(self, action):
+        manager = MagicMock()
+        error = 'Systemd unit[zstack-kvmagent.service] is not active'
+        getattr(manager, action).side_effect = host_plugin.resource_control.ResourceControlError(error)
+
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            endpoint = getattr(_make_plugin(), action + '_resource_control')
+            rsp = json.loads(endpoint(_make_req(self._command())))
+
+        assert rsp['success'] is False
+        assert error in rsp['error']
+
+    def test_pending_restart_is_successful_but_unsynced(self):
+        manager = MagicMock()
+        manager.apply.return_value = {'synced': False}
+
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(_make_plugin().apply_resource_control(_make_req(self._command())))
+
+        assert rsp['success'] is True
+        assert rsp['synced'] is False
+
+    def test_colon_slice_uses_the_executor_validation_pattern(self):
+        command = self._command()
+        command['sliceName'] = 'role:custom.slice'
+        manager = MagicMock()
+        manager.apply.return_value = {'synced': True}
+
+        with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager):
+            rsp = json.loads(_make_plugin().apply_resource_control(_make_req(command)))
+
+        assert rsp['success'] is True
+        assert manager.apply.call_args.args[4] == 'role:custom.slice'
 
     def test_new_manifest_service_does_not_require_agent_code_change(self):
         command = self._command()
@@ -1406,12 +1440,26 @@ class TestHostPluginGetMttyInfo:
 class TestHostPluginGetNumaTopology:
     def test_get_numa_topology(self):
         plugin = _make_plugin()
+        nodes = {'2': {'cpus': ['2', '6', '10'], 'onlineCpus': ['2', '6'], 'coreGroups': [['2', '6']]}}
+        meminfo = 'Node 2 MemTotal: 4096 kB\nNode 2 MemFree: 2048 kB\n'
 
-        with patch('kvmagent.plugins.host_plugin.os.path.isdir', return_value=False):
-            req = _make_req({})
-            result = plugin.get_numa_topology(req)
+        with patch.object(host_plugin.resource_control, 'get_cpu_topology', return_value=nodes) as collect, \
+                patch.object(host_plugin.os.path, 'isdir', return_value=True), \
+                patch('builtins.open', side_effect=lambda path, mode: io.StringIO(
+                    meminfo if path.endswith('/meminfo') else '20 10\n')):
+            result = plugin.get_numa_topology(_make_req({}))
         rsp = json.loads(result)
         assert rsp['success'] is True
+        assert rsp['topology'] == {'2': {
+            'cpus': ['2', '6', '10'], 'onlineCpus': ['2', '6'], 'coreGroups': [['2', '6']],
+            'size': 4096 * 1024, 'free': 2048 * 1024, 'distance': ['20', '10'],
+        }}, 'KVM must preserve its full response while delegating CPU topology'
+        collect.assert_called_once_with()
+
+        with patch.object(host_plugin.resource_control, 'get_cpu_topology', return_value={'0': {}}), \
+                patch.object(host_plugin.os.path, 'isdir', return_value=False):
+            rsp = json.loads(plugin.get_numa_topology(_make_req({})))
+        assert rsp['success'] is True and rsp['topology'] == {}, 'Do not read memory for synthetic NUMA nodes'
 
 
 @pytest.mark.kvmagent
