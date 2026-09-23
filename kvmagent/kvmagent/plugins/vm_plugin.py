@@ -4494,6 +4494,8 @@ class Vm(object):
             driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
             if is_virtio_blk(volume) and volume.multiQueues:
                 driver_elements["queues"] = volume.multiQueues
+            if is_virtio_blk(volume) and IothreadVqMappingAllocator.to_int(volume.ioThreadId):
+                driver_elements["iothread"] = str(volume.ioThreadId)
             driver = e(disk, 'driver', None, driver_elements)
             if not volume.useVirtioSCSI:
                 IothreadVqMappingAllocator.apply(driver, automatic_iothread_vq_mapping_allocator)
@@ -7865,6 +7867,8 @@ class Vm(object):
                 driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
                 if is_virtio_blk(_v) and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
+                if is_virtio_blk(_v) and IothreadVqMappingAllocator.to_int(_v.ioThreadId):
+                    driver_elements["iothread"] = str(_v.ioThreadId)
                 driver = e(disk, 'driver', None, driver_elements)
                 if not _v.useVirtioSCSI:
                     IothreadVqMappingAllocator.apply(driver, automatic_iothread_vq_mapping_allocators.get(_v.volumeUuid))
@@ -8459,14 +8463,15 @@ class Vm(object):
             for vol in volumes_for_iothread_vq_mapping:
                 if not IothreadVqMappingAllocator.needs_dedicated_scsi_controller(vol):
                     continue
-                alias_id = vol.ioThreadId if vol.ioThreadId else vol.controllerIndex
+                io_thread_id = IothreadVqMappingAllocator.to_int(vol.ioThreadId)
+                alias_id = io_thread_id if io_thread_id else vol.controllerIndex
                 if alias_id in created_dedicated_controllers:
                     continue
                 created_dedicated_controllers.add(alias_id)
                 devices.append(make_virtio_scsi_controller_xml(
                     vol.controllerIndex,
                     alias_id,
-                    io_thread_id=vol.ioThreadId,
+                    io_thread_id=io_thread_id,
                     queues=IothreadVqMappingAllocator.to_int(vol.multiQueues),
                     mapping_allocator=automatic_iothread_vq_mapping_allocators.get(vol.volumeUuid)
                 ))
@@ -10588,6 +10593,8 @@ class VmPlugin(kvmagent.KvmAgent):
         def cbd_volume(_v):
             disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
             driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
+            if is_virtio_blk(_v) and IothreadVqMappingAllocator.to_int(_v.ioThreadId):
+                driver_elements["iothread"] = str(_v.ioThreadId)
             driver = e(disk, 'driver', None, driver_elements)
             if not _v.useVirtioSCSI:
                 IothreadVqMappingAllocator.apply(
