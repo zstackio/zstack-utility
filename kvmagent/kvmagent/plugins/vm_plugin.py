@@ -11464,7 +11464,7 @@ host side snapshot files chian:
     @kvmagent.replyerror
     def export_nbd_volumes(self, req):
         def _export_nbd(nbd_port, format, volume_path, volume_uuid):
-            process = qemu_nbd.export(nbd_port, "-b", "0.0.0.0", "-f", format, volume_path, "-x", volume_uuid)
+            process = qemu_nbd.export(nbd_port, "-t", "-b", "0.0.0.0", "-f", format, volume_path, "-x", volume_uuid)
             if not linux.check_socket_available('0.0.0.0', int(nbd_port)):
                 process.terminate()
                 _, stderr = process.communicate()
