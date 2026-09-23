@@ -23,10 +23,11 @@ CBD_SNAPSHOT_PATH = CBD_VOLUME_PATH + "@{}"
 CLUSTER_UUID_SUPPORTED_VERSION = "1.5.1"
 VHOST_SOCKET_DIR = "/var/zbsvhost/sockets"
 VHOST_VOLUME_SUFFIX = "_zbs_"
-VHOST_TARGET_CONTAINER_PREFIX = "zbsvhost-"
-VHOST_ADMIN_SOCK_NAME = "admin.sock"
 VHOST_CHECK_READY_RETRIES = 40
 VHOST_CHECK_READY_INTERVAL_SECONDS = 0.5
+VHOST_CHECK_READY_TIMEOUT_SECONDS = 20
+VHOST_STATUS_TIMEOUT_SECONDS = 15
+VHOST_STATUS_KILL_AFTER_SECONDS = 5
 
 
 class ClientInfo(object):
@@ -84,30 +85,53 @@ def deploy_client(ip, port, username, password):
         ZBSADM_BIN_PATH, ip, port, username, linux.shellquote(password)))
 
 
-def wait_vhost_target_ready(ip, port, username, password, retries=VHOST_CHECK_READY_RETRIES,
-                            interval=VHOST_CHECK_READY_INTERVAL_SECONDS):
-    container_name = VHOST_TARGET_CONTAINER_PREFIX + ip
-    control_sock = "%s/%s" % (VHOST_SOCKET_DIR, VHOST_ADMIN_SOCK_NAME)
-    cmd = "docker ps --filter %s --filter status=running -q | grep -q . && test -S %s" % (
-        linux.shellquote("name=^/%s$" % container_name),
-        linux.shellquote(control_sock))
+def get_vhost_target_status(ip, timeout=VHOST_STATUS_TIMEOUT_SECONDS):
+    if not ip:
+        raise ValueError("hostIp is required to query vhost status")
 
-    for _ in range(retries):
-        ret, _, _ = linux.sshpass_run(ip, password, cmd, user=username, port=int(port))
-        if ret == 0:
+    o = shell.call("timeout -k %s %s %s vhost status --host %s --silent" % (
+        VHOST_STATUS_KILL_AFTER_SECONDS, timeout, ZBSADM_BIN_PATH, linux.shellquote(ip)))
+    r = jsonobject.loads(o)
+    if r.success is not True or r.error is None or r.error.code != 0:
+        raise ValueError("failed to query vhost status on host[%s], error[%s]" % (ip, jsonobject.dumps(r.error)))
+    if not isinstance(r.vhosts, list):
+        raise ValueError("invalid vhost status response on host[%s]: vhosts must be a list" % ip)
+
+    for vhost in r.vhosts:
+        if not vhost.ip or 'status' not in vhost.__dict__:
+            raise ValueError("invalid vhost status record on host[%s]: ip and status are required" % ip)
+        if vhost.ip == ip:
+            return vhost.status
+    return None
+
+
+def is_vhost_target_running(ip, timeout=VHOST_STATUS_TIMEOUT_SECONDS):
+    return get_vhost_target_status(ip, timeout) == "running"
+
+
+def wait_vhost_target_ready(ip, retries=VHOST_CHECK_READY_RETRIES, interval=VHOST_CHECK_READY_INTERVAL_SECONDS):
+    deadline = time.time() + VHOST_CHECK_READY_TIMEOUT_SECONDS
+    for attempt in range(retries):
+        remaining = deadline - time.time() - VHOST_STATUS_KILL_AFTER_SECONDS
+        if remaining <= 0:
+            return False
+        if is_vhost_target_running(ip, min(VHOST_STATUS_TIMEOUT_SECONDS, remaining)):
             return True
-        time.sleep(interval)
-
+        if attempt + 1 < retries:
+            remaining = deadline - time.time() - VHOST_STATUS_KILL_AFTER_SECONDS
+            if remaining <= 0:
+                return False
+            time.sleep(min(interval, remaining))
     return False
 
 
-def create_vhost_bdev(ip, port, username, password, logical_pool, volume, bdev_name):
+def create_vhost_bdev(ip, logical_pool, volume, bdev_name):
     return shell.call(
         "%s vhost create-bdev --host %s --volume %s/%s%s --name %s --silent" % (
             ZBSADM_BIN_PATH, ip, logical_pool, volume, VHOST_VOLUME_SUFFIX, bdev_name))
 
 
-def delete_vhost_bdev(ip, port, username, password, bdev_name):
+def delete_vhost_bdev(ip, bdev_name):
     return shell.call("%s vhost delete-bdev --host %s --name %s --silent" % (ZBSADM_BIN_PATH, ip, bdev_name))
 
 

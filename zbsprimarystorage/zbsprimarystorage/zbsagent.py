@@ -52,6 +52,12 @@ class CreateVhostBdevRsp(AgentResponse):
         self.socketPath = None
 
 
+class VhostTargetHealthRsp(AgentResponse):
+    def __init__(self):
+        super(VhostTargetHealthRsp, self).__init__()
+        self.targetRunning = False
+
+
 class ExpandVolumeRsp(AgentResponse):
     def __init__(self):
         super(ExpandVolumeRsp, self).__init__()
@@ -217,6 +223,7 @@ class ZbsAgent(plugin.TaskManager):
     FLATTEN_VOLUME_PATH = "/zbs/primarystorage/volume/flatten"
     GET_VOLUME_CLIENTS_PATH = "/zbs/primarystorage/volume/clients"
     CHECK_VHOST_PATH = "/zbs/primarystorage/vhost/check"
+    VHOST_TARGET_HEALTH_PATH = "/zbs/primarystorage/vhost/target/health"
     CREATE_VHOST_BDEV_PATH = "/zbs/primarystorage/vhost/bdev/create"
     DELETE_VHOST_BDEV_PATH = "/zbs/primarystorage/vhost/bdev/delete"
 
@@ -248,6 +255,7 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
         self.http_server.register_sync_uri(self.GET_VOLUME_CLIENTS_PATH, self.get_volume_clients)
         self.http_server.register_async_uri(self.CHECK_VHOST_PATH, self.check_vhost)
+        self.http_server.register_async_uri(self.VHOST_TARGET_HEALTH_PATH, self.check_vhost_target_health)
         self.http_server.register_async_uri(self.CREATE_VHOST_BDEV_PATH, self.create_vhost_bdev)
         self.http_server.register_async_uri(self.DELETE_VHOST_BDEV_PATH, self.delete_vhost_bdev)
 
@@ -720,9 +728,16 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        if not zbsutils.wait_vhost_target_ready(cmd.hostIp, cmd.sshPort, cmd.sshUsername, cmd.sshPassword):
+        if not zbsutils.wait_vhost_target_ready(cmd.hostIp):
             raise Exception('vhost target on host[%s] is not ready; check its deployment and status in ZStone' % cmd.hostIp)
 
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def check_vhost_target_health(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = VhostTargetHealthRsp()
+        rsp.targetRunning = zbsutils.is_vhost_target_running(cmd.hostIp)
         return jsonobject.dumps(rsp)
 
     @replyerror
@@ -730,8 +745,7 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = CreateVhostBdevRsp()
 
-        o = zbsutils.create_vhost_bdev(cmd.hostIp, cmd.sshPort, cmd.sshUsername, cmd.sshPassword,
-                                       cmd.logicalPool, cmd.volume, cmd.bdevName)
+        o = zbsutils.create_vhost_bdev(cmd.hostIp, cmd.logicalPool, cmd.volume, cmd.bdevName)
         r = jsonobject.loads(o)
         if not r.success:
             raise Exception('failed to create vhost bdev[%s] for volume[%s/%s] on host[%s], error[%s]' % (
@@ -745,8 +759,7 @@ class ZbsAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
-        o = zbsutils.delete_vhost_bdev(cmd.hostIp, cmd.sshPort, cmd.sshUsername, cmd.sshPassword,
-                                       cmd.bdevName)
+        o = zbsutils.delete_vhost_bdev(cmd.hostIp, cmd.bdevName)
         r = jsonobject.loads(o)
         if not r.success:
             raise Exception('failed to delete vhost bdev[%s] on host[%s], error[%s]' % (
