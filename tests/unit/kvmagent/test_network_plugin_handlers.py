@@ -49,6 +49,7 @@ class _LinuxModule(Protocol):
     delete_vlan_eth: Callable[..., None]
     write_file: Callable[..., None]
     is_vif_on_bridge: Callable[..., bool]
+    check_interface_configuration_exist: Callable[..., list[str]]
 
 
 class _OsPathModule(Protocol):
@@ -95,6 +96,7 @@ class _NetworkPluginProto(Protocol):
     _configure_bridge_learning: Callable[..., None]
     _enable_bridge_igmp_snooping: Callable[..., None]
     update_bridge_vlan: Callable[..., object]
+    update_bridge_vlan_with_nm: Callable[..., object]
     update_bridge_vxlan: Callable[..., object]
     create_single_vxlan_bridge: Callable[..., None]
 
@@ -1075,9 +1077,27 @@ class TestNetworkPluginNmL2:
         mtu_calls = [item.args for item in plugin._configure_bridge_mtu.call_args_list]
         assert mtu_calls == expected_mtu_calls
 
+    def test_update_nm_branch_rejects_persistent_profile_before_changes(self):
+        plugin = _make_plugin()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.check_interface_configuration_exist = MagicMock(
+            return_value=['eth0.100'])
+        plugin._write_l2_nm_conf = MagicMock()
+        cmd = SimpleNamespace(
+            bridgeName='br0', physicalInterfaceName='eth0', oldVlan=100,
+            newVlan=200, l2NetworkUuid='l2-uuid')
+
+        with pytest.raises(RuntimeError, match=r'profiles exist.*eth0.100'):
+            plugin.update_bridge_vlan_with_nm(cmd)
+
+        linux.check_interface_configuration_exist.assert_called_once_with(
+            ['eth0.200', 'eth0.100'])
+        plugin._write_l2_nm_conf.assert_not_called()
+
     def test_update_nm_branch_adds_new_device_before_removing_old_device(self):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.check_interface_configuration_exist = MagicMock(return_value=[])
         plugin._write_l2_nm_conf = MagicMock(side_effect=[['transition'], ['final']])
         plugin._check_unmanaged_devices = MagicMock()
         plugin._ifup_device_if_down = MagicMock()
@@ -1107,6 +1127,7 @@ class TestNetworkPluginNmL2:
     def test_update_nm_branch_from_novlan_to_vlan_keeps_nm_conf(self):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.check_interface_configuration_exist = MagicMock(return_value=[])
         devices = ['br0', 'eth0.100', 'eth0']
         plugin._write_l2_nm_conf = MagicMock(return_value=devices)
         plugin._check_unmanaged_devices = MagicMock()
@@ -1135,6 +1156,7 @@ class TestNetworkPluginNmL2:
     def test_update_nm_branch_from_vlan_to_novlan_removes_old_vlan_only(self):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.check_interface_configuration_exist = MagicMock(return_value=[])
         plugin._write_l2_nm_conf = MagicMock(side_effect=[['transition'], ['final']])
         plugin._check_unmanaged_devices = MagicMock()
         plugin._ifup_device_if_down = MagicMock()
@@ -1166,6 +1188,7 @@ class TestNetworkPluginNmL2:
     def test_update_nm_branch_rejects_target_vlan_with_ip(self):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.check_interface_configuration_exist = MagicMock(return_value=[])
         plugin._write_l2_nm_conf = MagicMock()
         linux.is_network_ip_using = MagicMock(return_value=True)
         cmd = SimpleNamespace(
@@ -1180,6 +1203,7 @@ class TestNetworkPluginNmL2:
     def test_update_nm_branch_skips_missing_old_vlan(self):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.check_interface_configuration_exist = MagicMock(return_value=[])
         plugin._write_l2_nm_conf = MagicMock(side_effect=[['transition'], ['final']])
         plugin._check_unmanaged_devices = MagicMock()
         plugin._ifup_device_if_down = MagicMock()

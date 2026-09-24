@@ -3,6 +3,7 @@
 @author: frank
 '''
 import abc
+import configparser
 import contextlib
 import os
 import os.path
@@ -44,6 +45,11 @@ from zstacklib.utils import network_ipv6
 
 
 logger = log.get_logger(__name__)
+
+NM_KEYFILE_DIRS = (
+    "/etc/NetworkManager/system-connections",
+    "/usr/lib/NetworkManager/system-connections",
+)
 
 RPM_BASED_OS = ['redhat', 'centos', 'alibaba', 'alinux', 'kylin10', 'rocky', 'helix']
 DEB_BASED_OS = ['uos', 'kylin4.0.2', 'debian', 'ubuntu', 'uniontech']
@@ -1588,11 +1594,58 @@ def delete_bridge(bridge_name):
 
 def check_interface_configuration_exist(ifnames):
     existing_interfaces = []
+    interfaces_without_ifcfg = []
     for ifname in ifnames:
-        config_path = os.path.join("/etc/sysconfig/network-scripts", "ifcfg-%s" % ifname)
-        if os.path.exists(config_path):
+        ifcfg_path = os.path.join(
+            "/etc/sysconfig/network-scripts", "ifcfg-%s" % ifname)
+        if os.path.exists(ifcfg_path):
+            existing_interfaces.append(ifname)
+        else:
+            interfaces_without_ifcfg.append(ifname)
+
+    if not interfaces_without_ifcfg:
+        return existing_interfaces
+
+    keyfile_interfaces = set()
+    for directory in NM_KEYFILE_DIRS:
+        if not os.path.isdir(directory):
+            continue
+        for filename in os.listdir(directory):
+            path = os.path.join(directory, filename)
+            if os.path.isfile(path):
+                keyfile_interfaces.update(_get_nm_keyfile_interface_names(path))
+
+    for ifname in interfaces_without_ifcfg:
+        if ifname in keyfile_interfaces:
             existing_interfaces.append(ifname)
     return existing_interfaces
+
+
+def _get_nm_keyfile_interface_names(path):
+    parser = configparser.RawConfigParser(strict=False)
+    parser.optionxform = str
+    try:
+        with open(path, 'r') as stream:
+            parser.read_file(stream)
+    except (OSError, UnicodeError, configparser.Error) as error:
+        logger.warning('failed to parse NetworkManager keyfile[%s]: %s' %
+                       (path, error))
+        return []
+
+    interface_names = []
+    for section in ('connection', 'vlan'):
+        if parser.has_section(section):
+            interface_name = parser.get(
+                section, 'interface-name', fallback='').strip()
+            if interface_name:
+                interface_names.append(interface_name)
+
+    if parser.has_section('vlan'):
+        parent = parser.get('vlan', 'parent', fallback='').strip()
+        vlan_id = parser.get('vlan', 'id', fallback='').strip()
+        if parent and vlan_id:
+            interface_names.append('%s.%s' % (parent, vlan_id))
+    return interface_names
 
 def check_bridge_with_interface(vlan_interface, expected_bridge_name):
     bridge_name = find_bridge_having_physical_interface(vlan_interface)
@@ -1607,7 +1660,7 @@ def update_bridge_interface_configuration(old_interface, new_interface, bridge_n
     if interfaces_conf_exist:
         raise Exception(
             "Detected static config files for interfaces: [%s]. "
-            "Please manually verify the '/etc/sysconfig/network-scripts/ifcfg-*' directory to ensure no outdated configurations exist, "
+            "Please manually verify the persistent network profiles to ensure no outdated configurations exist, "
             "as they may cause conflicts after the update."
             % ", ".join(interfaces_conf_exist)
         )

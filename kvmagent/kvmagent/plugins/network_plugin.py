@@ -1263,6 +1263,23 @@ configure lldp status rx-only \n
         return jsonobject.dumps(rsp)
 
     def update_bridge_vlan_with_nm(self, cmd):
+        current_uplink = cmd.physicalInterfaceName
+        if cmd.oldVlan:
+            current_uplink = '%s.%s' % (cmd.physicalInterfaceName, cmd.oldVlan)
+
+        new_uplink = cmd.physicalInterfaceName
+        if cmd.newVlan:
+            new_uplink = '%s.%s' % (cmd.physicalInterfaceName, cmd.newVlan)
+
+        # Keep the legacy profile validation before the upstream NM workflow
+        # changes runtime state or writes its transition configuration.
+        configured_interfaces = linux.check_interface_configuration_exist(
+            [new_uplink, current_uplink])
+        if configured_interfaces:
+            raise RuntimeError(
+                'static network profiles exist for interfaces[%s]' %
+                ', '.join(configured_interfaces))
+
         transition_devices = [cmd.bridgeName]
         if cmd.oldVlan:
             old_vlan = '%s.%s' % (cmd.physicalInterfaceName, cmd.oldVlan)
