@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from kvmagent.plugins import vm_plugin
@@ -294,6 +296,83 @@ def test_manual_iothread_pin_disables_automatic_iothread_vq_mapping():
     volume = cbd_volume(ioThreadId=3)
 
     assert vm_plugin.IothreadVqMappingAllocator.allocate(volume, set()) is None
+
+
+@pytest.mark.kvmagent
+@pytest.mark.parametrize('io_thread_id', [1, '1', None, '', 0])
+@pytest.mark.parametrize('use_scsi', [False, True])
+def test_attach_cbd_disk_manual_iothread(monkeypatch, io_thread_id, use_scsi):
+    volume = cbd_volume(installPath='cbd:test-volume', ioThreadId=io_thread_id, useVirtioSCSI=use_scsi)
+    vm = vm_plugin.Vm()
+    vm.uuid = 'vm-uuid'
+    vm.domain = MagicMock()
+    monkeypatch.setattr(vm_plugin.linux, 'retry', no_retry)
+    monkeypatch.setattr(vm_plugin.linux, 'wait_callback_success', lambda *args: True)
+    monkeypatch.setattr(vm_plugin, 'file_volume_check', lambda v: v)
+    monkeypatch.setattr(vm_plugin, 'get_vm_by_uuid', lambda uuid: FakeVm(CLEAN_DOMAIN_XML))
+    monkeypatch.setattr(vm_plugin.Vm, 'set_device_address', staticmethod(lambda *args: None))
+    monkeypatch.setattr(vm, 'create_iothread', lambda *args: None)
+    monkeypatch.setattr(vm_plugin.VmPlugin, 'get_iothread_info', staticmethod(lambda uuid: []))
+    monkeypatch.setattr(vm_plugin.VmPlugin, 'add_io_thread', staticmethod(lambda *args: None))
+    add_controller = MagicMock(return_value=1)
+    monkeypatch.setattr(vm_plugin.VmPlugin, 'add_scsi_controller_with_driver', add_controller)
+
+    vm._attach_data_volume(volume, EmptyAddons())
+
+    disk = vm_plugin.etree.fromstring(vm.domain.attachDeviceFlags.call_args_list[0][0][0])
+    driver = disk.find('driver')
+    assert driver.get('iothread') == ('1' if io_thread_id and not use_scsi else None)
+    assert bool(driver.findall('./iothreads/iothread')) == (not io_thread_id and not use_scsi)
+    if use_scsi:
+        assert add_controller.call_args[1]['io_thread_id'] == (1 if io_thread_id else 0)
+
+
+@pytest.mark.kvmagent
+@pytest.mark.parametrize('io_thread_id', [1, '1', None, '', 0])
+@pytest.mark.parametrize('use_scsi', [False, True])
+def test_start_cbd_disk_manual_iothread(monkeypatch, io_thread_id, use_scsi):
+    volume = cbd_volume(installPath='cbd:test-volume', ioThreadId=io_thread_id, useVirtioSCSI=use_scsi)
+    cmd = Volume(vmInstanceUuid='vm-uuid', vmName='test-vm', machineType='pc', imagePlatform='Linux',
+                 memory=1024 * 1024, cpuNum=1, nestedVirtualization='none', clock='utc', nics=[],
+                 rootVolume=volume, dataVolumes=[], isApplianceVm=True,
+                 addons=vm_plugin.jsonobject.loads('{"noConsole": true}'))
+    monkeypatch.setattr(vm_plugin.VmPlugin, 'clean_vm_firmware_flash', staticmethod(lambda uuid: None))
+    monkeypatch.setattr(vm_plugin, 'file_volume_check', lambda v: v)
+    monkeypatch.setattr(vm_plugin.uuidhelper, 'to_full_uuid', lambda uuid: uuid)
+    monkeypatch.setattr(vm_plugin.kvmagent, 'get_qemu_path', lambda: '/usr/libexec/qemu-kvm')
+
+    vm = vm_plugin.Vm.from_StartVmCmd(cmd)
+
+    root = vm_plugin.etree.fromstring(vm.domain_xml)
+    driver = root.find('./devices/disk/driver')
+    assert driver.get('iothread') == ('1' if io_thread_id and not use_scsi else None)
+    assert bool(driver.findall('./iothreads/iothread')) == (not io_thread_id and not use_scsi)
+    if use_scsi:
+        controller_driver = root.find('./devices/controller/driver')
+        assert controller_driver.get('iothread') == ('1' if io_thread_id else None)
+        assert bool(controller_driver.findall('./iothreads/iothread')) == (not io_thread_id)
+
+
+@pytest.mark.kvmagent
+@pytest.mark.parametrize('io_thread_id', [1, '1', None, '', 0])
+@pytest.mark.parametrize('use_scsi', [False, True])
+def test_get_new_cbd_disk_manual_iothread(io_thread_id, use_scsi):
+    old_disk = vm_plugin.etree.fromstring('''
+    <disk type="network" device="disk">
+      <driver name="qemu" type="raw"/>
+      <source protocol="cbd" name="old"/>
+      <target dev="vdb" bus="virtio"/>
+    </disk>
+    ''')
+    volume = cbd_volume(installPath='cbd:new-volume', dev_letter='b', ioThreadId=io_thread_id, useVirtioSCSI=use_scsi)
+    if use_scsi:
+        old_disk.find('target').set('bus', 'scsi')
+
+    new_disk = vm_plugin.VmPlugin._get_new_disk(old_disk, volume)
+
+    driver = new_disk.find('driver')
+    assert driver.get('iothread') == ('1' if io_thread_id and not use_scsi else None)
+    assert driver.find('iothreads') is None
 
 
 @pytest.mark.kvmagent
