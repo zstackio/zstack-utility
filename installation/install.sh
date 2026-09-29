@@ -2063,6 +2063,9 @@ is_install_general_libs_rh(){
     fi
 
     always_update_list="openssh"
+    if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" ]] && rpm -q keepalived >/dev/null 2>&1; then
+        always_update_list="${always_update_list} keepalived"
+    fi
     missing_list=`LANG=en_US.UTF-8 && rpm -q $deps_list | grep 'not installed' | awk 'BEGIN{ORS=" "}{ print $2 }'`
 
     [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
