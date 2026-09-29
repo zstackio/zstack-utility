@@ -13,6 +13,8 @@ from zstacklib.utils import bash
 from zstacklib.utils import thread
 from kvmagent.plugins.vm_plugin import get_running_vms
 
+VSWITCH_TYPE_ZNS = 'ZNS'
+
 OVN_INSTALL_PACKAGE = '/network/ovn/install'
 OVN_UNINSTALL_PACKAGE = '/network/ovn/uninstall'
 OVN_START_SERVICE = '/network/ovn/start'
@@ -543,6 +545,10 @@ class OvnNetworkPlugin(kvmagent.KvmAgent):
 
         vsctl = ovn.VsCtl()
         if not vsctl.isOvsRunning():
+            if getattr(cmd, 'vSwitchType', None) == VSWITCH_TYPE_ZNS:
+                rsp.success = False
+                rsp.error = "OVS is not running; waiting for ZNS provisioning"
+                return jsonobject.dumps(rsp)
             r = bash.bash_r("systemctl restart openvswitch && systemctl restart ovn-controller")
             if r != 0:
                 rsp.success = False
