@@ -50,6 +50,7 @@ class _LinuxModule(Protocol):
     write_file: Callable[..., None]
     is_vif_on_bridge: Callable[..., bool]
     check_interface_configuration_exist: Callable[..., list[str]]
+    get_device_ip: Callable[[str], str | None]
 
 
 class _OsPathModule(Protocol):
@@ -1094,10 +1095,31 @@ class TestNetworkPluginNmL2:
             ['eth0.200', 'eth0.100'])
         plugin._write_l2_nm_conf.assert_not_called()
 
-    def test_update_nm_branch_adds_new_device_before_removing_old_device(self):
+    def test_update_nm_branch_rejects_bridge_with_ip_before_changes(self, monkeypatch):
+        plugin = _make_plugin()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        monkeypatch.setattr(
+            linux, 'check_interface_configuration_exist', MagicMock(return_value=[]))
+        bridge_ip_check = MagicMock(return_value='2.2.3.3')
+        monkeypatch.setattr(linux, 'get_device_ip', bridge_ip_check)
+        plugin._write_l2_nm_conf = MagicMock()
+        cmd = SimpleNamespace(
+            bridgeName='br0', physicalInterfaceName='eth0', oldVlan=100,
+            newVlan=200, l2NetworkUuid='l2-uuid')
+
+        with pytest.raises(
+                RuntimeError,
+                match=r'bridge\[br0\] is currently assigned an IP address\[2.2.3.3\]'):
+            plugin.update_bridge_vlan_with_nm(cmd)
+
+        bridge_ip_check.assert_called_once_with('br0')
+        plugin._write_l2_nm_conf.assert_not_called()
+
+    def test_update_nm_branch_adds_new_device_before_removing_old_device(self, monkeypatch):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
         linux.check_interface_configuration_exist = MagicMock(return_value=[])
+        monkeypatch.setattr(linux, 'get_device_ip', MagicMock(return_value=None))
         plugin._write_l2_nm_conf = MagicMock(side_effect=[['transition'], ['final']])
         plugin._check_unmanaged_devices = MagicMock()
         plugin._ifup_device_if_down = MagicMock()
@@ -1124,10 +1146,11 @@ class TestNetworkPluginNmL2:
         linux.delete_vlan_eth.assert_called_once_with('eth0.100')
         plugin._check_unmanaged_devices.assert_called_once_with(['final'])
 
-    def test_update_nm_branch_from_novlan_to_vlan_keeps_nm_conf(self):
+    def test_update_nm_branch_from_novlan_to_vlan_keeps_nm_conf(self, monkeypatch):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
         linux.check_interface_configuration_exist = MagicMock(return_value=[])
+        monkeypatch.setattr(linux, 'get_device_ip', MagicMock(return_value=None))
         devices = ['br0', 'eth0.100', 'eth0']
         plugin._write_l2_nm_conf = MagicMock(return_value=devices)
         plugin._check_unmanaged_devices = MagicMock()
@@ -1153,10 +1176,11 @@ class TestNetworkPluginNmL2:
         linux.move_dev_route.assert_called_once_with('br0', 'eth0')
         plugin._check_unmanaged_devices.assert_called_once_with(devices)
 
-    def test_update_nm_branch_from_vlan_to_novlan_removes_old_vlan_only(self):
+    def test_update_nm_branch_from_vlan_to_novlan_removes_old_vlan_only(self, monkeypatch):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
         linux.check_interface_configuration_exist = MagicMock(return_value=[])
+        monkeypatch.setattr(linux, 'get_device_ip', MagicMock(return_value=None))
         plugin._write_l2_nm_conf = MagicMock(side_effect=[['transition'], ['final']])
         plugin._check_unmanaged_devices = MagicMock()
         plugin._ifup_device_if_down = MagicMock()
@@ -1185,10 +1209,11 @@ class TestNetworkPluginNmL2:
         linux.delete_vlan_eth.assert_called_once_with('eth0.100')
         plugin._check_unmanaged_devices.assert_called_once_with(['final'])
 
-    def test_update_nm_branch_rejects_target_vlan_with_ip(self):
+    def test_update_nm_branch_rejects_target_vlan_with_ip(self, monkeypatch):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
         linux.check_interface_configuration_exist = MagicMock(return_value=[])
+        monkeypatch.setattr(linux, 'get_device_ip', MagicMock(return_value=None))
         plugin._write_l2_nm_conf = MagicMock()
         linux.is_network_ip_using = MagicMock(return_value=True)
         cmd = SimpleNamespace(
@@ -1200,10 +1225,11 @@ class TestNetworkPluginNmL2:
 
         plugin._write_l2_nm_conf.assert_not_called()
 
-    def test_update_nm_branch_skips_missing_old_vlan(self):
+    def test_update_nm_branch_skips_missing_old_vlan(self, monkeypatch):
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
         linux.check_interface_configuration_exist = MagicMock(return_value=[])
+        monkeypatch.setattr(linux, 'get_device_ip', MagicMock(return_value=None))
         plugin._write_l2_nm_conf = MagicMock(side_effect=[['transition'], ['final']])
         plugin._check_unmanaged_devices = MagicMock()
         plugin._ifup_device_if_down = MagicMock()
