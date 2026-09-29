@@ -434,7 +434,63 @@ class TestNVIDIAContention(unittest.TestCase):
                 self.assertEqual(info, {})
 
         bash_roe.assert_called_once_with(
-            "timeout 10 nvidia-smi vgpu -i 0000:1a:00.0 -s")
+            "timeout 10 nvidia-smi vgpu -i 0000:1a:00.0 -v -s")
+
+    def test_prepared_rtx8000_probe_reads_type_ids_from_verbose_supported_output(self):
+        address = "0000:65:00.0"
+        prepared = NVIDIA.prepare_capability_context({address: {
+            '_deviceId': '1e30',
+            'driverVersion': '535.183.04',
+        }})
+        pci_device = type('PciDeviceTO', (), {
+            'pciDeviceAddress': address,
+        })()
+        short_output = "GPU 00000000:65:00.0\nName : GRID RTX8000-48Q\n"
+        # Synthetic output based on Jira's field difference, not a host capture.
+        verbose_output = ("GPU 00000000:65:00.0\n"
+                          "vGPU Type ID : 169\n"
+                          "Name : GRID RTX8000-48Q\n")
+
+        def run_command(command):
+            if command.endswith(' -v -s'):
+                return 0, verbose_output, ''
+            if command.endswith(' -s'):
+                return 0, short_output, ''
+            self.fail('unexpected command: %s' % command)
+
+        with patch("zstacklib.gpu.vendors.nvidia.bash_roe",
+                   side_effect=run_command) as bash_roe, \
+                patch.object(NVIDIA, "_is_bound_to_vfio", return_value=False), \
+                patch.object(NVIDIA, "_has_mdev_for_pci_address", return_value=False), \
+                patch("zstacklib.gpu.vendors.nvidia.os.path.isdir", return_value=True):
+            supported, info = NVIDIA.detect_vfio_mdev_capability(
+                pci_device, prepared)
+
+        self.assertTrue(supported)
+        self.assertEqual(info['mdevSpecifications'][0]['TypeId'], '169')
+        bash_roe.assert_called_once_with(
+            "timeout 10 nvidia-smi vgpu -i 0000:65:00.0 -v -s")
+
+    def test_prepared_gpu_without_vgpu_types_does_not_report_mdev(self):
+        address = "0000:65:00.0"
+        prepared = NVIDIA.prepare_capability_context({address: {
+            'driverVersion': '580.142',
+        }})
+        pci_device = type('PciDeviceTO', (), {
+            'pciDeviceAddress': address,
+        })()
+
+        with patch("zstacklib.gpu.vendors.nvidia.bash_roe",
+                   return_value=(0, "GPU 00000000:65:00.0\n", "")) as bash_roe, \
+                patch.object(NVIDIA, "_is_bound_to_vfio", return_value=False), \
+                patch("zstacklib.gpu.vendors.nvidia.os.path.isdir", return_value=True):
+            supported, info = NVIDIA.detect_vfio_mdev_capability(
+                pci_device, prepared)
+
+        self.assertFalse(supported)
+        self.assertEqual(info, {})
+        bash_roe.assert_called_once_with(
+            "timeout 10 nvidia-smi vgpu -i 0000:65:00.0 -v -s")
 
     def test_vgpu_probe_bounds_transient_family_failures(self):
         gpu_info_map = {}
@@ -525,7 +581,7 @@ class TestNVIDIAContention(unittest.TestCase):
         self.assertTrue(all(info['mdevSpecifications'][0]['TypeId'] == '239'
                             for _, info in results))
         bash_roe.assert_called_once_with(
-            "timeout 10 nvidia-smi vgpu -i 0000:1a:00.0 -s")
+            "timeout 10 nvidia-smi vgpu -i 0000:1a:00.0 -v -s")
 
 
 if __name__ == "__main__":

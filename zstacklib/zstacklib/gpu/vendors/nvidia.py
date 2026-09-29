@@ -1019,7 +1019,7 @@ class NVIDIA(GPUBase):
         attempts[family] = attempts.get(family, 0) + 1
 
         r, output, error = cls._run_critical_command(
-            "timeout 10 nvidia-smi vgpu -i %s -s" % addr)
+            "timeout 10 nvidia-smi vgpu -i %s -v -s" % addr)
         supported = r == 0 and "vGPU Type ID" in (output or '')
         explicit_unsupported = "No supported devices" in (
             "%s\n%s" % (output or '', error or ''))
