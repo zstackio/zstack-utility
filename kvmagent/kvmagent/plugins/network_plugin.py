@@ -1280,6 +1280,11 @@ configure lldp status rx-only \n
                 'static network profiles exist for interfaces[%s]' %
                 ', '.join(configured_interfaces))
 
+        bridge_ip = linux.get_device_ip(cmd.bridgeName)
+        if bridge_ip is not None:
+            raise RuntimeError('bridge[%s] is currently assigned an IP address[%s]' %
+                               (cmd.bridgeName, bridge_ip.strip()))
+
         transition_devices = [cmd.bridgeName]
         if cmd.oldVlan:
             old_vlan = '%s.%s' % (cmd.physicalInterfaceName, cmd.oldVlan)
