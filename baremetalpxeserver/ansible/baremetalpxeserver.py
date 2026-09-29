@@ -105,10 +105,13 @@ if distro in RPM_BASED_OS:
         releasever = 'c74' if output.strip() == 'c72' else output.strip()
     else:
         releasever = get_mn_yum_release()
+    if zstacklib_args.zstack_releasever == 'ky10gfb':
+        releasever = zstacklib_args.zstack_releasever
     x86_64_c74 = "dnsmasq nginx syslinux vsftpd nmap"
     x86_64_c76 = "dnsmasq nginx syslinux vsftpd nmap"
     x86_64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
     aarch64_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
+    aarch64_ky10gfb = aarch64_ns10
     aarch64_euler20 = "dnsmasq nginx vsftpd nmap net-tools"
     mips64el_ns10 = "dnsmasq nginx vsftpd nmap net-tools"
     dep_pkg = eval("%s_%s" % (host_arch, releasever))
@@ -132,7 +135,7 @@ else:
 
 # name: check and mount /opt/zstack-dvd
 command = """
-archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/ns10 aarch64/ns10 mips64el/ns10' 
+archRelease='x86_64/c72 x86_64/c74 x86_64/c76 x86_64/ns10 aarch64/ns10 mips64el/ns10 aarch64/ky10gfb'
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
 rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};
 is_repo_exist='false'

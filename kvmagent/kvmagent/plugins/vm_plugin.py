@@ -3459,8 +3459,10 @@ class Vm(object):
             for f in ['apic', 'pae']:
                 e(features, f)
 
-            @linux.with_arch(todo_list=['x86_64'])
+            @linux.with_arch(todo_list=['x86_64', 'aarch64'])
             def make_acpi():
+                if HOST_ARCH == 'aarch64' and cmd.imagePlatform == 'Linux' and cmd.guestOsType == 'Kylin 4':
+                    return
                 e(features, 'acpi')
 
             make_acpi()

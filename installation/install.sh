@@ -29,7 +29,7 @@ export TERM=xterm
 OS=''
 REDHAT_OS="CENTOS6 CENTOS7 RHEL7 ALIOS7 ISOFT4 KYLIN10 EULER20"
 DEBIAN_OS="UBUNTU14.04 UBUNTU16.04 UBUNTU KYLIN4.0.2 DEBIAN9 UOS20"
-XINCHUANG_OS="ns10 uos20"
+XINCHUANG_OS="ns10 ky10gfb uos20"
 SUPPORTED_OS="$REDHAT_OS $DEBIAN_OS"
 REDHAT_WITHOUT_CENTOS6=`echo $REDHAT_OS |sed s/CENTOS6//`
 
@@ -1515,6 +1515,9 @@ is_install_general_libs_rh(){
             avahi \
             avahi-tools \
             audit"
+    if [ "$ZSTACK_RELEASE" = "ky10gfb" ]; then
+      deps_list="${deps_list//python-setuptools/python2-setuptools}"
+    fi
     if [ "$BASEARCH" == "x86_64" ]; then
       deps_list="${deps_list} mcelog"
     fi
