@@ -27,7 +27,7 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 ansible.constants.HOST_KEY_CHECKING = False
-enable_networkmanager_list = ["ns10", "euler20"]
+enable_networkmanager_list = ["ns10", "ky10gfb", "euler20"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el"]
 
 RPM_BASED_OS = ["centos", "redhat", "alibaba", "kylin10", "openeuler"]
@@ -279,6 +279,7 @@ def get_mn_apt_release():
 def get_host_releasever(ansible_distribution):
     supported_release_info = {
         "kylin10 tercel 10": "ns10",
+        "kylin10 gfb 10": "ky10gfb",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ns10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.6.1810": "c76",
@@ -971,6 +972,8 @@ def run_remote_command(command, host_post_info, return_status=False, return_outp
     '''return status all the time except return_status is False, return output is set to True'''
     if 'yum' in command:
         set_yum0 = "rpm -q zstack-release >/dev/null && releasever=`awk '{print $3}' /etc/zstack-release` || releasever=%s;export YUM0=$releasever; grep $releasever /etc/yum/vars/YUM0 || echo $releasever > /etc/yum/vars/YUM0;" % (get_mn_yum_release())
+        if host_post_info.environment.get('YUM0') == 'ky10gfb':
+            set_yum0 = "export YUM0=ky10gfb; echo ky10gfb > /etc/yum/vars/YUM0;"
         command = set_yum0 + command
     start_time = datetime.now()
     host_post_info.start_time = start_time
@@ -1801,6 +1804,8 @@ class ZstackLib(object):
         pip_version = "7.0.3"
         yum_server = args.yum_server
         zstack_releasever = args.zstack_releasever
+        if zstack_releasever == 'ky10gfb':
+            host_post_info.environment['YUM0'] = zstack_releasever
         apt_server = args.apt_server
         current_dir =  os.path.dirname(os.path.realpath(__file__))
         #require_python_env for deploy host which may not need python environment, default is true
@@ -1988,14 +1993,15 @@ enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo
                 # install libselinux-python and other command system libs from user defined repos
                 host_post_info.post_label = "ansible.shell.install.pkg"
                 python_pip_pkg = "python2-pip" if distro_version >= 7 else "python-pip"
+                python_setuptools_pkg = "python2-setuptools" if zstack_releasever == 'ky10gfb' else "python-setuptools"
                 host_post_info.post_label_param = "libselinux-python,python-devel,python-setuptools,gcc," \
                                                   "autoconf,chrony,python-backports-ssl_match_hostname,iptables-services, %s" % python_pip_pkg
                 if require_python_env == "true":
                     command = (
                               "yum clean --enablerepo=%s metadata &&  pkg_list=`rpm -q libselinux-python python-devel "
-                              "python-setuptools gcc autoconf %s | grep \"not installed\" | awk"
+                              "%s gcc autoconf %s | grep \"not installed\" | awk"
                               " '{ print $2 }'` && for pkg in $pkg_list; do yum --disablerepo=* --enablerepo=%s install "
-                              "-y $pkg; done;") % (zstack_repo, python_pip_pkg, zstack_repo)
+                              "-y $pkg; done;") % (zstack_repo, python_setuptools_pkg, python_pip_pkg, zstack_repo)
                     run_remote_command(command, host_post_info)
                     if distro_version >= 7:
                         # to avoid install some pkgs on virtual router which release is Centos 6.x

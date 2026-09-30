@@ -174,6 +174,8 @@ def load_zstacklib():
     zstacklib = ZstackLib(zstacklib_args)
 
 releasever = get_host_releasever([distro, distro_release, distro_version])
+if releasever == 'ky10gfb' and host_arch != 'aarch64':
+    error("Kylin GFB is only supported on aarch64")
 if distro in RPM_BASED_OS:
     install_release_on_host(True)
 elif distro in DEB_BASED_OS:
@@ -217,6 +219,8 @@ def install_kvm_pkg():
                         net-tools nfs-utils nmap OpenIPMI-modalias pciutils pv rsync sed ftp\
                         smartmontools sshpass usbutils vconfig wget audit dnsmasq \
                         qemu collectd-virt storcli edk2-aarch64 python2-pyudev collectd-disk"
+
+        aarch64_ky10gfb = aarch64_ns10.replace('OpenIPMI-modalias', 'OpenIPMI').replace(' ftp', '')
 
         aarch64_euler20 = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
                         usbredir-server iputils iscsi-initiator-utils libvirt libvirt-client libvirt-python lighttpd lsof \
