@@ -4,6 +4,7 @@
 '''
 import os
 import time
+from numbers import Integral
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import http
@@ -217,9 +218,6 @@ class Api(object):
             return '{%s: %s}' % (event_name, log_event)
 
         self._check_not_none_field(apicmd)
-        timeout = apicmd.timeout
-        if not timeout:
-            timeout = 1800000
         cmd = {apicmd.FULL_NAME: apicmd}
         log_cmd = '{"%s": "%s"}' % (apicmd.FULL_NAME, log.mask_sensitive_field(apicmd, jsonobject.dumps(apicmd)))
         logger.debug("async call[url: %s, request: %s]" % (self.api_url, log_cmd))
@@ -232,6 +230,12 @@ class Api(object):
             if exception_on_error and not event.success:
                 raise ApiError('API call[%s] failed because %s' % (name, self._error_code_to_string(event.error)))
             return name, event
+
+        timeout = apicmd.timeout
+        if not timeout:
+            server_timeout = getattr(rsp, 'apiTimeout', None)
+            timeout = server_timeout if (isinstance(server_timeout, Integral) and
+                                         not isinstance(server_timeout, bool) and server_timeout > 0) else 1800000
 
         curr = 0
         finterval = float(float(interval) / float(1000))
