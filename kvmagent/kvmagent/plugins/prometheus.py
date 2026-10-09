@@ -11,6 +11,7 @@ import psutil
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
+from zstacklib.utils import gpu
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import lock
@@ -1676,8 +1677,11 @@ def collect_hy_gpu_status():
 
     gpu_info_json = json.loads(gpu_info)
     for card_name, card_data in gpu_info_json.items():
+        pci_device_address = gpu.normalize_hy_pci_address(card_data.get("PCI Bus"))
+        if pci_device_address is None:
+            logger.warn("ignoring Hygon GPU %s with invalid PCI Bus" % card_name)
+            continue
         gpu_serial = card_data['Serial Number']
-        pci_device_address = card_data["PCI Bus"].lower()
         add_gpu_pci_device_address("HY", pci_device_address, gpu_serial)
         add_metrics('host_gpu_power_draw', card_data.get("Average Graphics Package Power (W)"), [pci_device_address, gpu_serial],
                     metrics)

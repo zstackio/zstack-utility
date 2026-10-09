@@ -109,20 +109,71 @@ class TestHygonCompatibility(unittest.TestCase):
                 'Average Graphics Package Power (W)': '120',
                 'Temperature (Sensor junction) (C)': 45}
         card.update(fields)
+        return self.collect_cards({'card0': card})[0]
 
+    def collect_cards(self, cards):
+        pci_commands = []
         def command(cmd):
-            if cmd == 'lspci -s 0000:ab:00.0':
+            if cmd.startswith('lspci '):
+                pci_commands.append(cmd)
                 return 0, 'Co-processor: Haiguang Device (rev 01)'
             self.assertEqual(cmd, 'hy-smi --showuse --showmemuse  --showpower --showtemp --showserial --showbus --json')
             self.assertNotIn('--showfan', cmd)
-            return 0, json.dumps({'card0': card})
+            return 0, json.dumps(cards)
 
         with mock.patch.object(self.prometheus.shell, 'run_without_log', return_value=0), \
                 mock.patch.object(self.prometheus, 'bash_ro', side_effect=command):
             metrics = self.prometheus.collect_hy_gpu_status()
         for metric in metrics:
             self.assertIsInstance(metric, GaugeMetricFamily)
-        return dict((metric.name, metric.samples) for metric in metrics)
+        return dict((metric.name, metric.samples) for metric in metrics), pci_commands
+
+    def live_card(self, address):
+        return {'PCI Bus': address, 'Serial Number': 'TRYQ160016040601',
+                'Average Graphics Package Power (W)': '136.0',
+                'Temperature (Sensor junction) (C)': '75.0',
+                'HCU use (%)': '0.0', 'HCU memory use (%)': '0',
+                'Available memory size (MiB)': '65497',
+                'Max Graphics Package Power (W)': '350.0'}
+
+    def test_live_pci_address_formats(self):
+        for address in ['0000:3f:00.0', '00000000:3F:00.0',
+                        '0000:3f:00.0 --> SN: TRYQ160016040601',
+                        ' \t0000:3F:00.0 --> SN: TRYQ160016040601 \n']:
+            metrics, commands = self.collect_cards({'card0': self.live_card(address)})
+            for samples in metrics.values():
+                for sample in samples:
+                    self.assertEqual(sample[1]['pci_device_address'], '0000:3f:00.0')
+            self.assertEqual(metrics['host_gpu_utilization'][0][2], 0.0)
+            self.assertEqual(metrics['host_gpu_memory_utilization'][0][2], 0.0)
+            self.assertEqual(metrics['host_gpu_power_draw'][0][2], 136.0)
+            self.assertEqual(metrics['host_gpu_temperature'][0][2], 75.0)
+            self.assertEqual(metrics['host_gpu_fan_speed'], [])
+            self.assertEqual(commands, ['lspci -s 0000:3f:00.0'])
+            self.assertEqual(self.prometheus.gpu_devices['HY'],
+                             set([('0000:3f:00.0', 'TRYQ160016040601')]))
+            addon = self.gpu.parse_hy_gpu_output(json.dumps({'card0': self.live_card(address)}))
+            self.assertEqual(addon, [{'pciAddress': '0000:3f:00.0', 'memory': '65497 MiB',
+                                      'power': '350.0', 'serialNumber': 'TRYQ160016040601'}])
+
+    def test_invalid_pci_addresses_skip_only_the_bad_card(self):
+        invalid = [None, 42, '', '--help', 'prefix 0000:3f:00.0',
+                   '0000:3f:20.0', '0000:3f:00.8', '00010000:3f:00.0',
+                   '0000:3f:00.0 --> invalid', '0000:3f:00.0; echo unsafe']
+        cards = [self.live_card(address) for address in invalid]
+        missing = self.live_card(None)
+        del missing['PCI Bus']
+        cards.append(missing)
+        for invalid_card in cards:
+            healthy = self.live_card('0000:3f:00.0')
+            metrics, commands = self.collect_cards({'card0': invalid_card, 'card1': healthy})
+            self.assertEqual(len(metrics['host_gpu_utilization']), 1)
+            self.assertEqual(commands, ['lspci -s 0000:3f:00.0'])
+            self.assertEqual(self.prometheus.gpu_devices['HY'],
+                             set([('0000:3f:00.0', 'TRYQ160016040601')]))
+            addon = self.gpu.parse_hy_gpu_output(json.dumps({'card0': invalid_card, 'card1': healthy}))
+            self.assertEqual(len(addon), 1)
+            self.assertEqual(addon[0]['pciAddress'], '0000:3f:00.0')
 
     def assert_utilization(self, fields, utilization, memory):
         metrics = self.collect(fields)
