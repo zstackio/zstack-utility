@@ -49,6 +49,7 @@ from .timeline import TaskTimeline, __doc__ as timeline_doc
 from zstackctl.keycloak_config import KeycloakAdminClient, KeycloakAdminError, read_admin_password
 from zstackctl.keycloak_config import restore_file, rotate_admin_password, snapshot_file
 from zstackctl.keycloak_config import validate_admin_password, write_admin_password
+from zstackctl.morph_config import configure_ha_database
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
 
@@ -2389,8 +2390,8 @@ class Zsha2Utils(object):
         if peer_port == '':
             peer_port = 22
         scmd = ShellCmd(
-            "sudo -u %s ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s -p %s %s \"%s\"" % (
-                self.ssh_exec_user, self.config['peerip'], peer_port, "sudo" if useSudo else "", script))
+            "sudo -u %s ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s -p %s %s %s" % (
+                self.ssh_exec_user, self.config['peerip'], peer_port, "sudo" if useSudo else "", shell_quote(script)))
         scmd(False)
         if scmd.return_code != 0:
             scmd.raise_error()
@@ -13473,13 +13474,14 @@ WantedBy=multi-user.target
 
     def init(self):
         if self.zsha2_utils:
+            region_snapshot = snapshot_file(self.default_morph_database_config)
             try:
                 vip_address = self.zsha2_utils.config.get('dbvip')
-                if vip_address and vip_address != self.default_ip:
-                    info('[zsha2] VIP address %s detected, consider updating default_ip if needed' % vip_address)
-                    self.default_ip = vip_address
+                configure_ha_database(self.default_morph_config, self.default_morph_database_config, vip_address)
+                self.default_ip = vip_address
             except Exception as e:
-                warn('[zsha2] Failed to get VIP configuration: %s' % str(e))
+                restore_file(self.default_morph_database_config, region_snapshot)
+                raise CtlError('Failed to configure Morph HA database: %s' % str(e))
 
         data = OrderedDict()
 
@@ -13545,29 +13547,59 @@ WantedBy=multi-user.target
         warn(
             '**** IMPORTANT: Please verify region_config.yml configuration after morph service initialization. Check database connection, IP settings, and service dependencies. ***')
 
-        shell_no_pipe("systemctl daemon-reload")
-        shell_no_pipe("systemctl enable %s" % self.service_name())
-        shell_no_pipe("systemctl start %s" % self.service_name())
-
-        if self.zsha2_utils:
-            try:
+        try:
+            shell_no_pipe("systemctl daemon-reload")
+            shell_no_pipe("systemctl enable %s" % self.service_name())
+            if self.zsha2_utils:
                 self.zsha2_utils.scp_to_peer(self.default_morph_config, self.default_morph_config)
-                self.zsha2_utils.scp_to_peer(self.default_morph_database_config, self.default_morph_database_config)
                 self.zsha2_utils.scp_to_peer(self.default_morph_jar, self.default_morph_jar)
                 self.zsha2_utils.scp_to_peer(self.default_morph_service_path, self.default_morph_service_path)
                 self.zsha2_utils.execute_on_peer("systemctl daemon-reload")
                 self.zsha2_utils.execute_on_peer("systemctl enable %s" % self.service_name())
-                self.zsha2_utils.execute_on_peer("systemctl start %s" % self.service_name())
-            except Exception as e:
-                error("Failed to sync morph service to peer node: %s" % str(e))
+                self.zsha2_utils.scp_to_peer(self.default_morph_database_config, self.default_morph_database_config)
+        except Exception as e:
+            if self.zsha2_utils:
+                restore_file(self.default_morph_database_config, region_snapshot)
+            error("Failed to initialize morph service: %s" % str(e))
 
 
 
     def start(self, do_init=False):
-        shell_no_pipe("systemctl start %s" % self.service_name())
-        self._wait_for_morph("http://%s:%d/actuator/health" % (format_url_host(self.default_ip), self.default_port))
+        local_restart = peer_restart = bool(do_init and self.zsha2_utils)
+        local_ip = self.default_ip
         if self.zsha2_utils:
-            self.zsha2_utils.execute_on_peer("systemctl start %s" % self.service_name())
+            region_snapshot = snapshot_file(self.default_morph_database_config)
+            try:
+                changed = configure_ha_database(self.default_morph_config, self.default_morph_database_config,
+                                                self.zsha2_utils.config.get('dbvip'))
+                local_restart = local_restart or changed
+                peer_restart = peer_restart or changed
+                with open(self.default_morph_database_config, 'rb') as stream:
+                    digest = hashlib.sha256(stream.read()).hexdigest()
+                peer_digest = self.zsha2_utils.execute_on_peer(
+                    'sha256sum %s' % shell_quote(self.default_morph_database_config), True).split()[0]
+                if peer_digest != digest:
+                    self.zsha2_utils.scp_to_peer(self.default_morph_database_config, self.default_morph_database_config)
+                    peer_restart = True
+                local_ip = self.zsha2_utils.config['nodeip']
+                if peer_restart:
+                    self.zsha2_utils.execute_on_peer("systemctl stop %s" % self.service_name())
+            except Exception as e:
+                restore_file(self.default_morph_database_config, region_snapshot)
+                raise CtlError('Failed to configure Morph HA database: %s' % str(e))
+        try:
+            shell_no_pipe("systemctl %s %s" % ('restart' if local_restart else 'start', self.service_name()))
+            self._wait_for_morph("http://%s:%d/actuator/health" % (format_url_host(local_ip), self.default_port))
+            if self.zsha2_utils:
+                self.zsha2_utils.execute_on_peer("systemctl %s %s" % ('restart' if peer_restart else 'start', self.service_name()))
+                self._wait_for_morph("http://%s:%d/actuator/health" % (format_url_host(self.zsha2_utils.config['peerip']), self.default_port))
+        except Exception:
+            if peer_restart:
+                try:
+                    self.zsha2_utils.execute_on_peer("systemctl start %s" % self.service_name())
+                except Exception as e:
+                    warn("Failed to restore peer Morph service: %s" % str(e))
+            raise
 
     def _wait_for_morph(self, url, timeout=600):
         info_and_debug("Waiting for %s to become available at: %s" % (self.service_name(), url))
@@ -13575,7 +13607,7 @@ WantedBy=multi-user.target
 
         while time.time() - begin < timeout:
             try:
-                result = shell("curl -s -o /dev/null -w '%%{http_code}' %s" % url)
+                result = shell("curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w '%%{http_code}' %s" % url)
                 if result.strip() == "200":
                     info_and_debug("%s is ready." % self.service_name())
                     return True
@@ -13583,8 +13615,7 @@ WantedBy=multi-user.target
                 pass
             time.sleep(5)
 
-        error("%s did not become ready within %d seconds." % (self.service_name(), timeout))
-        return False
+        raise CtlError("%s did not become ready within %d seconds." % (self.service_name(), timeout))
 
 
 class LicenseServerService(ExtraService):
