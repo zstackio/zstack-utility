@@ -297,7 +297,7 @@ class TestHostPluginResourceControl:
         cases.append((command, 'is duplicated'))
 
         for command, reason in cases:
-            with patch.object(host_plugin.resource_control.ResourceControlManager, '_backend') as backend:
+            with patch.object(host_plugin.resource_control.CgroupResourceControlBackendFactory, 'cpu') as backend:
                 rsp = json.loads(plugin_response := _make_plugin().apply_resource_control(_make_req(command)))
 
             assert rsp['success'] is False, plugin_response
@@ -438,8 +438,8 @@ class TestHostPluginResourceControl:
         manager = host_plugin.resource_control.ResourceControlManager()
 
         with patch.object(host_plugin.resource_control, 'ResourceControlManager', return_value=manager), \
-             patch.object(manager, '_read', return_value='0-7'), \
-             patch.object(manager, '_backend') as backend:
+             patch.object(host_plugin.resource_control.resource_utils, 'read', return_value='0-7'), \
+             patch.object(manager.backend_factory, 'cpu') as backend:
             rsp = json.loads(_make_plugin().apply_resource_control(_make_req(command)))
 
         assert rsp['success'] is False

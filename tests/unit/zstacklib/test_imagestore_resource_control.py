@@ -1,7 +1,12 @@
 import ast
+import fnmatch
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call
@@ -9,6 +14,28 @@ from unittest.mock import Mock, call
 import pytest
 
 from zstacklib.utils import resource_control
+
+
+def test_standalone_deployment_contains_backend_modules(tmp_path):
+    root = Path(__file__).resolve().parents[3]
+    deployment = ast.parse((root / 'imagestorebackupstorage/ansible/imagestorebackupstorage.py').read_text())
+    scripts = next(ast.literal_eval(node.iter) for node in ast.walk(deployment)
+                   if isinstance(node, ast.For) and isinstance(node.target, ast.Name)
+                   and node.target.id == 'resource_script')
+    build = ET.parse(str(root / 'zstackbuild/projects/zstack-store.xml'))
+    includes = [node.attrib['name'] for node in
+                build.findall(".//fileset[@dir='${zstacklib.source}/zstacklib/utils']/include")]
+    for name in scripts:
+        if name != 'resource_control_cli.py':
+            assert any(fnmatch.fnmatch(name, pattern) for pattern in includes), 'Missing from build: ' + name
+        source = root / ('imagestorebackupstorage/ansible' if name == 'resource_control_cli.py'
+                         else 'zstacklib/zstacklib/utils') / name
+        shutil.copyfile(str(source), str(tmp_path / name))
+    result = subprocess.run([sys.executable, '-S', str(tmp_path / 'resource_control_cli.py'), 'topology'],
+                            input='{}', stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True,
+                            cwd=str(tmp_path), env=dict(os.environ, PYTHONPATH=''))
+    assert result.returncode == 0, 'Standalone Image Store must load the split backends: ' + result.stderr
+    assert json.loads(result.stdout)['success'], 'The packaged CLI must run without an installed zstacklib'
 
 
 def test_deployment_preserves_native_boolean_switch():

@@ -265,7 +265,10 @@ else:
 run_remote_command(command, host_post_info)
 
 if client != 'true':
-    for resource_script in ['resource_control.py', 'resource_control_cli.py']:
+    for resource_script in ['resource_control.py', 'resource_control_cli.py', 'cgroup_resource_control_backend.py',
+                            'cgroup_resource_control_backend_factory.py', 'cgroup_v1_resource_control_backend.py',
+                            'cgroup_v2_resource_control_backend.py', 'resource_control_utils.py',
+                            'systemd_resource_control_utils.py']:
         copy_arg = CopyArg()
         copy_arg.src = '%s/%s' % (file_root, resource_script)
         copy_arg.dest = '/usr/local/zstack/imagestore/bin/%s' % resource_script
