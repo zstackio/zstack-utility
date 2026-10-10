@@ -96,7 +96,8 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        os_info = platform.freedesktop_os_release()
+        from zstacklib.utils import linux
+        os_info = linux.get_freedesktop_os_release()
         os_dist, os_version = os_info['ID'], re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
 
         versions = os_version.split('.')
