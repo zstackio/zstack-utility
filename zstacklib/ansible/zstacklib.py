@@ -2230,8 +2230,8 @@ def upgrade_to_helix(host_info, host_post_info):
 
 def install_release_on_host(is_rpm, host_info, host_post_info):
     releasever = get_host_releasever(host_info)
-    # ky11swan25 (Kylin V11): use host's own configured yum repos, no zstack-dvd needed
-    if releasever == 'ky11swan25':
+    # Kylin Halberd/Swan use the host's own configured yum repos, no zstack-dvd needed
+    if releasever in ('ky10sp3.2403', 'ky11swan25'):
         return
     if is_rpm:
         release_name_mapping = {
