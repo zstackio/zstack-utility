@@ -15,6 +15,13 @@ Verifies:
 import sys
 import types
 import readline
+import pytest
+import os
+import pty
+import select
+import subprocess
+import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # Mock heavy dependencies before importing Cli
@@ -65,6 +72,121 @@ def make_cli(words_db):
     # Mock completer_print to track calls without terminal output
     cli.completer_print = MagicMock()
     return cli
+
+
+@pytest.mark.parametrize('pattern, words, expected', [
+    ('LogIn',
+     ['GetLoginCaptcha', 'GetLoginProcedures', 'LogIn',
+      'LogInByAccount', 'RemoveIAM2ProjectLoginExpired'],
+     ['LogIn', 'LogInByAccount', 'GetLoginCaptcha',
+      'GetLoginProcedures', 'RemoveIAM2ProjectLoginExpired']),
+    ('login',
+     ['GetLoginCaptcha', 'LogInByAccount', 'LogIn'],
+     ['LogIn', 'LogInByAccount', 'GetLoginCaptcha']),
+    ('LogInBy',
+     ['GetLogInByProcedure', 'LogInByUser', 'LogInByAccount', 'QueryZone'],
+     ['LogInByUser', 'LogInByAccount', 'GetLogInByProcedure']),
+    ('loginby',
+     ['GetLoginByProcedure', 'LoginByCas', 'LogInByLdap'],
+     ['LoginByCas', 'LogInByLdap', 'GetLoginByProcedure']),
+    ('Vm',
+     ['StopVmInstance', 'QueryVmInstance', 'StartVmInstance', 'QueryZone'],
+     ['StopVmInstance', 'QueryVmInstance', 'StartVmInstance']),
+    ('Query',
+     ['GetQueryResult', 'QueryZone', 'query', 'QueryVmInstance', 'Query'],
+     ['query', 'Query', 'QueryZone', 'QueryVmInstance', 'GetQueryResult']),
+])
+@patch.object(readline, 'get_line_buffer')
+def test_command_completion_priority_preserves_candidates(
+        mock_buf, pattern, words, expected):
+    mock_buf.return_value = pattern
+    cli = make_cli(words)
+
+    matches = [cli.complete(pattern, i) for i in range(len(expected))]
+
+    assert matches == [word + ' ' for word in expected]
+    assert cli.complete(pattern, len(expected)) is None
+    assert cli.words_db == words
+    assert sorted(matches) == sorted(
+        word + ' ' for word in words if pattern.lower() in word.lower())
+    cli.completer_print.assert_called_once_with(
+        pattern, matches, max(len(word) for word in matches))
+
+
+@patch.object(readline, 'get_line_buffer')
+def test_command_followed_by_space_completes_parameters(mock_buf):
+    mock_buf.return_value = 'LogIn '
+    cli = make_cli(['GetLoginCaptcha', 'LogIn'])
+    cli.api_class_params = {'APILogInMsg': ['username', 'password', 'loginType']}
+
+    assert [cli.complete('', i) for i in range(3)] == [
+        'username=', 'password=', 'loginType=']
+    assert cli.complete('', 3) is None
+    assert cli.is_cmd is False
+
+
+@pytest.mark.parametrize('keys, expected', [
+    (b'LogIn\t\n', 'LogIn '),
+    (b'LogIn\t\t\n', 'LogInByAccount '),
+    (b'login\t\n', 'LogIn '),
+    (b'Vm\t\n', 'QueryVmInstance '),
+    (b'LogIn\t\nLogIn \t\n', 'LogIn \nLogIn loginType='),
+])
+def test_tab_completion_in_terminal(keys, expected):
+    test_file = Path(__file__).resolve()
+    child_code = '''
+import readline
+import runpy
+import sys
+sys.path.insert(0, sys.argv[1])
+make_cli = runpy.run_path(sys.argv[2])['make_cli']
+cli = make_cli(['GetLoginCaptcha', 'GetLoginProcedures', 'LogIn',
+                'LogInByAccount', 'QueryVmInstance', 'StartVmInstance'])
+cli.api_class_params = {'APILogInMsg': ['username', 'password', 'loginType']}
+readline.parse_and_bind('tab: menu-complete')
+readline.parse_and_bind('set completion-ignore-case on')
+readline.set_completer(cli.complete)
+lines = [input('READY>') for _ in range(int(sys.argv[3]))]
+print('RESULT:' + repr('\\n'.join(lines)), flush=True)
+'''
+    master, slave = pty.openpty()
+    process = None
+    output = b''
+    try:
+        process = subprocess.Popen(
+            [sys.executable, '-c', child_code, str(test_file.parents[1]),
+             str(test_file), str(keys.count(b'\n'))],
+            stdin=slave, stdout=slave, stderr=slave,
+            env=dict(os.environ, TERM='xterm'))
+        deadline = time.monotonic() + 10
+        sent = False
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([master], [], [], 0.1)
+            if not ready:
+                continue
+            try:
+                chunk = os.read(master, 65536)
+            except OSError:
+                break
+            if not chunk:
+                break
+            output += chunk
+            if not sent and b'READY>' in output:
+                os.write(master, keys)
+                sent = True
+            if b'RESULT:' in output:
+                break
+        process.wait(timeout=2)
+        assert process.returncode == 0, output
+        assert b'RESULT:' in output, output
+        result = output.split(b'RESULT:', 1)[1].split(b'\r\n', 1)[0].decode()
+        assert result == repr(expected)
+    finally:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.wait()
+        os.close(master)
+        os.close(slave)
 
 
 @patch.object(readline, 'get_line_buffer')

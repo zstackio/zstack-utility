@@ -11,6 +11,7 @@ except:
     os.environ['TERM'] = 'vt100'
 
 import readline
+import ctypes
 import sys
 
 import shlex
@@ -54,6 +55,8 @@ SESSION_FILE = '%s/session' % CLI_LIB_FOLDER
 CLI_MAX_CMD_HISTORY = 1000
 CLI_MAX_RESULT_HISTORY = 1000
 prompt = '>>>'
+readline_sort_completion_matches = ctypes.c_int.in_dll(
+    ctypes.CDLL(readline.__file__), 'rl_sort_completion_matches')
 
 query_param_keys = \
     ['conditions', 'count', 'limit', 'start', 'timeout',
@@ -213,11 +216,24 @@ class Cli(object):
             return None
 
         prepare_words()
+        readline_sort_completion_matches.value = int(not self.is_cmd)
 
         # if not self.curr_pattern or pattern.lower() != self.curr_pattern.lower():
         # self.matching_words = [w for w in self.words if w.lower().startswith(pattern.lower())]
         if self.is_cmd:
-            self.matching_words = ['%s ' % w for w in self.words if pattern.lower() in w.lower()]
+            command_pattern = pattern.lower()
+
+            def command_match_priority(word):
+                command = word.lower()
+                if command == command_pattern:
+                    return 0
+                if command.startswith(command_pattern):
+                    return 1
+                return 2
+
+            matching_commands = [w for w in self.words if command_pattern in w.lower()]
+            matching_commands.sort(key=command_match_priority)
+            self.matching_words = ['%s ' % w for w in matching_commands]
         else:
             # need to auto complete expanded fields.
             if '.' in pattern:
