@@ -10,7 +10,6 @@ import json
 import os
 import sys
 import threading
-import traceback
 
 from ansible import constants as ansible_constants
 from ansible import context as ansible_context
@@ -23,10 +22,10 @@ from ansible.plugins import cache
 from ansible.plugins.cache import memory
 from ansible.plugins import callback as ansible_callback
 from ansible.vars import manager as ansible_vm
-from ansible.plugins.loader import init_plugin_loader
 import jinja2
 import time
-import urllib.request, urllib.error, urllib.parse
+import urllib.error
+import urllib.request
 import yaml
 
 
@@ -42,13 +41,13 @@ yum_server = ""
 apt_server = ""
 trusted_host = ""
 uos = ['uos20', 'uos1021a']
-kylin = ["ky10sp1", "ky10sp2", "ky10sp3", "ky10sp3.2403"]
+kylin = ["ky10sp1", "ky10sp2", "ky10sp3", "ky10sp3.2403", "ky11swan25"]
 centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84', 'h84r']
 enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "oe2203sp1", "h2203sp1o"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-KYLIN_DISTRO = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance", "kylin_halberd"]
-RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance", "kylin_halberd",
+KYLIN_DISTRO = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance", "kylin_halberd", "kylin_swan25"]
+RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance", "kylin_halberd", "kylin_swan25",
                 "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs",
                 "redhat", "rocky", "helix"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
@@ -59,6 +58,7 @@ qemu_alias = {
     "ky10sp2": "qemu-kvm qemu-img",
     "ky10sp3": "qemu-kvm qemu-img",
     "ky10sp3.2403": "qemu-kvm qemu-img",
+    "ky11swan25": "qemu-kvm qemu-img",
     "uos20": "qemu-system",
     "c74": "qemu-kvm",
     "c76": "qemu-kvm",
@@ -78,7 +78,6 @@ ansible_constants.set_constant('CACHE_PLUGIN', 'memory')
 ansible_constants.set_constant('DEFAULT_GATHERING', 'smart')
 
 _ansible_cache = {}
-init_plugin_loader()
 
 
 class MemCache(cache.BaseCacheModule):
@@ -224,6 +223,7 @@ class AgentInstallArg(object):
         self.agent_root = None
         self.pkg_name = None
         self.virtualenv_site_packages = None
+        self.no_build_isolation = False
 
 
 class ZstackLibArgs(object):
@@ -392,7 +392,7 @@ class ZstackRunner(object):
             private_key_file=self.private_key,
             become_method='sudo',
             ssh_extra_args='-C -o ControlMaster=auto -o ControlPersist=1800s',
-        )
+            verbosity=0)
         self.ansible_module = AnsibleModules(runner_args)
 
     def run(self):
@@ -451,17 +451,17 @@ def retry(times=3, sleep_time=3):
     def wrap(f):
         @functools.wraps(f)
         def inner(*args, **kwargs):
-            ex = None
+            last_error = None
             for i in range(0, times):
                 try:
                     return f(*args, **kwargs)
                 except Exception as e:
-                    ex = traceback.format_exc()
+                    last_error = e
                     logger.error(e)
                     time.sleep(sleep_time)
             error(("The task failed, please make sure the host can be "
                    "connected and no error happened, then try again. "
-                   "Below is detail:\n %s") % ex)
+                   "Below is detail:\n %s") % last_error)
         return inner
     return wrap
 
@@ -531,7 +531,8 @@ def get_host_releasever(host_info):
         "kylin_sword sword 10": "ky10sp2",
         "kylin_zstack zstack 10": "ky10sp2",
         "kylin_lance lance 10": "ky10sp3",
-        "kylin_lance halberd 10": "ky10sp3.2403",
+        "kylin_halberd halberd 10": "ky10sp3.2403",
+        "kylin_swan25 swan25 11": "ky11swan25",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ky10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.9.2009": "c79",
@@ -569,7 +570,8 @@ def post_msg(msg, post_url):
         if msg.label is not None:
             try:
                 headers = {"content-type": "application/json"}
-                req = urllib.request.Request(post_url, data.encode(), headers)
+                req = urllib.request.Request(
+                    post_url, data.encode("utf-8"), headers)
                 response = urllib.request.urlopen(req)
                 response.close()
             except urllib.error.URLError as e:
@@ -671,6 +673,9 @@ def agent_install(install_arg, host_post_info):
     pip_install_arg.virtualenv = install_arg.virtenv_path
     pip_install_arg.virtualenv_site_packages = \
         install_arg.virtualenv_site_packages
+    if install_arg.no_build_isolation:
+        pip_install_arg.extra_args = '"%s --no-build-isolation"' % (
+            pip_install_arg.extra_args.strip('"'))
     if pip_install_package(pip_install_arg, host_post_info) is False:
         command = "rm -rf %s && rm -rf %s" % (
             install_arg.virtenv_path, install_arg.agent_root)
@@ -678,7 +683,7 @@ def agent_install(install_arg, host_post_info):
         error("agent %s install failed" % install_arg.agent_name)
 
 
-def yum_enable_repo(name, disablerepo, enablerepo, host_post_info):
+def yum_enable_repo(name, enablerepo, host_post_info):
     '''install package from enablerepo'''
     start_time = datetime.datetime.now()
     host_post_info.start_time = start_time
@@ -691,8 +696,8 @@ def yum_enable_repo(name, disablerepo, enablerepo, host_post_info):
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'yum'
-    runner_args.module_args = 'name={} disablerepo={} enablerepo={} state=present'.format(
-        name, disablerepo, enablerepo)
+    runner_args.module_args = 'name={} enablerepo={} state=present'.format(
+        name, enablerepo)
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
     logger.debug(result)
@@ -1072,7 +1077,7 @@ def pip_install_package(pip_install_arg, host_post_info):
     handle_ansible_info("INFO: pip installing package %s ..." %
                         name, host_post_info, "INFO")
     if host not in list(IS_REMOTE_PIP_READY.keys()) or not IS_REMOTE_PIP_READY[host]:
-        command = "which pip || ln -s /usr/bin/pip3.11 /usr/bin/pip"
+        command = "python3 -m pip --version"
         run_remote_command(command, host_post_info)
         IS_REMOTE_PIP_READY[host] = True
     param_dict = {}
@@ -1102,11 +1107,11 @@ def pip_install_package(pip_install_arg, host_post_info):
     else:
         ret = result['contacted'][host]
         if ret.get('failed', True):
-            command = "pip3.11 uninstall -y %s" % name
-            try:
-                run_remote_command(command, host_post_info)
-            except Exception as ignore:
-                pass
+            if "/" in name:
+                command = "true"
+            else:
+                command = "python3 -m pip uninstall -y %s" % name
+            run_remote_command(command, host_post_info)
             description = "ERROR: pip install package %s failed" % name
             host_post_info.post_label = "ansible.pip.install.pkg.fail"
             handle_ansible_failed(description, result, host_post_info)
@@ -1583,7 +1588,7 @@ def get_remote_host_info_obj(host_post_info):
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'setup'
-    runner_args.module_args = ('gather_subset=machine,processor '
+    runner_args.module_args = ('gather_subset=machine '
                                'filter=ansible_dist*,ansible_machine,'
                                'ansible_processor,ansible_kernel')
     zstack_runner = ZstackRunner(runner_args)
@@ -1599,14 +1604,19 @@ def get_remote_host_info_obj(host_post_info):
 
     ret = result['contacted'][host]
     if 'ansible_facts' in ret:
+        # trying get cpu info
+        command = 'cat /proc/cpuinfo | grep -i -E "model name|vendor"'
+        (status, cpu_info_output) = run_remote_command(command,
+                                                       host_post_info,
+                                                       return_status=True,
+                                                       return_output=True)
         facts = ret['ansible_facts']
         host_info.distro = facts['ansible_distribution'].split()[0].lower()
         host_info.major_version_str = \
             facts['ansible_distribution_major_version']
         host_info.distro_release = facts['ansible_distribution_release']
         host_info.distro_version = facts['ansible_distribution_version']
-        host_info.cpu_info = ' '.join(str(p) for p in
-                                      facts['ansible_processor']).lower()
+        host_info.cpu_info = cpu_info_output.lower()
         host_info.host_arch = facts['ansible_machine']
         host_info.kernel_version = facts['ansible_kernel']
 
@@ -1656,40 +1666,6 @@ def set_ini_file(file, section, option, value, host_post_info):
         host_post_info.post_label_param = [file, option, value]
         handle_ansible_info(details, host_post_info, "INFO")
     return True
-
-
-def get_virtualenv_python_version(venv, host_post_info):
-    start_time = datetime.datetime.now()
-    host_post_info.start_time = start_time
-    host = host_post_info.host
-    post_url = host_post_info.post_url
-    host_post_info.post_label = "ansible.check.virtualenv.python.version"
-    host_post_info.post_label_param = venv
-    handle_ansible_info("INFO: starting check virtualenv python version ... ",
-                        host_post_info, "INFO")
-    runner_args = ZstackRunnerArg()
-    runner_args.host_post_info = host_post_info
-    runner_args.module_name = 'shell'
-    runner_args.module_args = '%s/bin/python --version' % venv
-    zstack_runner = ZstackRunner(runner_args)
-    result = zstack_runner.run()
-    logger.debug(result)
-    if result['contacted'] == {}:
-        ansible_start = AnsibleStartResult()
-        ansible_start.host = host
-        ansible_start.post_url = post_url
-        ansible_start.result = result
-        handle_ansible_start(ansible_start)
-        raise Exception(result)
-    ret = result['contacted'][host]
-    if 'rc' not in ret:
-        logger.warning(("Network problem, try again now, ansible "
-                        "reply is below:\n %s") % result)
-        raise Exception(result)
-
-    return ret['stdout'].strip().split()[1] if ret['rc'] == 0 else None
-
-
 
 
 @retry(times=3, sleep_time=3)
@@ -2254,6 +2230,9 @@ def upgrade_to_helix(host_info, host_post_info):
 
 def install_release_on_host(is_rpm, host_info, host_post_info):
     releasever = get_host_releasever(host_info)
+    # ky11swan25 (Kylin V11): use host's own configured yum repos, no zstack-dvd needed
+    if releasever == 'ky11swan25':
+        return
     if is_rpm:
         release_name_mapping = {
             'rl84': 'el8',
@@ -2329,7 +2308,12 @@ class ZstackLib(object):
                 # zstack_repo is empty, will use system repo
                 # libselinux-python depend by ansible copy/file/template module
                 # when selinux enabled on host
-                yum_install_package("libselinux-python", self.host_post_info)
+                if self.distro == 'kylin_swan25':
+                    yum_install_package("python3-libselinux",
+                                        self.host_post_info)
+                else:
+                    yum_install_package("libselinux-python",
+                                        self.host_post_info)
                 # install epel-release
                 if self.distro in RPM_BASED_OS and self.zstack_releasever in centos:
                     self.enable_epel_yum_repo()
@@ -2371,14 +2355,26 @@ class ZstackLib(object):
 
     def _python_rpm_set(self):
         python_requirement_set = {
-            "python3-devel",
-            "python3-setuptools",
+            "python2-devel",
+            "python2-setuptools",
         }
 
+        if self.distro == 'kylin_swan25':
+            return {
+                "python3-devel",
+                "python3-setuptools",
+                "python3-pip",
+            }
+
         if self.distro == 'nfs' or self.distro_version >= 7:
-            python_requirement_set.add("python3-pip")
+            python_requirement_set.add("python2-pip")
         else:
             python_requirement_set.add("python-pip")
+
+        if self.distro_version >= 7:
+            # to avoid install some pkgs on virtual router which release is
+            # Centos 6.x
+            python_requirement_set.add("python2-backports-ssl_match_hostname")
 
         return python_requirement_set
 
@@ -2392,7 +2388,10 @@ class ZstackLib(object):
         if self.distro in KYLIN_DISTRO:
             basic.add("chrony")
             basic.add("iptables")
-            basic.add("python3-libselinux")
+            if self.distro == 'kylin_swan25':
+                basic.add("python3-libselinux")
+            else:
+                basic.add("python2-libselinux")
             return basic
 
         basic.add("libselinux-python")
@@ -2452,7 +2451,7 @@ name=zstack-experimental-mn
 baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/zstack-experimental/
 gpgcheck=0
 module_hotfixes=true
-enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo; sync
+enabled=0" >  /etc/yum.repos.d/zstack-experimental-mn.repo; sync /etc/yum.repos.d/zstack-experimental-mn.repo
                """
         generate_exp_repo_template = jinja2.Template(
             generate_exp_repo_raw_command)
@@ -2469,7 +2468,7 @@ name=mlnx-ofed-mn
 baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/mlnx-ofed/
 gpgcheck=0
 module_hotfixes=true
-enabled=0" >  /etc/yum.repos.d/mlnx-ofed-mn.repo; sync
+enabled=0" >  /etc/yum.repos.d/mlnx-ofed-mn.repo; sync /etc/yum.repos.d/mlnx-ofed-mn.repo
                """
         generate_mlnx_repo_template = jinja2.Template(
             generate_mlnx_repo_raw_command)
@@ -2486,7 +2485,7 @@ name=qemu-kvm-ev-mn
 baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/Extra/qemu-kvm-ev/
 gpgcheck=0
 module_hotfixes=true
-enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo; sync
+enabled=0" >  /etc/yum.repos.d/qemu-kvm-ev-mn.repo; sync /etc/yum.repos.d/qemu-kvm-ev-mn.repo
                """
         generate_kvm_repo_template = jinja2.Template(
             generate_kvm_repo_raw_command)
@@ -2505,7 +2504,7 @@ name=zstack-mn
 baseurl=http://{{ yum_server }}/zstack/static/zstack-repo/\$basearch/\$YUM0/
 gpgcheck=0
 module_hotfixes=true
-enabled=0" >  /etc/yum.repos.d/zstack-mn.repo; sync
+enabled=0" >  /etc/yum.repos.d/zstack-mn.repo; sync /etc/yum.repos.d/zstack-mn.repo
                """
         generate_mn_repo_template = jinja2.Template(
             generate_mn_repo_raw_command)
@@ -2579,7 +2578,7 @@ EOF
         repo_epel = "epel-release-source.repo"
         self.generate_yum_repo_config_from_zstack_lib(repo_epel)
         # install epel-release
-        yum_enable_repo("epel-release", "*", "epel-release-source",
+        yum_enable_repo("epel-release", "epel-release-source",
                         self.host_post_info)
 
     def enable_debian_services(self, host_post_info, require_python_env, distro):
