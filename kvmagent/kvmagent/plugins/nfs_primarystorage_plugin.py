@@ -16,6 +16,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import qemu_img, qcow2
 from zstacklib.utils import secret
 from zstacklib.utils import traceable_shell
+from zstacklib.utils import shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.misc import IgnoreError
 from zstacklib.utils.plugin import completetask
@@ -344,11 +345,11 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                         rsync_exclude_files.add(filtPath)
                         rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
 
-            total_size = long(shell.call("rsync -anv %s/ %s %s | grep  -o -P 'total size is \K[\d|,]+'" %
+            total_size = int(shell.call("rsync -anv %s/ %s %s | grep  -o -P 'total size is \K[\d|,]+'" %
                                         (cmd.srcFolderPath, dst_folder_path, rsync_excludes)).replace(",", ""))
 
             src_qcow2s = t_shell.call("find %s -name '*.qcow2'" % cmd.srcFolderPath).strip().splitlines()
-            src_qcow2s = filter(lambda src_file: os.path.relpath(src_file, cmd.srcFolderPath) not in rsync_exclude_files, src_qcow2s)
+            src_qcow2s = [src_file for src_file in src_qcow2s if os.path.relpath(src_file, cmd.srcFolderPath) not in rsync_exclude_files]
             parent_stage = get_task_stage(cmd)
             migrated_size = 0
             for src_qcow2 in src_qcow2s:
@@ -358,7 +359,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                     linux.mkdir(dir_name)
 
                 _, src_qcow2_size = linux.qcow2_size_and_actual_size(src_qcow2)
-                src_qcow2_size = long(src_qcow2_size)
+                src_qcow2_size = int(src_qcow2_size)
                 start = get_exact_percent(float(migrated_size) / total_size * 100, parent_stage)
                 end = get_exact_percent(float(migrated_size + src_qcow2_size) / total_size * 100, parent_stage)
 
@@ -376,7 +377,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                                                        task_name="MigrateVolumes")
 
                 _, dst_qcow2_size = linux.qcow2_size_and_actual_size(dst_qcow2)
-                rsp.dstFilesActualSize.update({dst_qcow2 : long(dst_qcow2_size)})
+                rsp.dstFilesActualSize.update({dst_qcow2 : int(dst_qcow2_size)})
 
                 migrated_size += src_qcow2_size
             if cmd.independentPath:
@@ -413,12 +414,8 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             qcow2s = shell.call("find %s %s -type f -regex '.*\.qcow2$'" % (cmd.dstVolumeFolderPath, cmd.dstImageCacheTemplateFolderPath))
 
         for qcow2 in qcow2s.split():
-            fmt = shell.call("%s %s | grep '^file format' | awk -F ': ' '{ print $2 }'" % (qemu_img.subcmd('info'), qcow2))
-            if fmt.strip() != "qcow2":
-                continue
-
             backing_file = linux.qcow2_get_backing_file(qcow2)
-            if backing_file == "":
+            if not backing_file or cmd.dstPsMountPath in backing_file:
                 continue
 
             # actions like `create snapshot -> recover snapshot -> delete snapshot` may produce garbage qcow2, whose backing file doesn't exist
@@ -513,7 +510,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @in_bash
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if cmd.uuid not in self.mount_path.keys():
+        if cmd.uuid not in list(self.mount_path.keys()):
             self.mount_path[cmd.uuid] = cmd.mountPath
 
         mount_path = self.mount_path[cmd.uuid]
@@ -546,7 +543,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetBatchVolumeSizeRsp()
 
-        for uuid, installPath in cmd.volumeUuidInstallPaths.__dict__.items():
+        for uuid, installPath in list(cmd.volumeUuidInstallPaths.__dict__.items()):
             with IgnoreError():
                 _, rsp.actualSizes[uuid] = linux.qcow2_size_and_actual_size(installPath)
 
@@ -681,7 +678,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         self.imagestore_client.download_from_imagestore(cachedir, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.concurrency)
         if cmd.isData:
             self.imagestore_client.clean_meta(cmd.primaryStorageInstallPath)
-        rsp = kvmagent.AgentResponse()
+        rsp = NfsResponse()
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
 
@@ -701,7 +698,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         install_path = cmd.imagePath
         dirname = os.path.dirname(cmd.volumePath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
@@ -871,7 +868,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         try:
             dirname = os.path.dirname(cmd.installPath)
             if not os.path.exists(dirname):
-                os.makedirs(dirname, 0755)
+                os.makedirs(dirname, 0o755)
 
             t_shell = traceable_shell.get_shell(cmd)
             linux.create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
@@ -958,7 +955,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def do_create_volume_with_backing(backing_path, vol_path, cmd):
         dirname = os.path.dirname(vol_path)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
 
@@ -1030,7 +1027,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 linux.link(backing_file, dst_file)
                 linux.qcow2_rebase_no_check(dst_file, f)
 
-        for src_file, dst_file in src_dst_dict.iteritems():
+        for src_file, dst_file in src_dst_dict.items():
             linux.link(src_file, dst_file)
 
     @kvmagent.replyerror

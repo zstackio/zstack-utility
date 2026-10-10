@@ -61,7 +61,7 @@ class Test(unittest.TestCase):
         time_start = time.time()
         response_json = plugin.get_host_network_facts(None)
         time_end = time.time()
-        print("get_host_network_facts() rsp: %s" % (response_json))
+        print(("get_host_network_facts() rsp: %s" % (response_json)))
         response_object = jsonobject.loads(response_json)
         self.assertEqual(response_object.success, True)
         # check if get_host_network_facts() is fast

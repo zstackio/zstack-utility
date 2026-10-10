@@ -99,7 +99,7 @@
 
 == 进阶使用
 
-`{subcommand}` 有强大的灵活收集功能，这个灵活不仅体现在丰富的参数支持上，还体现在 `{subcommand}` 可以通过自定义 YAML 来构造自定义的收集内容。下面是 `{subcommand}` 所支持的一个 YAML 实例（对于一个 ZStack 实例，YAML 文件都保存于 `/var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/zstackctl/conf/`）。
+`{subcommand}` 有强大的灵活收集功能，这个灵活不仅体现在丰富的参数支持上，还体现在 `{subcommand}` 可以通过自定义 YAML 来构造自定义的收集内容。下面是 `{subcommand}` 所支持的一个 YAML 实例（对于一个 ZStack 实例，YAML 文件都保存于 `/var/lib/zstack/virtualenv/zstackctl/lib/python3.11/site-packages/zstackctl/conf/`）。
 
 === 简单的例子
 

@@ -1,5 +1,3 @@
-from jinja2 import Template
-
 from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import ip
@@ -8,7 +6,6 @@ from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
-from zstacklib.utils import shell
 from zstacklib.utils import ebtables
 from zstacklib.utils import bash
 from zstacklib.utils import linux
@@ -181,7 +178,7 @@ class Eip(object):
                 logger.error("cannot get physical interface name for mac %s ")
                 return
 
-            PHY_DEV = PHY_DEV.strip(' \t\n\r').split("\n")[0]
+            PHY_DEV = PHY_DEV.strip().split("\n")[0]
 
             # del bridge fdb entry for PRI_IDEV
             iproute.del_fdb_entry(PHY_DEV, INNER_MAC)
@@ -419,7 +416,7 @@ class Eip(object):
             cidr = None
             vnic_ip = netaddr.IPAddress(NIC_IP)
             for l in o.split('\n'):
-                l = l.strip(' \t\n\r')
+                l = l.strip()
                 if not l:
                     continue
 
@@ -443,7 +440,7 @@ class Eip(object):
             cidr = None
             vnic_ip = netaddr.IPAddress(NIC_IP, 6)
             for l in o.split('\n'):
-                l = l.strip(' \t\n\r')
+                l = l.strip()
                 if not l:
                     continue
 
@@ -572,7 +569,7 @@ def collect_vip_statistics():
             o = bash_o("ip netns exec {{ns_name}} ip6tables -nvxL {{CHAIN_NAME}} | sed '1,2d'")
 
         for l in o.split('\n'):
-            l = l.strip(' \t\r\n')
+            l = l.strip()
             if l:
                 create_metric(l, ip, vip_uuid, vnic_ip, metrics, version)
 
@@ -606,11 +603,11 @@ def collect_vip_statistics():
         'zstack_vip_in_packages': GaugeMetricFamily('zstack_vip_in_packages', 'VIP inbound traffic packages', labels=[VIP_LABEL_NAME])
     }
 
-    for ip, (vip_uuid, vnic_ip, version) in eips.items():
+    for ip, (vip_uuid, vnic_ip, version) in list(eips.items()):
         ns_name = eip_cmd.find_namespace_name_by_ip(ip, version)
         collect(ip, vip_uuid, vnic_ip, version, ns_name)
 
-    return metrics.values()
+    return list(metrics.values())
 
 
 @lock.lock('eip')
@@ -648,7 +645,7 @@ def clean_eips_by_vms(vm_uuids):
 
     logger.debug('clean_eips_by_vms eips: ' + ','.join(eips))
 
-    for vm_uuid, (eip_uuid, ns_name, nic_name, version) in eips.items():
+    for vm_uuid, (eip_uuid, ns_name, nic_name, version) in list(eips.items()):
         eip.delete_eip_with_ns(ns_name, eip_uuid, version, nic_name)
 
 

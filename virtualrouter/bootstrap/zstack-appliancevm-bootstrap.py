@@ -136,7 +136,7 @@ class VRBootStrap(object):
         cfg.append('TYPE="Ethernet"')
         cfg.append('IPADDR="{0}"'.format(nicinfo['ip']))
         cfg.append('NETMASK="{0}"'.format(nicinfo['netmask']))
-        if nicinfo.has_key('gateway'):
+        if 'gateway' in nicinfo:
             cfg.append('GATEWAY="{0}"'.format(nicinfo['gateway']))
          
         cfg_path = '/etc/sysconfig/network-scripts/ifcfg-%s' % nicinfo['name']
@@ -145,7 +145,7 @@ class VRBootStrap(object):
              
         shell('/sbin/ifdown {0} ; /sbin/ifup {0}'.format(nicinfo['name']))
         #TODO: calculate gateway for each device and ping its gateway
-        if nicinfo.has_key('gateway'):
+        if 'gateway' in nicinfo:
             self.ping(nicinfo['gateway'])
     
     def do_debian_configure_nic(self, nicinfo):
@@ -176,14 +176,14 @@ class VRBootStrap(object):
         cfg.append('\thwaddress {0}'.format(nicinfo['mac']))
         cfg.append('\taddress {0}'.format(nicinfo['ip']))
         cfg.append('\tnetmask {0}'.format(nicinfo['netmask']))
-        if nicinfo.has_key('gateway'):
+        if 'gateway' in nicinfo:
             cfg.append('\tgateway {0}'.format(nicinfo['gateway']))
 
         interfaces = get_interfaces()
         interfaces[nicinfo['name']] = cfg
 
         cfg = []
-        for interface in interfaces.values():
+        for interface in list(interfaces.values()):
             cfg.extend(interface)
 
         with open(cfg_path, 'w') as fd:

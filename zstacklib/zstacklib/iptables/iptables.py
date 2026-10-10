@@ -2,9 +2,10 @@
 
 @author: frank
 '''
+from __future__ import annotations
 
-from matches import *
-from targets import *
+from .matches import *
+from .targets import *
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import xmlobject
@@ -31,7 +32,7 @@ class Rule(object):
         condition_obj = self.rule_xml_object.conditions
         if hasattr(condition_obj, 'match'):
             match_obj = condition_obj.match
-            for name, mo in match_obj.get_children_nodes().items():
+            for name, mo in list(match_obj.get_children_nodes().items()):
                 match_class = get_match(mo.get_tag())
                 if not match_class:
                     raise IPTablesError('unable to find match for <%s/>' % mo.get_tag())
@@ -40,7 +41,7 @@ class Rule(object):
                 self.matches.append(m)
                 self.match_classes[match_class.__name__] = m
         
-        for name, other in condition_obj.get_children_nodes().items():
+        for name, other in list(condition_obj.get_children_nodes().items()):
             if other.get_tag() == 'match' or other.get_tag() == 'conntrack':
                 continue
 
@@ -53,7 +54,7 @@ class Rule(object):
             self.match_classes[other_match_class.__name__] = m
         
         action_objs = self.rule_xml_object.actions
-        for name, to in action_objs.get_children_nodes().items():
+        for name, to in list(action_objs.get_children_nodes().items()):
             if to.get_tag() == 'goto':
                 continue
 
@@ -91,7 +92,7 @@ class Rule(object):
             and (TcpMatch.__name__ in self.match_classes or
                  UdpMatch.__name__ in self.match_classes or
                  IcmpMatch.__name__ in self.match_classes)):
-            for key, value in self.match_classes.items():
+            for key, value in list(self.match_classes.items()):
                 if key == ProtocolMatch.__name__:
                     continue
                 cadidate_matches.append(value)
@@ -168,12 +169,12 @@ class Table(object):
     
     def __str__(self):
         s = ['*' + self.name]
-        for cname, c in self.chains.items():
+        for cname, c in list(self.chains.items()):
             if cname in IPTables.BUILTIN_CHAINS:
                 s.insert(1, ':%s %s [%s:%s]' % (cname, c.policy, c.packet_count, c.byte_count))
             else:
                 s.append(':%s - [%s:%s]' % (cname, c.packet_count, c.byte_count))
-        for c in self.chains.values():
+        for c in list(self.chains.values()):
             chain_str = str(c)
             if chain_str != '':
                 s.append(chain_str)
@@ -275,7 +276,7 @@ class IPTables(object):
     
     def __str__(self):
         content = []
-        for tbl in self.tables.values():
+        for tbl in list(self.tables.values()):
             content.append(str(tbl))
         ret = '\n'.join(content)
         

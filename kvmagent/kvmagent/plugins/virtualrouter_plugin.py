@@ -77,7 +77,7 @@ class VirtualRouterPlugin(kvmagent.KvmAgent):
         # as there is no fflush() in python, we have to create a message
         # matching to the socket buffer to force it to send the message immediately
         if info_len % buf_size != 0:
-            padding_len = buf_size * ((info_len / buf_size) + 1) - info_len
+            padding_len = buf_size * ((info_len // buf_size) + 1) - info_len
             padding = ' ' * padding_len
             info = '%s%s' % (info, padding)
 
@@ -85,7 +85,7 @@ class VirtualRouterPlugin(kvmagent.KvmAgent):
             logger.debug('send appliance vm bootstrap info to %s ,buffer size %d \nsize:%d\n%s' %
                          (socket_path, buf_size, len(info), info))
             s.connect(socket_path)
-            s.sendall(info)
+            s.sendall(info.encode())
         finally:
             s.close()
         

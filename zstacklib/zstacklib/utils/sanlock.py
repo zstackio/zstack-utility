@@ -1,3 +1,4 @@
+from __future__ import annotations
 from zstacklib.utils import log, linux, thread
 
 import re
@@ -183,14 +184,14 @@ def check_stuck_vglk_and_gllk():
     # 1. clear the vglk/gllk held by the dead host
     # 2. check stuck vglk/gllk
     locks = get_vglks() + get_gllks()
-    logger.debug("start checking all vgs[%s] to see if the VGLK/GLLK on disk is normal" % map(lambda v: v.vg_name, locks))
+    logger.debug("start checking all vgs[%s] to see if the VGLK/GLLK on disk is normal" % [v.vg_name for v in locks])
 
-    abnormal_lcks = filter(lambda v: v.abnormal_held(), locks)
+    abnormal_lcks = [v for v in locks if v.abnormal_held()]
     if len(abnormal_lcks) == 0:
         logger.debug("no abnormal vglk or gllk found")
         return
 
-    logger.debug("found possible dirty vglk/gllk on disk: %s" % map(lambda v: v.vg_name, abnormal_lcks))
+    logger.debug("found possible dirty vglk/gllk on disk: %s" % [v.vg_name for v in abnormal_lcks])
     results = {}
     def check_stuck_lock():
         @thread.AsyncThread
@@ -204,7 +205,7 @@ def check_stuck_vglk_and_gllk():
 
     check_stuck_lock()
     linux.wait_callback_success(wait, timeout=60, interval=3)
-    for lck in filter(lambda v: results.get(v.vg_name) is True, abnormal_lcks):
+    for lck in [v for v in abnormal_lcks if results.get(v.vg_name) is True]:
         lck.refresh()
         if not lck.abnormal_held():
             continue
@@ -343,7 +344,7 @@ class HostsState(object):
         return self.hosts.get(str(host_id)) == "DEAD"
     
     def get_live_min_hostid(self):
-        ids = [int(id) for id in self.hosts.keys() if self.is_host_live(id)]
+        ids = [int(id) for id in list(self.hosts.keys()) if self.is_host_live(id)]
         if len(ids) == 0:
             return None
         return min(ids)

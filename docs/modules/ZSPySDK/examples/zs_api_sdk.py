@@ -31,8 +31,6 @@ log.configure_log('/var/log/zstack/zstack-sdk.log', log_to_console=False)
 
 import apibinding.api_actions as api_actions
 from apibinding import api
-import xml.etree.cElementTree as etree
-import apibinding.inventory as inventory
 
 zstack_server_ip = os.environ['ZS_SERVER_IP']
 user_name = 'admin'
@@ -60,7 +58,7 @@ def async_call(apiCmd, session_uuid):
     (name, event) = api_instance.async_call_wait_for_complete(apiCmd)
     time.sleep(1)
     if not event.success: raise api.ApiError("Async call at %s: [%s] meets error: %s." % (
-        zstack_server_ip, apiCmd.__class__.__name__, api.error_code_to_string(reply.error)))
+        zstack_server_ip, apiCmd.__class__.__name__, api.error_code_to_string(event.error)))
     # print("[Async call at %s]: [%s] Success" % (zstack_server_ip, apiCmd.__class__.__name__))
     return event
 
@@ -74,11 +72,11 @@ def login_as_admin():
 
 # Must keep.
 #tag::login_by_account[]
-def login_by_account(name, password, timeout=60000):
+def login_by_account(name:str, password:str, timeout=60000):
     login = api_actions.LogInByAccountAction()
     login.accountName = name
     # Login API will use encrypted password string.
-    login.password = hashlib.sha512(password).hexdigest()
+    login.password = hashlib.sha512(password.encode()).hexdigest()
     login.timeout = timeout
     session_uuid = async_call(login, None).inventory.uuid
     return session_uuid
@@ -97,10 +95,10 @@ def logout(session_uuid):
 
 
 # Must keep.
-def execute_action_with_session(action, session_uuid, async=True):
+def execute_action_with_session(action, session_uuid, _async=True):
     if session_uuid:
         action.sessionUuid = session_uuid
-        if async:
+        if _async:
             evt = async_call(action, session_uuid)
         else:
             evt = sync_call(action, session_uuid)
@@ -108,7 +106,7 @@ def execute_action_with_session(action, session_uuid, async=True):
         session_uuid = login_as_admin()
         try:
             action.sessionUuid = session_uuid
-            if async:
+            if _async:
                 evt = async_call(action, session_uuid)
             else:
                 evt = sync_call(action, session_uuid)
@@ -131,7 +129,7 @@ def create_zone(session_uuid=None):
     action.name = "zone_test"
     action.description = "This is zone for testing"
     evt = execute_action_with_session(action, session_uuid)
-    print 'Add Zone [uuid:] %s [name:] %s' % (evt.inventory.uuid, action.name)
+    print('Add Zone [uuid:] %s [name:] %s' % (evt.inventory.uuid, action.name))
     # The execution result might be signle item, like inventory.
     # Or the execution result might be a list, like inventories(e.g. Query API).
     return evt.inventory
@@ -150,7 +148,7 @@ def query_zone(conditions=[], session_uuid=None):
     action.timeout = 3000
     action.conditions = conditions
     evt = execute_action_with_session(action, session_uuid)
-    print 'Zone infomation: %s ' % evt.inventories
+    print('Zone infomation: %s ' % evt.inventories)
     return evt.inventories
 #end::query_zone[]
 
@@ -212,12 +210,11 @@ def sync_volume_size(volume_uuid, session_uuid=None):
     action.uuid = volume_uuid
     try:
         evt = execute_action_with_session(action, session_uuid)
+        return evt.inventory
     except:
-        print "volume sync error: %s!!!" % volume_uuid
-        print "volume sync error: %s!!!" % volume_uuid
-        print "volume sync error: %s!!!" % volume_uuid
-
-    return evt.inventory
+        print("volume sync error: %s!!!" % volume_uuid)
+        print("volume sync error: %s!!!" % volume_uuid)
+        print("volume sync error: %s!!!" % volume_uuid)
 
 
 # The quick calculation only use few ZStack API.
@@ -254,7 +251,7 @@ def list_top_vm_disk_usage(host_uuid, session_uuid):
     for vm in vm_list:
         vm_disk_usage_dict[vm] = get_vm_disk_usage(vm, sp_list)
 
-    for vm, size in vm_disk_usage_dict.iteritems():
+    for vm, size in vm_disk_usage_dict.items():
         if size[0] in vm_disk_usage_asc_list:
             size2 = size[0] + 1
             while size2 in vm_disk_usage_asc_list:
@@ -266,14 +263,14 @@ def list_top_vm_disk_usage(host_uuid, session_uuid):
         vm_disk_actual_size_dict[size2] = size[1]
 
     vm_disk_usage_asc_list.sort(reverse=True)
-    print '\n\nHost: %s disk usage:' % host_uuid
-    print '-' * 80
-    print 'Size\t| Actual Size\t| VM:'
+    print('\n\nHost: %s disk usage:' % host_uuid)
+    print('-' * 80)
+    print('Size\t| Actual Size\t| VM:')
     for size in vm_disk_usage_asc_list:
         vm = vm_disk_usage_dict_reverse[size]
-        print '%dGB\t| %dGB\t\t| %s:%s' % (size / 1024 / 1024 / 1024,
-                                           vm_disk_actual_size_dict[size] / 1024 / 1024 / 1024,
-                                           vm.name, vm.uuid)
+        print('%dGB\t| %dGB\t\t| %s:%s' % (size // 1024 // 1024 // 1024,
+                                           vm_disk_actual_size_dict[size] // 1024 // 1024 // 1024,
+                                           vm.name, vm.uuid))
 
 
 if __name__ == '__main__':

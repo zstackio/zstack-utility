@@ -1,11 +1,8 @@
-import contextlib
-import libvirt
 import os
 import time
 
-from zstacklib.utils import vm_operator
 from zstacklib.utils import log
-from zstacklib.utils import uuidhelper, xmlobject
+from zstacklib.utils import uuidhelper
 from zstacklib.utils import shell
 from zstacklib.utils import jsonobject, http
 from zstacklib.utils import linux
@@ -94,7 +91,7 @@ def get_blk_fstype(devname):
 
 
 def label_zbox_on_formatted_storage(devname, label):
-    for dev_path, fstype in get_blk_fstype(devname).items():
+    for dev_path, fstype in list(get_blk_fstype(devname).items()):
         if fstype == 'ext4':
             shell.call("e2label %s %s" % (dev_path, label))
             return label
@@ -179,7 +176,7 @@ def get_mounted_zbox_mountpath_and_devname():
     # do not use mount -l because label will disappear after remove usb device.
     lines = shell.call("mount | awk '/zbox-[0-9a-zA-Z]{6,10}/{print $1,$3}'").splitlines()
     dicts = {}
-    for devname, mount_path in map(lambda l: l.split(), lines):
+    for devname, mount_path in [l.split() for l in lines]:
         dicts[mount_path] = devname
     return dicts
 
@@ -191,14 +188,14 @@ class SshfsRemoteStorage(object):
 
     def __enter__(self):
         if not os.path.exists(self.info.zboxPath):
-            os.makedirs(self.info.zboxPath, 0755)
+            os.makedirs(self.info.zboxPath, 0o755)
 
         vm = vm_plugin.get_vm_by_uuid(self.vm_uuid)
         linux.sshfs_mount_with_vm_xml(vm.domain_xmlobject, self.info.username, self.info.hostname, self.info.sshPort,
                                           self.info.password, self.info.zboxPath, self.info.zboxPath)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        for i in xrange(6):
+        for i in range(6):
             if linux.fumount(self.info.zboxPath, 5) == 0:
                 break
             else:
@@ -224,7 +221,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
         rsp = TakeVolumesBackupsResponse()
         vm = vm_plugin.get_vm_by_uuid(cmd.vmUuid, exception_if_not_existing=False)
 
-        for path in cmd.dstDeviceIdPath.__dict__.values():
+        for path in list(cmd.dstDeviceIdPath.__dict__.values()):
             linux.rm_dir_force(path)
 
         if not cmd.remoteInfo:
@@ -245,7 +242,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
 
         if not os.path.exists(cmd.installPath):
             logger.debug("init backup[uuid:%s] on zbox[uuid:%s]" % (cmd.backupUuid, cmd.zboxUuid))
-            os.makedirs(cmd.installPath, 0755)
+            os.makedirs(cmd.installPath, 0o755)
             linux.write_file(os.path.join(cmd.installPath, "name"), cmd.name, create_if_not_exist=True)
 
         return jsonobject.dumps(rsp)
@@ -315,8 +312,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
                 rsp.infos.append(info)
                 continue
 
-            ejected_zbox = filter(lambda z: z.mountPath == mount_path and busnum == z.busNum and devnum == z.devNum,
-                                  cmd.ignoreZBoxes)
+            ejected_zbox = [z for z in cmd.ignoreZBoxes if z.mountPath == mount_path and busnum == z.busNum and devnum == z.devNum]
             if ejected_zbox:
                 info.uuid = ejected_zbox[0].uuid
                 info.name = ejected_zbox[0].name

@@ -77,10 +77,10 @@ class UbuntuDriver(linux_driver.LinuxDriver):
         template = self._load_template()
         conf_file_path = '/etc/netplan/{}.yaml'.format(port.get_l3_interface())
         link_paras = copy.deepcopy(paras.link_paras)
-        if "miimon" in link_paras.keys():
+        if "miimon" in list(link_paras.keys()):
             link_paras["mii-monitor-interval"] = link_paras["miimon"]
             del link_paras["miimon"]
-        if "mode" in link_paras.keys():
+        if "mode" in list(link_paras.keys()):
             link_paras["mode"] = self.bond_mode_transform[link_paras["mode"]]
 
         conf = template.render(

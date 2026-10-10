@@ -28,14 +28,6 @@ class DeployConfig(object):
         if self.deploy_tmpt_path and not os.path.exists(self.deploy_tmpt_path):
             raise TemplateError('ZStack deployment Config template file:%s is not found' % self.deploy_tmpt_path)
 
-    def _full_path(self, path):
-        if path.startswith('~'):
-            return os.path.expanduser(path)
-        elif path.startswith('/'):
-            return path
-        else:
-            return os.path.join(self.config_base_path, path)
-
     def get_xml_config(self):
         cfg_path = os.path.abspath(self.deploy_config_path)
         with open(cfg_path, 'r') as fd:
@@ -53,9 +45,6 @@ class DeployConfig(object):
             deploy_config = build_deploy_xmlobject_from_configure(self.deploy_config_path)
         return deploy_config
 
-    def expose_config_variable(self):
-        if self.deploy_config_template_path:
-            set_env_var_from_config_template(self.deploy_config_template_path)
 
 
 def _template_to_dict(template_file_path):
@@ -113,7 +102,7 @@ def _template_to_dict(template_file_path):
     while flag:
         d = ret
         flag = False
-        for key, val in d.iteritems():
+        for key, val in d.items():
             if "$" not in val:
                 continue
 

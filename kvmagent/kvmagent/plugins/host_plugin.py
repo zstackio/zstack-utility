@@ -9,21 +9,17 @@ import os
 import os.path
 import platform
 import re
-import tempfile
-import time
 import uuid
+import sys
 import string
 import socket
-import sys
 import yaml
-import subprocess
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http, lvm, ceph, pci, gpu
 from zstacklib.utils import qemu
-from zstacklib.utils import linux
 from zstacklib.utils import iptables
 from zstacklib.utils import iproute
 from zstacklib.utils import ebtables
@@ -33,13 +29,19 @@ from zstacklib.utils import sizeunit
 from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
-from zstacklib.utils import shell
+from zstacklib.utils import misc
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.report import Report
+from zstacklib.utils import ovn
 import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
+
+os_info = platform.freedesktop_os_release()
+DIST_NAME = os_info.get('ID', '').lower()
+# FIXME(py3): remove it
+DIST_NAME = 'centos' if DIST_NAME == 'helix' else DIST_NAME
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
@@ -47,7 +49,7 @@ IS_MIPS64EL = host_arch == 'mips64el'
 IS_LOONGARCH64 = host_arch == 'loongarch64'
 GRUB_ROCKY_ENVS = bash_o("find /boot -name grubenv").strip().split("\n")
 GRUB_FILES = ["/boot/grub2/grub.cfg", "/boot/grub/grub.cfg", "/etc/grub2-efi.cfg", "/etc/grub-efi.cfg"] \
-                + ["/boot/efi/EFI/{}/grub.cfg".format(platform.dist()[0])]
+                + ["/boot/efi/EFI/{}/grub.cfg".format(DIST_NAME)]
 IPTABLES_CMD = iptables.get_iptables_cmd()
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
 
@@ -57,6 +59,8 @@ HOST_TAKEOVER_FLAG_PATH = '/var/run/zstack/takeOver'
 NODE_INFO_PATH = '/sys/devices/system/node/'
 PCI_CONFIG_PATH = '/etc/pci_config'
 KVMAGENT_VERSION_PATH = '/var/lib/zstack/kvmagent_version'
+KVMAGENT_SHUTDOWN_PATH = '/var/lib/zstack/kvm/shutdown_vm'
+KVMAGENT_SHUTDOWN_INIT_PATH = '/etc/init.d/shutdown_vm'
 
 BOND_MODE_ACTIVE_0 = "balance-rr"
 BOND_MODE_ACTIVE_1 = "active-backup"
@@ -106,6 +110,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.libvirtCapabilities = []
         self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
         self.iscsiInitiatorName = None
+        self.deployMode = None
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
     def __init__(self):
@@ -266,17 +271,14 @@ class GetHostNetworkBongdingCmd(kvmagent.AgentCommand):
 
 
 class GetHostNetworkBongdingResponse(kvmagent.AgentResponse):
-    bondings = None  # type: list[HostNetworkBondingInventory]
-    nics = None  # type: list[HostNetworkInterfaceInventory]
-
     def __init__(self):
         super(GetHostNetworkBongdingResponse, self).__init__()
-        self.bondings = None
-        self.nics = None
+        self.bondings = [] # type: list[HostNetworkBondingInventory]
+        self.nics = [] # type: list[HostNetworkInterfaceInventory]
 
 
 class HostNetworkBondingInventory(object):
-    slaves = None  # type: list(HostNetworkInterfaceInventory)
+    slaves = None  # type: list[HostNetworkInterfaceInventory]
 
     def __init__(self, bondingName=None, type=None, managementServerIp=None):
         super(HostNetworkBondingInventory, self).__init__()
@@ -363,21 +365,22 @@ class HostNetworkBondingInventory(object):
             self.slaves[i] = o
 
         bondData = self.bondingName
-        self.speed = get_nic_supported_max_speed(self.interfaceName)
+        # TODO no test?
+        self.speed = get_nic_supported_max_speed(self.bondingName)
 
-        if not bondData.has_key('bond'):
+        if 'bond' not in bondData:
             return
 
-        if bondData['bond'].has_key('name'):
+        if 'name' in bondData['bond']:
             self.bondingName = bondData['bond']['name']
 
-        if bondData['bond'].has_key('mode'):
+        if 'mode' in bondData['bond']:
             if type(bondData['bond']['mode']) is int:
                 self.mode = bondModeList[bondData['bond']['mode']]
             else:
                 self.mode = bondData['bond']['mode']
 
-        if bondData['bond'].has_key('policy'):
+        if 'policy' in bondData['bond']:
             self.xmitHashPolicy = bondPolicyMap[bondData['bond']['policy']]
 
         self.type = "OvsBonding"
@@ -387,7 +390,7 @@ class HostNetworkBondingInventory(object):
         self.miimon = None
         self.allSlavesActive = None
 
-        if not bondData['bond'].has_key('slaves'):
+        if 'slaves' not in bondData['bond']:
             return
 
         self.slaves = [None] * len(bondData['bond']['slaves'])
@@ -399,7 +402,7 @@ class HostNetworkBondingInventory(object):
 
     def _to_dict(self):
         to_dict = self.__dict__
-        for k in to_dict.keys():
+        for k in list(to_dict.keys()):
             if k == "slaves":
                 v = copy.deepcopy(to_dict[k])
                 to_dict[k] = [i.__dict__ for i in v]
@@ -417,7 +420,7 @@ class HostNetworkBondingInventory(object):
             return None
 
 class HostNetworkInterfaceInventory(object):
-    def init(self, name, master=None, managementServerIp=None):
+    def init(self, name, master=None, managementServerIp=None, driverType=None, pciAddress=None):
         super(HostNetworkInterfaceInventory, self).__init__()
         self.interfaceName = name
         self.speed = None
@@ -427,7 +430,7 @@ class HostNetworkInterfaceInventory(object):
         self.ipAddresses = None
         self.interfaceType = None
         self.master = master
-        self.pciDeviceAddress = None
+        self.pciDeviceAddress = pciAddress
         self.offloadStatus = None
         self.callBackIp = None
         self.interfaceModel = None
@@ -436,6 +439,10 @@ class HostNetworkInterfaceInventory(object):
         self.subvendorId = None
         self.subdeviceId = None
         self.rev = None
+        self.driverType = driverType
+
+        if driverType == "vfio-pci":
+            return
 
         bonds = ovs.getAllBondFromFile()
 
@@ -448,11 +455,11 @@ class HostNetworkInterfaceInventory(object):
             self._init_from_ovs()
         else:
             self._init_from_name(managementServerIp)
-        self.driverType = None
 
-    def __new__(cls, name, master=None, managementServerIp=None, *args, **kwargs):
+
+    def __new__(cls, name, master=None, managementServerIp=None, driverType=None, pciAddress=None, *args, **kwargs):
         o = super(HostNetworkInterfaceInventory, cls).__new__(cls)
-        o.init(name, master, managementServerIp)
+        o.init(name, master, managementServerIp, driverType, pciAddress)
         return o
 
     def _updateActiveState(self):
@@ -494,6 +501,12 @@ class HostNetworkInterfaceInventory(object):
             self.interfaceType = "bridgeSlave"
 
         self.pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % self.interfaceName).strip().split('/')[-1]
+        if "virtio" in self.pciDeviceAddress:
+            # readlink  /sys/class/net/ens3/device
+            # ../../../ virtio1
+            # readlink -f /sys/class/net/ens3/device
+            # /sys/devices/pci0000:00/0000:00:03.0/virtio1
+            self.pciDeviceAddress = bash_o("readlink -f /sys/class/net/%s/device | awk -F '/' '{print $5}'" % self.interfaceName)
 
         self.driverType = get_nic_driver_type(self.interfaceName)
         self.offloadStatus = ovs.getOffloadStatus(self.interfaceName)
@@ -720,7 +733,7 @@ class ZwatchInstallResult(object):
 
 class ZwatchInstallResultRsp(kvmagent.AgentResponse):
     def __init__(self):
-        super(kvmagent.AgentResponse, self).__init__()
+        super(ZwatchInstallResultRsp, self).__init__()
 
 class ScanVmPortRsp(kvmagent.AgentResponse):
     def __init__(self):
@@ -867,6 +880,10 @@ class UpdateConfigration(object):
                              r'\1 {0}=on modprobe.blacklist=snd_hda_intel,amd76x_edac,vga16fb,nouveau,rivafb,nvidiafb,rivatv,amdgpu,radeon'.format(
                                  self.iommu_type), env)
                 linux.write_file(grub_rocky_env, env)
+
+        self.enable_vfio_module()
+
+    def enable_vfio_module(self):
         bash_o("modprobe vfio && modprobe vfio-pci")
 
 logger = log.get_logger(__name__)
@@ -876,7 +893,7 @@ def _get_memory(word):
     (name, capacity) = out.split(':')
     capacity = re.sub('[k|K][b|B]', '', capacity).strip()
     #capacity = capacity.rstrip('kB').rstrip('KB').rstrip('kb').strip()
-    return sizeunit.KiloByte.toByte(long(capacity))
+    return sizeunit.KiloByte.toByte(int(capacity))
 
 def _get_total_memory():
     return _get_memory('MemTotal')
@@ -910,8 +927,8 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_STOP_USB_REDIRECT_PATH = "/host/usbredirect/stop"
     CHECK_USB_REDIRECT_PORT = "/host/usbredirect/check"
     IDENTIFY_HOST = "/host/identify"
-    LOCATE_HOST_NETWORK_INTERFACE = "/host/locate/networkinterface";
-    GET_HOST_PHYSICAL_MEMORY_FACTS = "/host/physicalmemoryfacts";
+    LOCATE_HOST_NETWORK_INTERFACE = "/host/locate/networkinterface"
+    GET_HOST_PHYSICAL_MEMORY_FACTS = "/host/physicalmemoryfacts"
     UPDATE_HOST_OVS_CPU_PINNING = "/host/ovs/cpu-pin/update"
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
@@ -933,7 +950,7 @@ class HostPlugin(kvmagent.KvmAgent):
     GENERATE_SE_VFIO_MDEV_DEVICES = "/semdevdevice/generate"
     UNGENERATE_SE_VFIO_MDEV_DEVICES = "/semdevdevice/ungenerate"
     DELETE_VFIO_MDEV_DEVICE = "/mdevdevice/delete"
-    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig";
+    HOST_UPDATE_SPICE_CHANNEL_CONFIG_PATH = "/host/updateSpiceChannelConfig"
     TRANSMIT_VM_OPERATION_TO_MN_PATH = "/host/transmitvmoperation"
     TRANSMIT_ZWATCH_INSTALL_RESULT_TO_MN_PATH = "/host/zwatchInstallResult"
     SCAN_VM_PORT_PATH = "/host/vm/scanport"
@@ -1013,9 +1030,11 @@ class HostPlugin(kvmagent.KvmAgent):
         logger.debug(http.path_msg(self.CONNECT_PATH, 'host[uuid: %s] connected' % cmd.hostUuid))
         rsp.libvirtVersion = self.libvirt_version
         rsp.qemuVersion = self.qemu_version
-        
+
         # save kvmagent version
         self.save_kvmagent_version(cmd.version)
+
+        self.install_shutdown_hook(cmd)
 
         # create udev rule
         self.handle_usb_device_events()
@@ -1057,12 +1076,12 @@ class HostPlugin(kvmagent.KvmAgent):
         pkt_counter = 0
         while True:
             try:
-                self.host_socket.send(str(pkt_counter))
+                self.host_socket.send(str(pkt_counter).encode())
             except Exception as e:
                 logger.debug("failed to send pkg to mn")
                 break
 
-            if pkt_counter == sys.maxint:
+            if pkt_counter == sys.maxsize:
                 pkt_counter = 0
 
             pkt_counter += 1
@@ -1071,15 +1090,18 @@ class HostPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        kvmagent.kvmagent_physical_memory_usage_alarm_threshold = cmd.kvmagentPhysicalMemoryUsageAlarmThreshold
+        kvmagent.kvmagent_physical_memory_usage_hardlimit = cmd.kvmagentPhysicalMemoryUsageHardLimit
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
         rsp.sendCommandUrl = self.config.get(kvmagent.SEND_COMMAND_URL)
         rsp.version = self.config.get(kvmagent.VERSION)
-        
+
         if rsp.version is None and os.path.exists(KVMAGENT_VERSION_PATH):
             with open(KVMAGENT_VERSION_PATH, 'r') as rfd:
                 rsp.version = rfd.read().strip()
-        
+
         if os.path.exists(HOST_TAKEOVER_FLAG_PATH):
             linux.touch_file(HOST_TAKEOVER_FLAG_PATH)
         return jsonobject.dumps(rsp)
@@ -1115,17 +1137,15 @@ class HostPlugin(kvmagent.KvmAgent):
     def _cache_units_convert(self, str):
         if str is None or str == '':
             return 0
-        return float(sizeunit.get_size(str) / 1024)
+        return float(sizeunit.get_size(str) // 1024)
 
     @kvmagent.replyerror
     def fact(self, req):
         rsp = HostFactResponse()
-        rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
-        if rsp.osDistribution == 'centos':
-            rsp.osDistribution = platform.linux_distribution()[0].lower()
-        if rsp.osDistribution == 'openEuler':
-            rsp.osDistribution = platform.linux_distribution()[0].lower()
-        rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
+        os_info = platform.freedesktop_os_release()
+        rsp.osDistribution = os_info['ID']
+        rsp.osVersion = re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
+        rsp.osRelease = "Core" # TODO get os release
         # compatible with Kylin SP2 HostOS ISO and standardized ISO
         if rsp.osDistribution == "kylin":
             rsp.osRelease = rsp.osRelease.replace('ZStack', 'Sword')
@@ -1134,45 +1154,41 @@ class HostPlugin(kvmagent.KvmAgent):
         # to be compatible with both `2.6.0` and `2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.8.1)`
         qemu_img_version = shell.call("qemu-img --version | grep 'qemu-img version' | cut -d ' ' -f 3 | cut -d '(' -f 1")
         qemu_img_version = qemu_img_version.strip('\t\r\n ,')
-        ipV4Addrs = [chunk.address for chunk in filter(
-            lambda x: x.address != '127.0.0.1' and not x.ifname.endswith('zs'), iproute.query_addresses(ip_version=4))]
-        rsp.systemProductName = 'unknown'
-        rsp.systemSerialNumber = 'unknown'
-        rsp.systemManufacturer = 'unknown'
-        rsp.systemUUID = 'unknown'
-        rsp.biosVendor = 'unknown'
-        rsp.biosVersion = 'unknown'
-        rsp.biosReleaseDate = 'unknown'
+        ipV4Addrs = [chunk.address for chunk in [x for x in iproute.query_addresses(ip_version=4) if
+                                         x.address != '127.0.0.1' and not x.ifname.endswith('zs')]]
+
+
+        def run_dmidecode(cmd, default=''):
+            try:
+                ret = shell.call(cmd).strip()
+                return ret if ret else default
+            except Exception as e:
+                logger.warn("run dmidecode cmd %s failed: %s" % (cmd, e))
+                return default
+
         is_dmidecode = shell.run("dmidecode")
         if str(is_dmidecode) == '0':
-            system_product_name = shell.call('dmidecode -s system-product-name').strip()
-            baseboard_product_name = shell.call('dmidecode -s baseboard-product-name').strip()
-            system_serial_number = shell.call('dmidecode -s system-serial-number').strip()
-            system_manufacturer = shell.call('dmidecode -s system-manufacturer').strip()
-            system_uuid = shell.call('dmidecode -s system-uuid').strip()
-            bios_vendor = shell.call('dmidecode -s bios-vendor').strip()
-            bios_version = shell.call('dmidecode -s bios-version').strip()
-            bios_release_date = shell.call('dmidecode -s bios-release-date').strip()
-            rsp.systemSerialNumber = system_serial_number if system_serial_number else 'unknown'
-            rsp.systemProductName = system_product_name if system_product_name else baseboard_product_name
-            rsp.systemManufacturer = system_manufacturer if system_manufacturer else 'unknown'
-            rsp.systemUUID = system_uuid if system_uuid else 'unknown'
-            rsp.biosVendor = bios_vendor if bios_vendor else 'unknown'
-            rsp.biosVersion = bios_version if bios_version else 'unknown'
-            rsp.biosReleaseDate = bios_release_date if bios_release_date else 'unknown'
-            memory_slots_maximum = shell.call('dmidecode -q -t memory | grep "Memory Device" | wc -l')
-            rsp.memorySlotsMaximum = memory_slots_maximum.strip()
-            # power not in presence cannot collect power info
-            power_supply_manufacturer = shell.call("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'").strip()
-            rsp.powerSupplyManufacturer = power_supply_manufacturer if power_supply_manufacturer != "" else "unknown"
-            power_supply_model_name = shell.call("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Name' | awk -F ':' '{print $2}'").strip()
-            rsp.powerSupplyModelName = power_supply_model_name if power_supply_model_name != "" else "unknown"
-            power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -vi 'unknown' | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
+            rsp.systemSerialNumber = run_dmidecode('dmidecode -s system-serial-number', 'unknown')
+            system_product_name = run_dmidecode('dmidecode -s system-product-name')
+            if system_product_name:
+                rsp.systemProductName = system_product_name
+            else:
+                rsp.systemProductName = run_dmidecode('dmidecode -s baseboard-product-name')
+            rsp.systemManufacturer = run_dmidecode('dmidecode -s system-manufacturer', 'unknown')
+            rsp.systemUUID = run_dmidecode('dmidecode -s system-uuid', 'unknown')
+            rsp.biosVendor = run_dmidecode('dmidecode -s bios-vendor', 'unknown')
+            rsp.biosVersion = run_dmidecode('dmidecode -s bios-version', 'unknown')
+            rsp.biosReleaseDate = run_dmidecode('dmidecode -s bios-release-date', 'unknown')
+            rsp.memorySlotsMaximum = run_dmidecode('dmidecode -q -t memory | grep "Memory Device" | wc -l')
+            rsp.powerSupplyManufacturer = run_dmidecode("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Manufacturer' | awk -F ':' '{print $2}'", 'unknown')
+            rsp.powerSupplyModelName = run_dmidecode("dmidecode -t 39 | grep -vi 'not specified' | grep -m1 'Name' | awk -F ':' '{print $2}'", 'unknown')
+            power_supply_max_power_capacity = run_dmidecode("dmidecode -t 39 | grep -vi 'unknown' | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
             if bool(re.search(r'\d', power_supply_max_power_capacity)):
-                rsp.powerSupplyMaxPowerCapacity = filter(str.isdigit, power_supply_max_power_capacity.strip())
+                rsp.powerSupplyMaxPowerCapacity = ''.join(re.findall(r'\d+', power_supply_max_power_capacity.strip()))
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
+        rsp.libvirtPackageVersion = linux.get_libvirt_package_version()
         rsp.ipAddresses = ipV4Addrs
         rsp.cpuArchitecture = platform.machine()
         rsp.uptime = shell.call('uptime -s').strip()
@@ -1204,6 +1220,8 @@ class HostPlugin(kvmagent.KvmAgent):
             else:
                 rsp.ipmiAddress = 'None'
                 logger.debug("failed to get ipmi address from BMC lan channel [%s], because %s" % (channel, err))
+
+        rsp.deployMode = 'cube' if misc.isHyperConvergedHost() else 'cloud'
 
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
@@ -1407,7 +1425,7 @@ class HostPlugin(kvmagent.KvmAgent):
 
             hb_dir = os.path.dirname(hb)
             if not os.path.exists(hb_dir):
-                os.makedirs(hb_dir, 0755)
+                os.makedirs(hb_dir, 0o755)
 
             t = thread.timer(cmd.heartbeatInterval, self._heartbeat_func, args=[hb], stop_on_exception=False)
             t.start()
@@ -1548,13 +1566,13 @@ class HostPlugin(kvmagent.KvmAgent):
                 rsp.error = "%s %s" % (e, o)
                 return jsonobject.dumps(rsp)
 
+            info = UsbDeviceInfo()
             for line in o.split('\n'):
                 line = line.strip().split()
                 if len(line) < 2:
                     continue
 
                 if line[0] == 'Bus' and len(line) > 3:
-                    info = UsbDeviceInfo()
                     info.idVendor, info.idProduct = dev_id.split(':')
                     info.busNum = line[1]
                     info.devNum = line[3].rsplit(':')[0]
@@ -1573,7 +1591,7 @@ class HostPlugin(kvmagent.KvmAgent):
                     info.iProduct = ' '.join(line[2:])
                 elif line[0] == 'iSerial':
                     info.iSerial = ' '.join(line[2:]) if len(line) > 2 else ""
-                    append_usb_device(info, dev_id)
+            append_usb_device(info, dev_id)
 
         rsp.usbDevicesInfo = usb_device_infos
         return jsonobject.dumps(rsp)
@@ -1612,10 +1630,37 @@ if __name__ == "__main__":
                 flag = True if version != rfd.read().strip() else False
         else:
             flag = True
-        
+
         if flag:
             with open(KVMAGENT_VERSION_PATH, 'w') as fd:
                 fd.write(version)
+
+    def install_shutdown_hook(self, cmd):
+        if not cmd.isInstallHostShutdownHook:
+            shell_cmd = shell.ShellCmd(
+                "rm -rf /etc/init.d/shutdown_vm && rm -rf /etc/rc1.d/K01shutdown_vm && rm -rf /etc/rc6.d/K01shutdown_vm && rm -rf /etc/rc0.d/K01shutdown_vm",
+                None, False)
+            shell_cmd(False)
+            return
+
+        shell_cmd = shell.ShellCmd(
+            "/bin/cp -f %s %s && chmod 755 %s" % (KVMAGENT_SHUTDOWN_PATH, KVMAGENT_SHUTDOWN_INIT_PATH, KVMAGENT_SHUTDOWN_INIT_PATH), None, False)
+        shell_cmd(False)
+        if shell_cmd.return_code != 0:
+            logger.debug("failed to copy %s to %s, stdout: %s, stderr: %s" % (
+                KVMAGENT_SHUTDOWN_PATH, KVMAGENT_SHUTDOWN_INIT_PATH, shell_cmd.stdout, shell_cmd.stderr))
+            return
+
+        shell_cmd = shell.ShellCmd(
+            "sed -i 's/send_command_url/%s/g; s/host_uuid/%s/g' /etc/init.d/shutdown_vm" % (cmd.sendCommandUrl, cmd.hostUuid) +
+            " && ln -s -f /etc/init.d/shutdown_vm /etc/rc1.d/K01shutdown_vm "
+            "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc6.d/K01shutdown_vm "
+            "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc0.d/K01shutdown_vm "
+            "&& chkconfig shutdown_vm on", None, False)
+        shell_cmd(False)
+        if shell_cmd.return_code != 0:
+            logger.debug(
+                "failed to chkconfig shutdown_vm on, stdout: %s, stderr: %s" % (shell_cmd.stdout, shell_cmd.stderr))
 
     @kvmagent.replyerror
     @in_bash
@@ -1651,7 +1696,7 @@ if __name__ == "__main__":
             dracut_conf_map = {
                 '/etc/dracut.conf.d/no_lvmconf.conf': 'lvmconf=no',
                 '/etc/dracut.conf.d/no_hostonly.conf': 'hostonly=no'}
-            for conf_path, conf_content in dracut_conf_map.items():
+            for conf_path, conf_content in list(dracut_conf_map.items()):
                 linux.mkdir(os.path.dirname(conf_path))
                 with open(conf_path, 'w') as f:
                     f.write(conf_content)
@@ -1675,7 +1720,7 @@ if __name__ == "__main__":
                 rsp.success = False
                 rsp.error = "failed to update host os using zstack-mn,qemu-kvm-ev-mn repo, stdout: %s, stderr: %s" % (shell_cmd.stdout, shell_cmd.stderr)
 
-        rsp.libvirtVersion = shell.call("rpm -q libvirt --qf ' %{VERSION}-%{RELEASE}'")
+        rsp.libvirtVersion = linux.get_libvirt_package_version()
 
         return jsonobject.dumps(rsp)
 
@@ -1773,7 +1818,7 @@ if __name__ == "__main__":
 
         volume_path_dict = cmd.volumePathMap.__dict__
         if volume_path_dict is not None:
-            for key, value in volume_path_dict.items():
+            for key, value in list(volume_path_dict.items()):
                 r, o = bash_ro("xfs_bmap %s | wc -l" % value, True)
                 if r == 0:
                     o = o.strip()
@@ -1986,7 +2031,7 @@ done
 
                 if "size" == k:
                     if "mb" in v.lower():
-                        size = str(int(v.split(" ")[0]) / 1024) + " GB"
+                        size = str(int(v.split(" ")[0]) // 1024) + " GB"
                     elif "no module installed" in v.lower():
                         size = None
                     else:
@@ -2176,15 +2221,16 @@ done
         nics = []
         pcis = set()
 
-        def get_nic_info(interfaceName, index):
-            nics[index] = HostNetworkInterfaceInventory(interfaceName, None, managementServerIp)
+        def get_nic_info(interfaceName, index, driverType=None, pciAddress=None):
+            nics[index] = HostNetworkInterfaceInventory(interfaceName, None, managementServerIp, driverType, pciAddress)
 
         threads = []
         nic_names = ip.get_host_physicl_nics()
         if len(nic_names) == 0:
             return nics
 
-        nics = [None] * len(nic_names)
+        vfioNics = ovn.getAllVfioPciNic()
+        nics = [None] * (len(nic_names) + len(vfioNics))
         for index, nic in enumerate(nic_names, start=0):
             interfaceName = nic.strip()
             pciDeviceAddress = os.readlink("/sys/class/net/%s/device" % interfaceName).strip().split('/')[-1]
@@ -2194,6 +2240,11 @@ done
                 pcis.add(pciDeviceAddress)
         for t in threads:
             t.join()
+
+        index = len(nic_names)
+        for nic in vfioNics:
+            get_nic_info(nic.name, index, driverType=nic.driver, pciAddress=nic.pciAddress)
+            index = index + 1
         return nics
 
     @staticmethod
@@ -2317,29 +2368,34 @@ done
             logger.error("npu query gpu is error, %s " % npu_ids_out)
             return False
 
-        npu_id = None
+        npu_ids = []
         for line in npu_ids_out.splitlines():
             line = line.strip()
             if not line:
                 continue
             if "NPU ID" in line:
-                npu_id = line.split(":")[1].strip()
-                break
+                npu_ids.append(line.split(":")[1].strip())
 
-        if npu_id:
+        if len(npu_ids) == 0:
+            return False
+
+        add_found = False
+        for npu_id in npu_ids:
             r, o, e = bash_roe("npu-smi info -t board -i %s" % npu_id)
             if r != 0:
                 logger.error("npu query gpu board is error, %s " % e)
-                return False
+                continue
 
             if to.pciDeviceAddress.lower() not in o.lower():
-                return False
+                continue
+
+            add_found = True
 
             r, o, e = bash_roe("npu-smi info -t template-info -i %s" % npu_id)
 
             if r != 0:
                 logger.error("npu query gpu template-info is error, %s " % e)
-                return False
+                continue
 
             for line in o.splitlines():
                 match = re.match(r'\|(\w+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+\|', line)
@@ -2355,6 +2411,10 @@ done
                         'JPEGD': int(match.group(7))
                     }
                     to.mdevSpecifications.append(template)
+
+        if not add_found:
+            logger.error("can't find gpu %s mdev spec in npu-smi output" % to.pciDeviceAddress)
+            return False
 
         r, virtStatusOut = bash_ro("ls -l  /sys/bus/mdev/devices/")
         if r != 0:
@@ -2488,7 +2548,8 @@ done
             to.name = "%s_%s" % (subvendor_name if subvendor_name else vendor_name, device_name)
 
             def _set_pci_to_type():
-                gpu_vendors = ["NVIDIA", "AMD", "Haiguang"]
+                gpu_vendors = ["NVIDIA", "AMD", "Haiguang", "Intel"]
+                custom_gpu_vendors = "Display controller"
 
                 if any(vendor in to.description for vendor in gpu_vendors) \
                         and ('VGA compatible controller' in to.type or 'Display controller' in to.type
@@ -2508,8 +2569,8 @@ done
                                                                     and pci_device_mapper.get('Serial bus controller') in to.type)):
                     to.type = "GPU_Serial_Controller"
                 elif any(vendor in to.description for vendor in gpu_vendors) \
-                        and ('3D controller' in to.type or (pci_device_mapper.get('3D controller') is not None
-                                                            and pci_device_mapper.get('3D controller') in to.type)):
+                        and ('3D controller' in to.type or custom_gpu_vendors in to.type
+                             or (pci_device_mapper.get('3D controller') is not None and pci_device_mapper.get('3D controller') in to.type)):
                     to.type = "GPU_3D_Controller"
                 elif 'Ethernet controller' in to.type or (pci_device_mapper.get('Ethernet controller') is not None
                                                           and pci_device_mapper.get('Ethernet controller') in to.type):
@@ -2568,10 +2629,15 @@ done
         if shell.run("which ixsmi") != 0:
             logger.debug("no ixsmi")
             return
-        r, o, e = bash_roe(gpu.get_tianshu_gpu_basic_info_cmd())
+        if shell.run(gpu.is_tianshu_v1()) == 0:
+            cmd = gpu.get_tianshu_gpu_basic_info_cmd_v1()
+        else:
+            cmd = gpu.get_tianshu_gpu_basic_info_cmd_v2()
+        r, o, e = bash_roe(cmd)
         if r != 0:
             logger.error("ixsmi query gpu is error, %s " % e)
             return
+
         self._update_to_addon_info_from_gpu_infos(gpu.parse_tianshu_gpu_output(o), to)
 
         # support product name(^_^)
@@ -2595,25 +2661,38 @@ done
         if r != 0:
             logger.error("npu query gpu is error, %s " % npu_ids_out)
             return
-        npu_id = gpu.get_huawei_npu_id(npu_ids_out)
-        if npu_id is None:
+        npu_ids = gpu.get_huawei_npu_id(npu_ids_out)
+        if len(npu_ids) == 0:
             return
 
-        r, o, e = bash_roe(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
-        if r != 0:
-            logger.error("npu query gpu board is error, %s " % e)
-            return
-        self._update_to_addon_info_from_gpu_infos(gpu.parse_huawei_gpu_output_by_npu_id(o), to)
+        npu_infos = []
+        for npu_id in npu_ids:
+            r, o, e = bash_roe(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
+            if r != 0:
+                logger.error("npu query gpu board is error, %s " % e)
+                return
 
-        r, o, e = bash_roe(gpu.get_huawei_gpu_product_name_cmd(npu_id))
-        if r != 0:
-            logger.error("npu-smi query gpu product type is error, %s " % e)
-            return
+            npu_infos.extend(gpu.parse_huawei_gpu_output_by_npu_id(o))
 
-        product_type = gpu.get_huawei_product_type(o)
-        if product_type:
-            to.device = "-"
-            to.name = product_type
+        self._update_to_addon_info_from_gpu_infos(npu_infos, to)
+
+        for npu_info in npu_infos:
+            if to.pciDeviceAddress not in npu_info.get("pciAddress"):
+                continue
+
+            r, o, e = bash_roe(gpu.get_huawei_gpu_product_name_cmd(npu_ids))
+            if r != 0:
+                logger.error("npu-smi query gpu product type is error, %s " % e)
+                return
+
+            if "not support" in o:
+                logger.error("current gpu device not support query product")
+                return
+
+            product_type = gpu.get_huawei_product_type(o)
+            if product_type:
+                to.device = "-"
+                to.name = product_type
 
     @in_bash
     def _collect_haiguang_gpu_info(self, to):
@@ -2643,11 +2722,11 @@ done
 
     def _update_to_addon_info_from_gpu_infos(self, gpu_infos, to):
         for gpuinfo in gpu_infos:
-            if to.pciDeviceAddress not in gpuinfo["pciAddress"]:
+            if to.pciDeviceAddress not in gpuinfo.get("pciAddress"):
                 continue
-            to.addonInfo["memory"] = gpuinfo["memory"]
-            to.addonInfo["power"] = gpuinfo["power"]
-            to.addonInfo["serialNumber"] = gpuinfo["serialNumber"]
+            to.addonInfo["memory"] = gpuinfo.get("memory")
+            to.addonInfo["power"] = gpuinfo.get("power")
+            to.addonInfo["serialNumber"] = gpuinfo.get("serialNumber")
             to.addonInfo["isDriverLoaded"] = True
 
     @in_bash
@@ -2670,13 +2749,17 @@ done
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
 
+        updateConfigration = UpdateConfigration()
+        if not os.path.exists("/dev/vfio/vfio"):
+            logger.info("enable vfio/vfio-pci module")
+            updateConfigration.enable_vfio_module()
+
         if cmd.skipGrubConfig:
             rsp.hostIommuStatus = True
             self._collect_format_pci_device_info(rsp)
             return jsonobject.dumps(rsp)
 
         # update grub to enable/disable iommu in host
-        updateConfigration = UpdateConfigration()
         updateConfigration.path = "/etc/default/grub"
         updateConfigration.enableIommu = cmd.enableIommu
         success, error = updateConfigration.updateHostIommu()
@@ -2690,7 +2773,7 @@ done
         # check whether /sys/class/iommu is empty, if not then iommu is activated in bios
         iommu_folder = '/sys/class/iommu'
         r_bios = os.path.isdir(iommu_folder) and os.listdir(iommu_folder)
-        r_kernel, o_kernel, e_kernel = bash_roe("grep '{}=on' /proc/cmdline".format(iommu_type))
+        r_kernel, _, _ = bash_roe("grep '{}=on' /proc/cmdline".format(iommu_type))
         if r_bios and r_kernel == 0:
             rsp.hostIommuStatus = True
         else:
@@ -2713,7 +2796,7 @@ done
             if os.path.exists(rom_file):
                 logger.debug("delete rom file %s because no content in db anymore" % rom_file)
                 os.remove(rom_file)
-        elif cmd.romMd5sum != hashlib.md5(cmd.romContent).hexdigest():
+        elif cmd.romMd5sum != hashlib.md5(cmd.romContent.encode()).hexdigest():
             rsp.success = False
             rsp.error = "md5sum of pci rom file[uuid:%s] does not match" % cmd.specUuid
             return jsonobject.dumps(rsp)
@@ -2775,7 +2858,6 @@ done
         if r != 0:
             rsp.success = False
             rsp.error = "failed to install gim.ko, %s, %s" % (o, e)
-            return
 
 
     @in_bash
@@ -2850,7 +2932,7 @@ done
             if len(_addr.split(':')) != 3:
                 _addr = '0000:' + _addr
 
-            pf = "pci_%s_%s_%s_%s" % tuple(re.split(':|\.', _addr))
+            pf = "pci_%s_%s_%s_%s" % tuple(re.split('[:.]', _addr))
             r, vf_lines, e = bash_roe("virsh nodedev-dumpxml %s | grep 'address domain'" % pf)
             if r != 0:
                 return "failed to run `virsh nodedev-dumpxml %s`: %s" % (pf, e)
@@ -3302,7 +3384,7 @@ done
         qemu_url = string.Template(cmd.qemuUrl).substitute(tmpl)
 
         if not os.path.exists(COLO_LIB_PATH):
-            os.makedirs(COLO_LIB_PATH, 0775)
+            os.makedirs(COLO_LIB_PATH, 0o775)
 
         def get_dep_version_from_version_file(version_file):
             if not os.path.exists(version_file):
@@ -3495,7 +3577,7 @@ done
 
                 free, size = 0, 0
                 for mem in data:
-                    temp = filter(lambda i: i, mem.strip().split(" "))[-2]
+                    temp = [i for i in mem.strip().split(" ") if i][-2]
                     if temp == "0":
                         continue
                     if "MemTotal" in mem:
@@ -3512,7 +3594,7 @@ done
                 if data is None or (not data):
                     return
                 data = data.strip()
-                return filter(lambda i: i, data.split(" "))
+                return [i for i in data.split(" ") if i]
 
         rsp = GetNumaTopologyResponse()
         rsp.topology = NumaTopology()()

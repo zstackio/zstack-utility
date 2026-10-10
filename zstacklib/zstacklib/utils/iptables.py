@@ -2,7 +2,10 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import os
+from functools import cmp_to_key
+
 from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import log
@@ -217,10 +220,7 @@ class IPTableChain(Node):
         for r in self.children:
             rules.append(r)
 
-        def sort(r1, r2):
-            return r1.order - r2.order
-
-        rules = sorted(rules, sort, reverse=True)
+        rules = sorted(rules, key=lambda x: x.order, reverse=True)
         lst = ordered_set.OrderedSet()
         for r in rules:
             lst.add(str(r))
@@ -516,7 +516,7 @@ class IPTables(Node):
             else:
                 user_chains.append(chain)
 
-        user_chains = sorted(user_chains, sort_func)
+        user_chains = sorted(user_chains, key=cmp_to_key(sort_func))
         all_chains.extend(user_chains)
         return all_chains
 
@@ -565,15 +565,11 @@ class IPTables(Node):
         if sort_nat_func:
             self._sort_chain_in_nat_table(sort_nat_func)
 
-        def make_reject_rule_last(r1, r2):
-            if self.is_target_in_rule(r1, 'REJECT'):
-                return 1
-            if self.is_target_in_rule(r2, 'REJECT'):
-                return -1
-            return 0
+        def get_reject_priority(rule):
+            return 0 if not self.is_target_in_rule(rule, 'REJECT') else 1
 
         for c in self._filter_table.children:
-            c.children = sorted(c.children, make_reject_rule_last)
+            c.children = sorted(c.children, key=get_reject_priority)
 
         content = str(self)
         if marshall_func:
@@ -914,7 +910,7 @@ class IP6Tables(Node):
                 all_chains.append(chain)
             else:
                 user_chains.append(chain)
-
+        # TODO(py3)
         user_chains = sorted(user_chains, sort_func)
         all_chains.extend(user_chains)
         return all_chains
@@ -966,15 +962,11 @@ class IP6Tables(Node):
         if sort_nat_func:
             self._sort_chain_in_nat_table(sort_nat_func)
 
-        def make_reject_rule_last(r1, r2):
-            if self.is_target_in_rule(r1, 'REJECT'):
-                return 1
-            if self.is_target_in_rule(r2, 'REJECT'):
-                return -1
-            return 0
+        def get_reject_priority(rule):
+            return 0 if not self.is_target_in_rule(rule, 'REJECT') else 1
 
         for c in self._filter_table.children:
-            c.children = sorted(c.children, make_reject_rule_last)
+            c.children = sorted(c.children, key=get_reject_priority)
 
         content = str(self)
         if marshall_func:
@@ -1061,4 +1053,4 @@ if __name__ == '__main__':
     ipt.add_rule(rule1)
     ipt.iptable_restore()
     ipt.iptables_save()
-    print ipt
+    print(ipt)

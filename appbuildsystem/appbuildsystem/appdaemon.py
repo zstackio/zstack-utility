@@ -10,7 +10,7 @@ import zstacklib.utils.iptables as iptables
 pidfile = '/var/run/zstack/app-buildsystem.pid'
 log.configure_log('/var/log/zstack/app-buildsystem.log')
 logger = log.get_logger(__name__)
-import appbuildsystem
+from . import appbuildsystem
 
 
 def prepare_pid_dir(path):
@@ -22,7 +22,7 @@ def prepare_pid_dir(path):
 def main():
     usage = 'usage: python -c "from appbuildsystem import appdaemon; appdaemon.main()" start|stop|restart'
     if len(sys.argv) != 2 or not sys.argv[1] in ['start', 'stop', 'restart']:
-        print usage
+        print(usage)
         sys.exit(1)
 
     global pidfile

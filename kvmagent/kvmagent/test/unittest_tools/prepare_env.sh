@@ -7,7 +7,7 @@ set -ex
 # Param version : like 4.6.31
 
 
-YUM_BASED_OS="c76 ky10sp2 ky10sp3"
+YUM_BASED_OS="c76 ky10sp2 ky10sp3 ky10sp3.2403"
 APT_BASED_OS=""
 
 # /root/.zguest/zstack-utility is zstack-utility home of ztest.
@@ -34,6 +34,8 @@ prepare_external_repo() {
         elif [ "$arch_os" == "aarch64:ky10sp2" ]; then
             echo later to add
         elif [ "$arch_os" == "aarch64:ky10sp3" ]; then
+            echo later to add
+        elif [ "$arch_os" == "aarch64:ky10sp3.2403" ]; then
             echo later to add
         fi
         if [ -f "/etc/yum.repos.d/CentOS-Base.repo" ]; then
@@ -133,7 +135,7 @@ prepare_mn_mock() {
     # in venv2
     cd /root/.zguest/zstack-utility/kvmagent/kvmagent/test/unittest_tools/unittest_pypi_source/
     pip install -r requirements/requirements1.txt -i file://`pwd`/pypi/simple
-    pip2 install ansible==4.10.0 -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple --extra-index-url http://mirrors.aliyun.com/pypi/simple/
+    pip3 install ansible==4.10.0 -i file:///root/.zguest/zstack-utility/zstackbuild/pypi_source/pypi/simple --extra-index-url http://mirrors.aliyun.com/pypi/simple/
     deactivate
     echo "==>> pass prepare_mn_mock"
 }

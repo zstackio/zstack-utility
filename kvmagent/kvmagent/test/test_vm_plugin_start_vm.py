@@ -18,7 +18,7 @@ class Test(unittest.TestCase):
     
     def callback(self, req):
         rsp = jsonobject.loads(req[http.REQUEST_BODY])
-        print jsonobject.dumps(rsp)
+        print(jsonobject.dumps(rsp))
         
     def setUp(self):
         self.service = kvmagent.new_rest_service()
@@ -41,7 +41,7 @@ class Test(unittest.TestCase):
         nic.bridgeName = 'virbr0'
         nic.deviceId = 0
         cmd.nics.append(nic)
-        print 'xxxxxxxxxxxxxxxxxxx %s' % cmd.vmUuid
+        print('xxxxxxxxxxxxxxxxxxx %s' % cmd.vmUuid)
         url = kvmagent._build_url_for_test([vm_plugin.KVM_START_VM_PATH])
         rsp = http.json_dump_post(url, cmd, headers={http.TASK_UUID:uuidhelper.uuid(), http.CALLBACK_URI:self.CALLBACK_URL})
         time.sleep(30)

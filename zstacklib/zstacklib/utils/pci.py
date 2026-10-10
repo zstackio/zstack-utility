@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 
 from zstacklib.utils import log, linux
@@ -77,9 +78,9 @@ def get_bars_max_addressable_memory():
         logger.warn("max_addressable_memory is None, please reconnect host and try again")
 
     if max_addressable_memory_64bit < DEFAULT_PCDPCIMMIO64SIZE_MIN_SIZE:
-        return DEFAULT_PCDPCIMMIO64SIZE_MIN_SIZE / 1024 / 1024
+        return DEFAULT_PCDPCIMMIO64SIZE_MIN_SIZE // 1024 // 1024
 
-    return max_addressable_memory_64bit / 1024 / 1024
+    return max_addressable_memory_64bit // 1024 // 1024
 
 
 def calculate_max_addressable_memory(pci_devices):
@@ -95,10 +96,11 @@ def calculate_max_addressable_memory(pci_devices):
         mem_size_32bit, mem_size_64bit = get_total_addressable_memory(get_pci_resources(dev.pciDeviceAddress))
         logger.info("get pci device: %s, name: %s, max addressable memory: %s" %
                     (dev.pciDeviceAddress, dev.name, mem_size_64bit))
-        if max32bit < mem_size_32bit:
-            max32bit = mem_size_32bit
-        if max64bit < mem_size_64bit:
-            max64bit = mem_size_64bit
+        max32bit += mem_size_32bit
+        max64bit += mem_size_64bit
+
+    max32bit = calc_next_power_of_2(max32bit)
+    max64bit = calc_next_power_of_2(max64bit)
 
     max_addressable_memory_32bit = max32bit * 2
     max_addressable_memory_64bit = max64bit
@@ -117,7 +119,7 @@ def get_total_addressable_memory(resources):
     mem_size_32bit = 0
     mem_size_64bit = 0
 
-    for key in resources.keys():
+    for key in list(resources.keys()):
         # The PCIe spec only defines 5 BARs per device, we're
         # discarding everything after the 5th entry of the resources
         # file, see lspci.c
@@ -133,9 +135,6 @@ def get_total_addressable_memory(resources):
         if flags == PCI_BASE_ADDRESS_MEM_TYPE_64:
             mem_size_64bit += mem_size
 
-    mem_size_32bit = calc_next_power_of_2(mem_size_32bit)
-    mem_size_64bit = calc_next_power_of_2(mem_size_64bit)
-
     return mem_size_32bit, mem_size_64bit
 
 
@@ -149,7 +148,7 @@ def parse_resources(device_path):
     try:
         with open(os.path.join(device_path, "resource"), "r") as f:
             for i, line in enumerate(f):
-                start, end, flags = map(lambda x: int(x, 16), line.strip().split())
+                start, end, flags = [int(x, 16) for x in line.strip().split()]
                 if start != 0 or end != 0:
                     resources[i] = MemoryResource(start, end, flags, os.path.join(device_path, "resource"))
     except Exception as e:

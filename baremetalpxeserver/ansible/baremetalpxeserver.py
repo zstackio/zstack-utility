@@ -89,30 +89,23 @@ else:
     command = 'mkdir -p %s %s' % (baremetalpxeserver_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-# name: install virtualenv
-virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status is False:
-    command = "rm -rf %s && rm -rf %s" % (virtenv_path, baremetalpxeserver_root)
-    run_remote_command(command, host_post_info)
-    sys.exit(1)
-
-# name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv-2.7 --system-site-packages %s " % (virtenv_path, virtenv_path)
-run_remote_command(command, host_post_info)
 
 # name: install dependencies
 if host_info.distro in RPM_BASED_OS:
     dep_pkg = "dnsmasq nginx nginx-all-modules vsftpd nmap"
+    py3_rpms = ' python3.11 python3.11-devel python3.11-pip libffi-devel openssl-devel'
     if releasever in centos:
         dep_pkg = "{} syslinux".format(dep_pkg)
     else:
         dep_pkg = "{} net-tools".format(dep_pkg)
+    if releasever in ['h84r']:
+        dep_pkg += py3_rpms
     if zstack_repo != 'false':
         command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % \
                   (dep_pkg, dep_pkg if update_packages == 'true' else '$pkg_list', zstack_repo)
         run_remote_command(command, host_post_info)
     else:
-        for pkg in ["dnsmasq", "nginx", "nginx-all-modules", "vsftpd", "syslinux", "nmap"]:
+        for pkg in dep_pkg.split():
             yum_install_package(pkg, host_post_info)
     command = "(which firewalld && systemctl stop firewalld && systemctl enable firewalld) || true"
     run_remote_command(command, host_post_info)
@@ -125,11 +118,23 @@ elif host_info.distro in DEB_BASED_OS:
 else:
     error("unsupported OS!")
 
+# name: install virtualenv
+py_version = get_virtualenv_python_version(virtenv_path, host_post_info)
+if py_version and not py_version.startswith("3.11"):
+    command = "rm -rf %s" % virtenv_path
+    run_remote_command(command, host_post_info)
+    py_version = None
+
+if not py_version:
+    # name: make sure virtualenv has been setup
+    command = "python3.11 -m venv %s --system-site-packages" % virtenv_path
+    run_remote_command(command, host_post_info)
+
 # name: check and mount /opt/zstack-dvd
 command = """
 archRelease="x86_64/c72 x86_64/c74 x86_64/c76 x86_64/c79 x86_64/h76c x86_64/h79c x86_64/h84r \
-x86_64/ky10sp1 x86_64/ky10sp2 x86_64/ky10sp3 aarch64/ky10sp1 aarch64/ky10sp2 \
-aarch64/ky10sp3 aarch64/oe2203sp1 aarch64/h2203sp1o mips64el/ky10sp1 loongarch64/ky10sp1 loongarch64/ky10sp3"
+x86_64/ky10sp1 x86_64/ky10sp2 x86_64/ky10sp3 x86_64/ky10sp3.2403 aarch64/ky10sp1 aarch64/ky10sp2 \
+aarch64/ky10sp3 aarch64/ky10sp3.2403 aarch64/oe2203sp1 aarch64/h2203sp1o mips64el/ky10sp1 loongarch64/ky10sp1 loongarch64/ky10sp3"
 
 mkdir -p /var/lib/zstack/baremetal/{dnsmasq,ftp/{ks,zstack-dvd/{x86_64,aarch64,mips64el,loongarch64},scripts},tftpboot/{zstack/{x86_64,aarch64,mips64el,loongarch64},pxelinux.cfg,EFI/BOOT},vsftpd} /var/log/zstack/baremetal/;
 rm -rf /var/lib/zstack/baremetal/tftpboot/{grubaa64.efi,grub.cfg-01-*};

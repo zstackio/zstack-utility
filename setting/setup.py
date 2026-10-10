@@ -21,7 +21,6 @@ ZStack setting tool""",
       include_package_data=True,
       zip_safe=True,
       install_requires=[
-          "argparse",
       ],
       entry_points="""
       # -*- Entry points: -*-

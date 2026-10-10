@@ -2,10 +2,11 @@
 
 @author: Frank
 '''
+from __future__ import annotations
 
 import paramiko
 import os.path
-import log
+from . import log
 
 logger = log.get_logger(__name__)
 
@@ -86,8 +87,7 @@ def ssh_execute_script_file(src, hostname, username, password, port=22):
     ssh_cmd = 'sh %s; rm -f %s' % (temp_file, temp_file)
     execute(ssh_cmd, hostname, username, password)
 
-def execute(command, hostname, username, password, exception_if_error=True, \
-        port = 22):
+def execute(command, hostname, username, password, exception_if_error=True, port = 22):
     if logcmd:
         logger.debug('ssh execute[%s]' % command)
         

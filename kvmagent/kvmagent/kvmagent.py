@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import re
 
 from zstacklib.utils import plugin
 from zstacklib.utils import http
@@ -14,12 +15,8 @@ import os.path
 import traceback
 import pprint
 import functools
-import sys
-import commands
+import subprocess
 import platform
-
-reload(sys)
-sys.setdefaultencoding('utf-8')
 
 logger = log.get_logger(__name__)
 
@@ -42,19 +39,19 @@ class KvmAgent(plugin.Plugin):
         linux.recover_fake_dead('kvmagent')
         super(KvmAgent, self).__init__()
 
-ha_cleanup_handlers = [] # type: list[function]
+ha_cleanup_handlers = [] # type: list[callable]
 
 def register_ha_cleanup_handler(handler):
-    # type: (function) -> None
+    # type: (callable) -> None
     logger.debug('start registered ha cleanup handler %s' % handler)
     global ha_cleanup_handlers
     ha_cleanup_handlers.append(handler)
     logger.debug('success registered ha cleanup handlers %s' % ha_cleanup_handlers)
 
-metric_collectors = []  # type: list[function]
+metric_collectors = []  # type: list[callable]
 
 def register_prometheus_collector(collector):
-    # type: (function) -> None
+    # type: (callable) -> None
     logger.debug('start registered %s' % collector)
     global metric_collectors
     metric_collectors.append(collector)
@@ -74,13 +71,14 @@ def get_http_server():
     return _rest_service.http_server
 
 def get_host_yum_release():
-    return commands.getoutput("rpm -q zstack-release 2>/dev/null | awk -F'-' '{print $3}'").strip()
+    return subprocess.getoutput("rpm -q zstack-release 2>/dev/null | awk -F'-' '{print $3}'").strip()
 
 def get_host_os_type():
-    dist, version, _ = platform.dist()
+    os_info = platform.freedesktop_os_release()
+    dist, version = os_info['ID'], re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
     if dist.lower() in linux.DIST_WITH_RPM_DEB:
         dist = "%s%s" % (dist.lower(), version)
-    is_debian = any(map(lambda x: x in dist.lower(), linux.DEB_BASED_OS))
+    is_debian = any([x in dist.lower() for x in linux.DEB_BASED_OS])
     return 'debian' if is_debian else 'redhat'
 
 
@@ -90,7 +88,7 @@ def get_qemu_path():
         try:
             _qemu_path = qemu.get_path()
         except Exception as e:
-            raise KvmError(e.message)
+            raise KvmError(str(e))
 
     return _qemu_path
         
@@ -112,7 +110,7 @@ class KvmRESTService(object):
         self.plugin_rgty = plugin.PluginRegistry(self.plugin_path)
     
     def _get_config(self, name):
-        return None if not self.config.has_key(name) else self.config[name]
+        return None if name not in self.config else self.config[name]
     
     def start(self, in_thread=True):
         config = {}
@@ -182,3 +180,5 @@ class KvmDaemon(daemon.Daemon):
 SEND_COMMAND_URL = 'SEND_COMMAND_URL'
 HOST_UUID = 'HOST_UUID'
 VERSION = 'VERSION'
+kvmagent_physical_memory_usage_alarm_threshold = None
+kvmagent_physical_memory_usage_hardlimit = None

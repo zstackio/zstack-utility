@@ -99,6 +99,7 @@ else:
 
 if host_info.distro in RPM_BASED_OS:
     install_rpm_list = "wget nmap"
+    py3_rpms = ' python3.11 python3.11-devel python3.11-pip libffi-devel openssl-devel'
 
     if remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         (status, qemu_img_version) = get_qemu_img_version(host_post_info)
@@ -117,6 +118,8 @@ if host_info.distro in RPM_BASED_OS:
         if releasever == 'c74' and get_mn_release() in ['c76', 'c79', 'h76c', 'h79c']:
             install_rpm_list += " qemu-kvm"
 
+    if releasever in ['h84r']:
+        install_rpm_list += py3_rpms
     if zstack_repo != 'false':
         command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
                 """ in $pkg_list; do yum --disablerepo=* --enablerepo={} install -y $pkg; done;"""\
@@ -166,18 +169,20 @@ else:
     error("unsupported OS!")
 
 # name: install virtualenv
-virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status is False:
-    command = "rm -rf %s && rm -rf %s" % (virtenv_path, cephp_root)
+# name: install virtualenv
+py_version = get_virtualenv_python_version(virtenv_path, host_post_info)
+if py_version and not py_version.startswith("3.11"):
+    command = "rm -rf %s" % virtenv_path
     run_remote_command(command, host_post_info)
-    sys.exit(1)
+    py_version = None
 
-# name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv-2.7 --system-site-packages %s " % (virtenv_path, virtenv_path)
-run_remote_command(command, host_post_info)
+if not py_version:
+    # name: make sure virtualenv has been setup
+    command = "python3.11 -m venv %s --system-site-packages" % virtenv_path
+    run_remote_command(command, host_post_info)
 
 # name: install python pkg and replace ceph python path
-replace_content(ceph_file_path, "regexp='/usr/bin/env python' replace='/usr/bin/python2.7'", host_post_info)
+replace_content(ceph_file_path, "regexp='/usr/bin/env python' replace='/usr/bin/python3.11'", host_post_info)
 extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
 pip_install_arg = PipInstallArg()
 pip_install_arg.extra_args = extra_args

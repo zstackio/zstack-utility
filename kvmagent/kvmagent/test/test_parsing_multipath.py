@@ -5,6 +5,7 @@ import simplejson
 from zstacklib.utils import multipath
 
 
+# TODO(py3) test
 class TestMultiPathConf(unittest.TestCase):
     def test(self):
         test_write_conf()
@@ -21,7 +22,7 @@ def test_write_conf():
         text1 = multipath.parse_multipath_conf(fd)
     with open("multipath.conf.out", "r") as fd1:
         text2 = multipath.parse_multipath_conf(fd1)
-    assert cmp(text1, text2) == 0
+    assert text1 == text2
 
     #In multipath1.conf, we set the features "1 Queue" of the device_ if_ no_ path"， no_ path_ Retry 60,
     # we configure our default device, which will override features "1 Queue"_ if_ no_ path"， no_ path_ Retry 60,
@@ -33,7 +34,7 @@ def test_write_conf():
         text3 = multipath.parse_multipath_conf(fd)
     with open("multipath1.conf.out", "r") as fd1:
         text4 = multipath.parse_multipath_conf(fd1)
-    assert cmp(text3, text4) == 0
+    assert text3 == text4
 
     assert multipath.write_multipath_conf('multipath2.conf')
     assert not multipath.write_multipath_conf('multipath2.conf')
@@ -42,7 +43,7 @@ def test_write_conf():
         text5 = multipath.parse_multipath_conf(fd)
     with open("multipath2.conf.out", "r") as fd1:
         text6 = multipath.parse_multipath_conf(fd1)
-    assert cmp(text5, text6) == 0
+    assert text5 == text6
 
     assert multipath.write_multipath_conf('multipath3.conf')
     assert not multipath.write_multipath_conf('multipath3.conf')
@@ -51,7 +52,7 @@ def test_write_conf():
         text7 = multipath.parse_multipath_conf(fd)
     with open("multipath3.conf.out", "r") as fd1:
         text8 = multipath.parse_multipath_conf(fd1)
-    assert cmp(text7, text8) == 0
+    assert text7 == text8
 
     assert multipath.write_multipath_conf('multipath4.conf')
     assert not multipath.write_multipath_conf('multipath4.conf')
@@ -60,7 +61,7 @@ def test_write_conf():
         text9 = multipath.parse_multipath_conf(fd)
     with open("multipath4.conf.out", "r") as fd1:
         text10 = multipath.parse_multipath_conf(fd1)
-    assert cmp(text9, text10) == 0
+    assert text9 == text10
 
 if __name__ == '__main__':
     unittest.main()

@@ -1,10 +1,7 @@
 import os
 
-from zstacklib.utils import lvm
 from zstacklib.utils import shell
 
-from kvmagent.plugins.bmv2_gateway_agent import exception
-from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins.bmv2_gateway_agent.volume import base
 from kvmagent.plugins.bmv2_gateway_agent.volume import helper
 

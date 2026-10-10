@@ -47,7 +47,7 @@ class Test():
             self.DPDK_PLUGIN.generate_vdpa(({"body": jsonobject.dumps(cmd)}))
 
         vfs = self.get_vf()
-        print vfs
+        print(vfs)
         threads = []
         for idx, vf in enumerate(vfs, start=0):
             cmd = ovsdpdk_network.GenerateVdpaCmd()

@@ -2,12 +2,13 @@
 
 @author: Frank
 '''
+from __future__ import annotations
 
-import shell
-import ssh
+from . import shell
+from . import ssh
 import os.path
-import log
-import lock
+from . import log
+from . import lock
 
 logger = log.get_logger(__name__)
 

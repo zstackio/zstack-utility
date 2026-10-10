@@ -4,6 +4,7 @@ import time
 from kvmagent.test.utils import vm_utils, network_utils, volume_utils, pytest_utils
 from kvmagent.test.utils.stub import *
 from unittest import TestCase
+from zstacklib.utils import linux
 
 init_kvmagent()
 vm_utils.init_vm_plugin()
@@ -45,8 +46,13 @@ class TestVolume(TestCase, vm_utils.VmPluginTestStub):
     def test_detach_volume_from_vm(self):
         # just sleep 10s for guest os booting
         time.sleep(10)
-        rsp = vm_utils.detach_volume_from_vm(TestVolume.vm_uuid, TestVolume.vol)
-        self.assertTrue(rsp.success)
+        @linux.retry(5, 1)
+        def detach():
+            rsp = vm_utils.detach_volume_from_vm(TestVolume.vm_uuid, TestVolume.vol)
+            self.assertTrue(rsp.success, rsp.error)
+
+        detach()
+
         xml = vm_utils.get_vm_xmlobject_from_virsh_dump(TestVolume.vm_uuid)
         vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, TestVolume.vol_path)
         self.assertIsNone(vol_xml)

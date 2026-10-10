@@ -1,10 +1,10 @@
 # -*- coding: UTF-8 -*-
 import sys
 
-sys.path.append("/var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/")
-sys.path.append("/var/lib/zstack/virtualenv/zstackcli/lib/python2.7/site-packages/")
-sys.path.append("/usr/lib/python2.7/site-packages/")
-sys.path.append("/usr/lib64/python2.7/site-packages/")
+sys.path.append("/var/lib/zstack/virtualenv/zstackctl/lib/python3.11/site-packages/")
+sys.path.append("/var/lib/zstack/virtualenv/zstackcli/lib/python3.11/site-packages/")
+sys.path.append("/usr/lib/python3.11/site-packages/")
+sys.path.append("/usr/lib64/python3.11/site-packages/")
 
 import os
 import socket
@@ -15,7 +15,7 @@ import datetime
 import base64
 import traceback
 import uuid
-from commands import getstatusoutput
+from subprocess import getstatusoutput
 import logging
 from threading import Thread
 from Crypto.Cipher import AES
@@ -111,12 +111,12 @@ class DBUtil:
         else:
             import getpass
             if getpass.getuser() == "root":
-                from zstackctl.ctl import Ctl
+                from .ctl import Ctl
                 ctl = Ctl()
                 ctl.locate_zstack_home()
                 self.host, self.port, self.user, self.password = ctl.get_live_mysql_portal()
             else:
-                self.host, self.port, self.user, self.password = self.get_db_info_by_properties()
+                self.host, self.port, self.user, self.password = self._get_db_info_by_properties()
 
     @staticmethod
     def _get_db_info_by_properties():
@@ -161,7 +161,7 @@ class DBUtil:
         try:
             self.do_select_fetchone("select 1")
         except MySQLdb.Error as e:
-            print_red(u"连接mysql失败 :%s " % str(e))
+            print_red("连接mysql失败 :%s " % str(e))
             raise e
 
     @dict_to_obj
@@ -222,7 +222,7 @@ class DBUtil:
             conn.commit()
             cursor.close()
         except MySQLdb.Error as e:
-            print e.message
+            print(str(e))
             raise e
         finally:
             if conn:
@@ -233,7 +233,7 @@ class DBUtil:
             cursor.executemany(sqlstr, args)
             conn.commit()
         except MySQLdb.Error as e:
-            print e.message
+            print(str(e))
             raise e
 
     def get_max_allowed_packet(self):
@@ -246,7 +246,7 @@ class DBUtil:
         try:
             self.do_execute("set global max_allowed_packet=%d" % size)
         except MySQLdb.Error as e:
-            print_red(u"修改mysql参数出错 %s,请指定root密码执行 -p 查看帮助-h" % str(e))
+            print_red("修改mysql参数出错 %s,请指定root密码执行 -p 查看帮助-h" % str(e))
             exit(1)
 
     def rollback_max_allowed_packet(self):
@@ -266,7 +266,7 @@ def parse_utc_str_to_timestamp(utc_str, time_zone=datetime.timedelta(0, 0)):
     except ValueError:
         datetime_obj = datetime.datetime.strptime(utc_str, "%Y-%m-%dT%H:%M:%SZ")
         datetime_obj = datetime_obj + time_zone
-    return long(time.mktime(datetime_obj.timetuple()) * 1000.0 + datetime_obj.microsecond / 1000.0)
+    return int(time.mktime(datetime_obj.timetuple()) * 1000.0 + datetime_obj.microsecond / 1000.0)
 
 
 def safe_str(obj):
@@ -291,14 +291,14 @@ class AuditsVO:
         self.time_zone = get_mysql_timezone()
 
     def process_influxdb_data(self, data):
-        if data.has_key("requestDump"):
+        if "requestDump" in data:
             req_data = json.loads(data.get('requestDump'))
-            if req_data.has_key("headers"):
+            if "headers" in req_data:
                 req_data.pop("headers")
             data['requestDump'] = safe_str(json.dumps(req_data))
-        if data.has_key("responseDump"):
+        if "responseDump" in data:
             res_data = json.loads(data.get('responseDump'))
-            if res_data.has_key("headers"):
+            if "headers" in res_data:
                 res_data.pop("headers")
             data['responseDump'] = safe_str(json.dumps(res_data))
         if not data.get("clientBrowser"):
@@ -307,11 +307,11 @@ class AuditsVO:
             data['clientIp'] = ""
         if not data.get("resourceType"):
             data['resourceType'] = ""
-        if data.has_key("success"):
+        if "success" in data:
             data['success'] = int(data.get("success") == "success")
         if not data.get("success"):
             data['success'] = 1
-        if data.has_key("time"):
+        if "time" in data:
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'), self.time_zone)
         return data
 
@@ -339,12 +339,12 @@ class EventRecordsVO:
             label_map = {i.split(':::')[-1]: label_map[i] for i in label_map}
             data['label'] = safe_str(json.dumps(label_map))
 
-        if data.has_key("readStatus"):
+        if "readStatus" in data:
             data['readStatus'] = int(data.get("readStatus") == "Read")
         else:
             data['readStatus'] = ""
 
-        if data.has_key("time"):
+        if "time" in data:
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'), self.time_zone)
         return data
 
@@ -376,26 +376,26 @@ class AlarmRecordsVO:
         self.time_zone = get_mysql_timezone()
 
     def process_influxdb_data(self, data):
-        if data.has_key("requestDump"):
+        if "requestDump" in data:
             req_data = json.loads(data.get('requestDump'))
-            if req_data.has_key("headers"):
+            if "headers" in req_data:
                 req_data.pop("headers")
             data['requestDump'] = safe_str(json.dumps(req_data))
-        if data.has_key("responseDump"):
+        if "responseDump" in data:
             res_data = json.loads(data.get('responseDump'))
-            if res_data.has_key("headers"):
+            if "headers" in res_data:
                 res_data.pop("headers")
             data['responseDump'] = safe_str(json.dumps(res_data))
 
-        if data.has_key("readStatus"):
+        if "readStatus" in data:
             data['readStatus'] = int(data.get("readStatus") == "Read")
         else:
             data['readStatus'] = ""
 
-        if not data.has_key("dataUuid"):
+        if "dataUuid" not in data:
             data['dataUuid'] = str(uuid.uuid4()).replace('-', '')
 
-        if data.has_key("time"):
+        if "time" in data:
             data['createTime'] = parse_utc_str_to_timestamp(data.get('time'), self.time_zone)
 
         return data
@@ -433,7 +433,7 @@ class MigrateAction(Thread):
         return float("%.4f" % (float((parse_utc_str_to_timestamp(last_time) - self.baseTime)) / self.rangeTime)) * 100
 
     def run(self):
-        print "%s thread run...." % self.mysql_obj.__class__.__name__
+        print("%s thread run...." % self.mysql_obj.__class__.__name__)
         conn = mysql_client._connection()
         cursor = conn.cursor(MySQLdb.cursors.DictCursor)
         start_time = time.time()
@@ -451,7 +451,7 @@ class MigrateAction(Thread):
             try:
                 prepare_migrate_influxdb_data = client.query(latest_influxdb_sql)
             except InfluxDBClientError as e:
-                print "query influxdb %s error : %s" % (self.mysql_obj.influxdb, str(e))
+                print("query influxdb %s error : %s" % (self.mysql_obj.influxdb, str(e)))
                 exc_type, exc_value, exc_obj = sys.exc_info()
                 logger.error(str(traceback.format_exc(exc_obj)))
                 self.errorInfo = str(e)
@@ -476,7 +476,7 @@ class MigrateAction(Thread):
                 many_args = list(([i.get(j) for j in self.mysql_obj.column] for i in self.queue))
                 self.mysql_obj.process_mysql_data(many_args)
                 if self.dry_run:
-                    print "%s %s" % (self.mysql_obj.sql_tmpl_safe, many_args)
+                    print("%s %s" % (self.mysql_obj.sql_tmpl_safe, many_args))
                 else:
                     try:
                         mysql_client.do_batch_insert(conn, cursor, self.mysql_obj.sql_tmpl_safe, many_args)
@@ -491,12 +491,12 @@ class MigrateAction(Thread):
                 if self.dry_run:
                     break
 
-                print "#" * 20
+                print("#" * 20)
                 if self.errorInfo:
-                    print self.errorInfo
-                    print (
+                    print(self.errorInfo)
+                    print((
                         last_success_record['time'], json.dumps(last_success_record), self.errorInfo,
-                        self.mysql_obj.influxdb)
+                        self.mysql_obj.influxdb))
                     mysql_client.do_execute_safely(
                         "update zstack.MigrateInfluxDB set lastMigrateDataCreateTime=%s,lastMigrateDataRecord=%s,"
                         "error=%s where tableName=%s",
@@ -515,7 +515,7 @@ class MigrateAction(Thread):
             mysql_client.do_execute_safely("update zstack.MigrateInfluxDB set error=%s where tableName=%s",
                                        (self.errorInfo, self.mysql_obj.influxdb))
         end_time = time.time()
-        print "total time: %d" % (end_time - start_time)
+        print("total time: %d" % (end_time - start_time))
 
 
 def get_mysql_timezone():
@@ -553,7 +553,7 @@ def init(args):
                 last_migrate_date = (datetime.datetime.utcnow() - datetime.timedelta(days=int(start))).strftime(
                     "%Y-%m-%dT%H:%M:%S.%fZ")
                 if last_migrate_date > max_time:
-                    print_red(u"迁移指定的influxdb历史数据开始时间不能晚于influxdb中最近一条记录的创建时间")
+                    print_red("迁移指定的influxdb历史数据开始时间不能晚于influxdb中最近一条记录的创建时间")
                     mysql_client.do_execute("drop table zstack.MigrateInfluxDB")
                     exit(1)
                 mysql_client.do_execute_safely(sql_templ, (table, max_time, last_migrate_date, last_migrate_date))
@@ -573,14 +573,14 @@ def check_init_success():
             result = mysql_client.do_select_fetchone(
                 "select tableName from zstack.MigrateInfluxDB where tableName='%s'" % table)
             if result is None:
-                print_red(u"迁移记录表influx table: %s 数据初始化未成功! 请执行初始化步骤 -h 查看帮助 " % table)
+                print_red("迁移记录表influx table: %s 数据初始化未成功! 请执行初始化步骤 -h 查看帮助 " % table)
                 flag = False
         except MySQLdb.Error as e:
-            print_red(u"查询迁移记录表zstack.MigrateInfluxDB出错: %s ,请执行初始化步骤 -h 查看帮助" % str(e))
+            print_red("查询迁移记录表zstack.MigrateInfluxDB出错: %s ,请执行初始化步骤 -h 查看帮助" % str(e))
             exit(1)
     if not flag:
         exit(1)
-    print_green(u"迁移记录表数据初始化完成!")
+    print_green("迁移记录表数据初始化完成!")
 
 
 def init_influxdb_info():
@@ -589,7 +589,7 @@ def init_influxdb_info():
     for table in base_influxdb_map:
         try:
             res = client.query("SELECT COUNT(*) FROM %s ORDER BY time DESC LIMIT 1" % table)
-            if len(res.keys()) == 0:
+            if len(list(res.keys())) == 0:
                 MigrateIns.pop(table)
                 continue
         except InfluxDBClientError as e:
@@ -603,26 +603,26 @@ def rollback():
     result = mysql_client.do_select_fetchone(
         "SELECT table_name FROM information_schema.TABLES WHERE table_name ='MigrateInfluxDB'")
     if result is None:
-        print_green(u"未迁移过influxdb数据，不需要回滚!")
+        print_green("未迁移过influxdb数据，不需要回滚!")
         exit(0)
-    for influx_table, mysql_table in MigrateIns.iteritems():
+    for influx_table, mysql_table in MigrateIns.items():
         influx_last_time = mysql_client.do_select_fetchone(
             "select maxCreateTime from zstack.MigrateInfluxDB where tableName='%s'" % influx_table)
-        assert influx_last_time != "", print_red(u"获取influxdb迁移历史数据最近时间失败")
+        assert influx_last_time != "", print_red("获取influxdb迁移历史数据最近时间失败")
         last_time_stamp = parse_utc_str_to_timestamp(influx_last_time, time_zone=get_mysql_timezone())
         mysql_client.do_execute("DELETE FROM zstack.%s where createTime <= %d " % (mysql_table, last_time_stamp))
-        print_green(u"删除 %s 表中迁移过来的历史数据" % mysql_table)
+        print_green("删除 %s 表中迁移过来的历史数据" % mysql_table)
         count = mysql_client.do_select_fetchone(
             "select count(*) from zstack.%s where createTime <= %d " % (mysql_table, last_time_stamp))
-        assert count == 0, print_red(u"删除influxdb迁移完成数据失败")
+        assert count == 0, print_red("删除influxdb迁移完成数据失败")
     mysql_client.do_execute("drop table zstack.MigrateInfluxDB")
-    print_green(u"回滚迁移的influxdb历史数据完成")
+    print_green("回滚迁移的influxdb历史数据完成")
 
 
 def calculate_allow_batch_insert(num, origin_global_config):
     if int(num) * 4096 > origin_global_config:
-        print_red(u"你现在指定的单批插入次大于mysql配置的max_allowed_packet上限，容易迁移失败，"
-                  u"请调整-n参数或者指定-p mysql root 密码, -h 查看帮助")
+        print_red("你现在指定的单批插入次大于mysql配置的max_allowed_packet上限，容易迁移失败，"
+                  "请调整-n参数或者指定-p mysql root 密码, -h 查看帮助")
         exit(1)
 
 
@@ -647,7 +647,7 @@ def migrate(args):
 
     if args.init:
         if args.start is None:
-            print_red(u"请添加参数 -s=${输入数字，或者full} -h help查看帮助")
+            print_red("请添加参数 -s=${输入数字，或者full} -h help查看帮助")
             exit(1)
         init(args)
     else:
@@ -659,7 +659,7 @@ def migrate(args):
 
     migrate_list = []
     for obj in migrate_objs:
-        if obj.tableName in MigrateIns.keys() and obj.migrateStatus != 'done':
+        if obj.tableName in list(MigrateIns.keys()) and obj.migrateStatus != 'done':
             migrate_list.append(MigrateAction(eval(MigrateIns[obj.tableName])(obj.tableName), int(args.num),
                                              args.dry))
     logger.info("migrate_list: %s" % migrate_list)
@@ -683,22 +683,22 @@ def get_migrate_time(size):
             if len(count) > 0:
                 count_list.append(max([i for i in count._get_series()[0]['values'][0] if type(i) == int]))
     except InfluxDBClientError as e:
-        print str(e)
+        print(str(e))
         exc_type, exc_value, exc_obj = sys.exc_info()
         logger.error(str(traceback.format_exc(exc_obj)))
     except Exception as e:
-        print e.message
+        print(str(e))
     if len(count_list) > 0:
         max_table_count = max(count_list)
-        print_green(u"本次迁移任务最大记录: %d " % max_table_count)
-        print_green(u"指定单次迁移 %d 条，预估迁移时间: %d 秒" % (size, 1 if (max_table_count / size) < 10 else (max_table_count / size)))
+        print_green("本次迁移任务最大记录: %d " % max_table_count)
+        print_green("指定单次迁移 %d 条，预估迁移时间: %d 秒" % (size, 1 if (max_table_count / size) < 10 else (max_table_count / size)))
 
 
 def check_db_status():
     assert status_influxdb(), "influxdb server status is not running, please check !"
-    print_green(u"Influx db 服务状态正常!")
+    print_green("Influx db 服务状态正常!")
     assert status_mysql(), "mysql server status is not running, please check !"
-    print_green(u"MySQL db 服务状态正常!")
+    print_green("MySQL db 服务状态正常!")
 
 
 def check():
@@ -706,23 +706,23 @@ def check():
     can_calculate = True
     logger.info("start check migrate influxdb data")
     try:
-        print_green(u"influx db数据总量: %d kb" % int(influxdb_data_size))
+        print_green("influx db数据总量: %d kb" % int(influxdb_data_size))
     except ValueError:
         can_calculate = False
         print_red("获取influx db数据总量失败: %s" % safe_str(influxdb_data_size))
     code1, mysql_available = getstatusoutput("df -hl -k /var/lib/mysql/ | awk '{print $4}' | sed -n '2p'")
     try:
-        print_green(u"mysql 所在盘可用空间: %d kb" % int(mysql_available))
+        print_green("mysql 所在盘可用空间: %d kb" % int(mysql_available))
     except ValueError:
         can_calculate = False
         print_red("获取mysql所在盘可用空间失败: %s" % safe_str(mysql_available))
     if can_calculate:
         if int(influxdb_data_size) * 1.5 > int(mysql_available):
-            print_red(u"迁移容量检查失败! mysql 剩余空间不足以迁移influxdb全量历史数据,请检查")
+            print_red("迁移容量检查失败! mysql 剩余空间不足以迁移influxdb全量历史数据,请检查")
             exit(1)
-        print_green(u"迁移容量检查通过!")
+        print_green("迁移容量检查通过!")
     else:
-        print_red(u"迁移容量数据获取失败!")
+        print_red("迁移容量数据获取失败!")
     if code == 0:
         count_list = []
         try:
@@ -731,22 +731,22 @@ def check():
                 if len(count) > 0:
                     count_list.append(max([i for i in count._get_series()[0]['values'][0] if type(i) == int]))
         except InfluxDBClientError as e:
-            print str(e)
+            print(str(e))
             exc_type, exc_value, exc_obj = sys.exc_info()
             logger.error(str(traceback.format_exc(exc_obj)))
             if not str(e).startswith("retention policy not found"):
                 print_red("获取influxdb count 数出错！%s" % str(e))
         except Exception as e:
-            print e.message
+            print(str(e))
         if len(count_list) > 0:
             max_table_count = max(count_list)
-            print_green(u"本次迁移任务最大记录: %d " % max_table_count)
-            print_green(u"当指定单次迁移1000条时候，预估迁移时间: %d 秒" % (max_table_count / 1000))
-            print_green(u"当指定单次迁移5000条时候，预估迁移时间: %d 秒" % (max_table_count / 5000))
+            print_green("本次迁移任务最大记录: %d " % max_table_count)
+            print_green("当指定单次迁移1000条时候，预估迁移时间: %d 秒" % (max_table_count / 1000))
+            print_green("当指定单次迁移5000条时候，预估迁移时间: %d 秒" % (max_table_count / 5000))
         else:
             try:
                 migrate_total_time = float(influxdb_data_size) / 3 * 0.001
-                print_green(u"根据磁盘容量预估迁移时间: %d " % migrate_total_time)
+                print_green("根据磁盘容量预估迁移时间: %d " % migrate_total_time)
             except ValueError:
                 pass
     try:
@@ -754,22 +754,22 @@ def check():
         if len(migrate_list) > 0:
             for record in migrate_list:
                 if record.migrateStatus == 'done':
-                    print_green(u"influxdb table: %s 已经迁移完成" % record.tableName)
+                    print_green("influxdb table: %s 已经迁移完成" % record.tableName)
                     continue
                 if record.error is not None:
-                    print_green(u"influxdb table: %s 迁移至 %d%% 出错, 错误信息: %s" %
+                    print_green("influxdb table: %s 迁移至 %d%% 出错, 错误信息: %s" %
                                 (record.tableName, calculate_process(record.minCreateTime, record.maxCreateTime,
                                                                      record.lastMigrateDataCreateTime), record.error))
                     continue
                 migrate_status = record.migrateStatus if record.migrateStatus else 'not_done'
-                print_green(u"influxdb table: %s 现在迁移状态 %s 迁移进度: %d%% " %
+                print_green("influxdb table: %s 现在迁移状态 %s 迁移进度: %d%% " %
                             (record.tableName, migrate_status, calculate_process(record.minCreateTime,
                                                                                        record.maxCreateTime,
                                                                                        record.lastMigrateDataCreateTime)))
     except MySQLdb.Error as e:
-        print e
-        print u"还未进行初始化，继续迁移执行 init 或者 migrate -i 初始化"
-    print_green(u"检查完毕")
+        print(e)
+        print("还未进行初始化，继续迁移执行 init 或者 migrate -i 初始化")
+    print_green("检查完毕")
 
 
 def calculate_process(start, end, last_time):
@@ -799,32 +799,37 @@ def start_influxdb():
 
 def print_red(strs):
     logger.error(strs)
-    print ("\033[31;1m %s \033[0m" % strs)
+    print("\033[31;1m %s \033[0m" % strs)
 
 
 def print_green(strs):
     logger.info(strs)
-    print ("\033[32;1m %s \033[0m" % strs)
+    print("\033[32;1m %s \033[0m" % strs)
 
 
 def print_blue(strs):
     logger.info(strs)
-    print ("\033[34;1m %s \033[0m" % strs)
+    print("\033[34;1m %s \033[0m" % strs)
 
 
 class AESCipher:
+    """
+    Usage:
+        c = AESCipher('password').encrypt('message')
+        m = AESCipher('password').decrypt(c)
+    """
 
     def __init__(self, key='ZStack open source'):
-        self.key = md5(key).hexdigest()
-        self.cipher = AES.new(self.key, AES.MODE_ECB)
+        self.key = md5(key.encode()).hexdigest()
+        self.cipher = AES.new(self.key.encode(), AES.MODE_ECB)
         self.prefix = "crypt_key_for_v1::"
         self.BLOCK_SIZE = 16
 
     # PKCS#7
-    def _pad(self, data_to_pad, block_size):
+    def _pad(self, data_to_pad: str, block_size: int) -> bytes:
         padding_len = block_size - len(data_to_pad) % block_size
         padding = bchr(padding_len) * padding_len
-        return data_to_pad + padding
+        return data_to_pad.encode() + padding
 
     # PKCS#7
     def _unpad(self, padded_data, block_size):
@@ -838,11 +843,11 @@ class AESCipher:
             raise ValueError("PKCS#7 padding is incorrect.")
         return padded_data[:-padding_len]
 
-    def encrypt(self, raw):
+    def encrypt(self, raw:str) -> str:
         raw = self._pad(self.prefix + raw, self.BLOCK_SIZE)
-        return base64.b64encode(self.cipher.encrypt(raw))
+        return base64.b64encode(self.cipher.encrypt(raw)).decode()
 
-    def decrypt(self, enc):
+    def decrypt(self, enc:str) -> str:
         denc = base64.b64decode(enc)
         ret = self._unpad(self.cipher.decrypt(denc), self.BLOCK_SIZE).decode('utf8')
         return ret[len(self.prefix):] if ret.startswith(self.prefix) else enc
@@ -861,8 +866,8 @@ def main():
     sub_parser = parser.add_subparsers(dest="action", help='action')
 
     check_parser = sub_parser.add_parser('check', help="check influxdb data size and migrate status")
-    check_parser.add_argument("-p", "--mysql-password", dest="passwd", help=u"mysql root 密码")
-    check_parser.add_argument("-H", "--mysql-host", dest="host", help=u"mysql host 连接地址")
+    check_parser.add_argument("-p", "--mysql-password", dest="passwd", help="mysql root 密码")
+    check_parser.add_argument("-H", "--mysql-host", dest="host", help="mysql host 连接地址")
 
     def valid_start_time(s):
         if s != "full":
@@ -871,24 +876,24 @@ def main():
 
     init_parser = sub_parser.add_parser('init', help="init migrate meta table")
     init_parser.add_argument("-s", "--start-time", required=True, type=valid_start_time, dest="start",
-                             help=u"influxdb migrate data start time, eg:-s=full 全量迁移 -s=1 迁移当前时间前一天的数据")
-    init_parser.add_argument("-p", "--mysql-password", dest="passwd", help=u"mysql root 密码")
-    init_parser.add_argument("-H", "--mysql-host", dest="host", help=u"mysql host 连接地址")
+                             help="influxdb migrate data start time, eg:-s=full 全量迁移 -s=1 迁移当前时间前一天的数据")
+    init_parser.add_argument("-p", "--mysql-password", dest="passwd", help="mysql root 密码")
+    init_parser.add_argument("-H", "--mysql-host", dest="host", help="mysql host 连接地址")
 
     migrate_parser = sub_parser.add_parser('migrate', help="init migrate meta table and migrate influxdb data")
     migrate_parser.add_argument("-s", "--start-time", dest="start", type=valid_start_time, help="influxdb migrate data start time")
     migrate_parser.add_argument("-i", "--init", dest="init", action="store_true", help="init migrate meta table")
-    migrate_parser.add_argument("-n", "--num", dest="num", type=int, help=u"迁移时批量数据大小")
-    migrate_parser.add_argument("-p", "--mysql-password", dest="passwd", help=u"mysql root 密码")
-    migrate_parser.add_argument("-H", "--mysql-host", dest="host", help=u"mysql host 连接地址")
-    migrate_parser.add_argument("-d", "--dry-run", dest="dry", action="store_true", help=u"迁移测试dry run模式")
+    migrate_parser.add_argument("-n", "--num", dest="num", type=int, help="迁移时批量数据大小")
+    migrate_parser.add_argument("-p", "--mysql-password", dest="passwd", help="mysql root 密码")
+    migrate_parser.add_argument("-H", "--mysql-host", dest="host", help="mysql host 连接地址")
+    migrate_parser.add_argument("-d", "--dry-run", dest="dry", action="store_true", help="迁移测试dry run模式")
     migrate_parser.add_argument("-it", "--influxdb-timeout", dest="influxdb_timeout", default=60,
-                                help=u"influxdb请求创建连接到客户端的timeout秒数")
+                                help="influxdb请求创建连接到客户端的timeout秒数")
 
     rollback_parser = sub_parser.add_parser('rollback',
                                             help="delete migrate data in mysql, just for remigrate data from influxdb")
-    rollback_parser.add_argument("-p", "--mysql-password", dest="passwd", help=u"mysql root 密码")
-    rollback_parser.add_argument("-H", "--mysql-host", dest="host", help=u"mysql host 连接地址")
+    rollback_parser.add_argument("-p", "--mysql-password", dest="passwd", help="mysql root 密码")
+    rollback_parser.add_argument("-H", "--mysql-host", dest="host", help="mysql host 连接地址")
 
     args = parser.parse_args()
 

@@ -89,7 +89,7 @@ class Cli(object):
         self.http_server = http.HttpServer(port=10086)
         self.http_server.register_sync_uri('/result', self.callback)
         self.http_server.start_in_thread()
-        print ""
+        print("")
 
         comp = Completer()
         readline.set_completer_delims(' \t\n;')
@@ -97,10 +97,10 @@ class Cli(object):
         readline.parse_and_bind("tab: complete")
 
     def callback(self, req):
-        print req[http.REQUEST_BODY]
+        print(req[http.REQUEST_BODY])
 
     def print_error(self, err):
-        print '\033[91m' + err + '\033[0m'
+        print('\033[91m' + err + '\033[0m')
 
     def do_command(self, line):
         def from_file(tokens):
@@ -114,8 +114,8 @@ class Cli(object):
                 text = fd.read()
 
                 path, json_str = text.split('>>', 1)
-                path = path.strip(' \t\n\r')
-                json_str = json_str.strip(' \t\n\r')
+                path = path.strip()
+                json_str = json_str.strip()
 
             args = {}
             if len(tokens) > 2:
@@ -129,7 +129,7 @@ class Cli(object):
             callback_url = 'http://%s:%s/%s/' % (self.cip, 10086, 'result')
             rsp = http.json_post(url, json_str,
                                  headers={http.TASK_UUID: uuidhelper.uuid(), http.CALLBACK_URI: callback_url})
-            print rsp
+            print(rsp)
 
         def from_text(tokens):
             pass
@@ -146,13 +146,13 @@ class Cli(object):
     def run(self):
         while True:
             try:
-                line = raw_input('>>>')
+                line = input('>>>')
                 if line:
                     self.do_command(line)
             except CliError as cli_err:
                 self.print_error(str(cli_err))
             except (EOFError, KeyboardInterrupt):
-                print ''
+                print('')
                 self.http_server.stop()
                 sys.exit(1)
             except:

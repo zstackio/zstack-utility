@@ -306,7 +306,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         shell.run("pkill -9 -f '%s'" % cmd.primaryStorageInstallPath)
 
-        self.do_delete_bits(cmd.primaryStorageInstallPath)
+        linux.rm_file_force(cmd.primaryStorageInstallPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -400,7 +400,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetBatchVolumeSizeRsp()
 
-        for uuid, installPath in cmd.volumeUuidInstallPaths.__dict__.items():
+        for uuid, installPath in list(cmd.volumeUuidInstallPaths.__dict__.items()):
             with IgnoreError():
                 _, rsp.actualSizes[uuid] = linux.qcow2_size_and_actual_size(installPath)
 
@@ -609,7 +609,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             if not line.isdigit():
                 return synced
             if total > 0:
-                synced = long(line)
+                synced = int(line)
                 if synced < total:
                     percent = int(round(float(written + synced) / float(total) * (end - start) + start))
                     report.progress_report(percent, "report")
@@ -684,7 +684,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = CreateTemplateFromVolumeRsp()
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0755)
+            os.makedirs(dirname, 0o755)
 
         @rollback.rollbackable
         def _0():
@@ -728,7 +728,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         install_path = cmd.imagePath
         dirname = os.path.dirname(cmd.volumePath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
@@ -813,7 +813,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         if not os.path.exists(cmd.path):
-            os.makedirs(cmd.path, 0755)
+            os.makedirs(cmd.path, 0o755)
         if cmd.initFilePath:
             if not os.path.exists(cmd.initFilePath):
                 f = open(cmd.initFilePath, 'w')
@@ -900,7 +900,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     def do_create_volume_with_backing(backing_path, vol_path, cmd):
         dirname = os.path.dirname(vol_path)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
 
@@ -1048,7 +1048,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 linux.link(backing_file, dst_file)
                 linux.qcow2_rebase_no_check(dst_file, f)
 
-        for src_file, dst_file in src_dst_dict.iteritems():
+        for src_file, dst_file in src_dst_dict.items():
             linux.link(src_file, dst_file)
 
     @kvmagent.replyerror

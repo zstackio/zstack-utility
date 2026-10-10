@@ -10,6 +10,7 @@ text
 if [ ! -f /usr/bin/python ];then
    [ -f /usr/bin/python2 ] && ln -s /usr/bin/python2 /usr/bin/python
    [ -f /usr/bin/python3 ] && ln -s /usr/bin/python3 /usr/bin/python
+   [ -f /usr/libexec/platform-python ] && ln -s /usr/libexec/platform-python /usr/bin/python
 fi
 %end
 
@@ -101,7 +102,10 @@ with open('/proc/cmdline', 'r') as f:
     for param in f.read().strip().split():
         if 'BOOTIF' in param:
             pxe_iface_mac = param.split('=')[-1].replace('-', ':')
-cmd = r'''ip -family inet -oneline link show scope global | awk '{ printf "%s %s\n", $2, $(NF-2) }' | egrep -v "^lo:"'''
+cmd = r'''ip -family inet -oneline link show scope global | awk '{
+    match($0, /([0-9a-f]{2}:){5}[0-9a-f]{2}/, mac);
+    print $2 " " mac[0];
+}' | egrep -v "^lo:"'''
 status, output, _ = shell_cmd(cmd)
 if not status:
     for line in output.split('\n'):

@@ -7,7 +7,7 @@ import os
 import random
 import tempfile
 import time
-import urlparse
+import urllib.parse
 import re
 
 from kvmagent import kvmagent
@@ -51,8 +51,8 @@ class VolumeAddress(object):
 class VolumeInfo(object):
     def __init__(self):
         self.name = None            # type: str
-        self.size = -1              # type: long
-        self.physicalSize = -1      # type: long
+        self.size = -1              # type: int
+        self.physicalSize = -1      # type: int
         self.type = None            # type: str
         self.bus = None             # type: str
         self.protocol = None        # type: str
@@ -65,7 +65,7 @@ class VmInfo(object):
         self.description = None  # type: str
         self.uuid = None         # type: str
         self.cpuNum = -1         # type: int
-        self.memorySize = -1     # type: long
+        self.memorySize = -1     # type: int
         self.macAddresses = []   # type: list[str]
         self.volumes = []        # type: list[VolumeInfo]
         self.v2vCaps = {}        # type: dict[str, bool]
@@ -109,20 +109,20 @@ class ConvertRsp(AgentRsp):
 
 
 def getHostname(uri):
-    return urlparse.urlparse(uri).hostname
+    return urllib.parse.urlparse(uri).hostname
 
 def getUsername(uri):
-    u = urlparse.urlparse(uri)
+    u = urllib.parse.urlparse(uri)
     return u.username if u.username else 'root'
 
 def getSshTargetAndPort(uri):
-    u = urlparse.urlparse(uri)
+    u = urllib.parse.urlparse(uri)
     target = u.username+'@'+u.hostname if u.username else u.hostname
     port = 22 if not u.port else u.port
     return target, port
 
 def uriAddQuery(uri, key, val):
-    if urlparse.urlparse(uri).query:
+    if urllib.parse.urlparse(uri).query:
         return "{}&{}={}".format(uri, key, val)
     return "{}?{}={}".format(uri, key, val)
 
@@ -144,7 +144,7 @@ class LibvirtConn(object):
 
         return libvirt.open(uri)
 
-    def __init__(self, uri, sasluser=None, saslpass=None, keystr=None):
+    def __init__(self, uri: str, sasluser: str=None, saslpass: str=None, keystr: str=None):
         self.uri = uri
         self.sasluser = sasluser
         self.saslpass = saslpass
@@ -154,7 +154,7 @@ class LibvirtConn(object):
     def __enter__(self):
         tmpkeyfile = None
         if self.keystr:
-            with tempfile.NamedTemporaryFile(delete=False) as f:
+            with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
                 f.write(self.keystr)
                 tmpkeyfile = f.name
             self.uri = uriAddQuery(self.uri, 'keyfile', tmpkeyfile)
@@ -166,7 +166,6 @@ class LibvirtConn(object):
             return self.conn
         except Exception as e:
             e.args = (re.sub(":[^:]*@", ":*****@", arg) for arg in e.args)
-            e.message = re.sub(":[^:]*@", ":*****@", e.message)
             raise
         finally:
             if tmpkeyfile:
@@ -178,7 +177,7 @@ class LibvirtConn(object):
 
 
 @in_bash
-def runSshCmd(libvirtURI, keystr, cmdstr):
+def runSshCmd(libvirtURI: str, keystr: str, cmdstr: str):
     target, port = getSshTargetAndPort(libvirtURI)
     ssh_opts = DEF_SSH_OPTS
     ssh_cmd = "ssh" if not os.path.exists(V2V_PRIV_KEY) else "ssh -i {}".format(V2V_PRIV_KEY)
@@ -192,7 +191,7 @@ def runSshCmd(libvirtURI, keystr, cmdstr):
             linux.shellquote(cmdstr)))
 
     tmpkeyfile = None
-    with tempfile.NamedTemporaryFile(delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode='w+', delete=False) as f:
         f.write(keystr)
         tmpkeyfile = f.name
     try:
@@ -254,7 +253,7 @@ def getVolumes(dom, dxml=None):
             'function_': 'function',
         }
         if hasattr(disk_xml, 'address'):
-            for k, v in property_map.items():
+            for k, v in list(property_map.items()):
                 if hasattr(disk_xml.address, k):
                     setattr(vol_address, v, getattr(disk_xml.address, k))
             return jsonobject.dumps(vol_address)
@@ -287,12 +286,12 @@ def getVolumes(dom, dxml=None):
     if not dxml:
         dxml = xmlobject.loads(dom.XMLDesc(0))
 
-    volumes = filter(lambda v:v, listVolumes(dom, dxml.devices.disk))
+    volumes = [v for v in listVolumes(dom, dxml.devices.disk) if v]
 
     if len(volumes) == 0:
         raise Exception("no disks found for VM: "+dom.name())
 
-    if len(filter(lambda v: v.type == 'ROOT', volumes)) == 0:
+    if len([v for v in volumes if v.type == 'ROOT']) == 0:
         volumes[0].type = 'ROOT'
 
     return volumes
@@ -315,7 +314,7 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
         if qemuver < getVerNumber(1, 1):
             return False
 
-        if any(map(lambda v: v.protocol == 'rbd', vminfo.volumes)):
+        if any([v.protocol == 'rbd' for v in vminfo.volumes]):
             return libvirtver >= getVerNumber(1, 2, 16)
         return libvirtver >= getVerNumber(1, 2, 9)
 
@@ -326,7 +325,7 @@ def listVirtualMachines(url, sasluser, saslpass, keystr):
         qemuVersion = c.getVersion()
         libvirtVersion = c.getLibVersion()
 
-        for dom in filter(lambda d: d.isActive(), c.listAllDomains()):
+        for dom in [d for d in c.listAllDomains() if d.isActive()]:
             info = VmInfo()
 
             info.name = dom.name()
@@ -552,7 +551,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     flags)
 
         def before_blockcopy():
-            if str(libvirtHost) not in self.libvirt_host_convert_job_nums.keys():
+            if str(libvirtHost) not in list(self.libvirt_host_convert_job_nums.keys()):
                 self.libvirt_host_convert_job_nums[str(libvirtHost)] = 0
             self.libvirt_host_convert_job_nums[str(libvirtHost)] += 1
 
@@ -563,7 +562,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             self.all_convert_job_nums += 1
 
         def after_blockcopy():
-            if str(libvirtHost) in self.libvirt_host_convert_job_nums.keys():
+            if str(libvirtHost) in list(self.libvirt_host_convert_job_nums.keys()):
                 self.libvirt_host_convert_job_nums[str(libvirtHost)] -= 1
                 if self.libvirt_host_convert_job_nums[str(libvirtHost)] <= 0:
                     do_ssh_umount(cmd, local_mount_point)
@@ -615,7 +614,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if dxml.os.hasattr('firmware_') and dxml.os.firmware_ == 'efi' or dxml.os.hasattr('loader'):
                 rsp.bootMode = 'UEFI'
 
-            volumes = filter(lambda v: not skipVolume(filters, v.name), getVolumes(dom, dxml))
+            volumes = [v for v in getVolumes(dom, dxml) if not skipVolume(filters, v.name)]
             oldstat, _ = dom.state()
             needResume = True
             needDefine = False
@@ -669,7 +668,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                     current_progress += progress * float(v.size) / float(total_volume_size)
 
                 report.progress_report(str(int(current_progress * float(end_progress))), "start")
-                if all(map(lambda v: v.endTime, volumes)) or job_canceled:
+                if all([v.endTime for v in volumes]) or job_canceled:
                     break
                 time.sleep(5)
 
@@ -752,7 +751,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
                 xmlDesc = dom.XMLDesc(0)
                 dxml = xmlobject.loads(xmlDesc)
 
-                volumes = filter(lambda v: not skipVolume(filters, v.name), getVolumes(dom, dxml))
+                volumes = [v for v in getVolumes(dom, dxml) if not skipVolume(filters, v.name)]
 
                 for v in volumes:
                     info = dom.blockJobInfo(v.name, 0)
@@ -811,7 +810,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if set_up_qos_rules(interface) != 0:
                 logger.debug("Failed to set up qos rules on interface %s" % interface)
 
-        for host_ip, interface in interfaces_to_setup_rule.items():
+        for host_ip, interface in list(interfaces_to_setup_rule.items()):
             cmdstr = "tc filter replace dev %s protocol ip parent 1: prio 1 u32 match ip src %s/32 flowid 1:1" \
                      % (QOS_IFB, host_ip)
             if shell.run(cmdstr) != 0:

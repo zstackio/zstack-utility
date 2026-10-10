@@ -1,6 +1,7 @@
-import Queue
+from __future__ import annotations
+import queue
 from zstacklib.utils import singleton
 
 @singleton.singleton
 class VmPluginQueueSingleton(object):
-    queue = Queue.Queue()
+    queue = queue.Queue()

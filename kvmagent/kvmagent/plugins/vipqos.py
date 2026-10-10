@@ -96,7 +96,7 @@ class VipQos(kvmagent.KvmAgent):
     @in_bash
     def _find_ns_name(self, vip):
         vip = vip.replace('.', '_')
-        nslist = filter(lambda x: x.find(vip) >= 0, iproute.query_all_namespaces())
+        nslist = [x for x in iproute.query_all_namespaces() if x.find(vip) >= 0]
         return nslist[0] if nslist else ""
 
     @in_bash
@@ -132,7 +132,7 @@ class VipQos(kvmagent.KvmAgent):
 
         classId = 0
         for index in range(2, 0xFFF + 1):
-            if classMap.has_key(str(index)) == False:
+            if (str(index) in classMap) == False:
                 classId = index
                 break
 

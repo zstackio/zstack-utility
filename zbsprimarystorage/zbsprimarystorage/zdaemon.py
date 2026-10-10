@@ -11,7 +11,7 @@ from zstacklib.utils import linux
 pidfile = '/var/run/zstack/zbs-primarystorage.pid'
 log.configure_log('/var/log/zstack/zbs-primarystorage.log')
 logger = log.get_logger(__name__)
-import zbsagent
+from . import zbsagent
 
 
 def prepare_pid_dir(path):
@@ -23,8 +23,7 @@ def prepare_pid_dir(path):
 def main():
     usage = 'usage: python -c "from zbsprimarystorage import zdaemon; zdaemon.main()" start|stop|restart'
     if len(sys.argv) != 2 or not sys.argv[1] in ['start', 'stop', 'restart']:
-        print
-        usage
+        print(usage)
         sys.exit(1)
 
     global pidfile

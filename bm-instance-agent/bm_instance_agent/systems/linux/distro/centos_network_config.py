@@ -42,7 +42,7 @@ class CentOSNetworkConfig:
             para_strs = 'BONDING_MASTER=yes\n'
 
             splice = []
-            for key, value in parasObj.link_paras.items():
+            for key, value in list(parasObj.link_paras.items()):
                 splice.append(key + '=' + value)
             if len(splice) != 0:
                 para_strs = para_strs + 'BONDING_OPTS="{paras}"\n'.format(paras=' '.join(splice))

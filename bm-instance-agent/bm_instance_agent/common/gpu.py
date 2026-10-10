@@ -27,7 +27,7 @@ def parse_amd_gpu_output(output):
     gpuinfos = []
     try:
         gpu_info_json = json.loads(output.strip())
-        for card_name, card_data in gpu_info_json.items():
+        for card_name, card_data in list(gpu_info_json.items()):
             gpuinfo = {}
             pci_device_address = card_data['PCI Bus'].lower()
             if len(pci_device_address.split(':')[0]) == 8:
@@ -48,7 +48,7 @@ def parse_hy_gpu_output(output):
     gpuinfos = []
     try:
         gpu_info_json = json.loads(output)
-        for card_name, card_data in gpu_info_json.items():
+        for card_name, card_data in list(gpu_info_json.items()):
             gpuinfo = {}
             pci_device_address = card_data['PCI Bus'].lower()
             if len(pci_device_address.split(':')[0]) == 8:
@@ -66,18 +66,20 @@ def parse_hy_gpu_output(output):
 
 
 def get_huawei_npu_id(npu_id_output):
+    npu_ids = []
     for line in npu_id_output.splitlines():
         line = line.strip()
         if not line:
             continue
         if "NPU ID" in line:
-            return line.split(":")[1].strip()
-    return None
+            npu_ids.append(line.split(":")[1].strip())
+    return npu_ids
 
 
 def parse_huawei_gpu_output_by_npu_id(output):
     gpuinfos = []
     gpuinfo = {}
+    total_memory = 0
     for line in output.splitlines():
         line = line.strip()
         if not line:
@@ -86,8 +88,14 @@ def parse_huawei_gpu_output_by_npu_id(output):
             gpuinfo["serialNumber"] = line.split(":")[1].strip()
         elif "PCIe Bus Info" in line:
             gpuinfo["pciAddress"] = line.partition(": ")[-1].strip().lower()
-        elif "DDR Capacity(MB)" in line:
-            gpuinfo["memory"] = line.split(":")[1].strip() + " MB"
+        elif "DDR Capacity(MB)" in line or "HBM Capacity" in line:
+            memory_value = int(line.split(":")[1].strip().split()[0])
+            total_memory += memory_value
+        elif "Power Dissipation" in line or "Real-time Power(W)" in line:
+            gpuinfo["power"] = line.split(":")[1].strip()
+
+    if total_memory > 0:
+        gpuinfo["memory"] = "%s MB" % total_memory
 
     gpuinfos.append(gpuinfo)
     return gpuinfos
@@ -134,8 +142,22 @@ def get_hy_gpu_basic_info_cmd(iswindows=False):
     return cmd
 
 
-def get_tianshu_gpu_basic_info_cmd(iswindows=False):
+def is_tianshu_v1(iswindows=False):
+    cmd = "ixsmi --query-gpu=fan.speed --format=csv,noheader"
+    if iswindows:
+        cmd = cmd.replace(" ", "|")
+    return cmd
+
+
+def get_tianshu_gpu_basic_info_cmd_v1(iswindows=False):
     cmd = "ixsmi --query-gpu=gpu_bus_id,memory.total,gpu.power.limit,gpu_serial --format=csv,noheader"
+    if iswindows:
+        cmd = cmd.replace(" ", "|")
+    return cmd
+
+
+def get_tianshu_gpu_basic_info_cmd_v2(iswindows=False):
+    cmd = "ixsmi --query-gpu=gpu_bus_id,memory.total,power.limit,gpu_serial --format=csv,noheader"
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd
@@ -150,3 +172,20 @@ def get_huawei_gpu_basic_info_cmd(npu_id, iswindows=False):
     if iswindows:
         cmd = cmd.replace(" ", "|")
     return cmd
+
+
+def get_huawei_gpu_product_name_cmd(npu_id, iswindows=False):
+    cmd = "npu-smi info -t product -i {0}".format(npu_id)
+    if iswindows:
+        cmd = cmd.replace(" ", "|")
+    return cmd
+
+
+def get_huawei_product_type(output):
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if "Product Type" in line:
+            return line.split(":")[1].strip()
+    return None

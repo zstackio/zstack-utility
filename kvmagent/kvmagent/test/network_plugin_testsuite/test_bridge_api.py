@@ -63,11 +63,12 @@ class TestBridgeApi(TestCase):
     def test_create_vlan_bridge(self):
         r, o = bash.bash_ro("ip a| grep BROADCAST|grep -v virbr | awk -F ':' 'NR==1{print $2}' | sed 's/ //g'")
         interF = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
-        br_name = "br_" + interF
+        vlan_id = 1
+        br_name = "br_" + interF + "_" + str(vlan_id)
 
         rsp = network_plugin_utils.create_vlan_bridge(
             bridgeName=br_name,
-            vlan= 1,
+            vlan= vlan_id,
             l2NetworkUuid= misc.uuid(),
             disableIptables= True,
             physicalInterfaceName=interF)
@@ -88,14 +89,15 @@ class TestBridgeApi(TestCase):
     def test_create_vxlan_bridge(self):
         r, o = bash.bash_ro("ip a| grep BROADCAST|grep -v virbr | awk -F ':' 'NR==1{print $2}' | sed 's/ //g'")
         interF = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
-        br_name = "br_" + interF
+        vniId = 1000
+        br_name = "br_" + interF + "_" + str(vniId)
 
         r, o = bash.bash_ro("ip a show %s|grep inet|grep -v inet6|awk 'NR==1{print $2}'|awk -F '/' 'NR==1{print $1}' | sed 's/ //g'" % global_br_name)
         vtepIp = o.strip().replace(' ', '').replace('\n', '').replace('\r', '')
         rsp = network_plugin_utils.create_vxlan_bridge(
             bridgeName=br_name,
             vtepIp= vtepIp,
-            vni = 1000,
+            vni = vniId,
             l2NetworkUuid= misc.uuid(),
             peers= ["192.168.100.250"],
             mtu=1400)

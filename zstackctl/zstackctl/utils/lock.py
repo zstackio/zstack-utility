@@ -86,7 +86,7 @@ class FileLock(object):
     def __init__(self, lock_prefix, locker=Lockf()):
         def _prepare_lock_file(dname, fname):
             if not os.path.exists(dname):
-                os.makedirs(dname, 0755)
+                os.makedirs(dname, 0o755)
 
             lock_file_path = os.path.join(dname, fname)
             self.lock_file = open(lock_file_path, 'w')

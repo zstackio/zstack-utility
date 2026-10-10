@@ -1,4 +1,5 @@
 # coding=utf-8
+from __future__ import annotations
 import time
 import uuid
 
@@ -791,7 +792,7 @@ class RbdDeviceOperator(object):
                 access_path_id, client_group_id))
 
         luns = self.luns_api.list_luns(mapping_group_id=mapping_groups[0].id).luns
-        target_luns = filter(lambda l: l.volume.id == block_volume_id, luns)
+        target_luns = [l for l in luns if l.volume.id == block_volume_id]
         return target_luns[0].lun_id if target_luns else None
 
     def validate_token(self):

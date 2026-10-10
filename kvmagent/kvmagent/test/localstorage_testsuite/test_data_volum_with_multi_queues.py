@@ -63,11 +63,16 @@ class TestVolumeWithMultiQueues(TestCase, vm_utils.VmPluginTestStub):
 
         logger.info("run test: check attached volume multiQueues after restart vm")
         rsp = vm_utils.check_volume(TestVolumeWithMultiQueues.vm_uuid, [TestVolumeWithMultiQueues.vol])
-        self.assertTrue(rsp.success)
+        self.assertTrue(rsp.success, rsp.error)
 
         logger.info("run test: detach data volume with multiQueues")
-        rsp = vm_utils.detach_volume_from_vm(TestVolumeWithMultiQueues.vm_uuid, TestVolumeWithMultiQueues.vol)
-        self.assertTrue(rsp.success)
+        @linux.retry(5, 1)
+        def detach():
+            rsp = vm_utils.detach_volume_from_vm(TestVolumeWithMultiQueues.vm_uuid, TestVolumeWithMultiQueues.vol)
+            self.assertTrue(rsp.success, rsp.error)
+
+        detach()
+
         xml = vm_utils.get_vm_xmlobject_from_virsh_dump(TestVolumeWithMultiQueues.vm_uuid)
         vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, TestVolumeWithMultiQueues.vol_path)
         self.assertIsNone(vol_xml)

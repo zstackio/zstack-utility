@@ -362,7 +362,7 @@ def reset_network():
 def reset_system():
     reset_network()
     p = "enN0YWNrLm9yZ0A2MzdF"
-    bash_r("echo 'root:%s' | chpasswd" % base64.decodestring(p))
+    bash_r("echo 'root:%s' | chpasswd" % base64.b64decode(p).decode())
     logger.info("reset system done")
 
 

@@ -1,6 +1,7 @@
+from __future__ import annotations
 import collections
 
-class OrderedSet(collections.MutableSet):
+class OrderedSet(collections.abc.MutableSet):
 
     def __init__(self, iterable=None):
         self.end = end = [] 
@@ -62,6 +63,6 @@ class OrderedSet(collections.MutableSet):
 if __name__ == '__main__':
     s = OrderedSet('abracadaba')
     t = OrderedSet('simsalabim')
-    print(s | t)
-    print(s & t)
-    print(s - t)
+    print((s | t))
+    print((s & t))
+    print((s - t))

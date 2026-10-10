@@ -2,12 +2,13 @@
 
 @author: frank
 '''
+from __future__ import annotations
 
 import threading
 import inspect
 import pprint
 import traceback
-import log
+from . import log
 import functools
 
 logger = log.get_logger(__name__)

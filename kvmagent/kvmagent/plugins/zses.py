@@ -345,7 +345,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
             if not line.isdigit():
                 return synced
             if total > 0:
-                synced = long(line)
+                synced = int(line)
                 if synced < total:
                     percent = int(round(float(written + synced) / float(total) * (end - start) + start))
                     report.progress_report(percent, "report")
@@ -421,7 +421,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0755)
+            os.makedirs(dirname, 0o755)
 
         linux.create_template(cmd.volumePath, cmd.installPath)
 
@@ -510,7 +510,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         if not os.path.exists(cmd.path):
-            os.makedirs(cmd.path, 0755)
+            os.makedirs(cmd.path, 0o755)
 
         # make sure that the filesystem is mounted
         shell.call("/usr/local/bin/zs-ess-is-mounted")
@@ -555,7 +555,7 @@ class ZsesStoragePlugin(kvmagent.KvmAgent):
 
         dirname = os.path.dirname(cmd.installUrl)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installUrl, cmd)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)

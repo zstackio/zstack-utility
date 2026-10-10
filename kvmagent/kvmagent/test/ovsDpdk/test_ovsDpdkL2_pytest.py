@@ -42,7 +42,7 @@ class Test():
     def test_dpdkl2_CheckPhysicalNetworkInterface(self):
         cmd = network_plugin.CheckPhysicalNetworkInterfaceCmd()
         cmd.interfaceNames = ["eno1"]
-        print 'check ovs bond0 %s' % cmd.interfaceNames
+        print('check ovs bond0 %s' % cmd.interfaceNames)
 
 
         self.NET_PLUGIN.check_physical_network_interface(({"body": jsonobject.dumps(cmd)}))

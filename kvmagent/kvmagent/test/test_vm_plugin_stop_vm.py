@@ -18,11 +18,11 @@ class Test(unittest.TestCase):
     CALLBACK_URL2 = 'http://localhost:7070/testcallback2'
     
     def callback2(self, req):
-        print req[http.REQUEST_BODY]
+        print(req[http.REQUEST_BODY])
     
     def callback(self, req):
         rsp = jsonobject.loads(req[http.REQUEST_BODY])
-        print jsonobject.dumps(rsp)
+        print(jsonobject.dumps(rsp))
         
         cmd = vm_plugin.StopVmCmd()
         cmd.uuid = self.uuid

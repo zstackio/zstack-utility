@@ -1,3 +1,4 @@
+from __future__ import annotations
 from zstacklib.utils import shell
 from distutils.version import LooseVersion
 import json

@@ -1,9 +1,9 @@
 # NOTE: code from Cloudbase Solutions SRL
 # Licensed under the Apache License, Version 2.0
 
+from __future__ import annotations
 import struct
 import socket
-import subprocess
 import os
 import netaddr
 import time

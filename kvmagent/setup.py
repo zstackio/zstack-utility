@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '5.2.0'
+version = '5.3.0'
 
 setup(name='kvmagent',
       version=version,
@@ -19,9 +19,8 @@ ZStack KVM agent REST service""",
       zip_safe=True,
       install_requires=[
             # -*- Extra requirements: -*-
-            "prometheus_client",
-            "typing",
-            "future"
+            "prometheus_client==0.17.1",
+            "libvirt-python==8.0.0"
       ],
       entry_points="""
       # -*- Entry points: -*-

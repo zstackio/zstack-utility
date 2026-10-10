@@ -41,18 +41,17 @@ extra_packages = ""
 update_packages = 'false'
 zstack_lib_dir = "/var/lib/zstack"
 zstack_libvirt_nwfilter_dir = "%s/nwfilter" % zstack_lib_dir
-skipIpv6 = 'false'
+disableIp6Tables = 'false'
 bridgeDisableIptables = 'false'
 isBareMetal2Gateway='false'
 releasever = ''
 unsupported_iproute_list = ["nfs4"]
 unittest_flag = 'false'
-mn_ip = None
-isInstallHostShutdownHook = 'false'
 isEnableKsm = 'none'
 restart_libvirtd = 'false'
 enable_spice_tls = None
 enable_cgroup_device_acl = None
+isRemoteCube = False
 
 
 # get parameter from shell
@@ -101,8 +100,6 @@ repo_dir = "/opt/zstack-dvd/{}".format(host_info.host_arch)
 if not os.path.isdir(repo_dir):
     error("Missing directory '{}', please try 'zstack-upgrade -a {}_iso'".format(repo_dir, host_info.host_arch))
 
-# check is cube env
-isCube = True if os.path.exists("/usr/local/hyperconverged") else False
 
 
 def update_libvirtd_config(host_post_info):
@@ -200,7 +197,7 @@ run_remote_command("rm -rf {}/*; mkdir -p /usr/local/zstack/ || true".format(kvm
 def install_kvm_pkg():
     def rpm_based_install():
         os_base_dep = "bridge-utils chrony conntrack-tools cyrus-sasl-md5 device-mapper-multipath expect ipmitool iproute ipset \
-                        usbredir-server iputils libvirt libvirt-client libvirt-python lighttpd lsof net-tools nfs-utils nmap openssh-clients \
+                        usbredir-server iputils libvirt libvirt-client lighttpd lsof net-tools nfs-utils nmap openssh-clients \
                         smartmontools sshpass usbutils wget audit collectd-virt storcli nvme-cli pv rsync sed pciutils tar"
 
         distro_mapping = {
@@ -214,6 +211,8 @@ def install_kvm_pkg():
                            'MegaCli Arcconf python-pyudev kernel-devel '
                            'edac-utils')
 
+        py3_rpms = 'python3.11 python3.11-devel python3.11-pip libvirt-devel libffi-devel openssl-devel'
+
         releasever_mapping = {
             'c74': 'qemu-kvm',
             'c76': 'qemu-kvm libvirt-admin seabios-bin nping elfutils-libelf-devel freeipmi',
@@ -223,7 +222,7 @@ def install_kvm_pkg():
             'h79c': ('%s qemu-kvm libvirt-admin seabios-bin nping freeipmi '
                      'elfutils-libelf-devel vconfig OVMF libicu') % helix_rhel_rpms,
             'h84r': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
-                     'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump') % helix_rhel_rpms,
+                     'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump %s') % (helix_rhel_rpms, py3_rpms),
             'rl84': 'qemu-kvm libvirt-daemon libvirt-daemon-kvm seabios-bin elfutils-libelf-devel lldpd',
             'euler20': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk',
             'oe2203sp1': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk edac-utils lldpd tcpdump',
@@ -234,6 +233,16 @@ def install_kvm_pkg():
         edk2_mapping = {
             'x86_64': 'edk2-ovmf edk2.git-ovmf-x64',
             'aarch64': 'edk2-aarch64'
+        }
+
+        cube_distro_mapping = {
+            'x86_64_centos': "lm_sensors",
+            'aarch64_kylin': "lm_sensors edac-utils",
+            'x86_64_kylin': "lm_sensors edac-utils Arcconf",
+        }
+
+        cube_releasever_mapping = {
+            'h84r': "lm_sensors"
         }
 
         # handle zstack_repo
@@ -247,16 +256,14 @@ def install_kvm_pkg():
             # common kvmagent deps of x86 and arm that need to update
             common_update_list = ("sanlock sysfsutils hwdata sg3_utils lvm2"
                                   " lvm2-libs lvm2-lockd systemd openssh"
-                                  " glusterfs")
+                                  " glusterfs libcbd")
             common_no_update_list = "librbd1"
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
-            if isCube:
-                cube_dep_list = " lm_sensors"
-                if releasever not in kylin:
-                    cube_dep_list += " lm_sensors-libs"
-                common_dep_list += cube_dep_list
+            if isRemoteCube:
+                cube_distro_info = host_info.host_arch + "_" + distro_head
+                common_dep_list = "%s %s %s" % (common_dep_list, cube_distro_mapping.get(cube_distro_info, ''), cube_releasever_mapping.get(releasever, ''))
 
             dep_list = common_dep_list
             update_list = common_update_list
@@ -268,15 +275,18 @@ def install_kvm_pkg():
             host_post_info.post_label_param = "libvirt"
             (status, output) = run_remote_command(command, host_post_info, True, True)
             if output:
-            	# libvirt-python installation does not affect the libvirt installation
-            	command = ("yum --disablerepo=* --enablerepo={0} --assumeno install libvirt-python |awk '{{print $1}}' | grep -Ew '^\s*libvirt\s*$'").format(zstack_repo)
-            	host_post_info.post_label = "ansible.shell.install.pkg"
-            	host_post_info.post_label_param = "libvirt-python"
-            	(status, output) = run_remote_command(command, host_post_info, True, True)
-            	if status is True:
-                    dep_list = ' '.join([pkg for pkg in dep_list.split() if not pkg.startswith("libvirt")])
+                # python3-libvirt installation does not affect the libvirt installation
+                command = (
+                    "yum --disablerepo=* --enablerepo={0} --assumeno install python3-libvirt |awk '{{print $1}}' | grep -Ew '^\s*libvirt\s*$'").format(
+                    zstack_repo)
+                host_post_info.post_label = "ansible.shell.install.pkg"
+                host_post_info.post_label_param = "python3-libvirt"
+                (status, output) = run_remote_command(command, host_post_info, True, True)
+                is_libvirt = lambda x: x.startswith("libvirt") and not x.startswith("libvirt-devel")
+                if status is True:
+                    dep_list = ' '.join([pkg for pkg in dep_list.split() if not is_libvirt(pkg)])
                 else:
-                    dep_list = ' '.join([pkg for pkg in dep_list.split() if pkg == 'libvirt-python' or not pkg.startswith("libvirt")])
+                    dep_list = ' '.join([pkg for pkg in dep_list.split() if pkg == 'python3-libvirt' or not is_libvirt(pkg)])
 
             # add extra package
             if extra_packages != '':
@@ -304,7 +314,7 @@ def install_kvm_pkg():
                 run_remote_command(command, host_post_info)
         else:
             # name: install kvm related packages on RedHat based OS from online
-            for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt-python', 'libvirt', 'nfs-utils', 'vconfig',
+            for pkg in ['zstack-release', 'openssh-clients', 'bridge-utils', 'wget', 'chrony', 'sed', 'libvirt', 'libvirt-devel', 'nfs-utils', 'vconfig',
                         'libvirt-client', 'net-tools', 'iscsi-initiator-utils', 'lighttpd', 'iproute', 'sshpass',
                         'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
                         'lvm2', 'lvm2-lockd', 'sanlock', 'sysfsutils', 'smartmontools', 'device-mapper-multipath', 'hwdata', 'sg3_utils']:
@@ -416,7 +426,7 @@ def install_kvm_pkg():
 
     def deb_based_install():
         # name: install kvm related packages on Debian based OS
-        install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python-libvirt',
+        install_pkg_list = ['curl', 'qemu', 'qemu-system', 'bridge-utils', 'wget', 'qemu-utils', 'python3-libvirt',
                             'libvirt-daemon-system', 'libfdt-dev', 'libvirt-dev', 'libvirt-clients', 'chrony','vlan',
                             'libguestfs-tools', 'sed', 'nfs-common', 'open-iscsi','ebtables', 'pv', 'usbutils',
                             'pciutils', 'expect', 'lighttpd', 'sshpass', 'rsync', 'iputils-arping', 'nmap', 'collectd',
@@ -436,7 +446,7 @@ def install_kvm_pkg():
         host_post_info.post_label = "ansible.shell.enable.module"
         host_post_info.post_label_param = "br_netfilter"
         run_remote_command(command, host_post_info)
-        update_pkg_list = ['ebtables', 'python-libvirt', 'qemu-system-arm']
+        update_pkg_list = ['ebtables', 'python3-libvirt', 'qemu-system-arm']
         apt_update_packages(update_pkg_list, host_post_info)
         libvirtd_conf_status = update_libvirtd_config(host_post_info)
         if chroot_env == 'false':
@@ -496,7 +506,7 @@ def copy_kvm_files():
     global qemu_conf_status, copy_zstacklib_status, copy_kvmagent_status, copy_smart_nics_status
 
     # copy agent files
-    file_list = ["vm-tools.sh", "agent_version", "kvmagent-iptables"]
+    file_list = ["vm-tools.sh", "agent_version", "kvmagent-iptables", "shutdown_vm"]
     for file in file_list:
         _src = os.path.join(file_root, file)
         _dst = os.path.join(workplace, file)
@@ -559,22 +569,6 @@ def copy_kvm_files():
     command = 'sysctl -p /var/lib/zstack/kvm/sysctl/default.conf'
     run_remote_command(command, host_post_info)
 
-def copy_kvmagshutdown():
-    if isInstallHostShutdownHook == 'true':
-        kvmagshutdown_src = "files/kvm/shutdown_vm"
-        kvmagshutdown_dst = "/etc/init.d/"
-        copy_to_remote(kvmagshutdown_src, kvmagshutdown_dst, "mode=755", host_post_info)
-        run_remote_command("sed -i 's/mn_ip/%s/g; s/host_ip/%s/g' /etc/init.d/shutdown_vm" % (mn_ip, host) +
-                           " && ln -s -f /etc/init.d/shutdown_vm /etc/rc1.d/K01shutdown_vm "
-                           "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc6.d/K01shutdown_vm "
-                           "&& ln -s -f /etc/init.d/shutdown_vm /etc/rc0.d/K01shutdown_vm "
-                           "&& chkconfig shutdown_vm on",
-                           host_post_info)
-    else:
-        run_remote_command("rm -rf /etc/init.d/shutdown_vm && rm -rf /etc/rc1.d/K01shutdown_vm && "
-                           "rm -rf /etc/rc6.d/K01shutdown_vm && rm -rf /etc/rc0.d/K01shutdown_vm", host_post_info)
-
-
 def copy_gpudriver():
     """copy mxgpu driver"""
     _src = "{}/mxgpu_driver.tar.gz".format(file_root)
@@ -590,6 +584,17 @@ def copy_ovmf_tools():
     _src = "/opt/zstack-dvd/{}/{}/ovmf_tools/".format(host_info.host_arch, releasever)
     _dst = "/usr/share/OVMF/"
     copy_to_remote(_src, _dst, None, host_post_info)
+
+
+def copy_exporter_tools():
+    """copy zs-exporter from mn_node to host_node"""
+    file_list = ["process_exporter", "zstack_service_exporter"]
+    for file in file_list:
+        _src = '/opt/zstack-dvd/{}/{}/tools/{}'.format(host_info.host_arch, releasever, file)
+        if os.path.exists(_src):
+            _dst = os.path.join(workplace, file)
+            copy_to_remote(_src, _dst, "mode=755", host_post_info)
+
 
 def copy_lsusb_scripts():
     _src = os.path.join(file_root, "lsusb.py")
@@ -629,11 +634,9 @@ def copy_bond_conf():
 
 def copy_cube_tools():
     """copy cube required tools from mn_node to host_node"""
-    if not isCube:
-        return
     cube_root_dst = "/usr/local/hyperconverged/"
     _src = os.path.join(cube_root_dst, "tools/hd_ctl")
-    if os.path.exists(_src):
+    if isRemoteCube and os.path.exists(_src):
         _dst = os.path.join(cube_root_dst, "tools")
         copy_to_remote(_src, _dst, "mode=755", host_post_info)
         command = "ln -sf /usr/local/hyperconverged/tools/hd_ctl/hd_ctl /bin/"
@@ -670,7 +673,7 @@ def do_network_config():
         host_post_info.post_label_param = "bridge forward"
         run_remote_command(command, host_post_info)
 
-    if skipIpv6 != 'true':
+    if disableIp6Tables != 'true':
         if host_info.distro in RPM_BASED_OS:
             # name: copy ip6tables initial rules in RedHat
             IP6TABLE_SERVICE_FILE = '/usr/lib/systemd/system/ip6tables.service'
@@ -678,6 +681,7 @@ def do_network_config():
             copy_arg.src = "%s/ip6tables" % file_root
             copy_arg.dest = "/etc/sysconfig/ip6tables"
             copy(copy_arg, host_post_info)
+            run_remote_command('mkdir -p /var/lock/subsys/', host_post_info)
             replace_content(IP6TABLE_SERVICE_FILE, "regexp='syslog.target,iptables.service' replace='syslog.target iptables.service'", host_post_info)
             service_status("ip6tables", "state=restarted enabled=yes", host_post_info)
         elif host_info.distro in DEB_BASED_OS:
@@ -740,20 +744,22 @@ def copy_spice_certificates_to_host():
 def install_virtualenv():
     """install virtualenv"""
 
-    virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-    if virtual_env_status is False:
-        command = "rm -rf %s && rm -rf %s" % (virtenv_path, kvm_root)
+    py_version = get_virtualenv_python_version(virtenv_path, host_post_info)
+    if py_version and not py_version.startswith("3.11"):
+        command = "rm -rf %s" % virtenv_path
         host_post_info.post_label = "ansible.shell.remove.file"
         host_post_info.post_label_param = "%s, %s" % (virtenv_path, kvm_root)
         run_remote_command(command, host_post_info)
-        sys.exit(1)
-    # name: make sure virtualenv has been setup
-    virtenv_flag = "--system-site-packages"
-    # virtenv_flag = "" if unittest_flag == 'true' else "--system-site-packages"
-    command = "[ -f %s/bin/python ] || virtualenv-2.7 %s %s " % (virtenv_path, virtenv_flag, virtenv_path)
-    host_post_info.post_label = "ansible.shell.check.virtualenv"
-    host_post_info.post_label_param = None
-    run_remote_command(command, host_post_info)
+        py_version = None
+
+    if not py_version:
+        # name: make sure virtualenv has been setup
+        virtenv_flag = "--system-site-packages"
+        # virtenv_flag = "" if unittest_flag == 'true' else "--system-site-packages"
+        command = "python3.11 -m venv %s %s " % (virtenv_path, virtenv_flag)
+        host_post_info.post_label = "ansible.shell.check.virtualenv"
+        host_post_info.post_label_param = None
+        run_remote_command(command, host_post_info)
 
 def install_python_pkg():
     extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
@@ -928,10 +934,19 @@ def set_gpu_blacklist():
     run_remote_command(command, host_post_info)
 
 
+def check_is_remote_cube():
+    command = "ls /usr/local/hyperconverged"
+    status = run_remote_command(command, host_post_info, return_status=True)
+    global isRemoteCube
+    isRemoteCube = status
+
+
+check_is_remote_cube()
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
 copy_kvm_files()
+copy_exporter_tools()
 copy_gpudriver()
 copy_ovmf_tools()
 copy_lsusb_scripts()
@@ -940,7 +955,6 @@ copy_grubaa64_efi()
 copy_bond_conf()
 copy_i40e_driver()
 copy_cube_tools()
-copy_kvmagshutdown()
 copy_ovs_tools()
 create_virtio_driver_directory()
 set_max_performance()

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import time
 from zstacklib.utils import http, jsonobject
 from zstacklib.utils import log
@@ -48,12 +49,19 @@ def get_api_id(spec):
 
 def get_timeout(spec):
     if spec.taskContext and spec.taskContext.__messagetimeout__ and spec.taskContext.__messagedeadline__:
-        timeout = min(long(spec.taskContext.__messagetimeout__) / 1000, long(spec.taskContext.__messagedeadline__) / 1000 - linux.get_current_timestamp())
+        timeout = min(int(spec.taskContext.__messagetimeout__) / 1000, int(spec.taskContext.__messagedeadline__) / 1000 - linux.get_current_timestamp())
         if timeout <= 60:
             raise Exception("timeout[%s] is too short" % timeout)
         return int(timeout)
     else:
         return 0
+
+
+def get_deadline(spec):
+    timeout = get_timeout(spec)
+    if timeout:
+        return int(time.time() + timeout)
+
 
 class Report(object):
     url = None
@@ -92,7 +100,7 @@ class Report(object):
             self.report()
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
-            logger.warn("{api: %s} report progress failed: %s" % (e.message, self.ctxMap["api"]))
+            logger.warn("{api: %s} report progress failed: %s" % (str(e), self.ctxMap["api"]))
 
     @thread.AsyncThread
     def report(self):

@@ -19,7 +19,7 @@ import os.path
 import re
 import email
 import tempfile
-import cStringIO as c
+import io as c
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
 import struct
@@ -177,7 +177,7 @@ class NamespaceInfraEnv(object):
 
         cmds = []
         o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
-        o = o.strip(" \t\r\n")
+        o = o.strip()
         if o:
             for l in o.split("\n"):
                 # we don't distinguish if the rule is in filter table or nat table
@@ -597,7 +597,7 @@ class DhcpNameSpaceEnv(object):
         if r != 0:
             logger.error("cannot get physical interface name from bridge " + self.bridge_name)
             return
-        PHY_DEV = PHY_DEV.strip(' \t\n\r')
+        PHY_DEV = PHY_DEV.strip()
 
         # get mac address of inner dev
         DHCP_DEV_MAC = iproute.IpNetnsShell(self.namespace_name).get_mac(dev)
@@ -613,7 +613,7 @@ class DhcpNameSpaceEnv(object):
         if dhcp_ip is not None:
             CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
             o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
-            o = o.strip(" \t\r\n")
+            o = o.strip()
             if o:
                 cmds = []
                 for l in o.split("\n"):
@@ -636,7 +636,7 @@ class DhcpNameSpaceEnv(object):
         DHCP6_CHAIN_NAME = "ZSTACK-DHCP6-%s" % l3_uuid[0:9]  # this case is for old version dhcp6 namespace
 
         o = bash_o("ebtables-save | grep {{DHCP6_CHAIN_NAME}} | grep -- -A")
-        o = o.strip(" \t\r\n")
+        o = o.strip()
         if o:
             cmds = []
             for l in o.split("\n"):
@@ -663,7 +663,7 @@ class DhcpNameSpaceEnv(object):
         if r != 0:
             logger.error("cannot get physical interface name from bridge " + BR_NAME)
             return
-        PHY_DEV = PHY_DEV.strip(' \t\n\r')
+        PHY_DEV = PHY_DEV.strip()
         # get mac address of inner dev
         DHCP_DEV_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(self.infra_env.near_vm_inner)
         iproute.del_fdb_entry(PHY_DEV, DHCP_DEV_MAC)
@@ -1049,7 +1049,7 @@ class DhcpEnv(object):
             if r != 0:
                 logger.error("cannot get physical interface name from bridge " + BR_NAME)
                 return
-            PHY_DEV = PHY_DEV.strip(' \t\n\r')
+            PHY_DEV = PHY_DEV.strip()
 
             # get mac address of inner dev
             INNER_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
@@ -1204,7 +1204,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if not chain_name:
             return
         o = bash_o("ebtables-save | grep {{chain_name}} | grep -- -A")
-        o = o.strip(" \t\r\n")
+        o = o.strip()
         if o:
             cmds = []
             for l in o.split("\n"):
@@ -1258,7 +1258,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if r != 0:
             logger.error("cannot get physical interface name from bridge " + BR_NAME)
             return
-        PHY_DEV = PHY_DEV.strip(' \t\n\r')
+        PHY_DEV = PHY_DEV.strip()
 
         # get mac address of inner dev
         INNER_MAC = iproute.IpNetnsShell(NAMESPACE_NAME).get_mac(INNER_DEV)
@@ -1333,7 +1333,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
             @in_bash
             def __init__(self):
-                self.raw_text = bash_o("ebtables-save").strip(" \t\r\n").splitlines()
+                self.raw_text = bash_o("ebtables-save").strip().splitlines()
                 self.tables = {}
                 self.chain_names = {}
                 for table in EbtablesRules.default_tables:
@@ -1378,7 +1378,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 for line in self.tables[table]:
                     if line[0] == ':':
                         continue
-                    if len(list(filter(lambda x: '-A %s ' % x in line, result))) < 1:
+                    if len(list([x for x in result if '-A %s ' % x in line])) < 1:
                         continue
                     jump_chain = self._get_jump_chain_name_from_cmd(table, line)
                     if jump_chain:
@@ -1407,7 +1407,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 for keyword in list(set(keywords)):
                     related_chains.extend(self._get_related_chain_names(table, keyword))
                 for line in self.tables[table]:
-                    if len(list(filter(lambda x: x in line, related_chains))) > 0:
+                    if len(list([x for x in related_chains if x in line])) > 0:
                         result.append(line)
 
                 default_rules = EbtablesRules.default_rules[table]
@@ -1419,9 +1419,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                 # type: (dict[str, list]) -> list[str]
                 result = []
                 if not set(patterns.keys()).issubset(EbtablesRules.default_tables):
-                    raise Exception('invalid parameter table %s' % patterns.keys())
+                    raise Exception('invalid parameter table %s' % list(patterns.keys()))
 
-                for key, value in patterns.items():
+                for key, value in list(patterns.items()):
                     keywords = []
                     for pattern in value:
                         keywords.extend(self._get_related_top_chain_names(key, pattern))
@@ -1466,7 +1466,7 @@ tag:{{TAG}},option:dns-server,{{DNS}}
 
         cmds = []
         o = bash_o("ebtables-save | grep {{CHAIN_NAME}} | grep -- -A")
-        o = o.strip(" \t\r\n")
+        o = o.strip()
         if o:
             for l in o.split("\n"):
                 # we don't distinguish if the rule is in filter table or nat table
@@ -1523,13 +1523,13 @@ tag:{{TAG}},option:dns-server,{{DNS}}
                     raise Exception('same namespace [%s] but has different port: %s, %s ' % (
                     u.namespaceName, namespaces[u.namespaceName].port, u.port))
 
-        for n in namespaces.values():
+        for n in list(namespaces.values()):
             self._apply_userdata_xtables(n)
 
         for u in cmd.userdata:
             self._apply_userdata_vmdata(u)
 
-        for n in namespaces.values():
+        for n in list(namespaces.values()):
             self._apply_userdata_restart_httpd(n)
 
         return jsonobject.dumps(kvmagent.AgentResponse())
@@ -1790,7 +1790,7 @@ mimetype.assign = (
             'userdata_vm_ips': userdata_vm_ips
         })
 
-        linux.mkdir(http_root, 0777)
+        linux.mkdir(http_root, 0o777)
 
         if not os.path.exists(conf_path):
             with open(conf_path, 'w') as fd:
@@ -2165,7 +2165,7 @@ mimetype.assign = (
             DHCPNAMESPACE = dhcpInfo.namespaceName
             dhcp_ip = bash_o(
                 "ip netns exec {{DHCPNAMESPACE}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
-            dhcp_ip = dhcp_ip.strip(" \t\n\r")
+            dhcp_ip = dhcp_ip.strip()
 
             if dhcp_ip:
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
@@ -2231,7 +2231,7 @@ dhcp-range={{g}}
 '''
 
             br_num = shell.call("ip netns list-id | grep -w %s | awk '{print $2}'" % namespace_name)
-            br_num = br_num.strip(' \t\r\n')
+            br_num = br_num.strip()
             if not br_num:
                 raise Exception('cannot find the ID for the namespace[%s]' % namespace_name)
 
@@ -2418,7 +2418,7 @@ dhcp-range={{range}}
 '''
 
             br_num = shell.call("ip netns list-id | grep -w %s | awk '{print $2}'" % namespace_name)
-            br_num = br_num.strip(' \t\r\n')
+            br_num = br_num.strip()
             if not br_num:
                 raise Exception('cannot find the ID for the namespace[%s]' % namespace_name)
 
@@ -2518,7 +2518,7 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
             else:
                 self._refresh_dnsmasq(namespace_name, conf_file_path)
 
-        for k, v in namespace_dhcp.iteritems():
+        for k, v in namespace_dhcp.items():
             if v[0].ipVersion == 4 or v[0].ipVersion == 46:
                 apply(v)
             else:
@@ -2531,7 +2531,7 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
 
         NS_NAME = ns_name
         CONF_FILE = conf_file_path
-        #DNSMASQ = bash_errorout('which dnsmasq').strip(' \t\r\n')
+        #DNSMASQ = bash_errorout('which dnsmasq').strip()
         DNSMASQ_BIN = "/usr/local/zstack/dnsmasq"
         bash_errorout('ip netns exec {{NS_NAME}} {{DNSMASQ_BIN}} --conf-file={{CONF_FILE}} -K')
 
@@ -2594,7 +2594,7 @@ sed -i '/^$/d' {{DNS}}
             DHCPNAMESPACE = dhcpInfo.namespaceName
             dhcp_ip = bash_o(
                 "ip netns exec {{DHCPNAMESPACE}} ip add | grep inet | awk '{print $2}' | awk -F '/' '{print $1}' | head -1")
-            dhcp_ip = dhcp_ip.strip(" \t\n\r")
+            dhcp_ip = dhcp_ip.strip()
 
             if dhcp_ip:
                 CHAIN_NAME = getDhcpEbtableChainName(dhcp_ip)
@@ -2622,7 +2622,7 @@ sed -i '/^$/d' {{DNS}}
                 self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
                 self._restart_dnsmasq(d.namespaceName, conf_file_path)
 
-        for k, v in namespace_dhcp.iteritems():
+        for k, v in namespace_dhcp.items():
             release(v)
 
         rsp = ReleaseDhcpRsp()

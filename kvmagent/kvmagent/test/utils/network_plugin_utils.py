@@ -1,7 +1,7 @@
 from zstacklib.test.utils import env, misc
 from zstacklib.utils import linux, jsonobject, bash
 from kvmagent.plugins.network_plugin import NetworkPlugin
-from common_util import checkParamNotNone
+from .common_util import checkParamNotNone
 
 NETWORK_PLUGIN = None
 

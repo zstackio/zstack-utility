@@ -1,15 +1,14 @@
-import os.path
 import time
 import libvirt
 import json
 import threading
+import traceback
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
-from zstacklib.utils import shell
 from zstacklib.utils import thread
 from zstacklib.utils.qga import VmQga
 from kvmagent.plugins import vm_plugin
@@ -57,7 +56,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
         self.running_vm_lock = threading.Lock()
         self.zwatch_qga_lock = threading.Lock()
 
-    def configure(self, config):
+    def configure(self, config=None):
         self.config = config
 
     def start(self):
@@ -81,9 +80,9 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                         domains = get_domains()
                         vm_states, vm_dict = get_guest_tools_states(domains)
                         self.report_vm_qga_state({
-                            vmUuid: qgaStatus.qgaRunning for vmUuid, qgaStatus in vm_states.items()
+                            vmUuid: qgaStatus.qgaRunning for vmUuid, qgaStatus in list(vm_states.items())
                         }, {
-                            vmUuid: qgaStatus.zsToolsFound for vmUuid, qgaStatus in vm_states.items()
+                            vmUuid: qgaStatus.zsToolsFound for vmUuid, qgaStatus in list(vm_states.items())
                         })
                         # remove stopped vm which in running_vm_list
                         logger.debug('current QGA running vm list (count: %d): %s' %
@@ -91,7 +90,7 @@ class ZWatchMetricMonitor(kvmagent.KvmAgent):
                         last_monitor_vm_list = self.running_vm_list[:]
                         with self.running_vm_lock:
                             self.running_vm_list = [
-                                vmUuid for vmUuid, qgaStatus in vm_states.items() if qgaStatus.qgaRunning
+                                vmUuid for vmUuid, qgaStatus in list(vm_states.items()) if qgaStatus.qgaRunning
                             ]
                         new_vm_list = set(self.running_vm_list) - set(last_monitor_vm_list)
                         logger.debug('recently detected vm list without QGA (count: %d): %s' %
@@ -301,6 +300,7 @@ def get_guest_tools_states(domains):
                     return qga_status
             except Exception as e:
                 logger.debug("read /usr/local/zstack/guesttools failed {}".format(e))
+                logger.debug(traceback.format_exc())
                 return qga_status
 
         qga_status.zsToolsFound = True

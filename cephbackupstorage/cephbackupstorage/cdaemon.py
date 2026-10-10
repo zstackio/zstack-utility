@@ -11,7 +11,7 @@ from zstacklib.utils import linux
 pidfile = '/var/run/zstack/ceph-backupstorage.pid'
 log.configure_log('/var/log/zstack/ceph-backupstorage.log')
 logger = log.get_logger(__name__)
-import cephagent
+from . import cephagent
 
 def prepare_pid_dir(path):
     pdir = os.path.dirname(path)
@@ -21,7 +21,7 @@ def prepare_pid_dir(path):
 def main():
     usage = 'usage: python -c "from cephbackupstorage import cdaemon; cdaemon.main()" start|stop|restart'
     if len(sys.argv) != 2 or not sys.argv[1] in ['start', 'stop', 'restart']:
-        print usage
+        print(usage)
         sys.exit(1)
     
     global pidfile

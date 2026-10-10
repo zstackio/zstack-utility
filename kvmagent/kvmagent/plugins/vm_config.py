@@ -135,6 +135,7 @@ class GetGuestToolsStateResponse(kvmagent.AgentResponse):
         super(GetGuestToolsStateResponse, self).__init__()
         self.states = None
 
+
 class GetVmGpuInfoResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVmGpuInfoResponse, self).__init__()
@@ -326,7 +327,11 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
     def get_vm_tianshu_gpu_info_by_guesttool(self, qga):
         gpuinfos = []
-        cmd = gpu.get_tianshu_gpu_basic_info_cmd("mswindows" in qga.os)
+        version = qga.guest_exec_cmd_no_exitcode(gpu.is_tianshu_v1("mswindows" in qga.os))
+        if version is None:
+            cmd = gpu.get_tianshu_gpu_basic_info_cmd_v2("mswindows" in qga.os)
+        else:
+            cmd = gpu.get_tianshu_gpu_basic_info_cmd_v1("mswindows" in qga.os)
         gpu_info_output = qga.guest_exec_cmd_no_exitcode(cmd)
         if gpu_info_output is None:
             return gpuinfos
@@ -339,15 +344,19 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         if npu_id_output is None:
             return gpuinfos
 
-        npu_id = gpu.get_huawei_npu_id(npu_id_output)
-        if npu_id is None:
+        npu_ids = gpu.get_huawei_npu_id(npu_id_output)
+        if len(npu_ids) == 0:
             return gpuinfos
 
-        npu_info_board_output = qga.guest_exec_cmd_no_exitcode(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
-        if npu_info_board_output is None:
-            return gpuinfos
+        npu_infos = []
+        for npu_id in npu_ids:
+            npu_info_board_output = qga.guest_exec_cmd_no_exitcode(gpu.get_huawei_gpu_basic_info_cmd(npu_id))
+            if npu_info_board_output is None:
+                continue
 
-        return self.map_pci_addresses_in_gpu_info(gpu.parse_huawei_gpu_output_by_npu_id(npu_info_board_output), qga)
+            npu_infos.extend(gpu.parse_huawei_gpu_output_by_npu_id(npu_info_board_output))
+
+        return self.map_pci_addresses_in_gpu_info(npu_infos, qga)
 
     def get_vm_gpu_info_by_guesttool(self, domain, vendors):
         vm_uuid = domain.name()
@@ -355,7 +364,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         if qga.state != VmQga.QGA_STATE_RUNNING:
             return 1, "qga is not running for vm {}".format(vm_uuid)
 
-        if qga.os not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys() or \
+        if qga.os not in list(VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT.keys()) or \
                 qga.os_version not in VmConfigPlugin.VM_CONFIG_SYNC_OS_VERSION_SUPPORT[qga.os]:
             return 1, "not support for os {} version {}".format(qga.os, qga.os_version)
         gpuinfos = []
@@ -466,6 +475,6 @@ if __name__ == "__main__":
         print("ports_config start.")
         config_driver.config_ports(cmd.portsConfig)
     except QgaException as e:
-        print("result error: code=%s, message=%s." % (e.error_code, e.message))
+        print("result error: code=%s, message=%s." % (e.error_code, str(e)))
     """
     print('config success')

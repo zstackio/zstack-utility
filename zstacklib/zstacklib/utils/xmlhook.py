@@ -1,4 +1,5 @@
 
+from __future__ import annotations
 import os
 from xml.dom import minidom
 import xml.etree.ElementTree as etree
@@ -82,7 +83,7 @@ class XmlHook:
         parent_xmlbranch.append(child_xmlbranch)
 
     def get_changed_xmlstr(self, root_xmlbranch):
-        changed_xmlstr = tostring(root_xmlbranch)
+        changed_xmlstr = tostring(root_xmlbranch, encoding="unicode")
         pretty_xmldom = minidom.parseString(changed_xmlstr)
         pretty_xmlstr = pretty_xmldom.toprettyxml()
         return os.linesep.join([s for s in pretty_xmlstr.splitlines() if s.strip()])

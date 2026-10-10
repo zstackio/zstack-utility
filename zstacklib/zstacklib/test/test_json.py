@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import unittest
 import types
 import inspect
@@ -39,8 +40,8 @@ class Test(unittest.TestCase):
         jstr2 = jsonobject.dumps(nb)
         self.assertEqual(jstr, jstr2)
         jb = jsonobject.loads(jstr)
-        print jb.xxxxx
-        print jb.lst
+        print(jb.xxxxx)
+        print(jb.lst)
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

@@ -16,7 +16,7 @@ class Base(object):
     allowed_keys = ['volume_access_path_gateway_ips','iqn_target_ip_map']
 
     def __init__(self):
-        for v in self.k_v_mapping.values():
+        for v in list(self.k_v_mapping.values()):
             setattr(self, v, None)
 
     @staticmethod
@@ -66,7 +66,7 @@ class BmInstanceObj(Base):
         obj.construct(bm_instance)
 
         setattr(obj, 'nics', [])
-        if 'nics' in bm_instance.keys():
+        if 'nics' in list(bm_instance.keys()):
             for port_dict in bm_instance['nics']:
                 port_obj = PortObj.from_json(port_dict)
                 obj.nics.append(port_obj)
@@ -179,7 +179,7 @@ class BondPortParasObj(Base):
     @classmethod
     def from_json(cls, paras):
 
-        if isinstance(paras, (str, unicode)):
+        if isinstance(paras, str):
             paras = json.loads(paras)
 
         obj = cls()

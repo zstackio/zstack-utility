@@ -41,7 +41,7 @@ class Test(unittest.TestCase):
     def test_dpdkl2_CheckPhysicalNetworkInterface(self):
         cmd = network_plugin.CheckPhysicalNetworkInterfaceCmd()
         cmd.interfaceNames = ["ovs-bond0"]
-        print 'check ovs bond0 %s' % cmd.interfaceNames
+        print('check ovs bond0 %s' % cmd.interfaceNames)
         url = kvmagent._build_url_for_test([network_plugin.CHECK_PHYSICAL_NETWORK_INTERFACE_PATH])
         ret = http.json_dump_post(url, cmd, headers={http.TASK_UUID:uuidhelper.uuid(), http.CALLBACK_URI:self.CALLBACK_URL})
         rsp = jsonobject.loads(ret)
@@ -108,8 +108,7 @@ class Test(unittest.TestCase):
 
 
 
-        print
-        'xxxxxxxxxxxxxxxxxxx %s' % cmd.vmUuid
+        print('xxxxxxxxxxxxxxxxxxx %s' % cmd.vmUuid)
         url = kvmagent._build_url_for_test([vm_plugin.KVM_START_VM_PATH])
         rsp = http.json_dump_post(url, cmd,
                                   headers={http.TASK_UUID: uuidhelper.uuid(), http.CALLBACK_URI: self.CALLBACK_URL})

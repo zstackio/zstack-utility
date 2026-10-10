@@ -1,6 +1,6 @@
 __author__ = 'Wave'
 
-from cStringIO import StringIO
+from io import StringIO
 from email import message_from_file
 from email.mime.multipart import MIMEMultipart
 import os
@@ -215,7 +215,7 @@ class TfNetProviderUserdata(kvmagent.KvmAgent):
             'pushgateway_port': self.KVM_HOST_PUSHGATEWAY_PORT,
         })
 
-        linux.mkdir(http_root, 0777)
+        linux.mkdir(http_root, 0o777)
 
         if not os.path.exists(conf_path):
             linux.write_file(conf_path, conf, True)

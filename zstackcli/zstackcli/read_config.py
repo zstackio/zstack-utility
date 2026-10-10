@@ -18,8 +18,8 @@ import zstacklib.utils.lock as lock
 import apibinding.inventory as inventory
 import apibinding.api_actions as api_actions
 
-import account_operations
-import resource_operations as res_ops
+from . import account_operations
+from . import resource_operations as res_ops
 
 # global exception information for thread usage
 exc_info = []
@@ -48,7 +48,7 @@ class JsonToXml(object):
 
         xml_item = etree.SubElement(self.xml_parent, self.xml_name)
         json_dict = vars(self.json_object)
-        for key, value in json_dict.iteritems():
+        for key, value in json_dict.items():
             if not key in self.not_save and not isinstance(value, list) and \
                     not isinstance(value, dict) and \
                     not isinstance(value, jsonobject.JsonObject):
@@ -63,7 +63,7 @@ class JsonToXml(object):
 
         xml_item = etree.SubElement(self.xml_parent, self.xml_name)
         json_dict = vars(self.json_object)
-        for key, value in json_dict.iteritems():
+        for key, value in json_dict.items():
             if not key in self.not_save and not isinstance(value, list) and \
                     not isinstance(value, dict) and \
                     not isinstance(value, jsonobject.JsonObject):
@@ -363,13 +363,13 @@ def get_zone(xml_root, session_uuid=None):
             if l3.networkServices:
                 nss_dict = {}
                 for ns in l3.networkServices:
-                    if not ns.networkServiceProviderUuid in nss_dict.keys():
+                    if not ns.networkServiceProviderUuid in list(nss_dict.keys()):
                         nss_dict[ns.networkServiceProviderUuid] \
                             = [ns.networkServiceType]
                     else:
                         nss_dict[ns.networkServiceProviderUuid].append(ns.networkServiceType)
 
-                for key in nss_dict.keys():
+                for key in list(nss_dict.keys()):
                     cond = res_ops.gen_query_conditions('uuid', '=', key)
                     ns = res_ops.safely_get_resource(
                         res_ops.NETWORK_SERVICE_PROVIDER, cond, session_uuid)
@@ -449,7 +449,7 @@ def get_zone(xml_root, session_uuid=None):
 
 
 def beautify_xml_element(xml_root_element):
-    xml_str = minidom.parseString(ElementTree.tostring(xml_root_element))
+    xml_str = minidom.parseString(ElementTree.tostring(xml_root_element, encoding="unicode"))
     new_xml = xml_str.toprettyxml(indent=XML_INDENT)
     return new_xml
 
@@ -492,7 +492,7 @@ def dump_zstack(save_to_file=None, admin_passwd=None):
         try:
             account_operations.logout(session_uuid)
         except:
-            print ' '
+            print(' ')
         raise e
 
     account_operations.logout(session_uuid)
@@ -500,6 +500,6 @@ def dump_zstack(save_to_file=None, admin_passwd=None):
     new_xml = str(beautify_xml_element(xml_root))
     #    new_xml = new_xml.replace('" ', '"\n')
     new_xml = make_xml_editable(new_xml)
-    print new_xml
+    print(new_xml)
     if save_to_file:
         open(save_to_file, 'w').write(new_xml)

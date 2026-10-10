@@ -29,7 +29,7 @@ class Test():
     def test_dpdkl2_CheckPhysicalNetworkInterface(self):
         cmd = network_plugin.CheckPhysicalNetworkInterfaceCmd()
         cmd.interfaceNames = ["eno1"]
-        print 'check ovs bond0 %s' % cmd.interfaceNames
+        print('check ovs bond0 %s' % cmd.interfaceNames)
 
 
         self.NET_PLUGIN.check_physical_network_interface(({"body": jsonobject.dumps(cmd)}))
@@ -72,8 +72,8 @@ class Test():
         _, pid_for_test_createOvsBridge_idempotence2 = bash.bash_ro(
             "ps -ef|grep -i ovs-vswitchd.pid|grep -v 'grep'|awk '{print $2}'")
 
-        print "pid1 %s" % pid_for_test_createOvsBridge_idempotence
-        print "pid2 %s" % pid_for_test_createOvsBridge_idempotence2
+        print("pid1 %s" % pid_for_test_createOvsBridge_idempotence)
+        print("pid2 %s" % pid_for_test_createOvsBridge_idempotence2)
 
         assert pid_for_test_createOvsBridge_idempotence == pid_for_test_createOvsBridge_idempotence2
 

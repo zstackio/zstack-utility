@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import os
 import subprocess
 from zstacklib.utils import log
@@ -33,7 +34,6 @@ class ShellCmd(object):
     '''
     classdocs
     '''
-    stdout = None  # type: str
 
     def __init__(self, cmd, workdir=None, pipe=True):
         '''
@@ -46,8 +46,13 @@ class ShellCmd(object):
         self.stderr = None
         self.return_code = None
 
-    def raise_error(self):
-        err = []
+    def raise_error(self, err=()):
+        """
+        :param err: extend error message
+        :return:
+        """
+        if err is ():
+            err = []
         err.append('failed to execute shell command: %s' % self.cmd.split(' ', 1)[0])
         err.append('return code: %s' % self.process.returncode)
         err.append('stdout: %s' % self.stdout)
@@ -59,6 +64,8 @@ class ShellCmd(object):
             log.get_logger(__name__).debug(self.cmd)
             
         (self.stdout, self.stderr) = self.process.communicate()
+        self.stdout = self.stdout.decode() if self.stdout else ''
+        self.stderr = self.stderr.decode() if self.stderr else ''
         if is_exception and self.process.returncode != 0:
             self.raise_error()
 

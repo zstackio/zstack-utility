@@ -2,7 +2,6 @@ import os.path
 import re
 import random
 import time
-from distutils.version import LooseVersion
 
 from typing import Dict, Any
 
@@ -124,18 +123,18 @@ class ReplicationInformation(object):
     diskStatus = None  # type: str
     networkStatus = None  # type: str
     role = None  # type: str
-    size = None  # type: long
+    size = None  # type: int
     name = None  # type: str
-    minor = None  # type: long
+    minor = None  # type: int
 
     def __init__(self):
         super(ReplicationInformation, self).__init__()
         self.diskStatus = None  # type: str
         self.networkStatus = None  # type: str
         self.role = None  # type: str
-        self.size = None  # type: long
+        self.size = None  # type: int
         self.name = None  # type: str
-        self.minor = None  # type: long
+        self.minor = None  # type: int
 
 
 
@@ -556,7 +555,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if cmd.storageNetworkCidr is not None:
             nics = linux.get_nics_by_cidr(cmd.storageNetworkCidr)
             if len(nics) != 0:
-                rsp.storageNetworkAddress = nics[0].values()[0]
+                rsp.storageNetworkAddress = list(nics[0].values())[0]
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
@@ -641,7 +640,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         command = shell.ShellCmd("vgs --nolocking -t %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
-            self.create_vg_if_not_found(cmd.vgUuid, set(disk), [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
+            self.create_vg_if_not_found(cmd.vgUuid, {disk}, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
@@ -836,7 +835,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def convertInstallPathToMount(path):
-        # type: (string) -> string
+        # type: (str) -> str
         return path.replace("mini:/", "/tmp")
 
     @kvmagent.replyerror
@@ -884,7 +883,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             linux.rm_dir_force(dst_dir)
 
         if not os.path.exists(dst_dir):
-            os.makedirs(dst_dir, 0755)
+            os.makedirs(dst_dir, 0o755)
         linux.upload_chain_to_filesystem(MiniFileConverter(), vol_path, dst_dir, overwrite=not cmd.skipIfExisting)
         rsp.totalSize = linux.get_filesystem_folder_size(dst_dir)
         return jsonobject.dumps(rsp)

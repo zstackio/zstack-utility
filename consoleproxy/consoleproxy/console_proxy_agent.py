@@ -1,4 +1,3 @@
-from zstacklib.utils import plugin
 from zstacklib.utils import http
 from zstacklib.utils import shell
 from zstacklib.utils import log
@@ -10,13 +9,10 @@ from zstacklib.utils import lock
 from zstacklib.utils.bash import *
 import os
 import os.path
-import atexit
 import time
 import traceback
 import pprint
 import functools
-import sys
-import subprocess
 import threading
 
 logger = log.get_logger(__name__)

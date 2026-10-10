@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '5.2.0'
+version = '5.3.0'
 
 setup(name='zstacklib',
       version=version,
@@ -18,29 +18,29 @@ Python support library for zstack""",
       include_package_data=True,
       zip_safe=True,
       install_requires=[
-          'CherryPy==3.2.4',
-          'simplejson==3.7.3',
-          'routes==2.1',
-          'paramiko==1.16.0',
-          'pyparsing<=1.5.7',
-          'pickledb==0.3',
-          'urllib3==1.15.1',
+          'CherryPy==18.8.0', # 3.2.4
+          'simplejson==3.18.4', #3.7.3
+          'paramiko>=2.0.0',
+          'pyparsing==2.4.7',
+          'pickledb==0.9.2', # 0.3
+          'urllib3==1.26.20',
           'netaddr==0.7.14',
-          'Jinja2==2.7.3',
-          'pyroute2==0.5.14',
-          'psutil==5.0.1',
-          "beeprint==2.4.7",
-          "pyyaml",
+          'Jinja2==3.1.5',
+          'Markupsafe==2.1.5',
+          'pyroute2==0.7.12',
+          'psutil==5.9.8',
+          "pyyaml==5.3.1",
           "func_timeout==4.3.5",
-          "six==1.10.0",
+          "six>=1.10.0",
           "certifi==2021.5.30",
           "xms-client",
-          "python-dateutil",
-          "setuptools==21.0.0",
-          "enum34==1.1.6",
+          "setuptools>=65.5.1", #21.0.0
           "cachetools==3.1.1",
           "xxhash==2.0.2",
-          "pillow==2.9.0"
+          "routes==2.4.1",
+          "pyudev>=0.18.0",
+          "pillow==2.9.0",
+          "mock==5.0.2"
       ],
       entry_points="""
       # -*- Entry points: -*-

@@ -89,8 +89,11 @@ else:
 
 if host_info.distro in RPM_BASED_OS:
     install_pkgs = 'openssh-clients'
+    py3_rpms = ' python3.11 python3.11-devel python3.11-pip libffi-devel openssl-devel'
     if releasever in kylin:
         install_pkgs = "nmap {}".format(install_pkgs)
+    if releasever in ["h84r"]:
+        install_pkgs += py3_rpms
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         install_pkgs += " qemu-img"
@@ -115,15 +118,16 @@ else:
     error("unsupported OS!")
 
 # name: install virtualenv
-virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status is False:
-    command = "rm -rf %s && rm -rf %s" % (virtenv_path, sftp_root)
+py_version = get_virtualenv_python_version(virtenv_path, host_post_info)
+if py_version and not py_version.startswith("3.11"):
+    command = "rm -rf %s" % virtenv_path
     run_remote_command(command, host_post_info)
-    sys.exit(1)
+    py_version = None
 
-# name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path)
-run_remote_command(command, host_post_info)
+if not py_version:
+    # name: make sure virtualenv has been setup
+    command = "python3.11 -m venv %s --system-site-packages" % virtenv_path
+    run_remote_command(command, host_post_info)
 
 # name: add public key
 authorized_key("root", current_dir + "/id_rsa.sftp.pub", host_post_info)

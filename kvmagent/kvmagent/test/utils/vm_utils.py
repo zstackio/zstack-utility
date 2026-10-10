@@ -1,7 +1,7 @@
 import copy
 
-import snapshot_utils
-import volume_utils
+from . import snapshot_utils
+from . import volume_utils
 import platform
 from kvmagent.plugins.vm_plugin import VmPlugin, get_machineType
 from kvmagent.test.utils import pytest_utils

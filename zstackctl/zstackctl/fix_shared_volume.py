@@ -1,5 +1,5 @@
 import sys
-sys.path.append("/var/lib/zstack/virtualenv/kvm/lib/python2.7/site-packages/")
+sys.path.append("/var/lib/zstack/virtualenv/kvm/lib/python3.11/site-packages/")
 
 import json
 from zstacklib.utils import bash

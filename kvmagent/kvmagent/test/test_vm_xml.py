@@ -38,7 +38,7 @@ class Test(unittest.TestCase):
         vm.root_volume = cmd.rootVolumePath
         vm.data_volumes = cmd.dataVolumePath
         vm.qemu_args = ['-append', 'mgmtNicIp=192.168.0.216', 'mgmtNicNetmask=255.255.255.0']
-        print vm.to_xml(True)
+        print(vm.to_xml(True))
 
 
 if __name__ == "__main__":

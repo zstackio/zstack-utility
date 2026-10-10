@@ -1,8 +1,9 @@
-import log
-import plugin
-import traceable_shell
-import report
-import linux
+from __future__ import annotations
+from . import log
+from . import plugin
+from . import traceable_shell
+from . import report
+from . import linux
 import tempfile
 
 logger = log.get_logger(__name__)

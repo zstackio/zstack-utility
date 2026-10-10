@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import annotations
 import sys, os, time, atexit
 import traceback
 import locale
@@ -56,7 +57,7 @@ class Daemon(object):
             if pid > 0:
                 # exit first parent
                 sys.exit(0)
-        except OSError, e:
+        except OSError as e:
             message = "fork #1 failed: %d (%s)\n" % (e.errno, e.strerror)
             Daemon._log_and_dump_message(message, sys.stderr)
             sys.exit(1)
@@ -72,7 +73,7 @@ class Daemon(object):
             if pid > 0:
                 # exit from second parent
                 os._exit(0)
-        except OSError, e:
+        except OSError as e:
             message = "fork #2 failed: %d (%s)\n" % (e.errno, e.strerror)
             Daemon._log_and_dump_message(message, sys.stderr)
             os._exit(1)
@@ -80,9 +81,9 @@ class Daemon(object):
         # redirect standard file descriptors
         sys.stdout.flush()
         sys.stderr.flush()
-        si = file(self.stdin, 'r')
-        so = file(self.stdout, 'a+')
-        se = file(self.stderr, 'a+', 0)
+        si = open(self.stdin, 'r')
+        so = open(self.stdout, 'a+')
+        se = open(self.stderr, 'a+', buffering=1)
         os.dup2(si.fileno(), sys.stdin.fileno())
         os.dup2(so.fileno(), sys.stdout.fileno())
         os.dup2(se.fileno(), sys.stderr.fileno())
@@ -95,7 +96,7 @@ class Daemon(object):
         pid = os.getpid()
         logger.info("writing pidfile (pid=%d)" % pid)
         try:
-            file(self.pidfile,'w').write("%d\n" % pid)
+            open(self.pidfile,'w').write("%d\n" % pid)
         except IOError as e:
             logger.error(str(e))
 
@@ -114,7 +115,7 @@ class Daemon(object):
 
         # Get the pid from the pidfile
         try:
-            pf = file(self.pidfile, 'r')
+            pf = open(self.pidfile, 'r')
             pid = int(pf.read().strip())
             pf.close()
         except IOError:
@@ -142,7 +143,7 @@ class Daemon(object):
             logger.error(content)
             sys.exit(1)
 
-        print "Start Daemon Successfully"
+        print("Start Daemon Successfully")
 
     def stop(self):
         """
@@ -154,7 +155,7 @@ class Daemon(object):
         wait_stop = 2
 
         try:
-            pf = file(self.pidfile, 'r')
+            pf = open(self.pidfile, 'r')
             pid = int(pf.read().strip())
             pf.close()
         except IOError:
@@ -217,7 +218,7 @@ class Daemon(object):
             else:
                 break
 
-        print "Stop Daemon Successfully"
+        print("Stop Daemon Successfully")
 
 
     @staticmethod

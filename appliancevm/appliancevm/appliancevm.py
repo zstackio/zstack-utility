@@ -73,7 +73,7 @@ class ApplianceVm(object):
             with open(list_file, 'r') as fd:
                 ls = fd.readlines()
                 for l in ls:
-                    l = l.strip(' \t\r\n')
+                    l = l.strip()
                     if l:
                         script_names.append(l)
 

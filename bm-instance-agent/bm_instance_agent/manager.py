@@ -7,7 +7,7 @@ from oslo_concurrency import processutils
 from oslo_log import log as logging
 from stevedore import driver
 
-from __init__ import __version__
+from .__init__ import __version__
 from bm_instance_agent.common import utils as bm_utils
 from bm_instance_agent.common import gpu
 from bm_instance_agent import exception
@@ -93,7 +93,7 @@ class AgentManager(object):
         self.driver.ping(instance_obj)
         self.driver.discovery_target(instance_obj)
         if iqn_target_ip_map:
-            for key, values in iqn_target_ip_map.items():
+            for key, values in list(iqn_target_ip_map.items()):
                 self.driver.discovery_target_through_access_path_gateway_ips(key, values)
         self._check_gateway_ip(instance_obj)
         return {'version': __version__, 'ping': {'bmInstanceUuid': BM_INSTANCE_UUID}}
@@ -383,6 +383,14 @@ class AgentManager(object):
 
             addonInfo = self._collect_gpu_addoninfo(gpu_type, pci_device_address, vendor_name)
 
+            if addonInfo.get("device"):
+                device = addonInfo["device"]
+                del addonInfo["device"]
+
+            if addonInfo.get("name"):
+                name = addonInfo["name"]
+                del addonInfo["name"]
+
             if vendor_id != '' and device_id != '' and gpu_type != 'Generic':
                 gpu_devs.append({
                     'name': name,
@@ -433,11 +441,11 @@ class AgentManager(object):
 
     def _update_to_addon_info_from_gpu_infos(self, gpu_infos, pci_device_address, addon_info):
         for gpuinfo in gpu_infos:
-            if pci_device_address not in gpuinfo["pciAddress"]:
+            if pci_device_address not in gpuinfo.get("pciAddress"):
                 continue
-            addon_info["memory"] = gpuinfo["memory"]
-            addon_info["power"] = gpuinfo["power"]
-            addon_info["serialNumber"] = gpuinfo["serialNumber"]
+            addon_info["memory"] = gpuinfo.get("memory")
+            addon_info["power"] = gpuinfo.get("power")
+            addon_info["serialNumber"] = gpuinfo.get("serialNumber")
             addon_info["isDriverLoaded"] = True
         return addon_info
 
@@ -489,7 +497,12 @@ class AgentManager(object):
             LOG.warning("no ixsmi")
             return
 
-        r, o, e = bm_utils.shell_cmd(gpu.get_tianshu_gpu_basic_info_cmd(), False)
+        r, o, e = bm_utils.shell_cmd(gpu.is_tianshu_v1(), False)
+        if r == 0:
+            cmd = gpu.get_tianshu_gpu_basic_info_cmd_v1()
+        else:
+            cmd = gpu.get_tianshu_gpu_basic_info_cmd_v2()
+        r, o, e = bm_utils.shell_cmd(cmd, False)
         if r != 0:
             LOG.error("ixsmi query gpu is error, %s" % e)
             return
@@ -507,14 +520,41 @@ class AgentManager(object):
         if r != 0:
             LOG.error("npu query gpu is error, %s" % npu_ids_out)
             return
-        npu_id = gpu.get_huawei_npu_id(npu_ids_out)
-        if npu_id is None:
+        npu_ids = gpu.get_huawei_npu_id(npu_ids_out)
+        if len(npu_ids) == 0:
             return
 
-        r, o, e = bm_utils.shell_cmd(gpu.get_huawei_gpu_basic_info_cmd(npu_id), False)
-        if r != 0:
-            LOG.error("npu query gpu board is error, %s" % e)
-            return
+        npu_infos = []
+        for npu_id in npu_ids:
+            r, o, e = bm_utils.shell_cmd(gpu.get_huawei_gpu_basic_info_cmd(npu_id), False)
+            if r != 0:
+                LOG.error("npu query gpu board is error, %s" % e)
+                return
+            npu_infos.extend(gpu.parse_huawei_gpu_output_by_npu_id(o))
 
-        return self._update_to_addon_info_from_gpu_infos(gpu.parse_huawei_gpu_output_by_npu_id(o),
-                                                         pci_device_address, addon_info)
+        device = None
+        name = None
+        for npu_info in npu_infos:
+            if pci_device_address not in npu_info.get("pciAddress"):
+                continue
+
+            r, o, e = bm_utils.shell_cmd(gpu.get_huawei_gpu_product_name_cmd(npu_ids), False)
+            if r != 0:
+                LOG.error("npu-smi query gpu product type is error, %s " % e)
+                return
+
+            if "not support" in o:
+                LOG.error("current gpu device not support query product")
+                return
+
+            product_type = gpu.get_huawei_product_type(o)
+            if product_type:
+                device = "-"
+                name = product_type
+
+        addon_info = self._update_to_addon_info_from_gpu_infos(npu_infos, pci_device_address, addon_info)
+        if device and name:
+            addon_info["device"] = device
+            addon_info["name"] = name
+
+        return addon_info

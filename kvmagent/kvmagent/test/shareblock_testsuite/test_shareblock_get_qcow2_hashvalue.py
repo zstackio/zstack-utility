@@ -82,6 +82,6 @@ class TestSharedBlockPlugin(TestCase, SharedBlockPluginTestStub):
         )
 
         self.assertNotEqual(rsp.hashValue, None,rsp.error)
-        print(rsp.hashValue)
+        print((rsp.hashValue))
 
         self.disconnect(vgUuid, hostUuid)

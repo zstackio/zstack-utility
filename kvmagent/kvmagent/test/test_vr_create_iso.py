@@ -22,7 +22,7 @@ class Test(unittest.TestCase):
 
     def callback(self, req):
         rsp = jsonobject.loads(req[http.REQUEST_BODY])
-        print jsonobject.dumps(rsp)
+        print(jsonobject.dumps(rsp))
         
     def testName(self):
         url = kvmagent._build_url_for_test([virtualrouter_plugin.VirtualRouterPlugin.VR_KVM_CREATE_BOOTSTRAP_ISO_PATH])

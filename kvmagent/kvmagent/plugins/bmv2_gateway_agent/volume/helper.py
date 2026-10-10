@@ -1,7 +1,7 @@
 # coding=utf-8
 import os
 import socket
-import commands
+import subprocess
 
 from zstacklib.utils import log
 from zstacklib.utils import shell
@@ -35,7 +35,7 @@ class RbdImageOperator(object):
             shell.call('rpm -Uvh %s' % rpm_path)
 
         def _get_package_version(pkg_name, raise_exception=False):
-            _rc, version = commands.getstatusoutput('rpm -qa %s' % pkg_name)
+            _rc, version = subprocess.getstatusoutput('rpm -qa %s' % pkg_name)
             if _rc or (not version and raise_exception):
                 raise exception.CephPackageNotFound(cmd=pkg_name)
             return version
@@ -44,7 +44,7 @@ class RbdImageOperator(object):
         current_rbd_nbd_version = _get_package_version("rbd-nbd")
 
         dest_rbd_nbd_version = ceph_version.replace("ceph", "rbd-nbd", 1)
-        _s, path = commands.getstatusoutput('find / -xdev -name \'%s\'.rpm | head -1' % dest_rbd_nbd_version)
+        _s, path = subprocess.getstatusoutput('find / -xdev -name \'%s\'.rpm | head -1' % dest_rbd_nbd_version)
 
         logger.info("current rbd-nbd version:%s , dest version: %s" % (current_rbd_nbd_version, dest_rbd_nbd_version))
         if not current_rbd_nbd_version and not path:
@@ -70,7 +70,7 @@ class RbdImageOperator(object):
         """
         required_cmds = ['ceph', 'rbd', 'rbd-nbd']
         for cmd in required_cmds:
-            _s, _ = commands.getstatusoutput('which %s' % cmd)
+            _s, _ = subprocess.getstatusoutput('which %s' % cmd)
             if _s:
                 raise exception.CephCommandsNotExist(cmds=required_cmds)
 
@@ -79,7 +79,7 @@ class RbdImageOperator(object):
         """
         check if rbd image exists
         """
-        _s, _ = commands.getstatusoutput('rbd info %s' % image_path)
+        _s, _ = subprocess.getstatusoutput('rbd info %s' % image_path)
         if _s:
             raise exception.RbdImageNotExist(path=image_path)
 
@@ -186,7 +186,7 @@ class NbdDeviceOperator(object):
             if dev.startswith('nbd'):
                 all_nbd_ids.append(int(dev.split('nbd')[-1]))
 
-        available_nbd_ids = sorted(set(all_nbd_ids) - set(self.used_nbd_ids))
+        available_nbd_ids = sorted(set(all_nbd_ids) - set(self.used_nbd_ids) - {0})
 
         if not available_nbd_ids:
             raise exception.NoAvailableNbdDevice(

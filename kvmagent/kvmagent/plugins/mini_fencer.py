@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import functools
 import sys
-import commands
+import subprocess
 import logging
 import time
 import re
@@ -66,7 +66,7 @@ def retry(times=5, sleep_time=1):
 def getstatusoutput(c):
     # type: (str) -> (int, str)
     start_time = time.time()
-    r, o = commands.getstatusoutput(c)
+    r, o = subprocess.getstatusoutput(c)
     end_time = time.time()
     logger.debug("command:[%s], returnCode:[%s], output:[%s], spendTime:[%s] ms" % (c, r, o, (end_time - start_time) * 1000))
     return r, o
@@ -220,7 +220,7 @@ def main():
         exit(4)
     except Exception as e:
         logger.error("resouce %s fence get error" % resource_name)
-        logger.error(e.message)
+        logger.error(str(e))
         if FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
             logger.error("keep resource %s io suspend" % resource_name)
             exit(5)

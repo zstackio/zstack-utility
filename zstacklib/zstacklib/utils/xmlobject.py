@@ -2,6 +2,7 @@
 
 @author: Frank
 '''
+from __future__ import annotations
 import xml.etree.ElementTree as etree
 import re
 import types
@@ -51,7 +52,7 @@ class XmlObject(object):
             return
             
         nodes = getattr(self, name)
-        if not isinstance(nodes, types.ListType):
+        if not isinstance(nodes, list):
             nodes = []
             old = getattr(self, name)
             nodes.append(old)
@@ -81,15 +82,15 @@ class XmlObject(object):
             return []
         
         children = getattr(self, key)
-        if isinstance(children, types.ListType):
+        if isinstance(children, list):
             return children
         else:
             return [children]
     
     def get_children_nodes(self):
         children = {}
-        for key, value in self.__dict__.items():
-            if isinstance(value, XmlObject) or isinstance(value, types.ListType):
+        for key, value in list(self.__dict__.items()):
+            if isinstance(value, XmlObject) or isinstance(value, list):
                 children[key] = value
         return children
     
@@ -99,7 +100,7 @@ class XmlObject(object):
             xmlstr = []
             opentag = []
             opentag.append('<%s' % obj.get_tag())
-            for key, val in obj.__dict__.iteritems():
+            for key, val in obj.__dict__.items():
                 if not key.endswith('_') or key.startswith('_') or key == 'text_':
                     continue
                 opentag.append('%s="%s"' % (key[:-1], val))
@@ -107,11 +108,11 @@ class XmlObject(object):
             xmlstr.append('>')
             
             found_child = False
-            for key, val in obj.__dict__.iteritems():
+            for key, val in obj.__dict__.items():
                 if isinstance(val, XmlObject):
                     xmlstr.append(_dump(val))
                     found_child = True
-                if isinstance(val, types.ListType):
+                if isinstance(val, list):
                     for l in val:
                         if isinstance(l, XmlObject):
                             xmlstr.append(_dump(l))
@@ -142,7 +143,7 @@ class XmlObject(object):
 
 def _loads(node):
     xo = XmlObject(node.tag)
-    for key in node.attrib.keys():
+    for key in list(node.attrib.keys()):
         xo.put_attr(key, node.attrib.get(key))
     if node.text:
         xo.put_text(node.text)
@@ -178,7 +179,7 @@ def has_element(xmlobj, elementstr):
     
     def _has_element(obj):
         try:
-            e = it.next()
+            e = next(it)
             if hasattr(obj, e):
                 return _has_element(getattr(obj, e))
             else:
@@ -189,7 +190,7 @@ def has_element(xmlobj, elementstr):
     return _has_element(xmlobj)
 
 def safe_list(obj):
-    if isinstance(obj, types.ListType):
+    if isinstance(obj, list):
         return obj
     else:
         return [obj]

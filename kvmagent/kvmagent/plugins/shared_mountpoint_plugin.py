@@ -1,5 +1,4 @@
 import os.path
-import traceback
 
 from zstacklib.utils import lock
 
@@ -295,7 +294,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
     def do_create_volume_with_backing(backing_path, vol_path, cmd):
         dirname = os.path.dirname(vol_path)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
 
@@ -343,7 +342,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         rsp = CreateTemplateFromVolumeRsp()
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0755)
+            os.makedirs(dirname, 0o755)
 
         @rollback.rollbackable
         def _0():
@@ -430,7 +429,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         install_path = cmd.imageInstallPath
         dirname = os.path.dirname(cmd.volumeInstallPath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
@@ -581,7 +580,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                 linux.link(backing_file, dst_file)
                 linux.qcow2_rebase_no_check(dst_file, f)
 
-        for src_file, dst_file in src_dst_dict.iteritems():
+        for src_file, dst_file in src_dst_dict.items():
             linux.link(src_file, dst_file)
 
     @kvmagent.replyerror

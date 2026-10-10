@@ -38,7 +38,7 @@ class TestLocalStoragePlugin(TestCase):
         rsp = localstorage_utils.get_backing_file_path(
             path="/local_ps/test/test.qcow2"
         )
-        print rsp.backingFilePath
+        print(rsp.backingFilePath)
         self.assertGreater(rsp.size, 0, "[check] rsp size is error")
         self.assertEqual(rsp.backingFilePath, "/root/.zguest/min-vm.qcow2", "[check] cannot find rootvolume in host")
         bash.bash_ro("rm -rf /local_ps")
