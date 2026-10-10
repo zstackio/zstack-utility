@@ -1677,6 +1677,9 @@ def collect_hy_gpu_status():
 
     gpu_info_json = json.loads(gpu_info)
     for card_name, card_data in gpu_info_json.items():
+        if not isinstance(card_data, dict):
+            logger.warn("ignoring Hygon GPU %s with invalid card data" % card_name)
+            continue
         pci_device_address = gpu.normalize_hy_pci_address(card_data.get("PCI Bus"))
         if pci_device_address is None:
             logger.warn("ignoring Hygon GPU %s with invalid PCI Bus" % card_name)

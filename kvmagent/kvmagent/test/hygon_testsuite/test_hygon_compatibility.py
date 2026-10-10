@@ -186,6 +186,27 @@ class TestHygonCompatibility(unittest.TestCase):
                 addon = self.gpu.parse_hy_gpu_output(json.dumps(cards))
                 self.assertEqual(addon, expected, cards)
 
+    def test_non_dictionary_card_data_does_not_hide_healthy_metrics(self):
+        healthy = self.live_card('0000:3f:00.0')
+        healthy.update({'HCU use (%)': '65', 'HCU memory use (%)': '25'})
+        for invalid_card in [None, False, 42, 3.5, 'invalid', [], ['invalid']]:
+            for cards in [{'card0': invalid_card, 'card1': healthy},
+                          {'card0': healthy, 'card1': invalid_card}]:
+                self.prometheus.gpu_devices = {'HY': set()}
+                metrics, commands = self.collect_cards(cards)
+                for name, expected in [('host_gpu_utilization', 65.0),
+                                       ('host_gpu_memory_utilization', 25.0),
+                                       ('host_gpu_power_draw', 136.0),
+                                       ('host_gpu_temperature', 75.0),
+                                       ('host_gpu_status', 1)]:
+                    self.assertEqual(len(metrics[name]), 1, cards)
+                    self.assertEqual(metrics[name][0][2], expected, cards)
+                    self.assertEqual(metrics[name][0][1]['pci_device_address'],
+                                     '0000:3f:00.0')
+                self.assertEqual(commands, ['lspci -s 0000:3f:00.0'])
+                self.assertEqual(self.prometheus.gpu_devices['HY'],
+                                 set([('0000:3f:00.0', 'TRYQ160016040601')]))
+
     def assert_utilization(self, fields, utilization, memory):
         metrics = self.collect(fields)
         for metric, expected in [('host_gpu_utilization', utilization),
