@@ -34,13 +34,24 @@ Python support library for zstack""",
           "six>=1.10.0",
           "certifi==2021.5.30",
           "xms-client",
-          "setuptools>=65.5.1", #21.0.0
+          "setuptools>=65.5.1; python_version >= '3.11'", #21.0.0
           "cachetools==3.1.1",
           "xxhash==2.0.2",
           "routes==2.4.1",
           "pyudev>=0.18.0",
           "pillow==2.9.0",
-          "mock==5.0.2"
+          "mock==5.0.2; python_version >= '3.11'",
+          "more-itertools<10; python_version < '3.9'",
+          "portend<3.2; python_version < '3.9'",
+          "jaraco.collections<5.1; python_version < '3.9'",
+          "jaraco.functools<4.1; python_version < '3.9'",
+          "jaraco.context<6; python_version < '3.9'",
+          "jaraco.text<4; python_version < '3.9'",
+          "tempora<5.8; python_version < '3.9'",
+          "importlib-resources; python_version < '3.9'",
+          "importlib-metadata; python_version < '3.9'",
+          "zipp; python_version < '3.9'",
+          "pytz; python_version < '3.9'"
       ],
       entry_points="""
       # -*- Entry points: -*-
