@@ -49,7 +49,7 @@ from .timeline import TaskTimeline, __doc__ as timeline_doc
 from zstackctl.keycloak_config import KeycloakAdminClient, KeycloakAdminError, read_admin_password
 from zstackctl.keycloak_config import restore_file, rotate_admin_password, snapshot_file
 from zstackctl.keycloak_config import validate_admin_password, write_admin_password
-from zstackctl.morph_config import configure_ha_database
+from zstackctl.morph_config import configure_ha_database, validate_database_hosts
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
 
@@ -13429,6 +13429,7 @@ class MorphService(ExtraService):
     default_ui_proxy_port = 80
     default_ip = get_default_ip()
     default_morph_service_path = "/etc/systemd/system/morph.service"
+    allow_custom_database_endpoint = False
     default_morph_service_content = '''
 [Unit]
 Description=Morph Application Service
@@ -13472,15 +13473,104 @@ WantedBy=multi-user.target
     def service_name(self):
         return "morph"
 
+    def _check_ha_database_endpoint(self, host, port):
+        try:
+            with socket.create_connection((host, port), timeout=5):
+                pass
+            script = 'import socket; socket.create_connection((%r, %d), timeout=5).close()' % (host, port)
+            self.zsha2_utils.execute_on_peer('%s -c %s' % (shell_quote(sys.executable), shell_quote(script)), True)
+        except Exception:
+            raise CtlError('Cannot verify TCP connectivity to Morph HA database VIP %s:%d '
+                           'from both nodes; refusing Morph activation' % (host, port))
+
+    def _configure_ha_database(self):
+        if not hasattr(self, '_ha_region_snapshot'):
+            self._ha_region_snapshot = snapshot_file(self.default_morph_database_config)
+        changed = configure_ha_database(
+            self.default_morph_config, self.default_morph_database_config, self.zsha2_utils.config.get('dbvip'),
+            local_hosts=(self.zsha2_utils.config.get('nodeip'), self.zsha2_utils.config.get('peerip')),
+            allow_custom_endpoint=self.allow_custom_database_endpoint, check_endpoint=self._check_ha_database_endpoint)
+        if changed:
+            info('Original Morph configuration retained in protected .morph-ha-before-* directories under %s' %
+                 os.path.dirname(self.default_morph_database_config))
+        return changed
+
+    def _backup_ha_peer_configuration(self):
+        if getattr(self, '_ha_peer_backup_directory', None):
+            return
+        if not self.allow_custom_database_endpoint:
+            script = ('import json,os,yaml; from urllib.parse import urlsplit; '
+                      'application=yaml.safe_load(open(%r)) if os.path.exists(%r) else {}; '
+                      'region=yaml.safe_load(open(%r)) if os.path.exists(%r) else {}; '
+                      'spring=region.get("spring", {}); defaults=application.get("spring", {}); '
+                      'urls=[spring.get("datasource", {}).get("url") or defaults.get("datasource", {}).get("url"), '
+                      'spring.get("flyway", {}).get("url") or defaults.get("flyway", {}).get("url")]; '
+                      'print(json.dumps([urlsplit(value[5:]).hostname for value in urls if value]))' %
+                      (self.default_morph_config, self.default_morph_config,
+                       self.default_morph_database_config, self.default_morph_database_config))
+            hosts = yaml.safe_load(self.zsha2_utils.execute_on_peer(
+                '%s -c %s' % (shell_quote(sys.executable), shell_quote(script)), True))
+            if not isinstance(hosts, list):
+                raise CtlError('Invalid Morph peer database configuration')
+            validate_database_hosts(hosts, self.zsha2_utils.config.get('dbvip'),
+                                    (self.zsha2_utils.config.get('nodeip'), self.zsha2_utils.config.get('peerip')))
+        parent = os.path.dirname(self.default_morph_database_config)
+        script = ('import os,subprocess,tempfile\n'
+                  'directory=tempfile.mkdtemp(prefix=".morph-ha-before-", dir=%r)\n'
+                  'for source in %r:\n'
+                  '    if os.path.lexists(source):\n'
+                  '        subprocess.check_call(["cp", "-a", "--", source, directory])\n'
+                  '    else:\n'
+                  '        open(os.path.join(directory, ".missing-" + os.path.basename(source)), "x").close()\n'
+                  'print(directory)' % (parent, (self.default_morph_config, self.default_morph_database_config)))
+        command = '%s -c %s' % (shell_quote(sys.executable), shell_quote(script))
+        directory = self.zsha2_utils.execute_on_peer(command, True).strip()
+        if os.path.dirname(directory) != parent or not os.path.basename(directory).startswith('.morph-ha-before-'):
+            raise CtlError('Invalid Morph peer configuration backup path')
+        self._ha_peer_backup_directory = directory
+        info('Original peer Morph configuration retained at %s' % directory)
+
+    def _restore_prepared_ha_configuration(self):
+        if hasattr(self, '_ha_region_snapshot'):
+            try:
+                restore_file(self.default_morph_database_config, self._ha_region_snapshot)
+            except Exception as e:
+                warn('Failed to restore local Morph configuration: %s' % str(e))
+        backup = getattr(self, '_ha_peer_backup_directory', None)
+        if backup:
+            for destination in (self.default_morph_config, self.default_morph_database_config):
+                source = os.path.join(backup, os.path.basename(destination))
+                marker = os.path.join(backup, '.missing-' + os.path.basename(destination))
+                temporary = '%s.restore-%s' % (destination, uuid.uuid4())
+                try:
+                    self.zsha2_utils.execute_on_peer('if test -e %s; then rm -f -- %s; '
+                        'else cp -a -- %s %s && mv -fT -- %s %s; fi' % (
+                        shell_quote(marker), shell_quote(destination), shell_quote(source), shell_quote(temporary),
+                        shell_quote(temporary), shell_quote(destination)), True)
+                except Exception as e:
+                    warn('Failed to restore peer Morph configuration; original retained at %s: %s' % (backup, str(e)))
+        self._clear_ha_configuration_checkpoint()
+
+    def _clear_ha_configuration_checkpoint(self):
+        for name in ('_ha_region_snapshot', '_ha_peer_backup_directory'):
+            if hasattr(self, name):
+                delattr(self, name)
+
     def init(self):
+        try:
+            self._init()
+        except Exception:
+            if self.zsha2_utils:
+                self._restore_prepared_ha_configuration()
+            raise
+
+    def _init(self):
         if self.zsha2_utils:
-            region_snapshot = snapshot_file(self.default_morph_database_config)
             try:
                 vip_address = self.zsha2_utils.config.get('dbvip')
-                configure_ha_database(self.default_morph_config, self.default_morph_database_config, vip_address)
+                self._configure_ha_database()
                 self.default_ip = vip_address
             except Exception as e:
-                restore_file(self.default_morph_database_config, region_snapshot)
                 raise CtlError('Failed to configure Morph HA database: %s' % str(e))
 
         data = OrderedDict()
@@ -13518,12 +13608,12 @@ WantedBy=multi-user.target
                 if not isinstance(data, dict):
                     data = OrderedDict()
         except IOError as e:
-            error('Failed to load morph region_config.yml: %s' % str(e))
+            raise CtlError('Failed to load morph region_config.yml: %s' % str(e))
         except yaml.YAMLError as exc:
             if hasattr(exc, 'problem_mark'):
                 mark = exc.problem_mark
-                error("Error at line: %s column: %s" % (mark.line + 1, mark.column + 1))
-            error('Failed to parse morph region_config.yml')
+                raise CtlError("Error at line: %s column: %s" % (mark.line + 1, mark.column + 1))
+            raise CtlError('Failed to parse morph region_config.yml')
 
         if 'extension' in data:
             if 'morphAddress' in data['extension']:
@@ -13535,14 +13625,14 @@ WantedBy=multi-user.target
                 ordered_dump(data, f, default_flow_style=False)
             info('morph region_config.yml write success')
         except IOError:
-            error('morph region_config.yml write failed')
+            raise CtlError('morph region_config.yml write failed')
 
         try:
             with open(self.default_morph_service_path, 'w') as f:
                 f.write(self.default_morph_service_content)
             info('morph morph.service write success')
         except IOError:
-            error('morph morph.service write failed')
+            raise CtlError('morph morph.service write failed')
 
         warn(
             '**** IMPORTANT: Please verify region_config.yml configuration after morph service initialization. Check database connection, IP settings, and service dependencies. ***')
@@ -13551,6 +13641,7 @@ WantedBy=multi-user.target
             shell_no_pipe("systemctl daemon-reload")
             shell_no_pipe("systemctl enable %s" % self.service_name())
             if self.zsha2_utils:
+                self._backup_ha_peer_configuration()
                 self.zsha2_utils.scp_to_peer(self.default_morph_config, self.default_morph_config)
                 self.zsha2_utils.scp_to_peer(self.default_morph_jar, self.default_morph_jar)
                 self.zsha2_utils.scp_to_peer(self.default_morph_service_path, self.default_morph_service_path)
@@ -13558,9 +13649,7 @@ WantedBy=multi-user.target
                 self.zsha2_utils.execute_on_peer("systemctl enable %s" % self.service_name())
                 self.zsha2_utils.scp_to_peer(self.default_morph_database_config, self.default_morph_database_config)
         except Exception as e:
-            if self.zsha2_utils:
-                restore_file(self.default_morph_database_config, region_snapshot)
-            error("Failed to initialize morph service: %s" % str(e))
+            raise CtlError("Failed to initialize morph service: %s" % str(e))
 
 
 
@@ -13568,10 +13657,8 @@ WantedBy=multi-user.target
         local_restart = peer_restart = bool(do_init and self.zsha2_utils)
         local_ip = self.default_ip
         if self.zsha2_utils:
-            region_snapshot = snapshot_file(self.default_morph_database_config)
             try:
-                changed = configure_ha_database(self.default_morph_config, self.default_morph_database_config,
-                                                self.zsha2_utils.config.get('dbvip'))
+                changed = self._configure_ha_database()
                 local_restart = local_restart or changed
                 peer_restart = peer_restart or changed
                 with open(self.default_morph_database_config, 'rb') as stream:
@@ -13579,13 +13666,14 @@ WantedBy=multi-user.target
                 peer_digest = self.zsha2_utils.execute_on_peer(
                     'sha256sum %s' % shell_quote(self.default_morph_database_config), True).split()[0]
                 if peer_digest != digest:
+                    self._backup_ha_peer_configuration()
                     self.zsha2_utils.scp_to_peer(self.default_morph_database_config, self.default_morph_database_config)
                     peer_restart = True
                 local_ip = self.zsha2_utils.config['nodeip']
                 if peer_restart:
                     self.zsha2_utils.execute_on_peer("systemctl stop %s" % self.service_name())
             except Exception as e:
-                restore_file(self.default_morph_database_config, region_snapshot)
+                self._restore_prepared_ha_configuration()
                 raise CtlError('Failed to configure Morph HA database: %s' % str(e))
         try:
             shell_no_pipe("systemctl %s %s" % ('restart' if local_restart else 'start', self.service_name()))
@@ -13594,12 +13682,17 @@ WantedBy=multi-user.target
                 self.zsha2_utils.execute_on_peer("systemctl %s %s" % ('restart' if peer_restart else 'start', self.service_name()))
                 self._wait_for_morph("http://%s:%d/actuator/health" % (format_url_host(self.zsha2_utils.config['peerip']), self.default_port))
         except Exception:
+            if self.zsha2_utils:
+                warn('Morph activation failed; keeping shared database configuration because migrations may already have run. '
+                     'Original configurations are retained in protected .morph-ha-before-* directories.')
             if peer_restart:
                 try:
                     self.zsha2_utils.execute_on_peer("systemctl start %s" % self.service_name())
                 except Exception as e:
                     warn("Failed to restore peer Morph service: %s" % str(e))
+            self._clear_ha_configuration_checkpoint()
             raise
+        self._clear_ha_configuration_checkpoint()
 
     def _wait_for_morph(self, url, timeout=600):
         info_and_debug("Waiting for %s to become available at: %s" % (self.service_name(), url))
@@ -13677,6 +13770,9 @@ class StartExtraServicesCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--name', required=True, help='Specify a single service to start, e.g. --name iam')
         parser.add_argument('--init', action='store_true', default=False, help='Initialize configuration before starting the service')
+        parser.add_argument('--confirm-morph-db-vip', action='store_true', default=False,
+                            help='Allow --name morph --init to replace custom database endpoints with the HA DB VIP; '
+                                 'configuration is backed up, database data is not migrated')
         parser.add_argument(
             '--change_admin_password', required=False,
             help='Change the existing Keycloak admin password after starting IAM')
@@ -13694,10 +13790,19 @@ class StartExtraServicesCmd(Command):
         if args.current_admin_password is not None and args.change_admin_password is None:
             error("--current_admin_password requires --change_admin_password")
             return
+        confirm_morph_database = getattr(args, 'confirm_morph_db_vip', False)
+        if confirm_morph_database and (args.name != 'morph' or not args.init):
+            error('--confirm-morph-db-vip requires --name morph --init')
+            return
 
         try:
             service_class = self.EXTRA_SERVICE_REGISTRY[args.name]
             service_instance = service_class()
+            if args.name == 'morph':
+                if confirm_morph_database and not service_instance.zsha2_utils:
+                    error('--confirm-morph-db-vip is only supported for Morph HA')
+                    return
+                service_instance.allow_custom_database_endpoint = confirm_morph_database
             if args.init:
                 service_instance.init()
             service_instance.start(args.init)
