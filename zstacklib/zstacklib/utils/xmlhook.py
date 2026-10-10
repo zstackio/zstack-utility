@@ -1,4 +1,5 @@
 
+from __future__ import annotations
 import os
 from xml.dom import minidom
 import xml.etree.ElementTree as etree

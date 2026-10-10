@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 
 from .matches import *
 from .targets import *

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import collections
 
 class OrderedSet(collections.abc.MutableSet):

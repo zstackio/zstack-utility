@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import unittest
 import time
 import urllib.request, urllib.error, urllib.parse

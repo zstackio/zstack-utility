@@ -2,6 +2,7 @@
 
 @author: root
 '''
+from __future__ import annotations
 from zstacklib.utils import thread
 import time
 import threading

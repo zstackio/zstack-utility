@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import os
 import subprocess
 from zstacklib.utils import log

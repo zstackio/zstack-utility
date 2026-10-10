@@ -1,3 +1,4 @@
+from __future__ import annotations
 from . import log
 from . import plugin
 from . import traceable_shell

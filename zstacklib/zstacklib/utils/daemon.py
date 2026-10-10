@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 
+from __future__ import annotations
 import sys, os, time, atexit
 import traceback
 import locale

@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 from ...utils import plugin
 
 class Plugin1(plugin.Plugin):

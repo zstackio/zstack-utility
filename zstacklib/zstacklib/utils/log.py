@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import logging
 import sys
 import os.path

@@ -2,6 +2,7 @@
 
 @author: YYK
 '''
+from __future__ import annotations
 
 from . import shell
 from . import ssh

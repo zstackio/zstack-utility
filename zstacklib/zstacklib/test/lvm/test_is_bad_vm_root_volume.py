@@ -2,6 +2,7 @@
 
 @author: zaifeng.wang
 '''
+from __future__ import annotations
 
 import mock
 import unittest

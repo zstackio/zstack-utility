@@ -1,3 +1,4 @@
+from __future__ import annotations
 def list_minus(list1, list2):
     '''
     @return: a list: the items from list1, except of the items in list2

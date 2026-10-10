@@ -2,6 +2,7 @@
 
 @author: lining
 '''
+from __future__ import annotations
 import os
 
 import zstacklib.utils.jsonobject as jsonobject

@@ -1,3 +1,4 @@
+from __future__ import annotations
 from zstacklib.utils import log
 from zstacklib.utils.collection_ops import union_dict
 

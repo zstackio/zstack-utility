@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 from zstacklib.utils import shell
 from zstacklib.utils import linux

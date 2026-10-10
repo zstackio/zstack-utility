@@ -1,3 +1,4 @@
+from __future__ import annotations
 from zstacklib.utils import plugin, log
 from zstacklib.utils import jsonobject
 from zstacklib.utils.thread import AsyncThread

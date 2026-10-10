@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import abc
 import contextlib
 import os
@@ -39,6 +40,20 @@ from zstacklib.utils import iproute
 
 
 logger = log.get_logger(__name__)
+
+
+def get_freedesktop_os_release():
+    if hasattr(platform, 'freedesktop_os_release'):
+        return platform.freedesktop_os_release()
+    release = {}
+    with open('/etc/os-release', 'r') as fd:
+        for line in fd:
+            line = line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            release[key] = value.strip('""')
+    return release
 
 RPM_BASED_OS = ['redhat', 'centos', 'alibaba', 'kylin10', 'rocky', 'helix']
 DEB_BASED_OS = ['uos', 'kylin4.0.2', 'debian', 'ubuntu', 'uniontech']

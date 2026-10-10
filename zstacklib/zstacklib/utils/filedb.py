@@ -2,6 +2,7 @@
 
 @author: YYK
 '''
+from __future__ import annotations
 import pickledb
 import os
 

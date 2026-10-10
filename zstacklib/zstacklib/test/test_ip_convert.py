@@ -2,6 +2,7 @@
 
 @author: Frank
 '''
+from __future__ import annotations
 from zstacklib.utils import linux
 import unittest
 

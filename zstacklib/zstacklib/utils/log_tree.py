@@ -1,5 +1,6 @@
 # encoding: utf-8
 
+from __future__ import annotations
 import copy
 import simplejson as json
 

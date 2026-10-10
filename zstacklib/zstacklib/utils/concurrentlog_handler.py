@@ -44,6 +44,7 @@ See the README file for an example usage of this module.
 This module supports Python 2.6 and later.
 
 """
+from __future__ import annotations
 import os
 import sys
 from random import randint

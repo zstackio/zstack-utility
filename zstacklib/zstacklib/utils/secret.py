@@ -1,6 +1,7 @@
 '''
 @author: qiuyu
 '''
+from __future__ import annotations
 
 import subprocess
 

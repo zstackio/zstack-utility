@@ -1,3 +1,4 @@
+from __future__ import annotations
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import shell, bash
 from distutils.version import LooseVersion

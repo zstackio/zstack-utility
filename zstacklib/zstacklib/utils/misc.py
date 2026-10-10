@@ -2,6 +2,7 @@
 
 @author: Frank
 '''
+from __future__ import annotations
 import configparser
 import functools
 import pprint

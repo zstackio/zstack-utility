@@ -1,4 +1,5 @@
 
+from __future__ import annotations
 import unittest
 from zstacklib.utils import form
 

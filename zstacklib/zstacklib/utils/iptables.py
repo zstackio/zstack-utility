@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import os
 from functools import cmp_to_key
 

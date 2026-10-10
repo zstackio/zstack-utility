@@ -2,6 +2,7 @@
 
 @author: haibiao.xiao
 '''
+from __future__ import annotations
 
 from zstacklib.utils import log
 from zstacklib.utils import bash

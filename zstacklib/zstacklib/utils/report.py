@@ -1,3 +1,4 @@
+from __future__ import annotations
 import time
 from zstacklib.utils import http, jsonobject
 from zstacklib.utils import log
