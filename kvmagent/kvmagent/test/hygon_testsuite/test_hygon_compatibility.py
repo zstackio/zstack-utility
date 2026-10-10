@@ -175,6 +175,17 @@ class TestHygonCompatibility(unittest.TestCase):
             self.assertEqual(len(addon), 1)
             self.assertEqual(addon[0]['pciAddress'], '0000:3f:00.0')
 
+    def test_non_dictionary_card_data_does_not_hide_healthy_cards(self):
+        healthy = self.live_card('0000:3f:00.0')
+        expected = [{'pciAddress': '0000:3f:00.0', 'memory': '65497 MiB',
+                     'power': '350.0', 'serialNumber': 'TRYQ160016040601'}]
+        for invalid_card in [None, False, 42, 3.5, 'invalid', [], ['invalid']]:
+            # Cover both layouts independently of Python 2 dict iteration order.
+            for cards in [{'card0': invalid_card, 'card1': healthy},
+                          {'card0': healthy, 'card1': invalid_card}]:
+                addon = self.gpu.parse_hy_gpu_output(json.dumps(cards))
+                self.assertEqual(addon, expected, cards)
+
     def assert_utilization(self, fields, utilization, memory):
         metrics = self.collect(fields)
         for metric, expected in [('host_gpu_utilization', utilization),
