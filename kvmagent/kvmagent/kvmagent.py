@@ -74,7 +74,7 @@ def get_host_yum_release():
     return subprocess.getoutput("rpm -q zstack-release 2>/dev/null | awk -F'-' '{print $3}'").strip()
 
 def get_host_os_type():
-    os_info = platform.freedesktop_os_release()
+    os_info = linux.get_freedesktop_os_release()
     dist, version = os_info['ID'], re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
     if dist.lower() in linux.DIST_WITH_RPM_DEB:
         dist = "%s%s" % (dist.lower(), version)

@@ -76,7 +76,7 @@ from zstacklib.utils.libvirt_singleton import LibvirtSingleton
 logger = log.get_logger(__name__)
 
 HOST_ARCH = platform.machine()
-os_info = platform.freedesktop_os_release()
+os_info = linux.get_freedesktop_os_release()
 DIST_NAME = os_info.get('ID', '').lower()
 # FIXME(py3): remove it
 DIST_NAME = 'centos' if DIST_NAME == 'helix' else DIST_NAME
@@ -12371,4 +12371,3 @@ def touchQmpSocketWhenExists(vmUuid):
     path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
     if os.path.exists(path):
         bash.bash_roe("touch %s" % path)
-
