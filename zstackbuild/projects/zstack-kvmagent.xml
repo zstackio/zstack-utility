@@ -23,13 +23,14 @@
         <copy todir="${kvmagent.bdir}/">
             <fileset dir="${kvmagent.source}/">
                 <exclude name="**/*~" />
+                <exclude name="ansible/memory-optimization/ksmtuned/tests/**" />
                 <include name="dist/*.tar.gz" />
                 <include name="ansible/**/*" />
             </fileset>
         </copy>
     </target>
 
-    <target name="assemble-kvmagent" depends="assemble-zstack-zwatch, assemble-guest-tools-iso">
+    <target name="assemble-kvmagent" depends="assemble-zstack-zwatch, assemble-guest-tools-iso, assemble-zstack-zram-rpm">
         <makeDir dir="${kvmagent.ansible.dir}" />
 
         <copy todir="${kvmagent.ansible.dir}">

@@ -5,6 +5,7 @@
         builders for all zstack bits
     </description>
 
+    <property environment="env" />
     <property file="build.properties" />
     <property file="${zstack.source}/VERSION" />
     <property file="${zstack.source}/PJNUM"/>
@@ -73,6 +74,7 @@
     <import file="${basedir}/projects/zstacklib.xml" optional="false" />
     <import file="${build.ui.entry}/build/build.xml" optional="true" />
     <import file="${basedir}/projects/zstack-kvmagent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-zram.xml" optional="false" />
     <import file="${basedir}/projects/zstack-virtualrouter.xml" optional="false" />
     <import file="${basedir}/projects/zstack-appliancevm.xml" optional="false" />
     <import file="${basedir}/projects/zstack-sftpbackupstorage.xml" optional="false" />

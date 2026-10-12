@@ -1,2 +1,11 @@
 include kvmagent/plugins/bmv2_gateway_agent/templates/*
 include kvmagent/plugins/bmv2_gateway_agent/scripts/*
+include ansible/kvm.py
+# KSM shell regressions are test-only and must not enter the Agent source
+# payload. Runtime files are included only by their explicit manifests.
+exclude ansible/memory-optimization/ksmtuned/tests/*
+include ansible/files/kvm/memory-optimization/zstack-zram/*.rpm
+include ansible/files/kvm/memory-optimization/zstack-zram/BUILD-MANIFEST.json
+include ansible/files/kvm/memory-optimization/zstack-zram/rpm-inventory.json
+include ansible/files/kvm/memory-optimization/zstack-zram/install_memory_optimization_rpm.py
+include scripts/README-memory-optimization-rpm.md

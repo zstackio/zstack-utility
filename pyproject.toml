@@ -3,10 +3,11 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
-addopts = "-ra -q --strict-markers"
+addopts = "-ra -q --strict-markers -m 'not integration and not privileged'"
 markers = [
     "unit: unit tests",
     "integration: integration tests",
+    "privileged: explicitly elevated local tests that are excluded from default unit runs",
     "system: system tests",
     "slow: slow running tests",
     "destructive: destructive tests",

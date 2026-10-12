@@ -3,8 +3,11 @@
 import argparse
 import datetime
 import fcntl
+import hashlib
+import json
 import os
 import re
+import shlex
 from uuid import uuid4
 
 from gpu_tools import GPU_TOOL_PATHS, build_gpu_tool_link_command
@@ -17,6 +20,8 @@ banner("Starting to deploy kvm agent")
 start_time = datetime.datetime.now()
 # set default value
 file_root = "files/kvm"
+memory_optimization_bundle = os.path.join(file_root, 'memory-optimization', 'zstack-zram')
+memory_optimization_bundle_required = 'true'
 package_root = "/opt/zstack-dvd/Packages"
 pip_url = "https=//pypi.python.org/simple/"
 proxy = ""
@@ -699,6 +704,10 @@ def copy_tools():
     # create pushgateway persistence data directory
     command = 'mkdir -p %s' % os.path.join(zstack_lib_dir, 'prometheus', 'host_pushgateway')
     run_remote_command(command, host_post_info)
+    # node_exporter reads *.prom files from this stable, root-readable path.
+    # mkdir is idempotent and does not alter any existing sample files.
+    run_remote_command('mkdir -p /var/lib/node_exporter/textfile_collector', host_post_info)
+
 
 def copy_kvm_files():
     """copy kvmagent files and packages"""
@@ -1007,6 +1016,12 @@ def link_gpu_tools():
 def install_agent_pkg():
     """install zstacklib and kvmagent on host"""
 
+    # The venv intentionally inherits system packages; pin only its pip before
+    # dependency discovery so legacy system egg metadata cannot win package_set.
+    venv_pip_install_arg = AgentInstallArg(trusted_host, pip_url,
+                                           virtenv_path, init_install)
+    install_agent_venv_pip(venv_pip_install_arg, host_post_info)
+
     if copy_zstacklib_status != "changed:False":
         agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
         agent_install_arg.agent_name = "zstacklib"
@@ -1133,10 +1148,293 @@ def do_ksm_config():
         return
 
     oprator = "1" if isEnableKsm == 'true' else "0"
-    command = "echo %s > /sys/kernel/mm/ksm/run" % oprator
+    # Keep the existing one-shot connect setting for hosts not yet managed by
+    # the standard Agent policy. Once that policy has written its durable
+    # native config block, only the Agent operation path may change run; do not
+    # let a reconnect race or overwrite the acknowledged policy.
+    command = (
+        'if [ -e /etc/ksmtuned.conf ] || [ -L /etc/ksmtuned.conf ]; then '
+        'test -f /etc/ksmtuned.conf && test -r /etc/ksmtuned.conf || exit 1; '
+        "if grep -Eq '^# (BEGIN|END) ZSTACK MEMORY OPTIMIZATION$' /etc/ksmtuned.conf; then :; "
+        'else grep_status=$?; [ "$grep_status" -eq 1 ] || exit "$grep_status"; '
+        'echo %s > /sys/kernel/mm/ksm/run; fi; '
+        'else echo %s > /sys/kernel/mm/ksm/run; fi') % (oprator, oprator)
     host_post_info.post_label = "ansible.shell.host-ksm"
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
+
+
+def _memory_supported_host():
+    # get_host_releasever can fall back to the MN release. Use the Host's
+    # actual ansible facts here; installation is not native ABI certification.
+    facts = ' '.join(getattr(host_info, 'ansible_distribution', '').lower().split())
+    return host_info.host_arch == 'x86_64' and facts in (
+        'helix green obsidian 8.4r', 'helix green obsidian 8.4',
+        'alibaba cloud linux pro edition 4', 'alibaba openanolis edition 4',
+        'kylin_tercel tercel 10', 'kylin_sword sword 10',
+        'kylin_zstack zstack 10', 'kylin_lance lance 10',
+        'kylin_halberd halberd 10')
+
+
+def _memory_optimization_rpm_input():
+    """Validate the one locally staged service RPM before any Host install."""
+    source = memory_optimization_bundle
+    if not os.path.isdir(source):
+        source = os.path.join(os.path.dirname(__file__), 'files', 'kvm',
+                              'memory-optimization', 'zstack-zram')
+    inventory_path = os.path.join(source, 'rpm-inventory.json')
+    if not os.path.isdir(source):
+        if memory_optimization_bundle_required == 'true':
+            raise RuntimeError('MEMORY_OPTIMIZATION_RPM_MISSING:%s' % source)
+        logger.warn('memory optimization RPM absent; KSM-only install')
+        return None
+    if os.path.islink(source) or os.path.islink(inventory_path) or not os.path.isfile(inventory_path):
+        raise RuntimeError('MEMORY_OPTIMIZATION_RPM_INVENTORY_INVALID')
+    try:
+        with open(inventory_path) as stream:
+            inventory = json.load(stream)
+        build_manifest_path = os.path.join(source, 'BUILD-MANIFEST.json')
+        if os.path.islink(build_manifest_path) or not os.path.isfile(build_manifest_path):
+            raise ValueError('BUILD_MANIFEST_MISSING_OR_SYMLINK')
+        with open(build_manifest_path) as stream:
+            build_manifest = json.load(stream)
+        package = inventory['package']
+        source_pin = inventory['source']
+        filename = package['filename']
+        if (inventory.get('schemaVersion') != 3 or
+                inventory.get('trustModel') != 'content-hash-pinned-not-signed' or
+                package.get('name') != 'zstack-zram' or
+                package.get('architecture') != 'x86_64' or
+                not re.fullmatch(r'[0-9]+(?:\.[0-9]+)*', package.get('version', '')) or
+                not re.fullmatch(r'[A-Za-z0-9._+~-]+', package.get('release', '')) or
+                inventory.get('kernelOrModuleIncluded') is not False or
+                inventory.get('configNoreplace') is not True or
+                inventory.get('scriptletsEmpty') is not True or
+                inventory.get('requiredFiles') != sorted([
+                    '/etc/zram-memory/config.json',
+                    '/usr/lib/systemd/system/zram-memory.service',
+                    '/usr/local/libexec/zram-efficiency',
+                    '/usr/local/bin/zram-efficiencyctl',
+                    '/usr/local/libexec/zstack-zram/zramctl',
+                    '/usr/local/libexec/zstack-zram/bootstrap-config',
+                    '/usr/local/libexec/zstack/memory-optimization-bundle/bin/load-zram-module',
+                    '/usr/local/libexec/zstack/memory-optimization-bundle/bin/check-qualification',
+                    '/usr/share/zstack-zram/config.json']) or
+                not re.fullmatch(r'zstack-zram-[0-9][A-Za-z0-9._+~-]*\.rpm', filename) or
+                not re.fullmatch(r'[0-9a-f]{64}', package.get('sha256', '')) or
+                not isinstance(package.get('bytes'), int) or package['bytes'] <= 0 or
+                not re.fullmatch(r'[0-9a-f]{40}', source_pin.get('sourceRevision', '')) or
+                not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('dirtyPatchSha256', '')) or
+                not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('sourceSnapshotSha256', '')) or
+                not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('buildManifestSha256', '')) or
+                not re.fullmatch(r'[0-9a-f]{64}', inventory.get('systemdUnitSha256', ''))):
+            raise ValueError('RPM_INVENTORY_INVALID')
+        installer = inventory.get('installer')
+        if (not isinstance(installer, dict) or
+                installer.get('filename') != 'install_memory_optimization_rpm.py' or
+                not isinstance(installer.get('bytes'), int) or installer['bytes'] <= 0 or
+                not re.fullmatch(r'[0-9a-f]{64}', installer.get('sha256', ''))):
+            raise ValueError('RPM_INSTALLER_INVENTORY_INVALID')
+        runtime_binaries = inventory.get('runtimeBinaries')
+        required_runtime_binaries = {
+            '/usr/local/libexec/zram-efficiency',
+            '/usr/local/bin/zram-efficiencyctl',
+        }
+        if (not isinstance(runtime_binaries, dict) or
+                set(runtime_binaries) != required_runtime_binaries or
+                any(not isinstance(item, dict) or
+                    not isinstance(item.get('bytes'), int) or item['bytes'] <= 0 or
+                    not re.fullmatch(r'[0-9a-f]{64}', item.get('sha256', ''))
+                    for item in runtime_binaries.values())):
+            raise ValueError('RPM_RUNTIME_BINARY_INVENTORY_INVALID')
+        rpm_files = inventory.get('rpmFiles')
+        rpm_files_sha = inventory.get('rpmFilesSha256')
+        if (not isinstance(rpm_files, list) or not rpm_files or
+                any(not isinstance(path, str) or not path.startswith('/') or
+                    '\n' in path or '\r' in path or '/..' in path.split('/')
+                    for path in rpm_files) or
+                rpm_files != sorted(set(rpm_files)) or
+                not set(inventory['requiredFiles']).issubset(set(rpm_files)) or
+                not required_runtime_binaries.issubset(set(rpm_files)) or
+                not re.fullmatch(r'[0-9a-f]{64}', rpm_files_sha or '') or
+                hashlib.sha256((''.join(path + '\n' for path in rpm_files)).encode()).hexdigest() != rpm_files_sha):
+            raise ValueError('RPM_FILE_INVENTORY_INVALID')
+        profiles = inventory.get('supportedHostProfiles')
+        if not isinstance(profiles, list) or not profiles or len(set(profiles)) != len(profiles):
+            raise ValueError('RPM_HOST_PROFILE_INVENTORY_INVALID')
+        if any(not isinstance(item, str) or
+               not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', item) for item in profiles):
+            raise ValueError('RPM_HOST_PROFILE_INVENTORY_INVALID')
+        with open(build_manifest_path, 'rb') as stream:
+            build_manifest_sha = hashlib.sha256(stream.read()).hexdigest()
+        if (build_manifest_sha != source_pin['buildManifestSha256'] or
+                build_manifest.get('schemaVersion') != 1 or
+                build_manifest.get('package') != 'zstack-zram' or
+                build_manifest.get('rpmVersion') != package['version'] or
+                not (build_manifest.get('rpmRelease') == package['release'] or
+                     package['release'].startswith(build_manifest.get('rpmRelease', '') + '.')) or
+                build_manifest.get('sourceRevision') != source_pin['sourceRevision'] or
+                build_manifest.get('sourceSnapshotSha256') != source_pin['sourceSnapshotSha256'] or
+                build_manifest.get('dirtyPatchSha256') != source_pin['dirtyPatchSha256']):
+            raise ValueError('BUILD_MANIFEST_PIN_MISMATCH')
+        unit_records = [item for item in build_manifest.get('sourceFiles', [])
+                        if item.get('path') == 'service/packaging/systemd/zram-memory.service']
+        if len(unit_records) != 1 or unit_records[0].get('sha256') != inventory['systemdUnitSha256']:
+            raise ValueError('RPM_UNIT_SOURCE_PIN_MISMATCH')
+        profile = releasever
+        if (host_info.host_arch != package['architecture'] or
+                not _memory_supported_host() or profile not in profiles):
+            raise ValueError('RPM_HOST_ABI_PROFILE_UNSUPPORTED:%s:%s' %
+                             (getattr(host_info, 'host_arch', ''), profile))
+        installer_path = os.path.join(source, installer['filename'])
+        if os.path.islink(installer_path) or not os.path.isfile(installer_path):
+            raise ValueError('RPM_INSTALLER_MISSING_OR_SYMLINK')
+        if os.path.getsize(installer_path) != installer['bytes']:
+            raise ValueError('RPM_INSTALLER_SIZE_MISMATCH')
+        installer_digest = hashlib.sha256()
+        with open(installer_path, 'rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                installer_digest.update(block)
+        if installer_digest.hexdigest() != installer['sha256']:
+            raise ValueError('RPM_INSTALLER_SHA256_MISMATCH')
+        package_path = os.path.join(source, filename)
+        if os.path.islink(package_path) or not os.path.isfile(package_path):
+            raise ValueError('RPM_FILE_MISSING_OR_SYMLINK')
+        if os.path.getsize(package_path) != package['bytes']:
+            raise ValueError('RPM_FILE_SIZE_MISMATCH')
+        digest = hashlib.sha256()
+        with open(package_path, 'rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                digest.update(block)
+        if digest.hexdigest() != package['sha256']:
+            raise ValueError('RPM_FILE_SHA256_MISMATCH')
+        with open(inventory_path, 'rb') as stream:
+            inventory_sha = hashlib.sha256(stream.read()).hexdigest()
+        return {'source': source, 'inventory_path': inventory_path,
+                'package_path': package_path, 'inventory': inventory,
+                'inventory_sha256': inventory_sha,
+                'installer_path': installer_path}
+    except (IOError, OSError, ValueError, KeyError, TypeError) as exc:
+        raise RuntimeError('MEMORY_OPTIMIZATION_RPM_INVALID:%s' % exc)
+
+
+def _install_memory_optimization_rpm(rpm_input):
+    package = rpm_input['inventory']['package']
+    package_path = '/var/tmp/zstack-zram-deploy/%s.rpm' % package['sha256']
+    inventory_path = package_path + '.inventory.json'
+    installer_path = '/var/tmp/zstack-zram-deploy/install_memory_optimization_rpm.py'
+    run_remote_command('set -eu; test ! -L /var/tmp/zstack-zram-deploy; '
+                       'mkdir -p /var/tmp/zstack-zram-deploy; '
+                       'test -d /var/tmp/zstack-zram-deploy && '
+                       'test ! -L /var/tmp/zstack-zram-deploy && '
+                       'test ! -L %s && test ! -L %s && test ! -L %s' %
+                       (package_path, inventory_path, installer_path), host_post_info)
+    copy_to_remote(rpm_input['package_path'], package_path, 'mode=0644', host_post_info)
+    copy_to_remote(rpm_input['inventory_path'], inventory_path, 'mode=0644', host_post_info)
+    copy_to_remote(rpm_input['installer_path'], installer_path, 'mode=0755', host_post_info)
+    rpm_file = shlex.quote(package_path)
+    inventory_file = shlex.quote(inventory_path)
+    installer_file = shlex.quote(installer_path)
+    required_checks = ["rpm -qpl \"$rpm_file\" | grep -Fxq '%s'" % relative
+                       for relative in rpm_input['inventory']['requiredFiles']]
+    required_checks.extend([
+        'test "$(rpm -qpl "$rpm_file" | LC_ALL=C sort | sha256sum | cut -d\' \' -f1)" = %s' %
+        shlex.quote(rpm_input['inventory']['rpmFilesSha256']),
+        "! rpm -qpl \"$rpm_file\" | grep -Eq '\\.ko$|/lib/modules/'",
+        # This fragment is inserted as a %s value below, not formatted again.
+        'rpm -qp --qf "[%{FILENAMES} %{FILEFLAGS:fflags}\\n]" "$rpm_file" | '
+        "grep -Fxq '/etc/zram-memory/config.json cn'",
+    ])
+    command = (
+        'set -eu; rpm_file=%s; inventory_file=%s; installer_file=%s; '
+        'printf "%%s  %%s\\n" %s "$rpm_file" | sha256sum -c - >/dev/null; '
+        'printf "%%s  %%s\\n" %s "$inventory_file" | sha256sum -c - >/dev/null; '
+        'test "$(uname -m)" = x86_64; test "$(rpm --eval %%{_arch})" = x86_64; '
+        'test "$(rpm -qp --qf %%{NAME} \"$rpm_file\")" = zstack-zram; '
+        'test "$(rpm -qp --qf %%{VERSION} \"$rpm_file\")" = %s; '
+        'test "$(rpm -qp --qf %%{RELEASE} \"$rpm_file\")" = %s; '
+        'test "$(rpm -qp --qf %%{ARCH} \"$rpm_file\")" = x86_64; '
+        'test -z "$(rpm -qp --scripts \"$rpm_file\")"; %s; '
+        'if [ -e /etc/zram-memory/config.json ] || [ -L /etc/zram-memory/config.json ]; then '
+        '[ -f /etc/zram-memory/config.json ] && [ ! -L /etc/zram-memory/config.json ]; fi; '
+        'if [ -e /etc/systemd/system/zram-memory.service ] || [ -L /etc/systemd/system/zram-memory.service ]; then '
+        '[ -f /etc/systemd/system/zram-memory.service ] && [ ! -L /etc/systemd/system/zram-memory.service ]; fi; '
+        'printf "%%s  %%s\\n" %s "$installer_file" | sha256sum -c - >/dev/null; '
+        'python3 "$installer_file" --inventory "$inventory_file" --rpm "$rpm_file"' %
+        (rpm_file, inventory_file, installer_file, package['sha256'], rpm_input['inventory_sha256'],
+         package['version'], package['release'], ' && '.join(required_checks),
+         rpm_input['inventory']['installer']['sha256'])
+    )
+    run_remote_command(command, host_post_info)
+
+
+def install_memory_optimization_materials():
+    """Validate the distro KSM package and install ZRAM materials if selected."""
+    if not _memory_supported_host():
+        return
+    rpm_input = _memory_optimization_rpm_input()
+    run_remote_command(
+        'set -eu; test "$(getconf PAGE_SIZE 2>/dev/null || echo 0)" = 4096; '
+        'test -r /sys/kernel/mm/ksm/run; '
+        'test -r /sys/kernel/mm/ksm/pages_to_scan; '
+        'test -r /sys/kernel/mm/ksm/sleep_millisecs; '
+        'test -x /usr/sbin/ksmtuned; test -x /usr/libexec/ksmctl; '
+        'test -r /usr/lib/systemd/system/ksm.service; '
+        'test -r /usr/lib/systemd/system/ksmtuned.service; '
+        'test -f /etc/ksmtuned.conf; '
+        'rpm -qf /usr/sbin/ksmtuned /usr/libexec/ksmctl '
+        '/usr/lib/systemd/system/ksm.service '
+        '/usr/lib/systemd/system/ksmtuned.service >/dev/null',
+        host_post_info)
+    if rpm_input is None:
+        return
+    # RPM owns the service binaries, loader, unit, and noreplace config. The
+    # package-manager transaction has no scriptlets and does not activate it.
+    _install_memory_optimization_rpm(rpm_input)
+
+
+def check_alinux_zram_driver():
+    """Install the exact published kmod and report disk/runtime separately.
+
+    This is an optional-feature check, not permission to disconnect a Host or
+    replace a loaded module. Agent discovery rechecks the same running facts.
+    """
+    if releasever != 'alinux4' or not _memory_supported_host():
+        return
+    python = shlex.quote(os.path.join(virtenv_path, 'bin', 'python'))
+    command = python + ' -m zstacklib.utils.zram_driver'
+    status, output = run_remote_command(command, host_post_info,
+                                        return_status=True, return_output=True)
+    try:
+        report = json.loads(output) if status else {}
+        package = report.get('installationPackage')
+        if not package:
+            handle_ansible_info('ZRAM driver has no verified package for the running kernel',
+                                host_post_info, 'WARNING')
+            return
+        if not re.fullmatch(r'kmod-zstack-zram-[0-9.]+-[0-9]+\.alnx4\.x86_64', package):
+            raise ValueError('ZRAM_DRIVER_PACKAGE_IDENTITY_INVALID')
+        # The profile's exact kernel is already running. Do not let package
+        # dependency resolution replace/install a kernel as a side effect.
+        install = ('yum -y --disablerepo="*" --enablerepo=zstack-local,zstack-mn '
+                   '--exclude="kernel*" --setopt=install_weak_deps=False install %s' %
+                   shlex.quote(package))
+        if not run_remote_command(install, host_post_info, return_status=True):
+            handle_ansible_info('ZRAM driver exact package unavailable; KSM remains independent',
+                                host_post_info, 'WARNING')
+        status, output = run_remote_command(command, host_post_info,
+                                            return_status=True, return_output=True)
+        report = json.loads(output) if status else {}
+        if report.get('supported') is not True:
+            # Only controlled reason/version fields, never arbitrary output.
+            reason = report.get('reasonCode', 'ZRAM_DRIVER_OBSERVATION_FAILED')
+            if not isinstance(reason, str) or not re.fullmatch(r'[A-Z_]+', reason):
+                reason = 'ZRAM_DRIVER_OBSERVATION_FAILED'
+            handle_ansible_info('ZRAM driver is not active/qualified: %s; no module was unloaded' % reason,
+                                host_post_info, 'WARNING')
+    except (ValueError, TypeError, AttributeError):
+        handle_ansible_info('ZRAM driver observation failed; capability remains unavailable',
+                            host_post_info, 'WARNING')
 
 
 def do_auditd_config():
@@ -1266,6 +1564,11 @@ create_ovmf_symlinks()
 install_agent_pkg()
 do_auditd_config()
 do_systemd_config()
+# Service RPM adoption may restart the previous controller and invoke its
+# module-loading hook. Prepare the exact-ABI disk package before that hook;
+# this check itself never replaces a module already loaded in memory.
+check_alinux_zram_driver()
+install_memory_optimization_materials()
 do_ksm_config()
 modprobe_usb_module()
 modprobe_mpci_module()
