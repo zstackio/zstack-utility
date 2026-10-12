@@ -3,7 +3,7 @@
 
 import struct
 import socket
-import subprocess
+from zstacklib.utils.compat import subprocess
 import os
 import netaddr
 import time

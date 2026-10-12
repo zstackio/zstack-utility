@@ -182,3 +182,6 @@ class KvmDaemon(daemon.Daemon):
 SEND_COMMAND_URL = 'SEND_COMMAND_URL'
 HOST_UUID = 'HOST_UUID'
 VERSION = 'VERSION'
+configs = {}
+PHYSICALMEMORY_USAGE_ALARM_THRESHOLD = 'kvmagent.physicalmemory.usage.alarm.threshold'
+PHYSICALMEMORY_USAGE_HARDLIMIT = 'kvmagent.physicalmemory.usage.hardlimit'

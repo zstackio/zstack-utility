@@ -16,7 +16,7 @@ import string
 import socket
 import sys
 import yaml
-import subprocess
+from zstacklib.utils.compat import subprocess
 
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
@@ -1056,6 +1056,9 @@ class HostPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def ping(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        if cmd.configs:
+            kvmagent.configs = cmd.configs.__dict__
         rsp = PingResponse()
         rsp.hostUuid = self.host_uuid
         rsp.sendCommandUrl = self.config.get(kvmagent.SEND_COMMAND_URL)

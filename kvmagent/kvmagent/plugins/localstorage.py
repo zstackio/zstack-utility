@@ -596,14 +596,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             logger.debug("getProgress in localstorage-agent, synced: %s, total: %s" % (synced, total))
             if not os.path.exists(PFILE):
                 return synced
-            fpread = open(PFILE, 'r')
-            lines = fpread.readlines()
+            with open(PFILE, 'r') as fpread:
+                lines = fpread.readlines()
             if not lines:
-                fpread.close()
                 return synced
             last = str(lines[-1]).strip().split('\r')[-1]
             if not last or len(last.split()) < 1:
-                fpread.close()
                 return synced
             line = last.split()[0]
             if not line.isdigit():
@@ -614,7 +612,6 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                     percent = int(round(float(written + synced) / float(total) * (end - start) + start))
                     report.progress_report(percent, "report")
                     synced = written
-            fpread.close()
             return synced
 
         for path in set(chain):
