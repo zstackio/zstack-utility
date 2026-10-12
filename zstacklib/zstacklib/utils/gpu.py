@@ -1,9 +1,22 @@
 import os
+import re
 
 from zstacklib.utils import log, linux
 import json
 
 logger = log.get_logger(__name__)
+
+_HY_PCI_ADDRESS = re.compile(
+    r'^(?:0000)?([0-9a-f]{4}:[0-9a-f]{2}:[01][0-9a-f]\.[0-7])'
+    r'(?:[ \t]+-->[ \t]+SN:[ \t]+\S+)?\Z', re.IGNORECASE)
+
+
+def normalize_hy_pci_address(value):
+    """Return a bare BDF from supported hy-smi bus output, or None."""
+    if not isinstance(value, basestring):
+        return None
+    match = _HY_PCI_ADDRESS.match(value.strip())
+    return match.group(1).lower() if match else None
 
 
 def parse_nvidia_gpu_output(output):
@@ -50,10 +63,14 @@ def parse_hy_gpu_output(output):
     try:
         gpu_info_json = json.loads(output)
         for card_name, card_data in gpu_info_json.items():
+            if not isinstance(card_data, dict):
+                logger.warn("ignoring Hygon GPU %s with invalid card data" % card_name)
+                continue
             gpuinfo = {}
-            pci_device_address = card_data['PCI Bus'].lower()
-            if len(pci_device_address.split(':')[0]) == 8:
-                pci_device_address = pci_device_address[4:].lower()
+            pci_device_address = normalize_hy_pci_address(card_data.get('PCI Bus'))
+            if pci_device_address is None:
+                logger.warn("ignoring Hygon GPU %s with invalid PCI Bus" % card_name)
+                continue
 
             gpuinfo["pciAddress"] = pci_device_address
             gpuinfo["memory"] = card_data['Available memory size (MiB)'] + " MiB"
@@ -192,4 +209,9 @@ def get_huawei_gpu_product_name_cmd(npu_id, iswindows=False):
     cmd = "npu-smi info -t product -i {0}".format(npu_id)
     if iswindows:
         cmd = cmd.replace(" ", "|")
+    return cmd
+
+
+def reload_hygon_gpu_driver_cmd():
+    cmd = "hy-smi --unloaddriver && hy-smi --loaddriver"
     return cmd

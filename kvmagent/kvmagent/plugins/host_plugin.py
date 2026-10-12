@@ -595,6 +595,15 @@ class GetPciDevicesResponse(kvmagent.AgentResponse):
         self.pciDevicesInfo = []
         self.hostIommuStatus = False
 
+class ReloadDeviceDriverOnHostCommand(kvmagent.AgentCommand):
+    def __init__(self):
+        super(ReloadDeviceDriverOnHostCommand, self).__init__()
+        self.pciDeviceAddress = None
+
+class ReloadDeviceDriverOnHostRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        super(ReloadDeviceDriverOnHostRsp, self).__init__()
+
 class GetMttyDevicesCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetMttyDevicesCmd, self).__init__()
@@ -930,6 +939,7 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_SHUTDOWN = "/host/shutdown"
     HOST_REBOOT = "/host/reboot"
     GET_PCI_DEVICES = "/pcidevice/get"
+    RELOAD_DEVICE_DRIVER_ON_HOST = "/pcidevice/reloaddriver"
     CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     GENERATE_SRIOV_PCI_DEVICES = "/pcidevice/generate"
     UNGENERATE_SRIOV_PCI_DEVICES = "/pcidevice/ungenerate"
@@ -2460,7 +2470,7 @@ done
             return VendorEnum.AMD
         elif 'NVIDIA Corporation' in name:
             return VendorEnum.NVIDIA
-        elif 'Haiguang' in name:
+        elif 'Haiguang' in name or '1d94' in name:
             return VendorEnum.HAIGUANG
         elif 'Huawei' in name:
             return VendorEnum.HUAWEI
@@ -2569,8 +2579,13 @@ done
                                                  and pci_device_mapper.get('PCI bridge') in to.type):
                     to.type = "PCI_Bridge"
                 elif ("Processing accelerators" in to.type or (
-                        pci_device_mapper.get('Processing accelerators') is not None)) and 'Device' in to.device:
+                        pci_device_mapper.get('Processing accelerators') is not None
+                        and pci_device_mapper.get('Processing accelerators') in to.type)) and 'Device' in to.device:
                     to.type = "GPU_Processing_Accelerators"
+                elif (any(vendor in to.description for vendor in gpu_vendors) or '1d94' in to.vendorId ) \
+                        and ('Co-processor' in to.type or (pci_device_mapper.get('Co-processor') is not None
+                                                           and pci_device_mapper.get('Co-processor') in to.type)):
+                    to.type = "GPU_Co_Processor"
                 else:
                     to.type = "Generic"
 
@@ -2601,8 +2616,9 @@ done
 
     @in_bash
     def _collect_tianshu_gpu_info(self, to):
-        if shell.run("which ixsmi") != 0:
-            logger.debug("no ixsmi")
+        r, o, e = bash_roe("which ixsmi")
+        if r != 0:
+            logger.debug("no ixsmi, detail: %s " % o)
             return
         r, o, e = bash_roe(gpu.get_tianshu_gpu_basic_info_cmd())
         if r != 0:
@@ -2623,8 +2639,9 @@ done
 
     @in_bash
     def _collect_huawei_gpu_info(self, to):
-        if shell.run("which npu-smi") != 0:
-            logger.debug("no npu-smi")
+        r, o, e = bash_roe("which npu-smi")
+        if r != 0:
+            logger.debug("no npu-smi, detail: %s " % o)
             return
 
         r, npu_ids_out = bash_ro(gpu.get_huawei_gpu_npu_id_cmd())
@@ -2666,8 +2683,9 @@ done
 
     @in_bash
     def _collect_haiguang_gpu_info(self, to):
-        if shell.run("which hy-smi") != 0:
-            logger.debug("no hy-smi")
+        r, o, e = bash_roe("which hy-smi")
+        if r != 0:
+            logger.debug("no hy-smi, detail: %s " % o)
             return
 
         r, o, e = bash_roe(gpu.get_hy_gpu_basic_info_cmd())
@@ -2679,8 +2697,9 @@ done
 
     @in_bash
     def _collect_nvidia_gpu_info(self, to):
-        if shell.run("which nvidia-smi") != 0:
-            logger.debug("no nvidia-smi")
+        r, o, e = bash_roe("which nvidia-smi")
+        if r != 0:
+            logger.debug("no nvidia-smi, detail: %s " % o)
             return
 
         r, o, e = bash_roe(gpu.get_nvidia_gpu_basic_info_cmd())
@@ -2702,8 +2721,9 @@ done
     @in_bash
     def _collect_amd_gpu_info(self, to):
         #todo collect amd gpu info
-        if shell.run("which rocm-smi") != 0:
-            logger.debug("no rocm-smi")
+        r, o, e = bash_roe("which rocm-smi")
+        if r != 0:
+            logger.debug("no rocm-smi, detail: %s " % o)
             return
 
         r, o, e = bash_roe(gpu.get_amd_gpu_basic_info_cmd())
@@ -2752,6 +2772,33 @@ done
         # get pci device info
         self._collect_format_pci_device_info(rsp)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    @in_bash
+    def reload_device_driver_on_host(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = ReloadDeviceDriverOnHostRsp()
+        addr = cmd.pciDeviceAddress
+        vender = cmd.vendor
+
+        self._reload_gpu_driver(addr, vender, rsp)
+
+        return jsonobject.dumps(rsp)
+
+    def _reload_gpu_driver(self, addr, vendor_name, rsp):
+        vendor_handler_map = {
+            VendorEnum.HAIGUANG: self._reload_haiguang_gpu_driver,
+        }
+        handler = vendor_handler_map.get(vendor_name)
+        if handler:
+            handler(addr, rsp)
+
+    def _reload_haiguang_gpu_driver(self, addr, rsp):
+        r, o, e = bash_roe(gpu.reload_hygon_gpu_driver_cmd())
+        logger.debug("reload hygon gpu driver %s: %s, %s" % (addr, o, e))
+        if r != 0:
+            rsp.success = False
+            rsp.error = "failed to reload hygon gpu driver %s: %s, %s" % (addr, o, e)
 
     @kvmagent.replyerror
     def create_pci_device_rom_file(self, req):
@@ -3654,6 +3701,7 @@ done
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.HOST_REBOOT, self.reboot_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
+        http_server.register_async_uri(self.RELOAD_DEVICE_DRIVER_ON_HOST, self.reload_device_driver_on_host)
         http_server.register_async_uri(self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(self.GENERATE_SRIOV_PCI_DEVICES, self.generate_sriov_pci_devices)
         http_server.register_async_uri(self.UNGENERATE_SRIOV_PCI_DEVICES, self.ungenerate_sriov_pci_devices)

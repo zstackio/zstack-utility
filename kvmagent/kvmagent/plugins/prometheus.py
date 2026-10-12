@@ -11,6 +11,7 @@ import psutil
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
+from zstacklib.utils import gpu
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
 from zstacklib.utils import lock
@@ -1676,16 +1677,28 @@ def collect_hy_gpu_status():
 
     gpu_info_json = json.loads(gpu_info)
     for card_name, card_data in gpu_info_json.items():
+        if not isinstance(card_data, dict):
+            logger.warn("ignoring Hygon GPU %s with invalid card data" % card_name)
+            continue
+        pci_device_address = gpu.normalize_hy_pci_address(card_data.get("PCI Bus"))
+        if pci_device_address is None:
+            logger.warn("ignoring Hygon GPU %s with invalid PCI Bus" % card_name)
+            continue
         gpu_serial = card_data['Serial Number']
-        pci_device_address = card_data["PCI Bus"].lower()
         add_gpu_pci_device_address("HY", pci_device_address, gpu_serial)
         add_metrics('host_gpu_power_draw', card_data.get("Average Graphics Package Power (W)"), [pci_device_address, gpu_serial],
                     metrics)
         add_metrics('host_gpu_temperature', card_data.get("Temperature (Sensor junction) (C)"), [pci_device_address, gpu_serial],
                     metrics)
         add_metrics('host_gpu_fan_speed', card_data.get("Fan speed (%)"), [pci_device_address, gpu_serial], metrics)
-        add_metrics('host_gpu_utilization', card_data.get("DCU use (%)"), [pci_device_address, gpu_serial], metrics)
-        add_metrics('host_gpu_memory_utilization', card_data.get("DCU memory use (%)"), [pci_device_address, gpu_serial],
+        gpu_utilization = card_data.get("DCU use (%)")
+        if gpu_utilization is None or gpu_utilization == "":
+            gpu_utilization = card_data.get("HCU use (%)")
+        add_metrics('host_gpu_utilization', gpu_utilization, [pci_device_address, gpu_serial], metrics)
+        gpu_memory_utilization = card_data.get("DCU memory use (%)")
+        if gpu_memory_utilization is None or gpu_memory_utilization == "":
+            gpu_memory_utilization = card_data.get("HCU memory use (%)")
+        add_metrics('host_gpu_memory_utilization', gpu_memory_utilization, [pci_device_address, gpu_serial],
                     metrics)
     check_gpu_status_and_save_gpu_status("HY", metrics)
     return metrics.values()
