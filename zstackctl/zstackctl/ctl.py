@@ -2924,9 +2924,13 @@ class DeployDBCmd(Command):
         parser.add_argument('--no-update', help='do NOT update database information to zstack.properties; if you do not know what this means, do not use it', action='store_true', default=False)
         parser.add_argument('--drop', help='drop existing zstack database', action='store_true', default=False)
         parser.add_argument('--keep-db', help='keep existing zstack database and not raise error.', action='store_true', default=False)
+        parser.add_argument('--fresh-cloud-bootstrap', help=argparse.SUPPRESS, action='store_true', default=False)
 
     def run(self, args):
         error_if_tool_is_missing('mysql')
+
+        if args.fresh_cloud_bootstrap and (args.drop or args.keep_db):
+            raise CtlError('--fresh-cloud-bootstrap cannot be combined with --drop or --keep-db')
 
         script_path = os.path.join(ctl.zstack_home, self.DEPLOY_DB_SCRIPT_PATH)
         if not os.path.exists(script_path):
@@ -2935,6 +2939,21 @@ class DeployDBCmd(Command):
         property_file_path = os.path.join(ctl.zstack_home, self.ZSTACK_PROPERTY_FILE)
         if not os.path.exists(property_file_path):
             error('cannot find %s, your ZStack installation may have been corrupted, please reinstall it' % property_file_path)
+
+        if args.fresh_cloud_bootstrap:
+            existence_query = "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME='zstack'"
+            if args.root_password:
+                verify_existing_db = 'mysql --user=root --password=%s --host=%s --port=%s --batch --skip-column-names -e "%s"' % (
+                    args.root_password, format_mysql_host(args.host), args.port, existence_query)
+            else:
+                verify_existing_db = 'mysql --user=root --host=%s --port=%s --batch --skip-column-names -e "%s"' % (
+                    format_mysql_host(args.host), args.port, existence_query)
+            verify_cmd = ShellCmd(verify_existing_db)
+            verify_cmd(False)
+            if verify_cmd.return_code != 0:
+                raise CtlError('target database absence could not be verified; fresh-cloud bootstrap was not started')
+            if verify_cmd.stdout.strip():
+                raise CtlError('target zstack database already exists; fresh-cloud bootstrap was not started')
 
         mysql_host = format_mysql_host(args.host)
         if args.root_password:
@@ -2956,7 +2975,10 @@ class DeployDBCmd(Command):
             else:
                 raise CtlError('detected existing zstack database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database')
         else:
-            cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, mysql_host, args.port, args.zstack_password))
+            deploy_args = 'bash %s root %s %s %s %s' % (script_path, args.root_password, mysql_host, args.port, args.zstack_password)
+            if args.fresh_cloud_bootstrap:
+                deploy_args += ' fresh-cloud-bootstrap %s' % uuid.uuid4().hex
+            cmd = ShellCmd(deploy_args)
             cmd(False)
             if cmd.return_code != 0:
                 if ('ERROR 1044' in cmd.stdout or 'ERROR 1044' in cmd.stderr) or ('Access denied' in cmd.stdout or 'Access denied' in cmd.stderr):
@@ -10387,8 +10409,8 @@ class UpgradeManagementNodeCmd(Command):
                 if ret != 0:
                     raise CtlError('WAR file %s is corrupted or not a valid zip file' % new_war.path)
 
-            backup()
             download_war_if_needed()
+            backup()
             stop_node()
             upgrade()
             restore_config()

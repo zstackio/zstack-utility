@@ -1,6 +1,29 @@
 #!/bin/bash
 # ZStack All-In-One Installer
 # Usage: bash install.sh
+# Return success only for the installer-owned full first-install path, before
+# it writes the local installation identity. The target DB is independently
+# checked by DeployDBCmd immediately before deployment.
+zstack_is_fresh_cloud_install() {
+    local upgrade="$1" only_install="$2" drop_db="$3" keep_db="$4"
+    local install_root="$5" properties="$6" system_root="${7:-/}"
+    [ "$upgrade" = "y" ] && return 1
+    [ -n "$only_install" ] && return 1
+    [ -n "$drop_db" ] && return 1
+    [ -n "$keep_db" ] && return 1
+
+    local identity_path
+    for identity_path in \
+            "$install_root/VERSION" \
+            "$properties" \
+            "$install_root/apache-tomcat/webapps/zstack/WEB-INF/classes/zstack.properties" \
+            "$system_root/etc/init.d/zstack" \
+            "$system_root/usr/lib/systemd/system/zstack.service" \
+            "$system_root/etc/systemd/system/zstack.service"; do
+        [ -e "$identity_path" ] && return 1
+    done
+    return 0
+}
 #DEBUG='y'
 ZSTACK_INSTALL_ROOT=${ZSTACK_INSTALL_ROOT:-"/usr/local/zstack"}
 
@@ -47,6 +70,7 @@ NEED_NFS=''
 NEED_HTTP=''
 NEED_DROP_DB=''
 NEED_KEEP_DB=''
+FRESH_CLOUD_BOOTSTRAP='n'
 ONLY_INSTALL_LIBS=''
 ONLY_INSTALL_ZSTACK=''
 NOT_START_ZSTACK=''
@@ -1182,7 +1206,11 @@ cs_deploy_db(){
     echo_subtitle "Deploy ZStack Database"
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
-            zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACK_INSTALL_LOG 2>&1
+            if [ 'y' = "$FRESH_CLOUD_BOOTSTRAP" ]; then
+                zstack-ctl deploydb --fresh-cloud-bootstrap --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACK_INSTALL_LOG 2>&1
+            else
+                zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACK_INSTALL_LOG 2>&1
+            fi
         else
             zstack-ctl deploydb --root-password="$MYSQL_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACK_INSTALL_LOG 2>&1
         fi
@@ -1381,6 +1409,12 @@ do
     esac
 done
 OPTIND=1
+# Capture positive full-install intent before the installer lays down the
+# application identity. DeployDB independently verifies that the target Cloud
+# database does not already exist before it writes the marker.
+zstack_is_fresh_cloud_install "$UPGRADE" "$ONLY_INSTALL_ZSTACK" \
+        "$NEED_DROP_DB" "$NEED_KEEP_DB" "$ZSTACK_INSTALL_ROOT" "$ZSTACK_PROPERTIES" / \
+        && FRESH_CLOUD_BOOTSTRAP='y'
 
 echo "ZStack install root: $ZSTACK_INSTALL_ROOT" >>$ZSTACK_INSTALL_LOG
 [ -z $NFS_FOLDER ] && NFS_FOLDER=$ZSTACK_INSTALL_ROOT/nfs_root

@@ -99,6 +99,7 @@ NEED_NFS=''
 NEED_HTTP=''
 NEED_DROP_DB=''
 NEED_KEEP_DB=''
+FRESH_CLOUD_BOOTSTRAP='n'
 ONLY_INSTALL_LIBS=''
 ONLY_INSTALL_ZSTACK=''
 NOT_START_ZSTACK=''
@@ -1228,8 +1229,32 @@ cs_check_mysql_password () {
     fi
 }
 
+# Capture first-install intent before writing the local installation identity.
+# DeployDBCmd separately verifies that the target database does not exist.
+zstack_is_fresh_cloud_install() {
+    local upgrade="$1" only_install="$2" drop_db="$3" keep_db="$4"
+    local install_root="$5" properties="$6" system_root="${7:-/}"
+    [ "$upgrade" = "y" ] && return 1
+    [ -n "$only_install" ] && return 1
+    [ -n "$drop_db" ] && return 1
+    [ -n "$keep_db" ] && return 1
+
+    local identity_path
+    for identity_path in \
+            "$install_root/VERSION" \
+            "$properties" \
+            "$install_root/apache-tomcat/webapps/zstack/WEB-INF/classes/zstack.properties" \
+            "$system_root/etc/init.d/zstack" \
+            "$system_root/usr/lib/systemd/system/zstack.service" \
+            "$system_root/etc/systemd/system/zstack.service"; do
+        [ -e "$identity_path" ] && return 1
+    done
+    return 0
+}
+
 cs_check_zstack_data_exist(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    FRESH_CLOUD_BOOTSTRAP='n'
     cs_check_mysql_password
     if [ -z $ONLY_INSTALL_ZSTACK ] && [ 'y' != $UPGRADE ];then
         which mysql >/dev/null 2>&1
@@ -1251,6 +1276,13 @@ cs_check_zstack_data_exist(){
             fi
         fi
     fi
+
+    # Capture first-install intent before this installer creates VERSION,
+    # zstack.properties, or the management-node service. Existing identity,
+    # upgrade, keep/drop, and MN-only installation paths must never seed it.
+    zstack_is_fresh_cloud_install "$UPGRADE" "$ONLY_INSTALL_ZSTACK" \
+        "$NEED_DROP_DB" "$NEED_KEEP_DB" "$ZSTACK_INSTALL_ROOT" "$ZSTACK_PROPERTIES" / \
+        && FRESH_CLOUD_BOOTSTRAP='y'
 }
 
 #Do preinstallation checking for CentOS and Ubuntu and Database
@@ -3729,7 +3761,11 @@ cs_deploy_db(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
-            zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            if [ 'y' = "$FRESH_CLOUD_BOOTSTRAP" ]; then
+                zstack-ctl deploydb --fresh-cloud-bootstrap --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            else
+                zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            fi
         else
             zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
         fi

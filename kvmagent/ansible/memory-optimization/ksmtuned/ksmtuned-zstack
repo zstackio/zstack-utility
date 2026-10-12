@@ -1,0 +1,850 @@
+#!/bin/bash
+# Copyright 2009 Red Hat, Inc. and/or its affiliates.
+# Copyright 2026 ZStack.  Derived from ksmtuned (GPL-2.0-or-later).
+#
+# Single-writer policy adapter.  It retains the upstream ksmtuned control
+# model (pages_to_scan/sleep_millisecs/run) and adds durable revision
+# readback and static zero-page/NUMA policy. Commercial License
+# admission is handled by the management plane before configuration is sent;
+# an applied policy is not a renewable runtime lease.
+
+set -u
+CONF=${KSMTUNED_CONF:-/etc/zstack/memory-optimization/ksmtuned.conf}
+KSM=${KSMTUNED_KSM_ROOT:-/sys/kernel/mm/ksm}
+LOCK=${KSMTUNED_LOCK:-/run/zstack/memory-optimization/ksm.writer.lock}
+SNAPSHOT=${KSMTUNED_SNAPSHOT:-/etc/zstack/memory-optimization/legacy-ksmtuned.state}
+NUMA_TARGET=${KSMTUNED_NUMA_TARGET:-${SNAPSHOT}.numa-owner}
+APPLIED=${KSMTUNED_APPLIED:-${LOCK}.applied}
+ENGINE=${KSMTUNED_ENGINE:-/usr/libexec/zstack/ksmtuned-upstream}
+ENGINE_PIDFILE=${KSMTUNED_PIDFILE:-${LOCK}.engine.pid}
+RUNTIME_DIR=${KSMTUNED_RUNTIME_DIR:-/run/zstack/memory-optimization}
+ENGINE_CONF=${KSMTUNED_ENGINE_CONF:-$RUNTIME_DIR/ksmtuned-engine.conf}
+PYTHON=${KSMTUNED_PYTHON:-python3}
+
+die() { echo "ksmtuned-zstack: $*" >&2; exit 1; }
+unit_state_supported() {
+    case "$1" in
+        enabled|enabled-runtime|disabled|static|indirect|masked|not-found) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+unit_active_supported() {
+    case "$1" in active|inactive|not-found) return 0 ;; *) return 1 ;; esac
+}
+unit_load_state() {
+    local output value count
+    if ! output=$(systemctl show -p LoadState "$1" 2>/dev/null); then
+        printf 'query-error\n'
+        return 0
+    fi
+    value=$(printf '%s\n' "$output" | sed -n 's/^LoadState=//p')
+    count=$(printf '%s\n' "$value" | sed '/^$/d' | wc -l | tr -d ' ')
+    [ "$count" = 1 ] || { printf 'query-error\n'; return 0; }
+    printf '%s\n' "$value"
+}
+unit_enabled_state() {
+    local value
+    value=$(systemctl is-enabled "$1" 2>/dev/null || true)
+    [ -n "$value" ] || value=query-error
+    printf '%s\n' "$value"
+}
+unit_active_state() {
+    local value
+    value=$(systemctl is-active "$1" 2>/dev/null || true)
+    [ -n "$value" ] || value=query-error
+    printf '%s\n' "$value"
+}
+stop_native_unit_if_active() {
+    local unit=$1 active
+    active=$(unit_active_state "$unit")
+    case "$active" in
+        active) systemctl stop "$unit" >/dev/null 2>&1 || die "KSM_NATIVE_UNIT_STOP_FAILED:$unit" ;;
+        inactive|not-found) return 0 ;;
+        *) die "KSM_NATIVE_UNIT_ACTIVE_STATE_UNKNOWN:$unit:$active" ;;
+    esac
+}
+snapshot_native_unit() {
+    local unit=$1 key=$2 load enabled active present
+    load=$(unit_load_state "$unit")
+    case "$load" in
+        loaded|masked|masked-runtime) present=1 ;;
+        not-found) present=0 ;;
+        *) die "KSM_NATIVE_UNIT_LOAD_STATE_UNKNOWN:$unit:$load" ;;
+    esac
+    if [ "$present" = 1 ]; then
+        enabled=$(unit_enabled_state "$unit")
+        active=$(unit_active_state "$unit")
+        unit_state_supported "$enabled" || die "KSM_NATIVE_UNIT_ENABLE_STATE_UNSUPPORTED:$unit:$enabled"
+        unit_active_supported "$active" || die "KSM_NATIVE_UNIT_ACTIVE_STATE_UNKNOWN:$unit:$active"
+        # A transient runtime mask cannot be safely replaced with the
+        # persistent ownership mask without losing its original boot meaning.
+        [ "$enabled" != masked-runtime ] || die "KSM_NATIVE_UNIT_ENABLE_STATE_UNSUPPORTED:$unit:$enabled"
+    else
+        enabled=not-found
+        active=not-found
+    fi
+    printf 'native_%s_present=%s\nnative_%s_enabled=%s\nnative_%s_active=%s\n' \
+        "$key" "$present" "$key" "$enabled" "$key" "$active"
+}
+snapshot_value() {
+    sed -n "s/^$2=//p" "$1" | head -1
+}
+snapshot_path_is_safe() {
+    local path=$1
+    [ ! -L "$path" ] || die 'KSM_LEGACY_SNAPSHOT_SYMLINK_REJECTED'
+    [ -f "$path" ] || die 'KSM_LEGACY_SNAPSHOT_NOT_REGULAR'
+}
+validate_snapshot_for_resume() {
+    local key value schema run pages sleep zero numa enabled active
+    snapshot_path_is_safe "$SNAPSHOT"
+    awk -F= '
+        NF != 2 { exit 1 }
+        $1 !~ /^(schema|enabled|active|run|pages_to_scan|sleep_millisecs|use_zero_pages|merge_across_nodes|native_ksm_(present|enabled|active)|native_ksmtuned_(present|enabled|active))$/ { exit 1 }
+        { if (++seen[$1] > 1) exit 1 }
+        END { if (NR == 0) exit 1 }
+    ' "$SNAPSHOT" || die 'KSM_LEGACY_SNAPSHOT_DUPLICATE_OR_MALFORMED'
+    schema=$(snapshot_value "$SNAPSHOT" schema)
+    [ -z "$schema" ] || [ "$schema" = 2 ] || die 'KSM_LEGACY_SNAPSHOT_SCHEMA_UNSUPPORTED'
+    run=$(snapshot_value "$SNAPSHOT" run)
+    pages=$(snapshot_value "$SNAPSHOT" pages_to_scan)
+    sleep=$(snapshot_value "$SNAPSHOT" sleep_millisecs)
+    zero=$(snapshot_value "$SNAPSHOT" use_zero_pages)
+    numa=$(snapshot_value "$SNAPSHOT" merge_across_nodes)
+    enabled=$(snapshot_value "$SNAPSHOT" enabled)
+    active=$(snapshot_value "$SNAPSHOT" active)
+    case "$run" in 0|1) ;; *) die 'KSM_LEGACY_SNAPSHOT_INVALID:run' ;; esac
+    case "$pages" in ''|*[!0-9]*|0) die 'KSM_LEGACY_SNAPSHOT_INVALID:pages_to_scan' ;; esac
+    case "$sleep" in ''|*[!0-9]*|0) die 'KSM_LEGACY_SNAPSHOT_INVALID:sleep_millisecs' ;; esac
+    [ -z "$zero" ] || [ "$zero" = 0 ] || [ "$zero" = 1 ] || die 'KSM_LEGACY_SNAPSHOT_INVALID:use_zero_pages'
+    [ -z "$numa" ] || [ "$numa" = 0 ] || [ "$numa" = 1 ] || die 'KSM_LEGACY_SNAPSHOT_INVALID:merge_across_nodes'
+    unit_state_supported "$enabled" || die 'KSM_LEGACY_SNAPSHOT_INVALID:enabled'
+    unit_active_supported "$active" || die 'KSM_LEGACY_SNAPSHOT_INVALID:active'
+    if [ "$schema" = 2 ]; then
+        [ -n "$(snapshot_value "$SNAPSHOT" native_ksm_present)" ] || die 'KSM_LEGACY_SNAPSHOT_INVALID:native_ksm_present'
+        [ -n "$(snapshot_value "$SNAPSHOT" native_ksmtuned_present)" ] || die 'KSM_LEGACY_SNAPSHOT_INVALID:native_ksmtuned_present'
+    fi
+    for key in ksm ksmtuned; do
+        local present native_enabled native_active
+        present=$(snapshot_value "$SNAPSHOT" "native_${key}_present")
+        native_enabled=$(snapshot_value "$SNAPSHOT" "native_${key}_enabled")
+        native_active=$(snapshot_value "$SNAPSHOT" "native_${key}_active")
+        if [ -z "$present" ] && [ -z "$native_enabled" ] && [ -z "$native_active" ]; then
+            [ "$key" = ksm ] || continue
+            # Pre-r9 snapshots are upgraded only after the managed writer is
+            # stopped; their ksmtuned state is represented by legacy aliases.
+            continue
+        fi
+        case "$present" in 0|1) ;; *) die "KSM_LEGACY_SNAPSHOT_INVALID:native_${key}_present" ;; esac
+        if [ "$present" = 0 ]; then
+            [ "$native_enabled" = not-found ] && [ "$native_active" = not-found ] || die "KSM_LEGACY_SNAPSHOT_INVALID:native_${key}_absent"
+        else
+            case "$native_enabled" in enabled|enabled-runtime|disabled|static|indirect|masked) ;; *) die "KSM_LEGACY_SNAPSHOT_INVALID:native_${key}_enabled" ;; esac
+            case "$native_active" in active|inactive) ;; *) die "KSM_LEGACY_SNAPSHOT_INVALID:native_${key}_active" ;; esac
+            [ "$native_enabled" != masked-runtime ] || die "KSM_LEGACY_SNAPSHOT_INVALID:native_${key}_enabled"
+        fi
+    done
+}
+durable_publish_snapshot() {
+    local temp=$1 destination=$2
+    "$PYTHON" - "$temp" "$destination" <<'PY' || die 'KSM_LEGACY_SNAPSHOT_DURABLE_PUBLISH_FAILED'
+import os
+import stat
+import sys
+
+source, destination = sys.argv[1:]
+directory = os.path.dirname(destination) or '.'
+if os.path.lexists(destination):
+    info = os.lstat(destination)
+    if not stat.S_ISREG(info.st_mode):
+        raise SystemExit(2)
+fd = os.open(source, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0))
+try:
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        raise SystemExit(3)
+    os.fsync(fd)
+finally:
+    os.close(fd)
+os.replace(source, destination)
+dirfd = os.open(directory, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+try:
+    os.fsync(dirfd)
+finally:
+    os.close(dirfd)
+PY
+}
+copy_snapshot_no_follow() {
+    local source=$1 destination=$2
+    "$PYTHON" - "$source" "$destination" <<'PY' || die 'KSM_LEGACY_SNAPSHOT_READ_FAILED'
+import os
+import stat
+import sys
+
+source, destination = sys.argv[1:]
+nofollow = getattr(os, 'O_NOFOLLOW', None)
+if nofollow is None:
+    raise SystemExit(2)
+src = os.open(source, os.O_RDONLY | nofollow)
+dst = None
+try:
+    if not stat.S_ISREG(os.fstat(src).st_mode):
+        raise SystemExit(3)
+    dst = os.open(destination, os.O_WRONLY | os.O_TRUNC | nofollow)
+    if not stat.S_ISREG(os.fstat(dst).st_mode):
+        raise SystemExit(4)
+    while True:
+        chunk = os.read(src, 65536)
+        if not chunk:
+            break
+        view = memoryview(chunk)
+        while view:
+            written = os.write(dst, view)
+            view = view[written:]
+    os.fchmod(dst, 0o600)
+    os.fsync(dst)
+finally:
+    os.close(src)
+    if dst is not None:
+        os.close(dst)
+PY
+}
+archive_snapshot_durable() {
+    local source=$1 destination=$2
+    "$PYTHON" - "$source" "$destination" <<'PY' || die 'KSM_LEGACY_SNAPSHOT_ARCHIVE_FAILED'
+import os
+import stat
+import sys
+
+source, destination = sys.argv[1:]
+nofollow = getattr(os, 'O_NOFOLLOW', None)
+if nofollow is None or os.path.lexists(destination):
+    raise SystemExit(2)
+directory = os.path.dirname(source) or '.'
+fd = os.open(source, os.O_RDONLY | nofollow)
+dirfd = None
+linked = False
+try:
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        raise SystemExit(3)
+    os.fsync(fd)
+    os.link(source, destination, follow_symlinks=False)
+    linked = True
+    dirfd = os.open(directory, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+    os.fsync(dirfd)
+    os.unlink(source)
+    try:
+        os.fsync(dirfd)
+    except Exception:
+        # The archived link is already durable. Restore the active name if
+        # cleanup durability is uncertain so marker/snapshot remain retryable.
+        if not os.path.lexists(source):
+            os.link(destination, source, follow_symlinks=False)
+            os.fsync(dirfd)
+        raise
+except Exception:
+    if linked and not os.path.lexists(source):
+        try:
+            os.link(destination, source, follow_symlinks=False)
+            if dirfd is not None:
+                os.fsync(dirfd)
+        except Exception:
+            pass
+    raise
+finally:
+    os.close(fd)
+    if dirfd is not None:
+        os.close(dirfd)
+PY
+}
+append_native_snapshot_for_upgrade() {
+    local existing=$1 temp=$2 ksm_present ksm_enabled ksm_active
+    # r8 never controlled ksm.service, so its current systemd state is still
+    # the native baseline. Preserve the original ksmtuned fields verbatim.
+    ksm_present=$(snapshot_value "$existing" native_ksm_present)
+    if [ -z "$ksm_present" ]; then
+        snapshot_native_unit ksm.service ksm >> "$temp"
+    fi
+    if [ -z "$(snapshot_value "$existing" native_ksmtuned_present)" ]; then
+        local old_enabled old_active
+        old_enabled=$(snapshot_value "$existing" enabled)
+        old_active=$(snapshot_value "$existing" active)
+        [ -n "$old_enabled" ] || die 'KSM_LEGACY_SNAPSHOT_KSMTUNED_STATE_MISSING'
+        [ -n "$old_active" ] || die 'KSM_LEGACY_SNAPSHOT_KSMTUNED_STATE_MISSING'
+        unit_state_supported "$old_enabled" || die "KSM_NATIVE_UNIT_ENABLE_STATE_UNSUPPORTED:ksmtuned.service:$old_enabled"
+        unit_active_supported "$old_active" || die "KSM_NATIVE_UNIT_ACTIVE_STATE_UNKNOWN:ksmtuned.service:$old_active"
+        if [ "$old_enabled" = not-found ]; then
+            printf 'native_ksmtuned_present=0\nnative_ksmtuned_enabled=not-found\nnative_ksmtuned_active=not-found\n' >> "$temp"
+        else
+            printf 'native_ksmtuned_present=1\nnative_ksmtuned_enabled=%s\nnative_ksmtuned_active=%s\n' \
+                "$old_enabled" "$old_active" >> "$temp"
+        fi
+    fi
+    if [ -z "$(snapshot_value "$existing" schema)" ]; then
+        printf 'schema=2\n' >> "$temp"
+    fi
+}
+restore_native_unit_enablement() {
+    local unit=$1 key=$2 present enabled actual
+    present=$(snapshot_value "$SNAPSHOT" "native_${key}_present")
+    enabled=$(snapshot_value "$SNAPSHOT" "native_${key}_enabled")
+    [ "$present" = 0 ] && return 0
+    [ "$present" = 1 ] || die "KSM_LEGACY_SNAPSHOT_INVALID:native_${key}_present"
+    unit_state_supported "$enabled" || die "KSM_NATIVE_UNIT_ENABLE_STATE_UNSUPPORTED:$unit:$enabled"
+    if [ "$enabled" = masked ]; then
+        actual=$(unit_enabled_state "$unit")
+        if [ "$actual" != masked ]; then
+            systemctl mask "$unit" >/dev/null 2>&1 || die "KSM_NATIVE_UNIT_MASK_RESTORE_FAILED:$unit"
+        fi
+        return 0
+    fi
+    systemctl unmask "$unit" >/dev/null 2>&1 || die "KSM_NATIVE_UNIT_UNMASK_FAILED:$unit"
+    actual=$(unit_enabled_state "$unit")
+    case "$enabled" in
+        enabled|enabled-runtime)
+            if [ "$actual" != "$enabled" ]; then
+                if [ "$enabled" = enabled-runtime ]; then
+                    systemctl enable --runtime "$unit" >/dev/null 2>&1 || die "KSM_NATIVE_UNIT_ENABLE_RESTORE_FAILED:$unit:$enabled"
+                else
+                    systemctl enable "$unit" >/dev/null 2>&1 || die "KSM_NATIVE_UNIT_ENABLE_RESTORE_FAILED:$unit:$enabled"
+                fi
+            fi
+            ;;
+        disabled)
+            [ "$actual" = disabled ] || systemctl disable "$unit" >/dev/null 2>&1 || die "KSM_NATIVE_UNIT_DISABLE_RESTORE_FAILED:$unit"
+            ;;
+        static|indirect)
+            [ "$actual" = "$enabled" ] || die "KSM_NATIVE_UNIT_ENABLE_RESTORE_MISMATCH:$unit:$enabled:$actual"
+            ;;
+    esac
+}
+restore_native_unit_activity() {
+    local unit=$1 key=$2 present active actual
+    present=$(snapshot_value "$SNAPSHOT" "native_${key}_present")
+    active=$(snapshot_value "$SNAPSHOT" "native_${key}_active")
+    [ "$present" = 0 ] && return 0
+    [ "$present" = 1 ] || die "KSM_LEGACY_SNAPSHOT_INVALID:native_${key}_present"
+    unit_active_supported "$active" || die "KSM_NATIVE_UNIT_ACTIVE_STATE_UNKNOWN:$unit:$active"
+    actual=$(unit_active_state "$unit")
+    case "$active" in
+        active) [ "$actual" = active ] || systemctl start "$unit" >/dev/null 2>&1 || die "KSM_NATIVE_UNIT_START_RESTORE_FAILED:$unit" ;;
+        inactive) [ "$actual" = inactive ] || systemctl stop "$unit" >/dev/null 2>&1 || die "KSM_NATIVE_UNIT_STOP_RESTORE_FAILED:$unit" ;;
+    esac
+}
+read_conf() {
+    [ -r "$CONF" ] || die "configuration is missing: $CONF"
+    # shellcheck disable=SC1090
+    . "$CONF"
+    : "${CONFIG_REVISION:=0}"
+    : "${KSM_ENABLED:=}"
+    : "${KSM_PAGES_TO_SCAN:=2000}"
+    : "${KSM_SLEEP_MILLISECS:=20}"
+    : "${KSM_ZERO_PAGES:=0}"
+    # Pre-KSM_ENABLED configurations are upgraded from the native run state
+    # once, before any stop/restart can erase that evidence.  If it cannot be
+    # read, fail closed rather than implicitly enabling scans.
+    if [ -z "$KSM_ENABLED" ]; then
+        case "${1:-${KSMTUNED_ACTION:-status}}" in
+            status)
+                KSM_ENABLED=$(cat "$KSM/run" 2>/dev/null || true)
+                [ "$KSM_ENABLED" = 0 ] || [ "$KSM_ENABLED" = 1 ] || die "KSM_PERSISTED_STATE_UNKNOWN"
+                return 0
+                ;;
+            *) migrate_legacy_enabled;;
+        esac
+        # The migration may have waited while Agent published a newer
+        # revision. Re-source the lock-protected winner so no fields are lost.
+        # shellcheck disable=SC1090
+        . "$CONF"
+        : "${CONFIG_REVISION:=0}"
+        : "${KSM_ENABLED:=}"
+        : "${KSM_PAGES_TO_SCAN:=2000}"
+        : "${KSM_SLEEP_MILLISECS:=20}"
+        : "${KSM_ZERO_PAGES:=0}"
+    fi
+}
+
+migrate_legacy_enabled() {
+    local acquired=0 current native upgraded
+    if [ -z "${KSMTUNED_LOCK_FD:-}" ]; then
+        lock_writer
+        acquired=1
+    fi
+    current=$(sed -n 's/^KSM_ENABLED=//p' "$CONF" 2>/dev/null | head -1)
+    if [ "$current" = 0 ] || [ "$current" = 1 ]; then
+        KSM_ENABLED=$current
+    else
+        native=$(cat "$KSM/run" 2>/dev/null || true)
+        [ "$native" = 0 ] || [ "$native" = 1 ] || {
+            [ "$acquired" = 1 ] && unlock_writer
+            die "KSM_PERSISTED_STATE_UNKNOWN"
+        }
+        upgraded="${CONF}.upgrade.$$"
+        cat "$CONF" > "$upgraded" || {
+            [ "$acquired" = 1 ] && unlock_writer
+            die 'cannot stage KSM enabled state'
+        }
+        printf 'KSM_ENABLED=%s\n' "$native" >> "$upgraded" || {
+            rm -f "$upgraded"
+            [ "$acquired" = 1 ] && unlock_writer
+            die 'cannot stage KSM enabled state'
+        }
+        chmod --reference="$CONF" "$upgraded" 2>/dev/null || true
+        mv -f "$upgraded" "$CONF" || {
+            rm -f "$upgraded"
+            [ "$acquired" = 1 ] && unlock_writer
+            die 'cannot persist KSM enabled state'
+        }
+        KSM_ENABLED=$native
+    fi
+    [ "$acquired" = 1 ] && unlock_writer
+}
+valid_number() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
+valid_u32() { valid_number "$1" && [ "$1" -le 4294967295 ]; }
+validate_enabled() { [ -z "$KSM_ENABLED" ] || { valid_number "$KSM_ENABLED" && [ "$KSM_ENABLED" -le 1 ]; }; }
+publish_numa_target() {
+    local value=$1
+    valid_number "$value" && [ "$value" -le 1 ] || die "KSM_NUMA_SNAPSHOT_INVALID"
+    printf '%s\n' "$value" > "${NUMA_TARGET}.tmp" || die 'cannot write KSM NUMA ownership'
+    mv "${NUMA_TARGET}.tmp" "$NUMA_TARGET" || die 'cannot publish KSM NUMA ownership'
+}
+ensure_numa_target() {
+    local snapshot_preexisting=$1 legacy_handoff=$2 candidate
+    if [ -s "$NUMA_TARGET" ]; then
+        candidate=$(sed -n '1p' "$NUMA_TARGET" 2>/dev/null)
+        valid_number "$candidate" && [ "$candidate" -le 1 ] || die "KSM_NUMA_SNAPSHOT_INVALID"
+        return 0
+    fi
+    # A non-empty pending marker is only a first-apply hint; the snapshot is
+    # authoritative when an interrupted older wrapper left the marker empty.
+    candidate=$(sed -n 's/^merge_across_nodes=//p' "$SNAPSHOT" 2>/dev/null | head -1)
+    if [ "$snapshot_preexisting" = 1 ] || [ "$legacy_handoff" = 1 ]; then
+        if [ -n "$candidate" ]; then
+            publish_numa_target "$candidate"
+            return 0
+        fi
+    fi
+    candidate=$(sed -n '1p' "${SNAPSHOT}.numa-pending" 2>/dev/null)
+    if [ -n "$candidate" ]; then
+        publish_numa_target "$candidate"
+        return 0
+    fi
+    # A managed marker or vendor config proves this is an upgrade epoch even
+    # when the old snapshot predates merge_across_nodes. Preserve actual sysfs
+    # rather than guessing a new default.
+    if [ -e "$marker" ] || [ -f /etc/ksmtuned.conf ]; then
+        candidate=$(cat "$KSM/merge_across_nodes" 2>/dev/null || true)
+        publish_numa_target "$candidate"
+        return 0
+    fi
+    [ "$snapshot_preexisting" = 0 ] || die "KSM_NUMA_SNAPSHOT_INVALID"
+    publish_numa_target 0
+}
+validate_conf() {
+    valid_number "$CONFIG_REVISION" && [ "$CONFIG_REVISION" -ge 1 ] || die "invalid CONFIG_REVISION"
+    validate_enabled || die "invalid KSM_ENABLED"
+    valid_u32 "$KSM_PAGES_TO_SCAN" && [ "$KSM_PAGES_TO_SCAN" -ge 1 ] || die "invalid KSM_PAGES_TO_SCAN"
+    valid_u32 "$KSM_SLEEP_MILLISECS" && [ "$KSM_SLEEP_MILLISECS" -ge 1 ] || die "invalid KSM_SLEEP_MILLISECS"
+    valid_number "$KSM_ZERO_PAGES" && [ "$KSM_ZERO_PAGES" -le 1 ] || die "invalid KSM_ZERO_PAGES"
+    validate_sleep_representable
+}
+validate_sleep_representable() {
+    local total q rem desired actual
+    total=$(awk '/^MemTotal:/ {print $2; exit}' "${KSMTUNED_MEMINFO:-/proc/meminfo}")
+    valid_number "$total" && [ "$total" -gt 0 ] || die "KSM_SLEEP_UNREPRESENTABLE"
+    # Split the product before multiplying so a legal u32 request cannot
+    # overflow shell arithmetic on a large (for example 1TiB) host.
+    q=$((KSM_SLEEP_MILLISECS / 16777216))
+    rem=$((KSM_SLEEP_MILLISECS % 16777216))
+    desired=$((q * total + (rem * total + 16777215) / 16777216))
+    [ "$desired" -ge 1 ] || desired=1
+    # The upstream engine uses integer floor division, then clamps to 10ms.
+    actual=$(( (desired * 16777216) / total ))
+    [ "$actual" -lt 10 ] && actual=10
+    [ "$actual" = "$KSM_SLEEP_MILLISECS" ] || die "KSM_SLEEP_UNREPRESENTABLE"
+}
+write_value() {
+    local file=$1 value=$2
+    [ -e "$file" ] || die "kernel interface is unavailable: $file"
+    printf '%s\n' "$value" > "$file" || die "cannot write $file"
+}
+lock_writer() {
+    local parent timeout
+    parent=$(dirname "$LOCK")
+    mkdir -p "$parent"
+    timeout=${KSMTUNED_LOCK_TIMEOUT:-5}
+    # flock is released by the kernel when a writer is killed; mkdir-based
+    # locks can leave an unbounded stale directory after SIGKILL.
+    eval "exec {KSMTUNED_LOCK_FD}>\"$LOCK\""
+    flock -w "$timeout" "$KSMTUNED_LOCK_FD" || die "writer lock timeout: $LOCK"
+}
+unlock_writer() {
+    if [ -n "${KSMTUNED_LOCK_FD:-}" ]; then
+        flock -u "$KSMTUNED_LOCK_FD" 2>/dev/null || true
+        eval "exec ${KSMTUNED_LOCK_FD}>&-" || true
+        unset KSMTUNED_LOCK_FD
+    fi
+}
+marker=${KSMTUNED_MARKER:-/etc/zstack/memory-optimization/ksm-controller}
+legacy_resume() {
+    [ "$(id -u)" = 0 ] || die 'KSM_LEGACY_RESUME_REQUIRES_ROOT'
+    local old_run old_pages old_sleep old_zero old_numa unit key
+    [ -s "$SNAPSHOT" ] || die 'KSM_LEGACY_SNAPSHOT_UNAVAILABLE'
+    validate_snapshot_for_resume
+
+    # This is a manual root-run ownership handoff, never invoked by the
+    # sandboxed systemd unit. Any failure retains the recovery snapshot and
+    # marker; restoration may already have changed some native unit states.
+    systemctl stop zstack-ksmtuned.service >/dev/null 2>&1 || die 'KSM_MANAGED_UNIT_STOP_FAILED'
+    systemctl disable zstack-ksmtuned.service >/dev/null 2>&1 || die 'KSM_MANAGED_UNIT_DISABLE_FAILED'
+    [ "$(unit_active_state zstack-ksmtuned.service)" != active ] || die 'KSM_MANAGED_UNIT_STILL_ACTIVE'
+
+    # Augment an old snapshot only after the managed writer is stopped. This
+    # captures the native unit metadata without racing managed sysfs writes.
+    local snapshot_tmp
+    snapshot_tmp=$(mktemp "${SNAPSHOT}.upgrade.XXXXXX") || die 'KSM_LEGACY_SNAPSHOT_TEMP_FAILED'
+    copy_snapshot_no_follow "$SNAPSHOT" "$snapshot_tmp"
+    append_native_snapshot_for_upgrade "$snapshot_tmp" "$snapshot_tmp"
+    durable_publish_snapshot "$snapshot_tmp" "$SNAPSHOT"
+    validate_snapshot_for_resume
+
+    # Do not hold the writer lock while systemctl stop runs ExecStop; that
+    # hook uses the same flock. Acquire it after the unit has fully stopped.
+    lock_writer
+    stop_engine
+
+    for unit in ksm.service ksmtuned.service; do
+        if [ "$unit" = ksm.service ]; then key=ksm; else key=ksmtuned; fi
+        restore_native_unit_enablement "$unit" "$key"
+    done
+    systemctl daemon-reload >/dev/null 2>&1 || die 'KSM_SYSTEMD_RELOAD_FAILED'
+    for unit in ksm.service ksmtuned.service; do
+        if [ "$unit" = ksm.service ]; then key=ksm; else key=ksmtuned; fi
+        restore_native_unit_activity "$unit" "$key"
+    done
+
+    old_run=$(snapshot_value "$SNAPSHOT" run)
+    old_pages=$(snapshot_value "$SNAPSHOT" pages_to_scan)
+    old_sleep=$(snapshot_value "$SNAPSHOT" sleep_millisecs)
+    old_zero=$(snapshot_value "$SNAPSHOT" use_zero_pages)
+    old_numa=$(snapshot_value "$SNAPSHOT" merge_across_nodes)
+    [ -n "$old_numa" ] && [ -e "$KSM/merge_across_nodes" ] && write_value "$KSM/merge_across_nodes" "$old_numa"
+    # Restore sysfs after both legacy services have been returned to their
+    # original active states; either service may rewrite KSM on startup.
+    [ -n "$old_pages" ] && write_value "$KSM/pages_to_scan" "$old_pages"
+    [ -n "$old_sleep" ] && write_value "$KSM/sleep_millisecs" "$old_sleep"
+    [ -n "$old_zero" ] && [ -e "$KSM/use_zero_pages" ] && write_value "$KSM/use_zero_pages" "$old_zero"
+    [ "$old_run" = 1 ] && write_value "$KSM/run" 1
+    [ "$old_run" = 0 ] && write_value "$KSM/run" 0
+    for unit in ksm.service ksmtuned.service; do
+        if [ "$unit" = ksm.service ]; then key=ksm; else key=ksmtuned; fi
+        local expected_present expected_enabled expected_active actual_enabled actual_active
+        expected_present=$(snapshot_value "$SNAPSHOT" "native_${key}_present")
+        [ "$expected_present" = 0 ] && continue
+        [ "$expected_present" = 1 ] || die "KSM_LEGACY_SNAPSHOT_INVALID:native_${key}_present"
+        expected_enabled=$(snapshot_value "$SNAPSHOT" "native_${key}_enabled")
+        expected_active=$(snapshot_value "$SNAPSHOT" "native_${key}_active")
+        actual_enabled=$(unit_enabled_state "$unit")
+        actual_active=$(unit_active_state "$unit")
+        [ "$actual_enabled" = "$expected_enabled" ] || die "KSM_NATIVE_UNIT_ENABLE_RESTORE_UNVERIFIED:$unit:$expected_enabled:$actual_enabled"
+        [ "$actual_active" = "$expected_active" ] || die "KSM_NATIVE_UNIT_ACTIVE_RESTORE_UNVERIFIED:$unit:$expected_active:$actual_active"
+    done
+    [ "$(cat "$KSM/run" 2>/dev/null || true)" = "$old_run" ] || die 'KSM_NATIVE_RUN_RESTORE_UNVERIFIED'
+    [ "$(cat "$KSM/pages_to_scan" 2>/dev/null || true)" = "$old_pages" ] || die 'KSM_NATIVE_PAGES_RESTORE_UNVERIFIED'
+    [ "$(cat "$KSM/sleep_millisecs" 2>/dev/null || true)" = "$old_sleep" ] || die 'KSM_NATIVE_SLEEP_RESTORE_UNVERIFIED'
+    [ -z "$old_zero" ] || [ "$(cat "$KSM/use_zero_pages" 2>/dev/null || true)" = "$old_zero" ] || die 'KSM_NATIVE_ZERO_RESTORE_UNVERIFIED'
+    [ -z "$old_numa" ] || [ "$(cat "$KSM/merge_across_nodes" 2>/dev/null || true)" = "$old_numa" ] || die 'KSM_NATIVE_NUMA_RESTORE_UNVERIFIED'
+    # Archive without clobbering an earlier handoff. The helper fsyncs the
+    # archived file/directory before removing the active name. Do not clear
+    # ownership markers unless archival is durable and complete.
+    local archive archive_stamp archive_index
+    archive_stamp=$(date +%s)
+    archive_index=0
+    archive="${SNAPSHOT}.${archive_stamp}.$$.${archive_index}.used"
+    while [ -e "$archive" ] || [ -L "$archive" ]; do
+        archive_index=$((archive_index + 1))
+        archive="${SNAPSHOT}.${archive_stamp}.$$.${archive_index}.used"
+    done
+    archive_snapshot_durable "$SNAPSHOT" "$archive"
+    rm -f "$marker" "$APPLIED" "${SNAPSHOT}.numa-pending" "$NUMA_TARGET" || die 'KSM_LEGACY_MARKER_CLEANUP_FAILED'
+    unlock_writer
+}
+takeover_snapshot() {
+    local directory enabled active snapshot_preexisting legacy_handoff temp
+    directory=$(dirname "$SNAPSHOT")
+    mkdir -p "$directory"
+    snapshot_preexisting=0
+    if [ -e "$SNAPSHOT" ]; then
+        snapshot_path_is_safe "$SNAPSHOT"
+        [ -s "$SNAPSHOT" ] || die 'KSM_LEGACY_SNAPSHOT_EMPTY'
+        snapshot_preexisting=1
+        validate_snapshot_for_resume
+    elif [ -L "$SNAPSHOT" ]; then
+        die 'KSM_LEGACY_SNAPSHOT_SYMLINK_REJECTED'
+    fi
+    legacy_handoff=0
+    # Snapshot once per ownership epoch. A pre-r9 snapshot is augmented only
+    # with ksm.service state (which r8 did not control); original ksmtuned and
+    # sysfs values are retained verbatim.
+    if [ "$snapshot_preexisting" = 0 ]; then
+        enabled=$(unit_enabled_state ksmtuned.service)
+        active=$(unit_active_state ksmtuned.service)
+        unit_state_supported "$enabled" || die "KSM_NATIVE_UNIT_ENABLE_STATE_UNSUPPORTED:ksmtuned.service:$enabled"
+        unit_active_supported "$active" || die "KSM_NATIVE_UNIT_ACTIVE_STATE_UNKNOWN:ksmtuned.service:$active"
+        { [ -f /etc/ksmtuned.conf ] || [ "$active" = active ]; } && legacy_handoff=1
+        temp=$(mktemp "${SNAPSHOT}.new.XXXXXX") || die 'KSM_LEGACY_SNAPSHOT_TEMP_FAILED'
+        {
+            printf 'schema=2\nenabled=%s\nactive=%s\n' "$enabled" "$active"
+            snapshot_native_unit ksm.service ksm
+            snapshot_native_unit ksmtuned.service ksmtuned
+            for name in run pages_to_scan sleep_millisecs use_zero_pages merge_across_nodes; do
+                [ -r "$KSM/$name" ] && printf '%s=%s\n' "$name" "$(cat "$KSM/$name")"
+            done
+        } > "$temp" || die 'KSM_LEGACY_SNAPSHOT_WRITE_FAILED'
+        chmod 600 "$temp" || die 'KSM_LEGACY_SNAPSHOT_MODE_FAILED'
+        local previous_snapshot=$SNAPSHOT
+        SNAPSHOT=$temp
+        validate_snapshot_for_resume
+        SNAPSHOT=$previous_snapshot
+        durable_publish_snapshot "$temp" "$SNAPSHOT"
+        # The target is published below after snapshot creation so this also
+        # repairs an older snapshot that predates the durable owner file.
+    else
+        temp=$(mktemp "${SNAPSHOT}.upgrade.XXXXXX") || die 'KSM_LEGACY_SNAPSHOT_TEMP_FAILED'
+        copy_snapshot_no_follow "$SNAPSHOT" "$temp"
+        append_native_snapshot_for_upgrade "$temp" "$temp"
+        durable_publish_snapshot "$temp" "$SNAPSHOT"
+    fi
+    ensure_numa_target "$snapshot_preexisting" "$legacy_handoff"
+    if [ -f /etc/ksmtuned.conf ]; then
+        cp -p /etc/ksmtuned.conf "$directory/legacy-ksmtuned.conf"
+    fi
+    # The durable snapshot precedes both stops. The root Agent masks these
+    # units after this command; this service-safe wrapper never writes under
+    # /etc/systemd/system (ProtectSystem=full).
+    stop_native_unit_if_active ksm.service
+    stop_native_unit_if_active ksmtuned.service
+}
+apply_policy() {
+    lock_writer
+    read_conf; validate_conf
+    sync_static_policy
+    stop_engine
+    if [ "${KSM_ENABLED:-1}" = 1 ]; then
+        start_engine
+        # Starting the engine is asynchronous.  Do not publish the durable
+        # applied receipt until the requested sysfs values are observable.
+        wait_engine_applied 1
+    else
+        write_disabled_policy_values
+    fi
+    acknowledge_policy
+    unlock_writer
+}
+acknowledge_policy() {
+    # Only the single writer publishes this receipt, after successful sysfs
+    # writes. Reading the requested config is not an application ACK.
+    printf '%s\n' "$CONFIG_REVISION" > "${APPLIED}.tmp" || die 'cannot write KSM receipt'
+    mv "${APPLIED}.tmp" "$APPLIED" || die 'cannot publish KSM receipt'
+}
+sync_zero_page_policy() {
+    if [ -e "$KSM/use_zero_pages" ]; then
+        write_value "$KSM/use_zero_pages" "$KSM_ZERO_PAGES"
+    elif [ "$KSM_ZERO_PAGES" -eq 1 ]; then
+        die "zero-page interface is unavailable"
+    fi
+}
+sync_static_policy() {
+    sync_zero_page_policy
+    if [ -e "$KSM/merge_across_nodes" ]; then
+        local managed_numa snapshot_preexisting=0
+        [ -s "$SNAPSHOT" ] && snapshot_preexisting=1
+        ensure_numa_target "$snapshot_preexisting" 0
+        managed_numa=$(sed -n '1p' "$NUMA_TARGET" 2>/dev/null)
+        write_value "$KSM/merge_across_nodes" "$managed_numa" || die "KSM_NUMA_MAINTENANCE_REQUIRED"
+        [ ! -e "${SNAPSHOT}.numa-pending" ] || rm -f "${SNAPSHOT}.numa-pending"
+    fi
+}
+engine_sleep_msec() {
+    local total desired q rem
+    total=$(awk '/^MemTotal:/ {print $2; exit}' "${KSMTUNED_MEMINFO:-/proc/meminfo}")
+    q=$((KSM_SLEEP_MILLISECS / 16777216))
+    rem=$((KSM_SLEEP_MILLISECS % 16777216))
+    desired=$((q * total + (rem * total + 16777215) / 16777216))
+    [ "$desired" -ge 1 ] || desired=1
+    printf '%s\n' "$desired"
+}
+engine_conf() {
+    local target
+    target=$(engine_sleep_msec)
+    mkdir -p "$RUNTIME_DIR"
+    cat > "${ENGINE_CONF}.new" <<EOF
+KSM_MONITOR_INTERVAL=60
+KSM_NPAGES_BOOST=0
+KSM_NPAGES_DECAY=0
+KSM_NPAGES_MIN=${KSM_PAGES_TO_SCAN}
+KSM_NPAGES_MAX=${KSM_PAGES_TO_SCAN}
+KSM_SLEEP_MSEC=${target}
+KSM_THRES_COEF=100
+KSM_THRES_CONST=2048
+EOF
+    mv "${ENGINE_CONF}.new" "$ENGINE_CONF"
+}
+stop_engine() {
+    if [ -s "$ENGINE_PIDFILE" ]; then
+        local pid cmdline
+        pid=$(cat "$ENGINE_PIDFILE")
+        if [ -r "/proc/$pid/cmdline" ]; then
+            cmdline=$(tr '\000' ' ' < "/proc/$pid/cmdline")
+        else
+            cmdline=
+        fi
+        case "$cmdline" in *"$(basename "$ENGINE")"*) kill "$pid" 2>/dev/null || true;; esac
+        for _ in 1 2 3 4 5 6 7 8 9 10; do
+            [ ! -e "/proc/$pid" ] && break
+            sleep 0.1
+        done
+        [ ! -e "/proc/$pid" ] || die "KSM_ENGINE_EXIT_UNCONFIRMED"
+        rm -f "$ENGINE_PIDFILE"
+    fi
+}
+start_engine() {
+    engine_conf
+    # Do not pass the wrapper's ownership flock into the daemonized engine;
+    # otherwise its child retains the descriptor and blocks the next revision.
+    if [ -n "${KSMTUNED_LOCK_FD:-}" ]; then
+        eval "KSMTUNED_CONF=\"$ENGINE_CONF\" KSMTUNED_KSM_ROOT=\"$KSM\" KSMTUNED_MEMINFO=\"${KSMTUNED_MEMINFO:-/proc/meminfo}\" KSMTUNED_PIDFILE=\"$ENGINE_PIDFILE\" \"$ENGINE\" ${KSMTUNED_LOCK_FD}>&- >/dev/null 2>&1"
+    else
+        KSMTUNED_CONF="$ENGINE_CONF" KSMTUNED_KSM_ROOT="$KSM" \
+            KSMTUNED_MEMINFO="${KSMTUNED_MEMINFO:-/proc/meminfo}" \
+            KSMTUNED_PIDFILE="$ENGINE_PIDFILE" "$ENGINE" >/dev/null 2>&1
+    fi
+    [ -s "$ENGINE_PIDFILE" ] || die "KSM_ENGINE_PID_MISSING"
+    kill -USR1 "$(cat "$ENGINE_PIDFILE")" 2>/dev/null || true
+}
+wait_engine_applied() {
+    local expected=$1 deadline=$(( $(date +%s) + 10 ))
+    while :; do
+        if [ "$(cat "$KSM/pages_to_scan" 2>/dev/null || echo 0)" = "$KSM_PAGES_TO_SCAN" ] \
+           && [ "$(cat "$KSM/sleep_millisecs" 2>/dev/null || echo 0)" = "$KSM_SLEEP_MILLISECS" ] \
+           && [ "$(cat "$KSM/run" 2>/dev/null || echo 0)" = "$expected" ]; then return 0; fi
+        [ "$(date +%s)" -lt "$deadline" ] || die "KSM_ENGINE_APPLY_UNCONFIRMED"
+        kill -USR1 "$(cat "$ENGINE_PIDFILE")" 2>/dev/null || true
+        sleep 0.1
+    done
+}
+start_policy() {
+    lock_writer
+    read_conf; validate_conf
+    sync_static_policy
+    if [ "${KSM_ENABLED:-1}" = 1 ]; then
+        start_engine
+        wait_engine_applied 1
+    else
+        stop_engine
+        write_disabled_policy_values
+    fi
+    acknowledge_policy
+    unlock_writer
+}
+policy_read_locked() {
+    # Configuration publication and readback use the same flock so a partial
+    # file replacement cannot be observed by the writer.
+    lock_writer
+    read_conf
+    validate_conf
+    unlock_writer
+    return 0
+}
+readback() {
+    lock_writer
+    printf 'configRevision=%s\n' "$(cat "$APPLIED" 2>/dev/null || echo 0)"
+    printf 'requestedRevision=%s\n' "$CONFIG_REVISION"
+    for name in pages_to_scan sleep_millisecs use_zero_pages merge_across_nodes run; do
+        [ -r "$KSM/$name" ] && printf '%s=%s\n' "$name" "$(cat "$KSM/$name")"
+    done
+    unlock_writer
+}
+stop_policy() {
+    # A stale/unknown stop request must never disable another writer's KSM.
+    [ -e "$marker" ] || { echo 'state=not-managed'; exit 0; }
+    lock_writer
+    read_conf; validate_conf
+    stop_engine
+    # Disabled means no scanning, not that the remaining three policy
+    # fields can be acknowledged without being applied.
+    # Stopping does not change NUMA ownership or require a new handoff.
+    sync_zero_page_policy
+    write_disabled_policy_values
+    acknowledge_policy
+    unlock_writer
+}
+disable_policy() {
+    # Explicit configuration differs from a stale systemd ExecStop: it may
+    # establish ownership while keeping scanning off from the beginning.
+    if [ ! -e "$marker" ]; then
+        takeover_snapshot
+        : > "$marker" || die 'cannot publish KSM ownership'
+    fi
+    stop_policy
+}
+run_policy() {
+    # Reload the durable policy before each run. A missing or expired product
+    # License must not hand an already-applied policy back to legacy KSM.
+    policy_read_locked
+    [ -e "$marker" ] || : > "$marker"
+    lock_writer
+    read_conf; validate_conf
+    sync_static_policy
+    if [ "${KSM_ENABLED:-1}" = 1 ]; then
+        start_engine
+        wait_engine_applied 1
+    else
+        stop_engine
+        write_disabled_policy_values
+    fi
+    acknowledge_policy
+    unlock_writer
+    last_revision=$CONFIG_REVISION
+    while :; do
+        sleep "${KSMTUNED_CONTROL_INTERVAL:-5}"
+        lock_writer
+        read_conf; validate_conf
+        if [ "$CONFIG_REVISION" != "$last_revision" ]; then
+            stop_engine
+            sync_static_policy
+            if [ "${KSM_ENABLED:-1}" = 1 ]; then
+                start_engine
+                wait_engine_applied 1
+            else
+                write_disabled_policy_values
+            fi
+            acknowledge_policy
+            last_revision=$CONFIG_REVISION
+        fi
+        unlock_writer
+    done
+}
+write_disabled_policy_values() {
+    # Keep the feature writer's receipt truthful: disabled KSM still applies
+    # the requested tuning values while run=0 guarantees no scanning.
+    write_value "$KSM/run" 0
+    write_value "$KSM/pages_to_scan" "$KSM_PAGES_TO_SCAN"
+    write_value "$KSM/sleep_millisecs" "$KSM_SLEEP_MILLISECS"
+    [ "$(cat "$KSM/run" 2>/dev/null || true)" = 0 ] || die 'KSM_DISABLED_RUN_NOT_APPLIED'
+    [ "$(cat "$KSM/pages_to_scan" 2>/dev/null || true)" = "$KSM_PAGES_TO_SCAN" ] || die 'KSM_PAGES_NOT_APPLIED'
+    [ "$(cat "$KSM/sleep_millisecs" 2>/dev/null || true)" = "$KSM_SLEEP_MILLISECS" ] || die 'KSM_SLEEP_NOT_APPLIED'
+}
+
+KSMTUNED_ACTION=${1:-status}
+read_conf "$KSMTUNED_ACTION"
+validate_conf
+case "$KSMTUNED_ACTION" in
+    takeover) takeover_snapshot;;
+    legacy-resume) legacy_resume; readback;;
+    start) start_policy; readback;;
+    apply) apply_policy; readback;;
+    run) run_policy;;
+    status) readback;;
+    stop) stop_policy;;
+    disable) disable_policy;;
+    *) die "usage: $0 {start|apply|status|stop|disable}";;
+esac
