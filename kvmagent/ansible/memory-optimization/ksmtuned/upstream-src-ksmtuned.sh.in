@@ -1,0 +1,143 @@
+#!/bin/bash
+#
+# Copyright 2009 Red Hat, Inc. and/or its affiliates.
+# This file is distributed under the GNU General Public License, version 2
+# or later.
+#
+# Author:      Dan Kenigsberg <danken@redhat.com>
+#
+# ksmtuned - a simple script that controls whether (and with what vigor) ksm
+# should search for duplicated pages.
+#
+# starts ksm when memory commited to qemu processes exceeds a threshold, and
+# make ksm work harder and harder untill memory load falls below that
+# threshold.
+#
+# send SIGUSR1 to this process right after a new qemu process is started, or
+# following its death, to retune ksm accordingly
+#
+# needs testing and ironing. contact danken@redhat.com if something breaks.
+
+KSMTUNED_CONF=${KSMTUNED_CONF:-@SYSCONFDIR@/ksmtuned.conf}
+if [ -f "$KSMTUNED_CONF" ]; then
+    . "$KSMTUNED_CONF"
+fi
+
+debug() {
+    if [ -n "$DEBUG" ]; then
+        s="`/bin/date`: $*"
+        [ -n "$LOGFILE" ] && echo "$s" >> "$LOGFILE" || echo "$s"
+    fi
+}
+
+
+KSM_MONITOR_INTERVAL=${KSM_MONITOR_INTERVAL:-60}
+KSM_NPAGES_BOOST=${KSM_NPAGES_BOOST:-300}
+KSM_NPAGES_DECAY=${KSM_NPAGES_DECAY:--50}
+
+KSM_NPAGES_MIN=${KSM_NPAGES_MIN:-2000}
+KSM_NPAGES_MAX=${KSM_NPAGES_MAX:-2000}
+# millisecond sleep between ksm scans for 16Gb server. Smaller servers sleep
+# more, bigger sleep less.
+KSM_SLEEP_MSEC=${KSM_SLEEP_MSEC:-20}
+
+KSM_THRES_COEF=${KSM_THRES_COEF:-100}
+KSM_THRES_CONST=${KSM_THRES_CONST:-2048}
+
+MEMINFO=${KSMTUNED_MEMINFO:-/proc/meminfo}
+total=`awk '/^MemTotal:/ {print $2}' "$MEMINFO"`
+debug total $total
+
+npages=0
+sleep=$[KSM_SLEEP_MSEC * 16 * 1024 * 1024 / total]
+[ $sleep -le 10 ] && sleep=10
+debug sleep $sleep
+thres=$[total * KSM_THRES_COEF / 100]
+if [ $KSM_THRES_CONST -gt $thres ]; then
+    thres=$KSM_THRES_CONST
+fi
+debug thres $thres
+
+KSM_ROOT=${KSMTUNED_KSM_ROOT:-/sys/kernel/mm/ksm}
+KSMCTL () {
+    case x$1 in
+        xstop)
+            echo 0 > "$KSM_ROOT/run"
+            ;;
+        xstart)
+            echo $2 > "$KSM_ROOT/pages_to_scan"
+            echo $3 > "$KSM_ROOT/sleep_millisecs"
+            echo 1 > "$KSM_ROOT/run"
+            ;;
+    esac
+}
+
+committed_memory () {
+    # calculate how much memory is committed to running qemu processes
+    local pidlist
+    pidlist=$(pgrep -d ' ' -- '^qemu(-(kvm|system-.+)|:.{1,11})$')
+    if [ -n "$pidlist" ]; then
+        ps -p "$pidlist" -o rsz=
+    fi | awk '{ sum += $1 }; END { print 0+sum }'
+}
+
+free_memory () {
+    awk '/^(MemFree|Buffers|Cached):/ {free += $2}; END {print free}' \
+                "$MEMINFO"
+}
+
+increase_npages() {
+    local delta
+    delta=${1:-0}
+    npages=$[npages + delta]
+    if [ $npages -lt $KSM_NPAGES_MIN ]; then
+        npages=$KSM_NPAGES_MIN
+    elif [ $npages -gt $KSM_NPAGES_MAX ]; then
+        npages=$KSM_NPAGES_MAX
+    fi
+    echo $npages
+}
+
+
+adjust () {
+    local free committed
+    free=`free_memory`
+    committed=`committed_memory`
+    debug committed $committed free $free
+    if [ $[committed + thres] -lt $total -a $free -gt $thres ]; then
+        KSMCTL stop
+        debug "$[committed + thres] < $total and free > $thres, stop ksm"
+        return 1
+    fi
+    debug "$[committed + thres] > $total, start ksm"
+    if [ $free -lt $thres ]; then
+        npages=`increase_npages $KSM_NPAGES_BOOST`
+        debug "$free < $thres, boost"
+    else
+        npages=`increase_npages $KSM_NPAGES_DECAY`
+        debug "$free > $thres, decay"
+    fi
+    KSMCTL start $npages $sleep
+    debug "KSMCTL start $npages $sleep"
+    return 0
+}
+
+function nothing () {
+    :
+}
+
+loop () {
+    trap nothing SIGUSR1
+    while true
+    do
+        sleep $KSM_MONITOR_INTERVAL &
+        wait $!
+        adjust
+    done
+}
+
+PIDFILE=${KSMTUNED_PIDFILE:-${PIDFILE-/var/run/ksmtune.pid}}
+if touch "$PIDFILE"; then
+  loop &
+  echo $! > "$PIDFILE"
+fi

@@ -5,6 +5,7 @@
         builders for all zstack bits
     </description>
 
+    <property environment="env" />
     <property file="build.properties" />
     <property file="${zstack.source}/VERSION" />
     <property file="${zstack.source}/PJNUM"/>
@@ -13,6 +14,7 @@
     <property name="war.dir" location="${build.dir}/zstack-assemble" />
     <property name="pypi.parent.dir" location="${war.dir}/static/" />
     <property name="zstack.install" location="${zstackutility.source}/installation/install.sh" />
+    <property name="zstack.fresh.cloud.intent" location="${zstackutility.source}/installation/fresh_cloud_intent.sh" />
     <property name="zstack.trial.license" location="${zstackutility.source}/installation/zstack_trial_license" />
     <condition property="allinone.file" value="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.${build.num}.tgz" else="${build.dir}/zstack-all-in-one-${MAJOR}.${MINOR}.${UPDATE}.tgz">
         <and>
@@ -64,6 +66,7 @@
     <import file="${basedir}/projects/zstack-war.xml" optional="false" />
     <import file="${basedir}/projects/zstacklib.xml" optional="false" />
     <import file="${basedir}/projects/zstack-kvmagent.xml" optional="false" />
+    <import file="${basedir}/projects/zstack-zram.xml" optional="false" />
     <import file="${basedir}/projects/zstack-virtualrouter.xml" optional="false" />
     <import file="${basedir}/projects/zstack-appliancevm.xml" optional="false" />
     <import file="${basedir}/projects/zstack-sftpbackupstorage.xml" optional="false" />

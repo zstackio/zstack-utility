@@ -1,0 +1,13 @@
+Upstream project: https://github.com/ksmtuned/ksmtuned.git
+Revision: 018d0ed5876aee27b106c46c8889780d89ddcca2
+Baseline files used by packaging:
+  src/ksmtuned.sh.in
+  data/ksmtuned.conf
+  data/ksmtuned.service.in
+License file: COPYING (GPL-2.0-or-later)
+
+The packaging job must fetch this exact revision, retain src/ksmtuned.sh.in
+and COPYING, and apply the managed-marker patch only after the distro source is
+archived.  This metadata is intentional: a vendor's already-installed
+ksmtuned remains the source of truth until the package build pins and archives
+the selected baseline.

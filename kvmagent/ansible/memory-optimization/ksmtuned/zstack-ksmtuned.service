@@ -1,0 +1,20 @@
+[Unit]
+Description=ZStack managed ksmtuned policy writer
+After=systemd-modules-load.service systemd-tmpfiles-setup.service local-fs.target
+Requires=systemd-tmpfiles-setup.service
+Before=ksm.service ksmtuned.service
+Conflicts=ksm.service ksmtuned.service
+ConditionPathExists=/sys/kernel/mm/ksm/run
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/zstack/ksmtuned-zstack run
+ExecStop=/usr/bin/env KSMTUNED_STOP_MODE=disable /usr/libexec/zstack/ksmtuned-zstack stop
+ExecStartPre=/usr/libexec/zstack/ksmtuned-zstack takeover
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadWritePaths=/etc/zstack/memory-optimization /run/zstack/memory-optimization
+
+[Install]
+WantedBy=multi-user.target

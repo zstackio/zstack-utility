@@ -2,6 +2,12 @@
 
 # Mevoco Installer
 # Usage: bash install.sh
+FRESH_CLOUD_INTENT_HELPER="$(dirname "${BASH_SOURCE[0]}")/fresh_cloud_intent.sh"
+if [ ! -r "$FRESH_CLOUD_INTENT_HELPER" ]; then
+    echo "Required installer helper is missing: $FRESH_CLOUD_INTENT_HELPER" >&2
+    exit 1
+fi
+. "$FRESH_CLOUD_INTENT_HELPER"
 traplogger () {
     echo -n $(date +%Y-%m-%d' '%H:%M:%S,$((`date +10#%N`/1000000))) | tee -a  $ZSTACK_TIMESTAMP_LOG 1>/dev/null
     echo -n "  [running line: $1]" |tee -a $ZSTACK_TIMESTAMP_LOG 1>/dev/null
@@ -99,6 +105,7 @@ NEED_NFS=''
 NEED_HTTP=''
 NEED_DROP_DB=''
 NEED_KEEP_DB=''
+FRESH_CLOUD_BOOTSTRAP='n'
 ONLY_INSTALL_LIBS=''
 ONLY_INSTALL_ZSTACK=''
 NOT_START_ZSTACK=''
@@ -1230,6 +1237,7 @@ cs_check_mysql_password () {
 
 cs_check_zstack_data_exist(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    FRESH_CLOUD_BOOTSTRAP='n'
     cs_check_mysql_password
     if [ -z $ONLY_INSTALL_ZSTACK ] && [ 'y' != $UPGRADE ];then
         which mysql >/dev/null 2>&1
@@ -1251,6 +1259,13 @@ cs_check_zstack_data_exist(){
             fi
         fi
     fi
+
+    # Capture first-install intent before this installer creates VERSION,
+    # zstack.properties, or the management-node service. Existing identity,
+    # upgrade, keep/drop, and MN-only installation paths must never seed it.
+        zstack_is_fresh_cloud_install "$UPGRADE" "$ONLY_INSTALL_ZSTACK" \
+            "$NEED_DROP_DB" "$NEED_KEEP_DB" "$ZSTACK_INSTALL_ROOT" "$ZSTACK_PROPERTIES" / \
+            && FRESH_CLOUD_BOOTSTRAP='y'
 }
 
 #Do preinstallation checking for CentOS and Ubuntu and Database
@@ -3729,7 +3744,11 @@ cs_deploy_db(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
     if [ -z $NEED_DROP_DB ]; then
         if [ -z $NEED_KEEP_DB ]; then
-            zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            if [ 'y' = "$FRESH_CLOUD_BOOTSTRAP" ]; then
+                zstack-ctl deploydb --fresh-cloud-bootstrap --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            else
+                zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP >>$ZSTACKCTL_INSTALL_LOG 2>&1
+            fi
         else
             zstack-ctl deploydb --root-password="$MYSQL_NEW_ROOT_PASSWORD" --zstack-password="$MYSQL_USER_PASSWORD" --host=$MANAGEMENT_IP --keep-db >>$ZSTACKCTL_INSTALL_LOG 2>&1
         fi

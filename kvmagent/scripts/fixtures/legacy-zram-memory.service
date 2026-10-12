@@ -1,0 +1,32 @@
+[Unit]
+Description=ZRAM memory compression and disk writeback
+After=local-fs.target
+Before=libvirtd.service
+Conflicts=zram-efficiency-p2.service zram-efficiency.service
+
+[Service]
+Type=notify
+NotifyAccess=main
+TimeoutStartSec=90
+User=root
+Group=root
+UMask=0077
+RuntimeDirectory=zram-efficiency-admission
+RuntimeDirectoryMode=0750
+StateDirectory=zram-efficiency
+StateDirectoryMode=0700
+ExecStart=/usr/local/libexec/zram-efficiency --config /etc/zram-memory/config.json
+Restart=no
+TimeoutStopSec=75
+# External reclaim/writeback workers are durable across a service restart and
+# are reconciled from their receipt/identity records; host reboot is handled
+# as a separate unknown-worker recovery case.
+KillMode=process
+# This limit is shared by the service and its external workers; it is not a
+# per-VM memory-capacity setting.
+MemoryMax=12G
+CPUAccounting=yes
+IOAccounting=yes
+
+[Install]
+WantedBy=multi-user.target

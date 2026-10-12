@@ -1,2 +1,9 @@
 include kvmagent/plugins/bmv2_gateway_agent/templates/*
 include kvmagent/plugins/bmv2_gateway_agent/scripts/*
+include ansible/kvm.py
+recursive-include ansible/memory-optimization/ksmtuned *
+include ansible/files/kvm/memory-optimization/zstack-zram/*.rpm
+include ansible/files/kvm/memory-optimization/zstack-zram/BUILD-MANIFEST.json
+include ansible/files/kvm/memory-optimization/zstack-zram/rpm-inventory.json
+include ansible/files/kvm/memory-optimization/zstack-zram/install_memory_optimization_rpm.py
+include scripts/README-memory-optimization-rpm.md

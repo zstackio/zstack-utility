@@ -10,6 +10,7 @@
 
     <target name="all-in-one-package" >
         <copy file="${zstack.install}" todir="${build.dir}" />
+        <copy file="${zstack.fresh.cloud.intent}" todir="${build.dir}" />
         <copy file="${war.file}" todir="${allinone.dir}" />
         <copy file="${apachetomcat.pkg}" todir="${allinone.dir}" />
         <tar destfile="${allinone.file}" basedir="${allinone.dir}" compression="gzip" />
@@ -49,6 +50,7 @@
         <makeDir dir="${allinone.bin.dir}" />
         <move file="${allinone.file}" todir="${allinone.bin.dir}" />
         <copy file="${zstack.install}" todir="${allinone.bin.dir}" />
+        <copy file="${zstack.fresh.cloud.intent}" todir="${allinone.bin.dir}" />
 
         <exec executable="bash" dir="${allinone.bin.dir}" failonerror="true">
             <arg value="${offline.bin.gen.setup.script}" />
