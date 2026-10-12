@@ -4433,8 +4433,6 @@ class Vm(object):
 
             if get_gic_version(cmd.cpuNum) == 2:
                 e(features, "gic", attrib={'version': '2'})
-            elif HOST_ARCH == "aarch64" and cmd.acpi and int(root.find('vcpu').text) > cmd.cpuNum:
-                e(features, "gic", attrib={'version': '3'})
             make_pmu_feature(cmd, features)
 
         def make_qemu_commandline():

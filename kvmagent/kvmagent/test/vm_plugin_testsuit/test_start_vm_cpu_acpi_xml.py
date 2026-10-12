@@ -88,9 +88,12 @@ class TestStartVmCpuAcpiXml(unittest.TestCase):
         self.body.update({'machineType': 'pc', 'acpi': False})
         assert self.build_xml().find('features/acpi') is None
 
-    def test_arm_hotplug_capacity_uses_gic3(self):
-        gic = self.build_xml().find('features/gic')
-        assert gic is not None and gic.get('version') == '3'
+    def test_arm_reserved_cpu_keeps_libvirt_gic_selection(self):
+        assert self.build_xml().find('features/gic') is None
+
+    def test_nested_arm_reserved_cpu_keeps_libvirt_gic_selection(self):
+        self.patch(vm_plugin, 'is_virtual_machine', lambda: True)
+        assert self.build_xml().find('features/gic') is None
 
     def test_arm_without_hotplug_capacity_keeps_default_gic(self):
         self.body.update({'maxVcpuNum': 2, 'socketNum': 1, 'cpuOnSocket': 2})
