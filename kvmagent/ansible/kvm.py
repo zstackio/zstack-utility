@@ -66,7 +66,7 @@ argument_dict = eval(args.e)
 
 # update the variable from shell arguments
 locals().update(argument_dict)
-deploy_mode = argument_dict['deploy_mode']
+deploy_mode = argument_dict.get('deploy_mode')
 virtenv_path = "%s/virtualenv/kvm/" % zstack_root
 workplace = "%s/kvm" % zstack_root
 kvm_root = "%s/package" % workplace
@@ -660,6 +660,9 @@ def copy_cube_tools():
 
 
 def configure_deploy_mode():
+    if not deploy_mode:
+        return
+
     mode_file = os.path.join(workplace, 'deploy_mode')
     command = "printf '%%s\\n' %s > %s" % (
         quote(deploy_mode), quote(mode_file))
