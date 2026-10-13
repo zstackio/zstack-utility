@@ -4,6 +4,7 @@ import argparse
 import datetime
 from distutils.version import LooseVersion
 import os
+from pipes import quote
 import re
 from uuid import uuid4
 
@@ -51,7 +52,6 @@ isEnableKsm = 'none'
 restart_libvirtd = 'false'
 enable_spice_tls = None
 enable_cgroup_device_acl = None
-isRemoteCube = False
 reserved_ports = "49152-49215"
 
 
@@ -66,6 +66,7 @@ argument_dict = eval(args.e)
 
 # update the variable from shell arguments
 locals().update(argument_dict)
+deploy_mode = argument_dict['deploy_mode']
 virtenv_path = "%s/virtualenv/kvm/" % zstack_root
 workplace = "%s/kvm" % zstack_root
 kvm_root = "%s/package" % workplace
@@ -267,7 +268,7 @@ def install_kvm_pkg():
             # common kvmagent deps of x86 and arm that no need to update
             common_dep_list = "%s %s" % (common_dep_list, common_update_list)
 
-            if isRemoteCube:
+            if deploy_mode == 'cube':
                 cube_distro_info = host_info.host_arch + "_" + distro_head
                 common_dep_list = "%s %s %s" % (common_dep_list, cube_distro_mapping.get(cube_distro_info, ''), cube_releasever_mapping.get(releasever, ''))
 
@@ -644,14 +645,25 @@ def copy_bond_conf():
 
 
 def copy_cube_tools():
-    """copy cube required tools from mn_node to host_node"""
-    cube_root_dst = "/usr/local/hyperconverged/"
-    _src = os.path.join(cube_root_dst, "tools/hd_ctl")
-    if isRemoteCube and os.path.exists(_src):
-        _dst = os.path.join(cube_root_dst, "tools")
-        copy_to_remote(_src, _dst, "mode=755", host_post_info)
-        command = "ln -sf /usr/local/hyperconverged/tools/hd_ctl/hd_ctl /bin/"
-        run_remote_command(command, host_post_info)
+    """Install the hardware tools supplied by the local ISO repo."""
+    if deploy_mode != 'cube':
+        return
+
+    src = '/opt/zstack-dvd/{}/{}/tools/hd_ctl.tar.gz'.format(host_info.host_arch, releasever)
+    archive = os.path.join(kvm_root, 'hd_ctl.tar.gz')
+    target = os.path.join(workplace, 'hd_ctl')
+    copy_to_remote(src, archive, "mode=644", host_post_info)
+    command = "tar -xzf %s -C %s && rm -rf %s && mv %s %s && ln -sfn %s /bin/hd_ctl" % (
+        quote(archive), quote(kvm_root), quote(target), quote(os.path.join(kvm_root, 'hd_ctl')),
+        quote(target), quote(os.path.join(target, 'hd_ctl')))
+    run_remote_command(command, host_post_info)
+
+
+def configure_deploy_mode():
+    mode_file = os.path.join(workplace, 'deploy_mode')
+    command = "printf '%%s\\n' %s > %s" % (
+        quote(deploy_mode), quote(mode_file))
+    run_remote_command(command, host_post_info)
 
 
 def do_libvirt_qemu_config():
@@ -943,14 +955,6 @@ def set_gpu_blacklist():
     run_remote_command(command, host_post_info)
 
 
-def check_is_remote_cube():
-    command = "ls /usr/local/hyperconverged"
-    status = run_remote_command(command, host_post_info, return_status=True)
-    global isRemoteCube
-    isRemoteCube = status
-
-
-check_is_remote_cube()
 check_nested_kvm(host_post_info)
 install_kvm_pkg()
 copy_tools()
@@ -980,6 +984,7 @@ do_ksm_config()
 modprobe_usb_module()
 modprobe_mpci_module()
 set_gpu_blacklist()
+configure_deploy_mode()
 start_kvmagent()
 
 host_post_info.start_time = start_time
