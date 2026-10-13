@@ -2084,17 +2084,8 @@ class ShowStatusCmd(Command):
             full_version = get_hci_full_version()
             if not full_version:
                 return
-            version = full_version.strip(' \t\n\r')
-            detailed_version = get_detail_version().split()[1]
-            new_version = detailed_version[:detailed_version.rfind('.')]
-            if version is not None:
-                if version[0].isdigit():
-                    info('Cube version: 2.%s (Cube 2.%s)' % (new_version, new_version))
-                else:
-                    list = version.split('-')
-                    hci_version = list[-3]
-                    hci_name = version.split("-%s-" % hci_version)
-                    info(hci_name[0] + ' version: 2.%s (%s-2.%s-%s)' % (new_version, hci_name[0], new_version, hci_name[1]))
+            name, version = full_version.rsplit('-', 2)[0].rsplit('-', 1)
+            info('%s version: %s (%s)' % (name, version, full_version))
 
         def show_zsv_version():
             zsv_version = get_zsv_version()
@@ -7397,17 +7388,7 @@ class CollectLogCmd(Command):
 
 
 def is_hyper_converged_host():
-    if not os.path.exists("/usr/local/hyperconverged"):
-        return False
-
-    # Compatible with lower versions
-    if os.path.exists("/usr/local/hyperconverged/conf/host_info.json"):
-        return True
-
-    if os.path.exists("/usr/local/hyperconverged/conf/deployed_info"):
-        return True
-
-    return False
+    return ctl.read_property('deploy_mode') == 'cube'
 
 def is_zsv_env():
     properties_file_path = os.path.join(os.environ['ZSTACK_HOME'], 'WEB-INF/classes/zstack.properties')
@@ -7415,16 +7396,20 @@ def is_zsv_env():
     return properties.read_property('deploy_mode') == 'zsv'
 
 def get_hci_full_version():
-    detailed_version_file = "/usr/local/hyperconverged/conf/VERSION"
-    if os.path.exists(detailed_version_file):
-        with open(detailed_version_file, 'r') as fd:
-            return fd.read().strip()
-    else:
+    version = get_hci_detail_version()
+    build_time_file = os.path.join(ctl.zstack_home, 'BUILD_TIME')
+    if not version or not os.path.exists(build_time_file):
         return None
 
+    with open(build_time_file, 'r') as fd:
+        return '%s-%s' % (version, fd.read().strip())
+
 def get_hci_detail_version():
-    full_version = get_hci_full_version()
-    return None if full_version is None else full_version.rsplit("-", 2)[0]
+    detailed_version = get_detail_version()
+    if not detailed_version:
+        return None
+    version = detailed_version.split()[1]
+    return 'Cube-2.%s' % version.rsplit('.', 1)[0]
 
 def get_zsv_version():
     detailed_version_file = os.path.join(os.environ['ZSTACK_HOME'], 'WEB-INF', 'classes', 'zsphere_config', 'version')
@@ -11133,7 +11118,7 @@ class GetZStackVersion(Command):
         hostname, port, user, password = ctl.get_live_mysql_portal()
         return get_zstack_version(hostname, port, user, password)
 
-    # cube:  'AliyunHCI-Z 1.1.0'
+    # cube:  'Cube 2.5.4.16'
     # zsv:   'ZSphere 4.0.0'
     # cloud: ''
     def get_additional_version(self):
