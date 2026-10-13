@@ -4174,9 +4174,14 @@ class Vm(object):
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (max_vcpu - 1), 'memory': str(mem), 'unit': 'KiB'})
 
                 def on_aarch64():
-                    max_vcpu = cmd.maxVcpuNum if cmd.maxVcpuNum else 128
+                    nested = is_virtual_machine()
+                    requested_max = cmd.maxVcpuNum if cmd.maxVcpuNum else 128
+                    max_vcpu = min(requested_max, 8) if nested else requested_max
+                    if max_vcpu <= 0 or cmd.cpuNum > max_vcpu:
+                        raise kvmagent.KvmError("requested vcpus %s exceed maximum vcpu count %s" %
+                                               (cmd.cpuNum, max_vcpu))
                     e(root, 'vcpu', str(max_vcpu), {'placement': 'static', 'current': str(cmd.cpuNum)})
-                    if is_virtual_machine():
+                    if nested:
                         cpu = e(root, 'cpu')
                         e(cpu, 'model', 'cortex-a57')
                     elif cmd.nestedVirtualization == 'host-model':
@@ -4188,12 +4193,22 @@ class Vm(object):
                     else:
                         cpu = e(root, 'cpu', attrib={'mode': 'host-passthrough'})
                         e(cpu, 'model', attrib={'fallback': 'allow'})
-                    mem = cmd.memory / 1024
+                    mem = cmd.memory // 1024
 
-                    if cmd.socketNum:
-                        e(cpu, 'topology', attrib={'sockets': str(cmd.socketNum), 'cores': str(cmd.cpuOnSocket), 'threads': '1'})
+                    sockets = int(cmd.socketNum or
+                                  etree.fromstring(LibvirtAutoReconnect.conn.getCapabilities()).find('./host/topology/cells').get('num'))
+                    if sockets <= 0:
+                        raise kvmagent.KvmError("CPU socket count must be greater than zero")
+                    if cmd.socketNum and sockets * int(cmd.cpuOnSocket) == max_vcpu:
+                        cores = int(cmd.cpuOnSocket)
                     else:
-                        e(cpu, 'topology', attrib={'sockets': '32', 'cores': '4', 'threads': '1'})
+                        if cmd.socketNum and max_vcpu == requested_max:
+                            raise kvmagent.KvmError("CPU topology does not match maximum vcpu count %s" % max_vcpu)
+                        sockets = min(sockets, max_vcpu)
+                        while max_vcpu % sockets:
+                            sockets -= 1
+                        cores = max_vcpu // sockets
+                    e(cpu, 'topology', attrib={'sockets': str(sockets), 'cores': str(cores), 'threads': '1'})
                     numa = e(cpu, 'numa')
                     e(numa, 'cell', attrib={'id': '0', 'cpus': '0-%d' % (max_vcpu - 1), 'memory': str(mem), 'unit': 'KiB'})
 
@@ -4396,7 +4411,7 @@ class Vm(object):
                 e(features, f)
 
             def make_acpi():
-                if HOST_ARCH == "x86_64" or (cmd.acpi and DIST_NAME_VERSION in linux.ARM_ACPI_SUPPORT_OS and not is_virtual_machine()):
+                if cmd.acpi:
                     e(features, 'acpi')
 
             make_acpi()
