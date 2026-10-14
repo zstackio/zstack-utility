@@ -36,10 +36,10 @@ def _build_environment_id():
 
 
 def _git(root, *args):
-    command = ['git', '-C', str(root)]
+    command = ['git']
     command.extend(args)
     with open(os.devnull, 'wb') as devnull:
-        return subprocess.check_output(command, stderr=devnull)
+        return subprocess.check_output(command, cwd=root, stderr=devnull)
 
 
 def _freeze_source(source, snapshot_dir):
