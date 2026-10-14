@@ -1381,7 +1381,6 @@ do
     esac
 done
 OPTIND=1
-
 echo "ZStack install root: $ZSTACK_INSTALL_ROOT" >>$ZSTACK_INSTALL_LOG
 [ -z $NFS_FOLDER ] && NFS_FOLDER=$ZSTACK_INSTALL_ROOT/nfs_root
 echo "NFS Folder: $NFS_FOLDER" >> $ZSTACK_INSTALL_LOG

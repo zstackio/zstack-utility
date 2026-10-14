@@ -704,6 +704,60 @@ def agent_install(install_arg, host_post_info):
         error("agent %s install failed" % install_arg.agent_name)
 
 
+AGENT_VENV_PIP_VERSION = "25.1.1"
+AGENT_VENV_PIP_WHEEL = "pip-25.1.1-py3-none-any.whl"
+AGENT_VENV_PIP_WHEEL_SHA256 = (
+    "2913a38a2abf4ea6b64ab507bd9e967f3b53dc1ede74b01b0931e1ce548751af")
+
+
+def build_agent_venv_pip_command(virtenv_path, trusted_host, pip_url):
+    """Build a hash-pinned bootstrap for the Agent venv's pip."""
+    if not virtenv_path or not trusted_host or not pip_url:
+        raise ValueError("AGENT_VENV_PIP_INPUT_REQUIRED")
+    parsed_index = urllib.parse.urlsplit(pip_url.rstrip("/"))
+    if (parsed_index.scheme not in ("http", "https", "file") or
+            parsed_index.query or parsed_index.fragment or
+            parsed_index.path.rstrip("/").rsplit("/", 1)[-1] != "simple"):
+        raise ValueError("AGENT_VENV_PIP_INDEX_URL_INVALID")
+    python_path = os.path.join(virtenv_path, "bin", "python")
+    python = shell_quote(python_path)
+    verify_code = ("import importlib.metadata as metadata,os,sys,pip; "
+                   "prefix=os.path.realpath(sys.prefix); "
+                   "module=os.path.realpath(pip.__file__); "
+                   "dists={d.version "
+                   "for d in metadata.distributions() "
+                   "if (d.metadata.get('Name') or '').lower().replace('_','-')=='pip' "
+                   "and os.path.commonpath([prefix,os.path.realpath(str(d.locate_file('')))])==prefix}; "
+                   "assert pip.__version__ == %r and "
+                   "os.path.commonpath([prefix,module]) == prefix and "
+                   "dists=={%r}" %
+                   (AGENT_VENV_PIP_VERSION, AGENT_VENV_PIP_VERSION))
+    verify = python + " -c " + shell_quote(verify_code)
+    requirement = "pip==%s --hash=sha256:%s" % (
+        AGENT_VENV_PIP_VERSION, AGENT_VENV_PIP_WHEEL_SHA256)
+    requirement_file = "agent_pip_requirements=$(mktemp)"
+    install = (requirement_file + " && trap 'rm -f \"$agent_pip_requirements\"' EXIT" +
+               " && printf '%s\\n' " + shell_quote(requirement) +
+               " > \"$agent_pip_requirements\" && " +
+               python + " -m pip install --isolated --disable-pip-version-check "
+               "--no-input --no-cache-dir --index-url " + shell_quote(pip_url) +
+               " --require-hashes --upgrade --no-deps --only-binary=:all: "
+               "--trusted-host " + shell_quote(trusted_host) +
+               " -r \"$agent_pip_requirements\"")
+    return "if %s >/dev/null 2>&1; then :; else %s && %s; fi" % (
+        verify, install, verify)
+
+
+def install_agent_venv_pip(install_arg, host_post_info):
+    """Pin only the Agent venv's pip before its normal dependency installs."""
+    host_post_info.post_label = "ansible.install.agent.venv-pip"
+    host_post_info.post_label_param = AGENT_VENV_PIP_VERSION
+    command = build_agent_venv_pip_command(
+        install_arg.virtenv_path, install_arg.trusted_host,
+        install_arg.pip_url)
+    return run_remote_command(command, host_post_info)
+
+
 def yum_enable_repo(name, disablerepo, enablerepo, host_post_info):
     '''install package from enablerepo'''
     start_time = datetime.datetime.now()

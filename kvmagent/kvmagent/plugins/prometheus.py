@@ -1,7 +1,16 @@
 import functools
+import calendar
+import hashlib
 import json
 import os.path
 import re
+import shlex
+import tempfile
+import socket
+try:
+    import http.client as stdlib_http
+except ImportError:  # pragma: no cover
+    import httplib as stdlib_http
 
 import pyudev  # installed by ansible
 import threading
@@ -11,7 +20,8 @@ from collections import defaultdict
 import typing
 import re
 from prometheus_client import start_http_server
-from prometheus_client.core import GaugeMetricFamily, Sample, REGISTRY
+from prometheus_client.core import CollectorRegistry, GaugeMetricFamily, Sample, REGISTRY
+from prometheus_client.exposition import generate_latest
 import psutil
 
 from kvmagent import kvmagent
@@ -42,6 +52,55 @@ PAGE_SIZE = None
 disk_list_record = None
 hba_port_state_list_record_map = {}
 nvme_serial_numbers_record = None
+
+MEMORY_ACCOUNTING_SOCKET = '/run/zram-efficiency-admission/control.sock'
+MEMORY_ACCOUNTING_TIMEOUT_SECONDS = 2
+MEMORY_ACCOUNTING_RESPONSE_BYTES = 16 * 1024 * 1024
+MEMORY_TEXTFILE_DIRECTORY = '/var/lib/node_exporter/textfile_collector'
+_memory_textfile_directory = MEMORY_TEXTFILE_DIRECTORY
+MEMORY_TEXTFILE = 'zstack_memory_optimization.prom'
+MEMORY_TEXTFILE_PUBLISH_INTERVAL_SECONDS = 2
+_memory_textfile_thread_lock = threading.Lock()
+_memory_textfile_thread = None
+
+
+def _node_exporter_textfile_arguments(arguments):
+    """Keep node_exporter's configured textfile collector and directory."""
+    global _memory_textfile_directory
+    arguments = arguments or ''
+    try:
+        parsed_arguments = shlex.split(arguments)
+    except ValueError:
+        _memory_textfile_directory = None
+        return arguments
+    if '--no-collector.textfile' in parsed_arguments:
+        _memory_textfile_directory = None
+        return arguments
+
+    for index, argument in enumerate(parsed_arguments):
+        if argument == '--collector.textfile.directory' and index + 1 < len(parsed_arguments):
+            _memory_textfile_directory = parsed_arguments[index + 1]
+            return arguments
+        if argument.startswith('--collector.textfile.directory='):
+            _memory_textfile_directory = argument.split('=', 1)[1]
+            return arguments
+
+    _memory_textfile_directory = MEMORY_TEXTFILE_DIRECTORY
+    if arguments:
+        arguments += ' '
+    return arguments + '--collector.textfile.directory=%s' % MEMORY_TEXTFILE_DIRECTORY
+
+
+class _MemoryServiceUnixHTTPConnection(stdlib_http.HTTPConnection):
+    def __init__(self, socket_path, timeout):
+        stdlib_http.HTTPConnection.__init__(self, 'localhost', timeout=timeout)
+        self.socket_path = socket_path
+
+    def connect(self):
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(self.timeout)
+        sock.connect(self.socket_path)
+        self.sock = sock
 
 
 @functools.lru_cache(maxsize=1)
@@ -1555,6 +1614,576 @@ def collect_memory_overcommit_statistics():
     return list(metrics.values())
 
 
+def _read_memory_optimization_int(path):
+    """Read a nonnegative sysfs counter; absent/invalid data stays unknown."""
+    try:
+        value = linux.read_file(path)
+        if value is None or not str(value).strip():
+            return None
+        value = int(str(value).strip())
+        # A broken native KSM counter can underflow after fork/COW. It is
+        # invalid even when adding other mechanisms would make a positive
+        # total. This does not apply to the signed ZRAM savings difference.
+        return value if value >= 0 else None
+    except (TypeError, ValueError, IOError, OSError):
+        return None
+
+
+def _read_zram_saved_bytes(path):
+    """Return orig_data_size - mem_used_total from zram mm_stat.
+
+    A negative result is meaningful (metadata/allocator overhead); preserve it
+    instead of clipping it to zero.  The source is a same-scrape estimate,
+    not a cumulative counter.
+    """
+    try:
+        value = linux.read_file(path)
+        fields = str(value or '').split()
+        if len(fields) < 3:
+            return None
+        return int(fields[0]) - int(fields[2])
+    except (TypeError, ValueError, IOError, OSError):
+        return None
+
+
+def _memory_optimization_epoch(devices):
+    """Bounded gauge identity; scanning progress is NOT a pool generation.
+
+    Read only existing ownership. An unowned/multi-pool device cannot acquire
+    an invented epoch merely because its sysfs name looks familiar.
+    """
+    try:
+        boot = (linux.read_file('/proc/sys/kernel/random/boot_id') or '').strip()
+        if not boot:
+            return None
+        scope = [boot]
+        active_devices = []
+        for device in devices:
+            size = _read_memory_optimization_int('/sys/block/%s/disksize' % device)
+            if size is None:
+                return None
+            if size > 0:
+                active_devices.append(device)
+        # Loading the module creates a zero-capacity device before a pool is
+        # initialized. It has no stock or ownership generation; use the boot
+        # epoch just as when no device exists. Active pools still require proof
+        # of ownership, and an unreadable size is never treated as disabled.
+        devices = active_devices
+        if devices:
+            config = json.loads(linux.read_file('/etc/zram-memory/config.json') or '{}')
+            state_dir = config.get('state_dir')
+            if not state_dir or not os.path.isabs(state_dir):
+                return None
+            pool = json.loads(linux.read_file(os.path.join(state_dir, 'stock-pool.json')) or '{}')
+            generation = pool.get('userspace_ownership_generation')
+            identity = pool.get('identity') or {}
+            # The service serializes Go's DeviceIdentity as "Device". Accept
+            # the older lower-case spelling too, without changing ownership
+            # records or silently accepting contradictory device identities.
+            if ('Device' in identity and 'device' in identity and
+                    identity['Device'] != identity['device']):
+                return None
+            device = identity.get('Device', identity.get('device'))
+            if not generation or len(devices) != 1 or device != '/dev/' + devices[0]:
+                return None
+            scope.extend([device, generation])
+        # 52 bits are exactly representable by Prometheus' float64 value.
+        return int(hashlib.sha256(json.dumps(scope).encode('utf-8')).hexdigest()[:13], 16)
+    except (IOError, OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def _read_memory_accounting_report():
+    """Read the service's committed report without issuing any operation."""
+    conn = _MemoryServiceUnixHTTPConnection(
+        MEMORY_ACCOUNTING_SOCKET, MEMORY_ACCOUNTING_TIMEOUT_SECONDS)
+    try:
+        conn.request('GET', '/v1/memory/accounting',
+                     headers={'Host': 'localhost', 'Connection': 'close'})
+        response = conn.getresponse()
+        payload = response.read(MEMORY_ACCOUNTING_RESPONSE_BYTES + 1)
+        if len(payload) > MEMORY_ACCOUNTING_RESPONSE_BYTES:
+            raise IOError('memory accounting response too large')
+        if response.status >= 300:
+            raise IOError('memory accounting service status %s' % response.status)
+        report = json.loads(payload.decode('utf-8'))
+        if isinstance(report, dict) and isinstance(report.get('data'), dict):
+            report = report['data']
+        if not isinstance(report, dict):
+            raise ValueError('memory accounting report is not an object')
+        return report
+    finally:
+        conn.close()
+
+
+def collect_memory_optimization_vm_accounting(report):
+    """Export identity-qualified ABI-2 VM accounting supplied by the service.
+
+    The Agent does not infer ownership from ``VmSwap`` or any other guest
+    process counter.  ``report`` is the committed service ``vm_accounting
+    Report`` JSON; absent/unsupported reports produce quality state only and
+    never synthetic zero-valued VM samples.
+    """
+    metrics = {
+        'host_zram_vm_ram_original_bytes': GaugeMetricFamily(
+            'host_zram_vm_ram_original_bytes', 'per-VM ZRAM logical original bytes',
+            labels=['vm_uuid', 'host_boot_id', 'device', 'pool_generation',
+                    'instance_generation', 'cgroup_inode', 'start_time']),
+        'host_zram_vm_payload_bytes': GaugeMetricFamily(
+            'host_zram_vm_payload_bytes', 'per-VM ZRAM compressed payload bytes',
+            labels=['vm_uuid', 'host_boot_id', 'device', 'pool_generation',
+                    'instance_generation', 'cgroup_inode', 'start_time']),
+        'host_zram_vm_backend_original_bytes': GaugeMetricFamily(
+            'host_zram_vm_backend_original_bytes', 'per-VM ZRAM backend original bytes',
+            labels=['vm_uuid', 'host_boot_id', 'device', 'pool_generation',
+                    'instance_generation', 'cgroup_inode', 'start_time']),
+        'host_zram_vm_saved_bytes': GaugeMetricFamily(
+            'host_zram_vm_saved_bytes',
+            'per-VM ZRAM mechanism difference: original minus resident payload plus live backend bytes',
+            labels=['vm_uuid', 'host_boot_id', 'device', 'pool_generation',
+                    'instance_generation', 'cgroup_inode', 'start_time']),
+        'host_zram_vm_accounting_quality': GaugeMetricFamily(
+            'host_zram_vm_accounting_quality', 'per-VM ZRAM accounting quality',
+            labels=['vm_uuid', 'quality', 'host_boot_id', 'device',
+                    'pool_generation', 'instance_generation',
+                    'cgroup_inode', 'start_time']),
+        'host_zram_vm_identity_info': GaugeMetricFamily(
+            'host_zram_vm_identity_info', 'identity-qualified VM ZRAM accounting snapshot',
+            labels=['vm_uuid', 'host_boot_id', 'device', 'pool_generation',
+                    'instance_generation', 'cgroup_inode', 'start_time']),
+        'host_zram_vm_sample_timestamp_seconds': GaugeMetricFamily(
+            'host_zram_vm_sample_timestamp_seconds', 'Service observation time, not scrape time',
+            labels=['vm_uuid', 'host_boot_id', 'device', 'pool_generation',
+                    'instance_generation', 'cgroup_inode', 'start_time']),
+        'host_zram_tracking_metadata_bytes': GaugeMetricFamily(
+            'host_zram_tracking_metadata_bytes', 'ZRAM VM tracking metadata bytes',
+            labels=['kind']),
+        'host_zram_accounting_sample_info': GaugeMetricFamily(
+            'host_zram_accounting_sample_info', 'ZRAM accounting snapshot identity',
+            labels=['schema_version', 'quality']),
+        'host_zram_accounting_generation': GaugeMetricFamily(
+            'host_zram_accounting_generation', 'ZRAM accounting pool generation'),
+        'host_zram_accounting_sequence': GaugeMetricFamily(
+            'host_zram_accounting_sequence', 'ZRAM accounting snapshot sequence'),
+    }
+
+    def quality_only(value):
+        metrics['host_zram_accounting_sample_info'].add_metric(
+            [str(value.get('schema_version', 'unknown')) if isinstance(value, dict) else 'unknown',
+             value.get('quality', 'unavailable') if isinstance(value, dict) else 'unavailable'], 1)
+        return list(metrics.values())
+
+    if not isinstance(report, dict):
+        return quality_only(None)
+    inventory = report.get('inventory')
+    # ABI-1 has a bounded owner table and is not the dynamic per-VM contract.
+    if report.get('schema_version') != 2 or not isinstance(inventory, dict) or \
+            inventory.get('schema_version') != 2:
+        return quality_only(report)
+    quality = report.get('quality', 'unavailable')
+    observed = _memory_observation_seconds(report.get('observed_at'))
+    metrics['host_zram_accounting_sample_info'].add_metric(
+        ['2', str(quality)], 1)
+    generation = inventory.get('pool_generation')
+    sequence = inventory.get('sequence')
+    if isinstance(generation, (int, float)) and not isinstance(generation, bool):
+        metrics['host_zram_accounting_generation'].add_metric([], generation)
+    if isinstance(sequence, (int, float)) and not isinstance(sequence, bool):
+        metrics['host_zram_accounting_sequence'].add_metric([], sequence)
+    host_boot_id = report.get('host_boot_id')
+    device = report.get('device')
+    if not isinstance(host_boot_id, str):
+        host_boot_id = ''
+    if not isinstance(device, str):
+        device = ''
+    pool_generation = str(generation) if isinstance(generation, (int, str)) else ''
+    report_complete = quality in ('atomic_inventory_identity_checked',
+                                  'partial_vm_attribution')
+    for vm_uuid, value in sorted((report.get('vms') or {}).items()):
+        if not isinstance(vm_uuid, str) or not isinstance(value, dict):
+            continue
+        vm_quality = value.get('quality', 'unavailable')
+        identity = value.get('identity')
+        if not isinstance(identity, dict):
+            continue
+        instance_generation = identity.get('instance_generation')
+        identity_boot_id = identity.get('host_boot_id')
+        cgroup_inode = identity.get('cgroup_inode')
+        start_time = identity.get('start_time')
+        # These are identity strings, not numeric samples: large uint64 values
+        # must not pass through float64 and lose precision.
+        if (not report_complete or vm_quality not in
+                ('source_memcg_inventory', 'partial_unattributed_present') or observed is None or
+                not all(isinstance(v, str) and v for v in
+                        (instance_generation, identity_boot_id, host_boot_id, device,
+                         pool_generation)) or identity_boot_id != host_boot_id or
+                not isinstance(cgroup_inode, (int, str)) or
+                isinstance(cgroup_inode, bool) or str(cgroup_inode) in ('', '0') or
+                not isinstance(start_time, (int, str)) or isinstance(start_time, bool) or
+                str(start_time) in ('', '0')):
+            continue
+        labels = [vm_uuid, host_boot_id, device, pool_generation,
+                  instance_generation, str(cgroup_inode), str(start_time)]
+        vm_metrics = value.get('metrics')
+        if not isinstance(vm_metrics, dict):
+            continue
+        required = ('ram_original_bytes', 'ram_payload_bytes',
+                    'backend_committed_original_bytes')
+        if not all(isinstance(vm_metrics.get(key), (int, float)) and
+                   not isinstance(vm_metrics.get(key), bool) for key in required):
+            continue
+        metrics['host_zram_vm_identity_info'].add_metric(labels, 1)
+        metrics['host_zram_vm_accounting_quality'].add_metric(
+            [vm_uuid, str(vm_quality)] + labels[1:], 1)
+        if observed is not None:
+            metrics['host_zram_vm_sample_timestamp_seconds'].add_metric(labels, observed)
+        metrics['host_zram_vm_ram_original_bytes'].add_metric(
+            labels, vm_metrics['ram_original_bytes'])
+        metrics['host_zram_vm_payload_bytes'].add_metric(
+            labels, vm_metrics['ram_payload_bytes'])
+        metrics['host_zram_vm_backend_original_bytes'].add_metric(
+            labels, vm_metrics['backend_committed_original_bytes'])
+        metrics['host_zram_vm_saved_bytes'].add_metric(
+            labels, vm_metrics['ram_original_bytes']
+            - vm_metrics['ram_payload_bytes']
+            + vm_metrics['backend_committed_original_bytes'])
+
+    # Tracking metadata is part of the host accounting contract, not a VM
+    # payload and not an estimate derived from logical capacity.
+    for key, label in (('persistent_metadata_bytes', 'persistent'),
+                       ('dynamic_metadata_bytes', 'dynamic'),
+                       ('tracking_requested_bytes', 'reported_total')):
+        value = inventory.get(key)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            metrics['host_zram_tracking_metadata_bytes'].add_metric([label], value)
+    return list(metrics.values())
+
+
+def _memory_observation_seconds(value):
+    # Go time.Time is RFC3339Nano and may retain its local offset. Do not renew
+    # an old observation at scrape; normalize a valid RFC3339 offset to UTC.
+    if not isinstance(value, str):
+        return None
+    match = re.match(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$', value)
+    if not match:
+        return None
+    try:
+        epoch = calendar.timegm(time.strptime(match.group(1), '%Y-%m-%dT%H:%M:%S'))
+        fraction = float('.' + match.group(2)) if match.group(2) else 0
+        zone = match.group(3)
+        if zone != 'Z':
+            hours = int(zone[1:3])
+            minutes = int(zone[4:6])
+            if hours > 23 or minutes > 59:
+                return None
+            offset = hours * 3600 + minutes * 60
+            if zone[0] == '+':
+                epoch -= offset
+            else:
+                epoch += offset
+        return epoch + fraction
+    except (ValueError, OverflowError):
+        return None
+
+
+def collect_memory_optimization_statistics(vm_accounting_report=None):
+    """Export one-scrape KSM/ZRAM estimates with explicit missing-data rules.
+
+    ``pages_sharing`` and ``ksm_zero_pages`` are instantaneous page counts.
+    Missing counters are omitted.  The values are mechanism estimates, not an
+    A/B net-gain measurement.
+    """
+    metrics = {
+        'host_memory_saved_estimate_bytes': GaugeMetricFamily(
+            'host_memory_saved_estimate_bytes',
+            'same-scrape memory saving estimate by mechanism',
+            labels=['mechanism']),
+        'host_memory_optimization_metric_quality': GaugeMetricFamily(
+            'host_memory_optimization_metric_quality',
+            'same-scrape metric quality (1 means observed)',
+            labels=['metric', 'quality']),
+        'host_memory_optimization_sample_info': GaugeMetricFamily(
+            'host_memory_optimization_sample_info',
+            'memory optimization metric schema and scrape marker',
+            labels=['schema_version']),
+        'host_memory_optimization_sample_timestamp_seconds': GaugeMetricFamily(
+            'host_memory_optimization_sample_timestamp_seconds',
+            'wall clock of the memory optimization scrape'),
+        'host_memory_optimization_generation': GaugeMetricFamily(
+            'host_memory_optimization_generation',
+            'boot and owned pool generation fingerprint, not scan progress'),
+        # Compatibility names make the raw values easy to consume by older
+        # dashboards while the mechanism-labelled family is the new contract.
+        'host_ksm_ordinary_saved_bytes': GaugeMetricFamily(
+            'host_ksm_ordinary_saved_bytes', 'KSM ordinary sharing estimate'),
+        'host_ksm_zero_saved_bytes': GaugeMetricFamily(
+            'host_ksm_zero_saved_bytes', 'KSM zero-page estimate'),
+        'host_zram_saved_estimate_bytes': GaugeMetricFamily(
+            'host_zram_saved_estimate_bytes', 'ZRAM same-scrape estimate'),
+        'host_zram_ordinary_saved_bytes': GaugeMetricFamily(
+            'host_zram_ordinary_saved_bytes',
+            'ZRAM resident (non-writeback) same-scrape estimate'),
+        'host_zram_writeback_saved_bytes': GaugeMetricFamily(
+            'host_zram_writeback_saved_bytes',
+            'ZRAM live writeback original bytes from the committed inventory'),
+    }
+    page_size = PAGE_SIZE or 4096
+    ordinary_pages = _read_memory_optimization_int(
+        '/sys/kernel/mm/ksm/pages_sharing')
+    zero_pages = _read_memory_optimization_int(
+        '/sys/kernel/mm/ksm/ksm_zero_pages')
+
+    zram_saved = None
+    zram_quality = 'missing'
+    zram_devices = []
+    inventory_known = False
+    try:
+        zram_devices = sorted(name for name in os.listdir('/sys/block')
+                               if re.match(r'^zram[0-9]+$', name))
+        inventory_known = True
+    except (IOError, OSError):
+        pass
+    epoch_before = _memory_optimization_epoch(zram_devices) if inventory_known else None
+    zram_values_before = []
+    for device in zram_devices:
+        value = _read_zram_saved_bytes('/sys/block/%s/mm_stat' % device)
+        if value is not None:
+            zram_values_before.append(value)
+    if vm_accounting_report is None:
+        try:
+            vm_accounting_report = _read_memory_accounting_report()
+        except (IOError, OSError, ValueError, TypeError, socket.error,
+                stdlib_http.HTTPException):
+            vm_accounting_report = None
+    # Bracket the service accounting snapshot with native counter reads. A
+    # changing pool must not be combined with an independently observed
+    # accounting snapshot; it is reported as a partial/unknown sample.
+    zram_values_after = []
+    for device in zram_devices:
+        value = _read_zram_saved_bytes('/sys/block/%s/mm_stat' % device)
+        if value is not None:
+            zram_values_after.append(value)
+    zram_values = zram_values_after
+    if inventory_known and not zram_devices:
+        # No device is a verified disabled/no-stock state, therefore zero is
+        # correct here rather than an unknown value.
+        zram_saved = 0
+        zram_quality = 'disabled'
+    elif (inventory_known and zram_devices and
+          len(zram_values_before) == len(zram_devices) and
+          len(zram_values_after) == len(zram_devices) and
+          zram_values_before == zram_values_after):
+        zram_saved = sum(zram_values)
+        zram_quality = 'observed'
+    elif zram_values:
+        zram_quality = 'partial'
+
+    if ordinary_pages is not None:
+        value = ordinary_pages * page_size
+        metrics['host_ksm_ordinary_saved_bytes'].add_metric([], value)
+        metrics['host_memory_saved_estimate_bytes'].add_metric(
+            ['ksm_ordinary'], value)
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['ksm_ordinary', 'observed'], 1)
+    if zero_pages is not None:
+        value = zero_pages * page_size
+        metrics['host_ksm_zero_saved_bytes'].add_metric([], value)
+        metrics['host_memory_saved_estimate_bytes'].add_metric(
+            ['ksm_zero'], value)
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['ksm_zero', 'observed'], 1)
+    # The native mm_stat difference is the complete ZRAM mechanism value.  A
+    # writeback split is only qualified when the service supplied the same
+    # committed ABI-2 inventory snapshot.  bd_stat/writeback_stat are slot
+    # and cumulative-I/O counters and must never be used as a savings value.
+    zram_writeback = None
+    zram_normal = None
+    if (isinstance(vm_accounting_report, dict) and
+            vm_accounting_report.get('schema_version') == 2 and
+            isinstance(vm_accounting_report.get('inventory'), dict) and
+            vm_accounting_report.get('inventory', {}).get('schema_version') == 2 and
+            isinstance(vm_accounting_report.get('total'), dict)):
+        candidate = vm_accounting_report['total'].get('backend_committed_original_bytes')
+        if (isinstance(candidate, (int, float)) and not isinstance(candidate, bool)
+                and candidate >= 0 and candidate <= 9223372036854775807):
+            zram_writeback = int(candidate)
+            if zram_saved is not None:
+                zram_normal = zram_saved - zram_writeback
+
+    if zram_saved is not None:
+        metrics['host_zram_saved_estimate_bytes'].add_metric([], zram_saved)
+        metrics['host_memory_saved_estimate_bytes'].add_metric(
+            ['zram'], zram_saved)
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['zram', zram_quality],
+            1 if zram_quality in ('observed', 'disabled') else 0)
+    else:
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['zram', zram_quality], 0)
+
+    if zram_normal is not None and zram_writeback is not None:
+        metrics['host_zram_ordinary_saved_bytes'].add_metric([], zram_normal)
+        metrics['host_zram_writeback_saved_bytes'].add_metric([], zram_writeback)
+        metrics['host_memory_saved_estimate_bytes'].add_metric(
+            ['zram_ordinary'], zram_normal)
+        metrics['host_memory_saved_estimate_bytes'].add_metric(
+            ['zram_writeback'], zram_writeback)
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['zram_ordinary', 'observed'], 1)
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['zram_writeback', 'observed'], 1)
+    else:
+        for mechanism in ('zram_ordinary', 'zram_writeback'):
+            metrics['host_memory_optimization_metric_quality'].add_metric(
+                [mechanism, 'missing'], 0)
+
+    if ordinary_pages is None:
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['ksm_ordinary', 'missing'], 0)
+    if zero_pages is None:
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['ksm_zero', 'missing'], 0)
+
+    # A separate KSM subtotal avoids making consumers infer it from two
+    # mechanism labels.  It remains an instantaneous estimate, not history.
+    if ordinary_pages is not None and zero_pages is not None:
+        ksm_total = (ordinary_pages + zero_pages) * page_size
+        metrics['host_memory_saved_estimate_bytes'].add_metric(
+            ['ksm_total'], ksm_total)
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['ksm_total', 'observed'], 1)
+    else:
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['ksm_total', 'partial'], 0)
+
+    # Do not manufacture a total when any constituent is absent.  This keeps
+    # "unknown" distinct from zero and prevents a misleading dashboard value.
+    if (ordinary_pages is not None and zero_pages is not None and
+            zram_saved is not None and zram_quality in ('observed', 'disabled')):
+        total = ordinary_pages * page_size + zero_pages * page_size + zram_saved
+        metrics['host_memory_saved_estimate_bytes'].add_metric(['total'], total)
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['total', 'estimate'], 1)
+    else:
+        metrics['host_memory_optimization_metric_quality'].add_metric(
+            ['total', 'partial'], 0)
+
+    epoch_after = _memory_optimization_epoch(zram_devices) if inventory_known else None
+    if epoch_before is not None and epoch_after == epoch_before:
+        metrics['host_memory_optimization_generation'].add_metric([], epoch_after)
+    elif epoch_before is not None and epoch_after != epoch_before:
+        # A rebuild while reading is not one coherent mechanism sample.
+        for name in ('host_memory_saved_estimate_bytes', 'host_ksm_ordinary_saved_bytes',
+                     'host_ksm_zero_saved_bytes', 'host_zram_saved_estimate_bytes',
+                     'host_zram_ordinary_saved_bytes', 'host_zram_writeback_saved_bytes',
+                     'host_memory_optimization_metric_quality'):
+            metrics[name].samples = []
+        for mechanism in ('ksm_ordinary', 'ksm_zero', 'ksm_total', 'zram',
+                          'zram_ordinary', 'zram_writeback', 'total'):
+            metrics['host_memory_optimization_metric_quality'].add_metric([mechanism, 'epoch_changed'], 0)
+    metrics['host_memory_optimization_sample_info'].add_metric(['mechanism-estimate-v1'], 1)
+    metrics['host_memory_optimization_sample_timestamp_seconds'].add_metric([], time.time())
+    families = list(metrics.values())
+    families.extend(collect_memory_optimization_vm_accounting(vm_accounting_report))
+    return families
+
+
+def _memory_textfile_payload(families):
+    """Render Agent-collected metrics in node_exporter textfile format."""
+    for family in families:
+        for sample in family.samples:
+            sample.labels['memory_source'] = 'node_exporter'
+
+    class StaticCollector(object):
+        def collect(self):
+            return families
+
+    registry = CollectorRegistry()
+    registry.register(StaticCollector())
+    return generate_latest(registry)
+
+
+def _atomic_write_memory_textfile(directory, filename, payload):
+    """Atomically replace one textfile; readers never observe partial output."""
+    if not os.path.isdir(directory):
+        os.makedirs(directory, 0o755)
+    fd, temporary = tempfile.mkstemp(prefix='.%s-' % filename, dir=directory)
+    try:
+        os.fchmod(fd, 0o644)
+        with os.fdopen(fd, 'wb') as stream:
+            fd = None
+            stream.write(payload)
+        os.rename(temporary, os.path.join(directory, filename))
+    finally:
+        if fd is not None:
+            os.close(fd)
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def _memory_vm_textfile_lines(payload):
+    """Keep only per-VM metric families from a prior unified snapshot."""
+    result = []
+    for line in payload.splitlines(True):
+        if line.startswith(b'# HELP host_zram_vm_') or line.startswith(b'# TYPE host_zram_vm_'):
+            result.append(line)
+        elif line.startswith(b'host_zram_vm_'):
+            result.append(line)
+    return b''.join(result)
+
+
+def publish_memory_optimization_textfiles(directory=None):
+    """Publish host and per-VM snapshots without renewing source timestamps.
+
+    A failed VM-accounting read is represented by an ``unknown`` schema in the
+    Host file. In that case its previous VM file is left untouched: its
+    observation timestamp remains the service timestamp and PromQL/BFF TTL
+    checks will age it out. A valid unsupported/partial report replaces the VM
+    file with the exact currently attributable rows (possibly none).
+    """
+    if directory is None:
+        directory = _memory_textfile_directory
+    if directory is None:
+        return
+
+    families = collect_memory_optimization_statistics()
+    vm_families = [family for family in families
+                   if family.name.startswith('host_zram_vm_')]
+    host_families = [family for family in families
+                     if not family.name.startswith('host_zram_vm_')]
+    host_info = next((family for family in families
+                      if family.name == 'host_zram_accounting_sample_info'), None)
+    accounting_unavailable = any(
+        sample.labels.get('schema_version') == 'unknown'
+        for sample in getattr(host_info, 'samples', ()))
+
+    filename = MEMORY_TEXTFILE
+    path = os.path.join(directory, filename)
+    host_payload = _memory_textfile_payload(host_families)
+    if accounting_unavailable:
+        try:
+            with open(path, 'rb') as stream:
+                prior_vm_payload = _memory_vm_textfile_lines(stream.read())
+        except IOError:
+            prior_vm_payload = b''
+        vm_payload = prior_vm_payload
+    else:
+        vm_payload = _memory_textfile_payload(vm_families)
+    payload = host_payload.rstrip() + b'\n' + vm_payload
+    _atomic_write_memory_textfile(directory, filename, payload)
+
+
+def _publish_memory_optimization_textfile_loop():
+    while True:
+        try:
+            publish_memory_optimization_textfiles()
+        except Exception as exc:
+            # Keep the last atomic snapshot and, crucially, do not stamp it as
+            # fresh. Its embedded observation timestamp still controls TTL.
+            logger.warn('failed to publish memory optimization textfile: %s' % exc)
+        time.sleep(MEMORY_TEXTFILE_PUBLISH_INTERVAL_SECONDS)
+
+
 def collect_physical_network_interface_state():
     metrics = {
         'physical_network_interface': GaugeMetricFamily('physical_network_interface',
@@ -2541,6 +3170,8 @@ WantedBy=multi-user.target
             ARGUMENTS = cmd.startupArguments
             if not ARGUMENTS:
                 ARGUMENTS = ""
+            if 'node_exporter' in EXPORTER_PATH:
+                ARGUMENTS = _node_exporter_textfile_arguments(ARGUMENTS)
             os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
@@ -2874,6 +3505,7 @@ modules:
         return jsonobject.dumps(rsp)
 
     def start(self):
+        global _memory_textfile_thread
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(
             self.COLLECTD_PATH, self.start_prometheus_exporter)
@@ -2885,6 +3517,10 @@ modules:
         self.init_global_config()
         self.install_colletor()
         self.start_async_data_collectors()
+        with _memory_textfile_thread_lock:
+            if _memory_textfile_thread is None or not _memory_textfile_thread.is_alive():
+                _memory_textfile_thread = thread.ThreadFacade.run_in_thread(
+                    _publish_memory_optimization_textfile_loop, ())
         start_http_server(7069)
 
     def stop(self):

@@ -2956,7 +2956,8 @@ class DeployDBCmd(Command):
             else:
                 raise CtlError('detected existing zstack database; if you are sure to drop it, please append parameter --drop or use --keep-db to keep the database')
         else:
-            cmd = ShellCmd('bash %s root %s %s %s %s' % (script_path, args.root_password, mysql_host, args.port, args.zstack_password))
+            deploy_args = 'bash %s root %s %s %s %s' % (script_path, args.root_password, mysql_host, args.port, args.zstack_password)
+            cmd = ShellCmd(deploy_args)
             cmd(False)
             if cmd.return_code != 0:
                 if ('ERROR 1044' in cmd.stdout or 'ERROR 1044' in cmd.stderr) or ('Access denied' in cmd.stdout or 'Access denied' in cmd.stderr):
@@ -10296,6 +10297,7 @@ class UpgradeManagementNodeCmd(Command):
             def download_war_if_needed():
                 if need_download:
                     new_war.path = os.path.join(upgrade_tmp_dir, 'new', 'zstack.war')
+                    shell('mkdir -p %s' % os.path.dirname(new_war.path))
                     shell_no_pipe('wget --no-check-certificate %s -O %s' % (args.war_file, new_war.path))
                     info('downloaded new zstack.war to %s' % new_war.path)
 
@@ -10387,8 +10389,8 @@ class UpgradeManagementNodeCmd(Command):
                 if ret != 0:
                     raise CtlError('WAR file %s is corrupted or not a valid zip file' % new_war.path)
 
-            backup()
             download_war_if_needed()
+            backup()
             stop_node()
             upgrade()
             restore_config()
