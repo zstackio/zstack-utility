@@ -146,6 +146,11 @@
         <property name="allinone.versionfile.in.war" location="${war.dir}/VERSION" />
         <echo file="${allinone.versionfile.in.war}" append="true">${product.name} ${allinone.version}</echo>
 
+        <tstamp>
+            <format property="allinone.build.time" pattern="yyyyMMdd-HHmmss" timezone="Asia/Shanghai" />
+        </tstamp>
+        <echo file="${war.dir}/BUILD_TIME" append="false">${allinone.build.time}</echo>
+
         <property name="allinone.projectnumfile.in.war" location="${war.dir}/PJNUM" />
         <echo file="${allinone.projectnumfile.in.war}" append="false">PJNUM=${project.num}</echo>
 

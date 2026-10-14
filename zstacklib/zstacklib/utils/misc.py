@@ -66,17 +66,11 @@ def isMiniHost():
 
 
 def isHyperConvergedHost():
-    if not os.path.exists("/usr/local/hyperconverged"):
+    try:
+        with open("/var/lib/zstack/kvm/deploy_mode") as mode_file:
+            return mode_file.read().strip() == 'cube'
+    except IOError:
         return False
-
-    # Compatible with lower versions
-    if os.path.exists("/usr/local/hyperconverged/conf/host_info.json"):
-        return True
-
-    if os.path.exists("/usr/local/hyperconverged/conf/deployed_info"):
-        return True
-
-    return False
 
 
 @contextmanager
