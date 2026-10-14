@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Validate and stage one hash-pinned zstack-zram RPM plus its inventory."""
 import argparse
 import hashlib
 import json
-import pathlib
+import os
 import re
 import shutil
 import subprocess
@@ -27,11 +27,15 @@ RUNTIME_BINARIES = {
     '/usr/local/libexec/zram-efficiency',
     '/usr/local/bin/zram-efficiencyctl',
 }
+try:
+    STRING_TYPES = (basestring,)
+except NameError:
+    STRING_TYPES = (str,)
 
 
 def _sha256(path):
     digest = hashlib.sha256()
-    with pathlib.Path(path).open('rb') as stream:
+    with open(path, 'rb') as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b''):
             digest.update(block)
     return digest.hexdigest()
@@ -72,7 +76,7 @@ def _query_package(rpm):
             raise ValueError('RPM_FILE_DIGEST_INVENTORY_INVALID')
         _path, size, digest = fields
         if (path in file_digests or not size.isdigit() or
-                not re.fullmatch(r'[0-9a-f]{64}', digest)):
+                not re.match(r'[0-9a-f]{64}\Z', digest)):
             raise ValueError('RPM_FILE_DIGEST_INVENTORY_INVALID')
         file_digests[path] = {'bytes': int(size), 'sha256': digest}
     runtime_binaries = {path: file_digests[path] for path in sorted(RUNTIME_BINARIES)
@@ -85,47 +89,47 @@ def _query_package(rpm):
 
 def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
           host_profiles, installer_path=None):
-    rpm_path = pathlib.Path(rpm_path)
-    build_manifest_path = pathlib.Path(build_manifest_path)
-    output = pathlib.Path(output)
-    if rpm_path.is_symlink() or not rpm_path.is_file():
+    rpm_path = os.path.abspath(rpm_path)
+    build_manifest_path = os.path.abspath(build_manifest_path)
+    output = os.path.abspath(output)
+    if os.path.islink(rpm_path) or not os.path.isfile(rpm_path):
         raise ValueError('RPM_MISSING_OR_SYMLINK')
-    if build_manifest_path.is_symlink() or not build_manifest_path.is_file():
+    if os.path.islink(build_manifest_path) or not os.path.isfile(build_manifest_path):
         raise ValueError('BUILD_MANIFEST_MISSING_OR_SYMLINK')
     if installer_path is None:
-        installer_path = pathlib.Path(__file__).with_name(INSTALLER_NAME)
-    installer_path = pathlib.Path(installer_path)
-    if installer_path.is_symlink() or not installer_path.is_file():
+        installer_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), INSTALLER_NAME)
+    installer_path = os.path.abspath(installer_path)
+    if os.path.islink(installer_path) or not os.path.isfile(installer_path):
         raise ValueError('INSTALLER_MISSING_OR_SYMLINK')
-    if output.exists() or output.is_symlink():
+    if os.path.lexists(output):
         raise ValueError('OUTPUT_EXISTS')
-    if not re.fullmatch(r'[0-9a-f]{64}', snapshot_sha or '') or \
-            not re.fullmatch(r'[0-9a-f]{64}', dirty_patch_sha or ''):
+    if not re.match(r'[0-9a-f]{64}\Z', snapshot_sha or '') or \
+            not re.match(r'[0-9a-f]{64}\Z', dirty_patch_sha or ''):
         raise ValueError('SOURCE_PIN_INVALID')
     profiles = sorted(set(host_profiles))
-    if not profiles or any(not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', p) for p in profiles):
+    if not profiles or any(not re.match(r'[a-z0-9][a-z0-9._-]*\Z', p) for p in profiles):
         raise ValueError('HOST_PROFILE_INVALID')
 
     try:
-        build = json.loads(build_manifest_path.read_text())
-    except (OSError, ValueError) as exc:
-        raise ValueError('BUILD_MANIFEST_INVALID') from exc
+        build = json.load(open(build_manifest_path))
+    except (IOError, OSError, ValueError):
+        raise ValueError('BUILD_MANIFEST_INVALID')
     if (build.get('schemaVersion') != 1 or build.get('package') != PACKAGE_NAME or
             build.get('sourceSnapshotSha256') != snapshot_sha or
             build.get('dirtyPatchSha256') != dirty_patch_sha or
-            not re.fullmatch(r'[0-9a-f]{40}', build.get('sourceRevision', ''))):
+            not re.match(r'[0-9a-f]{40}\Z', build.get('sourceRevision', ''))):
         raise ValueError('SOURCE_SNAPSHOT_PIN_MISMATCH')
     unit_records = [item for item in build.get('sourceFiles', [])
                     if item.get('path') == UNIT_SOURCE_PATH]
     if (len(unit_records) != 1 or
-            not re.fullmatch(r'[0-9a-f]{64}', unit_records[0].get('sha256', ''))):
+            not re.match(r'[0-9a-f]{64}\Z', unit_records[0].get('sha256', ''))):
         raise ValueError('SYSTEMD_UNIT_SOURCE_PIN_MISSING')
 
     (name, version, release, arch, files, file_list, scripts, configfiles, flags,
      runtime_binaries) = _query_package(rpm_path)
     base_release = build.get('rpmRelease', '')
     release_matches_build = (release == base_release or
-                             (isinstance(base_release, str) and release.startswith(base_release + '.')))
+                             (isinstance(base_release, STRING_TYPES) and release.startswith(base_release + '.')))
     if (name != PACKAGE_NAME or arch != 'x86_64' or
             build.get('rpmVersion') != version or not release_matches_build):
         raise ValueError('RPM_IDENTITY_OR_ABI_MISMATCH')
@@ -140,17 +144,17 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
             not re.search(r'(?m)^/etc/zram-memory/config\.json\s+cn$', flags):
         raise ValueError('CONFIG_NOREPLACE_REQUIRED')
 
-    output.mkdir(mode=0o755, parents=False)
-    staged_rpm = output / rpm_path.name
+    os.mkdir(output, 0o755)
+    staged_rpm = os.path.join(output, os.path.basename(rpm_path))
     shutil.copyfile(rpm_path, staged_rpm)
-    staged_rpm.chmod(0o644)
-    shutil.copyfile(build_manifest_path, output / 'BUILD-MANIFEST.json')
-    staged_installer = output / INSTALLER_NAME
+    os.chmod(staged_rpm, 0o644)
+    shutil.copyfile(build_manifest_path, os.path.join(output, 'BUILD-MANIFEST.json'))
+    staged_installer = os.path.join(output, INSTALLER_NAME)
     shutil.copyfile(installer_path, staged_installer)
-    staged_installer.chmod(0o755)
+    os.chmod(staged_installer, 0o755)
     package = {
         'name': name, 'version': version, 'release': release, 'architecture': arch,
-        'filename': staged_rpm.name, 'bytes': staged_rpm.stat().st_size,
+        'filename': os.path.basename(staged_rpm), 'bytes': os.stat(staged_rpm).st_size,
         'sha256': _sha256(staged_rpm),
     }
     inventory = {
@@ -168,7 +172,7 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
         'systemdUnitSha256': unit_records[0]['sha256'],
         'runtimeBinaries': runtime_binaries,
         'installer': {'filename': INSTALLER_NAME,
-                      'bytes': staged_installer.stat().st_size,
+                      'bytes': os.stat(staged_installer).st_size,
                       'sha256': _sha256(staged_installer)},
         'rpmFiles': file_list,
         'rpmFilesSha256': hashlib.sha256((''.join(path + '\n' for path in file_list)).encode()).hexdigest(),
@@ -176,8 +180,9 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
         'configNoreplace': True,
         'scriptletsEmpty': True,
     }
-    (output / 'rpm-inventory.json').write_text(
-        json.dumps(inventory, sort_keys=True, indent=2) + '\n')
+    open(os.path.join(output, 'rpm-inventory.json'), 'w').write(
+        json.dumps(inventory, sort_keys=True, indent=2,
+                   separators=(',', ': ')) + '\n')
     return inventory
 
 
@@ -196,8 +201,9 @@ def main():
         parser.error('specify exactly one of --rpm or --rpm-dir')
     rpm_path = args.rpm
     if args.rpm_dir:
-        candidates = [p for p in pathlib.Path(args.rpm_dir).glob('*.rpm')
-                      if not p.name.endswith('.src.rpm')]
+        candidates = [os.path.join(args.rpm_dir, name)
+                      for name in os.listdir(args.rpm_dir)
+                      if name.endswith('.rpm') and not name.endswith('.src.rpm')]
         if len(candidates) != 1:
             raise SystemExit('EXPECTED_ONE_BINARY_RPM:%d' % len(candidates))
         rpm_path = str(candidates[0])
@@ -205,7 +211,7 @@ def main():
     result = stage(rpm_path, args.build_manifest, args.output,
                    args.source_snapshot_sha256, args.dirty_patch_sha256,
                    profiles, args.installer_script)
-    print(json.dumps({'status': 'STAGED', 'output': str(pathlib.Path(args.output).resolve()),
+    print(json.dumps({'status': 'STAGED', 'output': os.path.realpath(args.output),
                       'packageSha256': result['package']['sha256']}))
 
 
