@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <project name="zstack-zram RPM builder" basedir="../">
+    <property name="zstackzram.go" value="/usr/lib/golang1.24/bin/go" />
     <property name="zstackzram.stage.dir" location="${build.dir}/zstack-zram-rpm-stage" />
     <property name="zstackzram.metadata.file" location="${build.dir}/zstack-zram-build/metadata.properties" />
     <property name="zstackzram.snapshot.dir" location="${build.dir}/build-metadata/zstack-zram-source" />
@@ -12,7 +13,10 @@
     </condition>
 
     <target name="build-zstack-zram-rpm" if="zstackzram.enabled">
-        <exec executable="python3" failonerror="true">
+        <checkFile file="${zstackzram.go}" />
+        <exec executable="/bin/python" failonerror="true">
+            <env key="GO" value="${zstackzram.go}" />
+            <env key="GOROOT" value="" />
             <arg value="${zstackutility.source}/zstackbuild/scripts/prepare_zstack_zram_build_metadata.py" />
             <arg value="--source-checkout" /><arg value="${zstackzram.checkout}" />
             <arg value="--snapshot-dir" /><arg value="${zstackzram.snapshot.dir}" />
@@ -40,6 +44,8 @@
         <!-- build-rpm.sh verifies the pinned manifest itself before packaging. -->
         <exec executable="${zstackzram.frozenSource}/packaging/build-rpm.sh"
               dir="${zstackzram.frozenSource}" failonerror="true">
+            <env key="GO" value="${zstackzram.go}" />
+            <env key="GOROOT" value="" />
             <arg value="--output" /><arg value="${zstackzram.rpm.output}" />
             <arg value="--version" /><arg value="${zstackzram.version}" />
             <arg value="--release" /><arg value="${zstackzram.release}" />
@@ -54,7 +60,7 @@
     </target>
 
     <target name="stage-zstack-zram-rpm" depends="build-zstack-zram-rpm" if="zstackzram.enabled">
-        <exec executable="python3" failonerror="true">
+        <exec executable="/bin/python" failonerror="true">
             <arg value="${zstackutility.source}/kvmagent/scripts/stage_memory_optimization_rpm.py" />
             <arg value="--rpm-dir" /><arg value="${zstackzram.rpm.output}" />
             <arg value="--build-manifest" /><arg value="${zstackzram.rpm.output}/BUILD-MANIFEST.json" />

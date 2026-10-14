@@ -15,7 +15,9 @@ names remain source selectors and are not used as RPM Release values.
 Adding or reconnecting a supported Host uses the existing `zstack_repo` selection
 (`false` retains the Host's enabled repositories) and downloads the exact declared
 package into a fresh root-private system temporary directory. The existing
-`skip_packages` setting can exclude `zstack-zram`. Download and byte verification
+`skip_packages` setting can exclude `zstack-zram`. The Ant build selects its Go
+compiler through `zstackzram.go`; the metadata and staging helpers run with
+`/bin/python` and support Python 2.7 and Python 3. Download and byte verification
 complete before the protected installer may exit the old controller. Same-version
 reconnects still verify the package and actual running process. Missing packages
 or failed verification warn without falling back to a WAR-carried RPM.

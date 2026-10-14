@@ -1,11 +1,13 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """Standard pinned RPM upgrade, preserving policy, pool and worker journals."""
 import argparse
+import ctypes
+import ctypes.util
+import errno
 import fcntl
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import stat
@@ -29,6 +31,51 @@ SYSTEMD_BUS_NAME = 'org.freedesktop.systemd1'
 SYSTEMD_UNIT_OBJECT = '/org/freedesktop/systemd1/unit/zram_2dmemory_2eservice'
 SYSTEMD_SERVICE_INTERFACE = 'org.freedesktop.systemd1.Service'
 SYSTEMD_EXEC_ACTION_SIGNATURE = 'a(sasbttttuii)'
+try:
+    STRING_TYPES = (basestring,)
+    INTEGER_TYPES = (int, long)
+except NameError:
+    STRING_TYPES = (str,)
+    INTEGER_TYPES = (int,)
+try:
+    TIMEOUT_ERRORS = (subprocess.TimeoutExpired,)
+except AttributeError:
+    TIMEOUT_ERRORS = ()
+
+class timespec(ctypes.Structure):
+    _fields_ = [('tv_sec', ctypes.c_long), ('tv_nsec', ctypes.c_long)]
+
+
+CLOCK_MONOTONIC = 1
+librt = None
+if not hasattr(time, 'monotonic'):
+    try:
+        libname = ctypes.util.find_library('rt')
+        if not libname:
+            raise OSError('unable to find librt library')
+        librt = ctypes.CDLL(libname, use_errno=True)
+    except Exception:
+        pass
+
+
+def _monotonic():
+    if hasattr(time, 'monotonic'):
+        return time.monotonic()
+    if librt is None:
+        raise OSError('monotonic clock is unavailable')
+    value = timespec()
+    if librt.clock_gettime(CLOCK_MONOTONIC, ctypes.byref(value)) != 0:
+        error = ctypes.get_errno()
+        raise OSError(error, os.strerror(error))
+    return value.tv_sec + value.tv_nsec / 1e9
+
+
+def _makedirs(path, mode=0o777):
+    try:
+        os.makedirs(path, mode)
+    except OSError as exc:
+        if exc.errno != errno.EEXIST or not os.path.isdir(path):
+            raise
 
 
 class InstallError(RuntimeError):
@@ -44,7 +91,7 @@ def _hash(path):
 
 
 def _path(root, absolute):
-    return Path(root) / absolute.lstrip('/')
+    return os.path.join(root, absolute.lstrip('/'))
 
 
 def _run(argv, runner=subprocess.check_output):
@@ -55,39 +102,39 @@ def _run(argv, runner=subprocess.check_output):
 def _version(path, runner=subprocess.check_output):
     try:
         data = json.loads(_run([str(path), '--version'], runner=runner))
-    except (ValueError, OSError, subprocess.CalledProcessError, TypeError) as exc:
-        raise InstallError('RUNTIME_VERSION_UNVERIFIABLE') from exc
-    if not isinstance(data, dict) or not isinstance(data.get('version'), str):
+    except (ValueError, IOError, OSError, subprocess.CalledProcessError, TypeError) as exc:
+        raise InstallError('RUNTIME_VERSION_UNVERIFIABLE')
+    if not isinstance(data, dict) or not isinstance(data.get('version'), STRING_TYPES):
         raise InstallError('RUNTIME_VERSION_UNVERIFIABLE')
     return data['version']
 
 
 def _validate(root, inventory_path, rpm_path):
     try:
-        inventory = json.loads(Path(inventory_path).read_text())
-    except (OSError, ValueError) as exc:
-        raise InstallError('RPM_INVENTORY_INVALID') from exc
+        inventory = json.load(open(inventory_path))
+    except (IOError, OSError, ValueError):
+        raise InstallError('RPM_INVENTORY_INVALID')
     package = inventory.get('package', {})
     if (inventory.get('schemaVersion') != 3 or
             inventory.get('trustModel') != 'content-hash-pinned-not-signed' or
             package.get('name') != 'zstack-zram' or package.get('architecture') != 'x86_64' or
-            not re.fullmatch(r'[0-9]+(?:\.[0-9]+)*', package.get('version', '')) or
-            not re.fullmatch(r'[A-Za-z0-9._+~-]+', package.get('release', '')) or
+            not re.match(r'[0-9]+(?:\.[0-9]+)*\Z', package.get('version', '')) or
+            not re.match(r'[A-Za-z0-9._+~-]+\Z', package.get('release', '')) or
             inventory.get('kernelOrModuleIncluded') is not False or
             inventory.get('configNoreplace') is not True or
             inventory.get('scriptletsEmpty') is not True or
-            not re.fullmatch(r'[0-9a-f]{64}', inventory.get('systemdUnitSha256', ''))):
+            not re.match(r'[0-9a-f]{64}\Z', inventory.get('systemdUnitSha256', ''))):
         raise InstallError('RPM_INVENTORY_INVALID')
     runtime_binaries = inventory.get('runtimeBinaries')
     if (not isinstance(runtime_binaries, dict) or
             set(runtime_binaries) != RUNTIME_BINARY_PATHS or
             any(not isinstance(item, dict) or
-                not isinstance(item.get('bytes'), int) or item['bytes'] <= 0 or
-                not re.fullmatch(r'[0-9a-f]{64}', item.get('sha256', ''))
+                not isinstance(item.get('bytes'), INTEGER_TYPES) or isinstance(item.get('bytes'), bool) or item['bytes'] <= 0 or
+                not re.match(r'[0-9a-f]{64}\Z', item.get('sha256', ''))
                 for item in runtime_binaries.values())):
         raise InstallError('RPM_RUNTIME_BINARY_INVENTORY_INVALID')
-    rpm = Path(rpm_path)
-    if rpm.is_symlink() or not rpm.is_file() or rpm.stat().st_size != package.get('bytes') or \
+    rpm = rpm_path
+    if os.path.islink(rpm) or not os.path.isfile(rpm) or os.stat(rpm).st_size != package.get('bytes') or \
             _hash(rpm) != package.get('sha256'):
         raise InstallError('RPM_HASH_MISMATCH')
     return inventory
@@ -98,7 +145,7 @@ def _active_state(runner):
         state = _run(['systemctl', 'is-active', 'zram-memory.service'], runner=runner)
     except subprocess.CalledProcessError as exc:
         if exc.returncode not in (3, 4):
-            raise InstallError('SERVICE_STATE_UNVERIFIABLE') from exc
+            raise InstallError('SERVICE_STATE_UNVERIFIABLE')
         state = (exc.output or '').strip()
     if state == 'active':
         return True
@@ -135,25 +182,24 @@ def _require_empty_systemd_exec_action(property_name, runner):
             SYSTEMD_SERVICE_INTERFACE, property_name]
     try:
         output = _run(argv, runner=runner)
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired,
-            TypeError, ValueError) as exc:
-        raise InstallError('UPGRADE_CONTROLLER_EFFECTIVE_STOP_CONTRACT_UNKNOWN') from exc
+    except (IOError, OSError, subprocess.CalledProcessError, TypeError, ValueError) + TIMEOUT_ERRORS as exc:
+        raise InstallError('UPGRADE_CONTROLLER_EFFECTIVE_STOP_CONTRACT_UNKNOWN')
     fields = output.split()
     if len(fields) != 2 or fields[0] != SYSTEMD_EXEC_ACTION_SIGNATURE:
         raise InstallError('UPGRADE_CONTROLLER_EFFECTIVE_STOP_CONTRACT_UNKNOWN')
     count = fields[1]
-    if not re.fullmatch(r'(?:0|[1-9][0-9]*)', count):
+    if not re.match(r'(?:0|[1-9][0-9]*)\Z', count):
         raise InstallError('UPGRADE_CONTROLLER_EFFECTIVE_STOP_CONTRACT_UNKNOWN')
     if count != '0':
         raise InstallError('UPGRADE_CONTROLLER_STOP_CONTRACT_UNSAFE:' + property_name)
 
 
 def _proc_starttime(root, pid):
-    path = Path(root) / 'proc' / str(pid) / 'stat'
+    path = os.path.join(root, 'proc', str(pid), 'stat')
     try:
-        data = path.read_text()
-    except OSError as exc:
-        raise InstallError('ACTIVE_PROCESS_IDENTITY_UNVERIFIABLE') from exc
+        data = open(path).read()
+    except (IOError, OSError):
+        raise InstallError('ACTIVE_PROCESS_IDENTITY_UNVERIFIABLE')
     # comm is parenthesized and may contain spaces or ')'; split after its last
     # delimiter. starttime is field 22, i.e. index 19 from field 3 onward.
     _prefix, delimiter, tail = data.rpartition(')')
@@ -166,10 +212,10 @@ def _proc_starttime(root, pid):
 def _runtime_binary_matches(root, path, record):
     binary = _path(root, path)
     try:
-        return (not binary.is_symlink() and binary.is_file() and
-                binary.stat().st_size == record['bytes'] and
+        return (not os.path.islink(binary) and os.path.isfile(binary) and
+                os.stat(binary).st_size == record['bytes'] and
                 _hash(binary) == record['sha256'])
-    except OSError:
+    except (IOError, OSError):
         return False
 
 
@@ -194,9 +240,9 @@ def _verify_active(root, inventory, runner):
         raise InstallError('MEMORY_OPTIMIZATION_MAINTENANCE_REQUIRED:ACTIVE_DROPIN_MISMATCH')
     fragment = properties.get('FragmentPath')
     unit = _path(root, UNIT_PATH)
-    if fragment != UNIT_PATH or not unit.is_file() or _hash(unit) != inventory['systemdUnitSha256']:
+    if fragment != UNIT_PATH or not os.path.isfile(unit) or _hash(unit) != inventory['systemdUnitSha256']:
         raise InstallError('MEMORY_OPTIMIZATION_MAINTENANCE_REQUIRED:ACTIVE_UNIT_MISMATCH')
-    contents = unit.read_text()
+    contents = open(unit).read()
     if EXPECTED_EXECSTART not in contents or EXPECTED_EXECSTARTPRE not in contents:
         raise InstallError('MEMORY_OPTIMIZATION_MAINTENANCE_REQUIRED:ACTIVE_UNIT_CONTENT_MISMATCH')
     _verify_runtime_binaries(root, inventory, expected,
@@ -207,15 +253,15 @@ def _verify_active(root, inventory, runner):
     pid = properties.get('MainPID', '')
     if not pid.isdigit() or int(pid) <= 0:
         raise InstallError('MEMORY_OPTIMIZATION_MAINTENANCE_REQUIRED:ACTIVE_PID_UNVERIFIABLE')
-    proc_exe = Path(root) / 'proc' / pid / 'exe'
+    proc_exe = os.path.join(root, 'proc', pid, 'exe')
     try:
         started = _proc_starttime(root, pid)
-        proc_matches = (proc_exe.exists() and
-                        proc_exe.stat().st_size == inventory['runtimeBinaries'][EXECUTABLE_PATH]['bytes'] and
+        proc_matches = (os.path.exists(proc_exe) and
+                        os.stat(proc_exe).st_size == inventory['runtimeBinaries'][EXECUTABLE_PATH]['bytes'] and
                         _hash(proc_exe) == inventory['runtimeBinaries'][EXECUTABLE_PATH]['sha256'] and
                         _version(proc_exe, runner) == expected)
         started_after = _proc_starttime(root, pid)
-    except (OSError, InstallError):
+    except (IOError, OSError, InstallError):
         raise InstallError('MEMORY_OPTIMIZATION_MAINTENANCE_REQUIRED:ACTIVE_PROCESS_MISMATCH')
     current_properties = _systemd_properties(runner)
     if (not proc_matches or started != started_after or
@@ -238,22 +284,22 @@ def _factory_observe_config(root):
     template = _path(root, '/usr/share/zstack-zram/config.json')
     state = _path(root, '/var/lib/zram-efficiency')
     try:
-        if (config.is_symlink() or template.is_symlink() or
-                not config.is_file() or not template.is_file()):
+        if (os.path.islink(config) or os.path.islink(template) or
+                not os.path.isfile(config) or not os.path.isfile(template)):
             return False
         if _hash(config) != _hash(template):
             return False
-        data = json.loads(config.read_text())
+        data = json.load(open(config))
         if (not isinstance(data, dict) or data.get('managed') is not True or
                 data.get('mode') != 'observe' or
                 data.get('resource_authorized') is not False or
                 data.get('initial_efficiency_enabled') is not False):
             return False
         # Any pre-existing runtime state is treated as adopted/custom state.
-        if state.exists() and (not state.is_dir() or any(state.iterdir())):
+        if os.path.exists(state) and (not os.path.isdir(state) or os.listdir(state)):
             return False
         return True
-    except (OSError, ValueError):
+    except (IOError, OSError, ValueError):
         return False
 def _validate_unit_ownership(root, runner):
     """Reject unmanaged unit overrides before any package or process mutation."""
@@ -261,15 +307,15 @@ def _validate_unit_ownership(root, runner):
     dropins = set()
     for base in ('/etc/systemd/system', '/run/systemd/system', '/usr/lib/systemd/system'):
         directory = _path(root, base + '/zram-memory.service.d')
-        if directory.is_symlink():
+        if os.path.islink(directory):
             raise InstallError('UNMANAGED_UNIT_DROPIN_PRESENT')
-        if directory.exists():
-            for child in directory.iterdir():
-                if child.name.endswith('.conf'):
-                    dropins.add('/' + str(child.relative_to(root)))
+        if os.path.exists(directory):
+            for name in os.listdir(directory):
+                if name.endswith('.conf'):
+                    dropins.add('/' + os.path.relpath(os.path.join(directory, name), root))
     effective = set(_systemd_properties(runner).get('DropInPaths', '').split())
     dropins |= effective
-    if override.exists() or override.is_symlink():
+    if os.path.lexists(override):
         raise InstallError('UNMANAGED_UNIT_OVERRIDE_PRESENT')
     if dropins:
         raise InstallError('UNMANAGED_UNIT_DROPIN_PRESENT')
@@ -278,16 +324,16 @@ def _validate_unit_ownership(root, runner):
     installed = _installed_identity(runner)
     unit = _path(root, UNIT_PATH)
     if installed:
-        if (fragment != UNIT_PATH or unit.is_symlink() or not unit.is_file() or
+        if (fragment != UNIT_PATH or os.path.islink(unit) or not os.path.isfile(unit) or
                 _rpm_file_digest(runner, UNIT_PATH) != _hash(unit)):
             raise InstallError('UNMANAGED_UNIT_PACKAGE_OWNERSHIP_UNKNOWN')
-    elif fragment or unit.exists() or unit.is_symlink():
+    elif fragment or os.path.lexists(unit):
         raise InstallError('UNMANAGED_UNIT_PACKAGE_OWNERSHIP_UNKNOWN')
     return properties, installed
 
 
 def _sync_path(path):
-    fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
     try:
         os.fsync(fd)
     finally:
@@ -303,7 +349,7 @@ def _rpm_file_digest(runner, path):
         return None
     matches = [row.split('\t')[1] for row in lines
                if row.startswith(path + '\t') and len(row.split('\t')) == 2]
-    if len(matches) == 1 and re.fullmatch('[0-9a-f]{64}', matches[0]):
+    if len(matches) == 1 and re.match(r'[0-9a-f]{64}\Z', matches[0]):
         return matches[0]
     return None
 
@@ -315,12 +361,12 @@ def _old_controller_identity(root, runner, properties=None):
     if fragment != UNIT_PATH:
         raise InstallError('UPGRADE_CONTROLLER_UNIT_UNKNOWN')
     unit = _path(root, fragment)
-    if unit.is_symlink() or not unit.is_file():
+    if os.path.islink(unit) or not os.path.isfile(unit):
         raise InstallError('UPGRADE_CONTROLLER_UNIT_UNKNOWN')
     unit_sha = _hash(unit)
     if _rpm_file_digest(runner, UNIT_PATH) != unit_sha:
         raise InstallError('UPGRADE_CONTROLLER_UNIT_UNKNOWN')
-    contents = unit.read_text()
+    contents = open(unit).read()
     if ('KillMode=process' not in contents or 'Restart=no' not in contents or
             EXPECTED_EXECSTART not in contents or
             any(line.strip().startswith(('ExecStop=', 'ExecStopPost='))
@@ -341,7 +387,7 @@ def _old_controller_identity(root, runner, properties=None):
     started = _proc_starttime(root, pid)
     executable = _path(root, EXECUTABLE_PATH)
     proc_exe = _path(root, '/proc/' + pid + '/exe')
-    if executable.is_symlink() or not executable.is_file():
+    if os.path.islink(executable) or not os.path.isfile(executable):
         raise InstallError('UPGRADE_CONTROLLER_BINARY_UNKNOWN')
     digest = _hash(executable)
     if _rpm_file_digest(runner, EXECUTABLE_PATH) != digest:
@@ -364,13 +410,13 @@ def _graceful_old_controller_exit(root, runner, timeout=75, sleep=time.sleep,
     # systemctl stop could SIGKILL after TimeoutStopSec. Signal only the verified
     # main controller and wait; its ordinary shutdown retains the pool/journals.
     _run(['systemctl', 'kill', '--kill-who=main', '--signal=SIGTERM', 'zram-memory.service'], runner)
-    deadline = time.monotonic() + timeout
+    deadline = _monotonic() + timeout
     while True:
-        stat = _path(root, '/proc/' + pid + '/stat')
+        proc_stat = _path(root, '/proc/' + pid + '/stat')
         try:
-            old_alive = stat.exists() and _proc_starttime(root, pid) == started
+            old_alive = os.path.exists(proc_stat) and _proc_starttime(root, pid) == started
         except InstallError:
-            if stat.exists():
+            if os.path.exists(proc_stat):
                 raise
             old_alive = False
         current = _systemd_properties(runner)
@@ -388,47 +434,48 @@ def _graceful_old_controller_exit(root, runner, timeout=75, sleep=time.sleep,
                 return identity
         if current.get('MainPID') not in (pid, '0'):
             raise InstallError('UPGRADE_CONTROLLER_CHANGED_DURING_STOP')
-        if time.monotonic() >= deadline:
+        if _monotonic() >= deadline:
             raise InstallError('UPGRADE_CONTROLLER_EXIT_TIMEOUT_POOL_PRESERVED')
         sleep(0.1)
 
 
 def _boot_id(root):
-    value = _path(root, '/proc/sys/kernel/random/boot_id').read_text().strip()
-    if not re.fullmatch('[0-9a-f-]{36}', value):
+    value = open(_path(root, '/proc/sys/kernel/random/boot_id')).read().strip()
+    if not re.match(r'[0-9a-f-]{36}\Z', value):
         raise InstallError('UPGRADE_BOOT_ID_UNVERIFIABLE')
     return value
 
 
 def _read_recovery(root, package):
     path = _path(root, RECOVERY_PATH)
-    if path.parent.is_symlink() or path.is_symlink():
+    parent = os.path.dirname(path)
+    if os.path.islink(parent) or os.path.islink(path):
         raise InstallError('UPGRADE_RECOVERY_NOT_REGULAR')
-    if not path.exists():
+    if not os.path.exists(path):
         return None
-    metadata = path.stat()
-    if (not path.is_file() or metadata.st_size > 4096 or
+    metadata = os.stat(path)
+    if (not os.path.isfile(path) or metadata.st_size > 4096 or
             metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077):
         raise InstallError('UPGRADE_RECOVERY_NOT_REGULAR')
     try:
-        data = json.loads(path.read_text())
+        data = json.load(open(path))
         if not isinstance(data, dict) or set(data) != {
                 'schemaVersion', 'restart', 'rpmSha256', 'bootId',
                 'previousController', 'configSha256'}:
             raise ValueError('unexpected recovery fields')
         previous = data['previousController']
-        valid = (type(data['schemaVersion']) is int and data['schemaVersion'] == 1 and
+        valid = (type(data['schemaVersion']) in INTEGER_TYPES and not isinstance(data['schemaVersion'], bool) and data['schemaVersion'] == 1 and
                  data['restart'] is True and isinstance(previous, dict) and
-                 re.fullmatch('[0-9a-f-]{36}', data['bootId']) and
-                 type(previous['pid']) is int and previous['pid'] > 0 and
-                 re.fullmatch('[0-9]+', previous['startTime']) and
-                 re.fullmatch('[0-9a-f]{64}', previous['sha256']) and
+                 re.match(r'[0-9a-f-]{36}\Z', data['bootId']) and
+                 type(previous['pid']) in INTEGER_TYPES and not isinstance(previous['pid'], bool) and previous['pid'] > 0 and
+                 re.match(r'[0-9]+\Z', previous['startTime']) and
+                 re.match(r'[0-9a-f]{64}\Z', previous['sha256']) and
                  (data['configSha256'] is None or
-                  re.fullmatch('[0-9a-f]{64}', data['configSha256'])))
+                  re.match(r'[0-9a-f]{64}\Z', data['configSha256'])))
         if not valid:
             raise ValueError('invalid recovery record')
-    except (ValueError, KeyError, TypeError) as exc:
-        raise InstallError('UPGRADE_RECOVERY_INVALID') from exc
+    except (ValueError, KeyError, TypeError):
+        raise InstallError('UPGRADE_RECOVERY_INVALID')
     if data.get('rpmSha256') != package['sha256']:
         raise InstallError('UPGRADE_RECOVERY_TARGET_MISMATCH')
     return data
@@ -441,17 +488,18 @@ def _write_recovery(root, package, controller, config_sha):
     data = dict(schemaVersion=1, restart=True, rpmSha256=package['sha256'],
                 bootId=_boot_id(root), previousController=controller,
                 configSha256=config_sha)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if path.parent.is_symlink():
+    parent = os.path.dirname(path)
+    _makedirs(parent, 0o700)
+    if os.path.islink(parent):
         raise InstallError('UPGRADE_RECOVERY_NOT_REGULAR')
-    fd, temporary = tempfile.mkstemp(prefix='.rpm-upgrade-', dir=str(path.parent))
+    fd, temporary = tempfile.mkstemp(prefix='.rpm-upgrade-', dir=parent)
     try:
         with os.fdopen(fd, 'w') as stream:
             json.dump(data, stream, sort_keys=True)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
-        _sync_path(path.parent)
+        os.rename(temporary, path)
+        _sync_path(parent)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -460,23 +508,23 @@ def _write_recovery(root, package, controller, config_sha):
 
 def _clear_recovery(root):
     path = _path(root, RECOVERY_PATH)
-    if path.exists():
-        path.unlink()
-        _sync_path(path.parent)
+    if os.path.exists(path):
+        os.unlink(path)
+        _sync_path(os.path.dirname(path))
 
 
 def _install_locked(root, inventory_path, rpm_path, runner=subprocess.check_output,
                     installer=None):
     """Install against root; injectable runner/installer support fake-root tests."""
-    root = Path(root)
+    root = os.path.abspath(root)
     inventory = _validate(root, inventory_path, rpm_path)
     package = inventory['package']
     properties, installed = _validate_unit_ownership(root, runner)
     recovery = _read_recovery(root, package)
     config = _path(root, '/etc/zram-memory/config.json')
-    if config.is_symlink() or (config.exists() and not config.is_file()):
+    if os.path.islink(config) or (os.path.exists(config) and not os.path.isfile(config)):
         raise InstallError('CONFIG_NOT_REGULAR_FILE')
-    config_sha = _hash(config) if config.exists() else None
+    config_sha = _hash(config) if os.path.exists(config) else None
     if recovery and config_sha != recovery['configSha256']:
         # A previous product package may have had no config file. The first
         # RPM then creates the exact safe factory observer before a later
@@ -496,18 +544,19 @@ def _install_locked(root, inventory_path, rpm_path, runner=subprocess.check_outp
     elif recovery and recovery['bootId'] == _boot_id(root):
         old = recovery['previousController']
         old_stat = _path(root, '/proc/%d/stat' % old['pid'])
-        if old_stat.exists() and _proc_starttime(root, str(old['pid'])) == old['startTime']:
+        if os.path.exists(old_stat) and _proc_starttime(root, str(old['pid'])) == old['startTime']:
             raise InstallError('UPGRADE_RECOVERY_OLD_CONTROLLER_STILL_RUNNING')
     config_backup = None
-    if config.exists():
-        config_backup = _path(root, '/var/lib/zstack-zram/upgrade-config-archive') / _hash(config)
-        config_backup.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if config_backup.is_symlink() or (config_backup.exists() and _hash(config_backup) != _hash(config)):
+    if os.path.exists(config):
+        config_backup = os.path.join(root, 'var/lib/zstack-zram/upgrade-config-archive', _hash(config))
+        config_backup_parent = os.path.dirname(config_backup)
+        _makedirs(config_backup_parent, 0o700)
+        if os.path.islink(config_backup) or (os.path.exists(config_backup) and _hash(config_backup) != _hash(config)):
             raise InstallError('CONFIG_ARCHIVE_CONFLICT')
-        if not config_backup.exists():
-            shutil.copy2(str(config), str(config_backup))
+        if not os.path.exists(config_backup):
+            shutil.copy2(config, config_backup)
         _sync_path(config_backup)
-        _sync_path(config_backup.parent)
+        _sync_path(config_backup_parent)
     previous_controller = recovery['previousController'] if recovery else None
     if active:
         previous_controller = _graceful_old_controller_exit(
@@ -515,34 +564,44 @@ def _install_locked(root, inventory_path, rpm_path, runner=subprocess.check_outp
             before_signal=lambda identity: _write_recovery(root, package, identity, config_sha))
     try:
         if installer is None:
-            if root != Path('/'):
+            if root != os.path.abspath('/'):
                 raise InstallError('FAKE_ROOT_INSTALLER_REQUIRED')
-            if shutil.which('dnf'):
-                _run(['dnf', '-y', '--disablerepo=*', 'install', str(Path(rpm_path).absolute())], runner)
-            elif shutil.which('yum'):
-                _run(['yum', '-y', '--disablerepo=*', 'localinstall', str(Path(rpm_path).absolute())], runner)
+            package_manager = None
+            for candidate in ('dnf', 'yum'):
+                for directory in os.environ.get('PATH', '').split(os.pathsep):
+                    executable = os.path.join(directory, candidate)
+                    if os.path.isfile(executable) and os.access(executable, os.X_OK):
+                        package_manager = candidate
+                        break
+                if package_manager:
+                    break
+            rpm_path = os.path.abspath(rpm_path)
+            if package_manager == 'dnf':
+                _run(['dnf', '-y', '--disablerepo=*', 'install', rpm_path], runner)
+            elif package_manager == 'yum':
+                _run(['yum', '-y', '--disablerepo=*', 'localinstall', rpm_path], runner)
             else:
                 raise InstallError('PACKAGE_MANAGER_UNAVAILABLE')
         else:
-            installer(str(root), str(Path(rpm_path).absolute()))
+            installer(str(root), os.path.abspath(rpm_path))
         # %config(noreplace) preserves RPM-owned configuration. Retain a local
         # backup as well so a failed package transaction cannot lose policy.
-        if config_backup and (not config.exists() or _hash(config) != _hash(config_backup)):
-            if config.is_symlink():
+        if config_backup and (not os.path.exists(config) or _hash(config) != _hash(config_backup)):
+            if os.path.islink(config):
                 raise InstallError('CONFIG_CHANGED_TO_SYMLINK')
-            shutil.copy2(str(config_backup), str(config))
+            shutil.copy2(config_backup, config)
             _sync_path(config)
-            _sync_path(config.parent)
-        if root == Path('/'):
+            _sync_path(os.path.dirname(config))
+        if root == os.path.abspath('/'):
             _run(['systemctl', 'daemon-reload'], runner)
         properties = _systemd_properties(runner)
         fragment = properties.get('FragmentPath')
         if properties.get('DropInPaths', '').strip():
             raise InstallError('RPM_UNIT_DROPIN_NOT_MIGRATED')
         unit = _path(root, UNIT_PATH)
-        if fragment != UNIT_PATH or not unit.is_file() or _hash(unit) != inventory['systemdUnitSha256']:
+        if fragment != UNIT_PATH or not os.path.isfile(unit) or _hash(unit) != inventory['systemdUnitSha256']:
             raise InstallError('RPM_UNIT_NOT_EFFECTIVE')
-        contents = unit.read_text()
+        contents = open(unit).read()
         if EXPECTED_EXECSTART not in contents or EXPECTED_EXECSTARTPRE not in contents:
             raise InstallError('RPM_UNIT_CONTENT_INVALID')
         if _installed_identity(runner) != package['version'] + '-' + package['release']:
@@ -573,15 +632,15 @@ def _install_locked(root, inventory_path, rpm_path, runner=subprocess.check_outp
         rollback_failures = []
         try:
             if config_backup:
-                if config.is_symlink() or (config.exists() and not config.is_file()):
+                if os.path.islink(config) or (os.path.exists(config) and not os.path.isfile(config)):
                     raise InstallError('CONFIG_RESTORE_CONFLICT')
-                shutil.copy2(str(config_backup), str(config))
+                shutil.copy2(config_backup, config)
                 _sync_path(config)
-                _sync_path(config.parent)
-        except (OSError, InstallError) as exc:
+                _sync_path(os.path.dirname(config))
+        except (IOError, OSError, InstallError) as exc:
             rollback_failures.append(str(exc))
         if rollback_failures:
-            raise InstallError('UPGRADE_ROLLBACK_INCOMPLETE:' + ';'.join(rollback_failures)) from failure
+            raise InstallError('UPGRADE_ROLLBACK_INCOMPLETE:' + ';'.join(rollback_failures))
         raise
 
 
@@ -598,15 +657,18 @@ def install(root, inventory_path, rpm_path, runner=subprocess.check_output,
     try:
         for absolute in paths:
             lock_path = _path(root, absolute)
-            lock_path.parent.mkdir(parents=True, exist_ok=True)
-            fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+            lock_parent = os.path.dirname(lock_path)
+            _makedirs(lock_parent)
+            fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
             descriptors.append(fd)
             if not stat.S_ISREG(os.fstat(fd).st_mode):
                 raise InstallError('RPM_UPGRADE_LOCK_NOT_REGULAR')
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
-                raise InstallError('RPM_UPGRADE_OR_HOST_CONTROL_ALREADY_RUNNING') from exc
+            except (IOError, OSError) as exc:
+                if exc.errno not in (errno.EACCES, errno.EAGAIN):
+                    raise
+                raise InstallError('RPM_UPGRADE_OR_HOST_CONTROL_ALREADY_RUNNING')
         return _install_locked(root, inventory_path, rpm_path, runner, installer)
     finally:
         for fd in reversed(descriptors):
