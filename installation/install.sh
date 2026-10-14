@@ -1497,6 +1497,7 @@ is_install_general_libs_rh(){
             gzip \
             unzip \
             httpd \
+            openssh-clients \
             rsync \
             sshpass \
             sudo \
