@@ -36,7 +36,7 @@ def collect_devices(command_output=_command_output):
         try:
             ip_result = command_output("/usr/local/Ascend/driver/tools/hccn_tool", "-i", device_id, "-ip", "-g")
         except subprocess.CalledProcessError as error:
-            if "no ip preset" not in str(error.output).lower():
+            if not re.search(r"\bno ip (?:was )?preset\b", str(error.output).lower()):
                 raise
             ip_result = ""
         address = _field(ip_result, "ipaddr")

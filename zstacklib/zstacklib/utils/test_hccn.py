@@ -31,9 +31,21 @@ def test_missing_address_is_reported_for_control_plane_rejection():
             return "NPU ID: 7\n"
         if command[0] == "npu-smi":
             return "Serial Number : card-7\nPCIe Bus Info : 0000:42:00.0\n"
-        raise subprocess.CalledProcessError(1, command, output="no ip preset")
+        raise subprocess.CalledProcessError(1, command, output="no ip was preset there")
 
     assert hccn.collect_devices(output)[0]["address"] is None
+
+
+def test_hccn_command_failure_is_not_treated_as_missing_address():
+    def output(*command):
+        if command == ("npu-smi", "info", "-l"):
+            return "NPU ID: 7\n"
+        if command[0] == "npu-smi":
+            return "Serial Number : card-7\nPCIe Bus Info : 0000:42:00.0\n"
+        raise subprocess.CalledProcessError(1, command, output="failed to read device")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        hccn.collect_devices(output)
 
 
 def test_duplicate_addresses_are_rejected():
