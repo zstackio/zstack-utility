@@ -8912,7 +8912,12 @@ class VmPlugin(kvmagent.KvmAgent):
                 if not result:
                     return
 
-                percent = min(99, 100.0 - result.__getitem__('remain') * 100.0 / result.__getitem__('total'))
+                total = result.__getitem__('total')
+                if total <= 0:
+                    logger.debug("skip blockCopy progress report because total is %s" % total)
+                    return
+
+                percent = min(99, 100.0 - result.__getitem__('remain') * 100.0 / total)
                 return get_exact_percent(percent, get_task_stage(task_spec))
 
             def _get_detail(self):
