@@ -36,6 +36,7 @@ import libvirt
 import xml.dom.minidom as minidom
 #from typing import List, Any, Union
 from collections import Counter
+from enum import Enum
 from zstacklib.utils.version import NumericVersion
 from collections import deque
 
@@ -114,6 +115,12 @@ PMU_OFF_UNSUPPORTED_DIST = {
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
+
+
+class ScsiLunDiskMode(Enum):
+    VIRTIO_BLK = 'virtio-blk'
+    SCSI_HD = 'scsi-hd'
+    SCSI_BLOCK = 'scsi-block'
 
 
 def _get_shmem_size_mb(shmem_size):
@@ -4022,6 +4029,24 @@ class Vm(object):
             e(io_tune, 'total_iops_sec', str(qos.totalIOPS))
 
     @staticmethod
+    def make_scsi_lun_disk(volume, dev_letter):
+        disk_mode = volume.diskMode or ScsiLunDiskMode.SCSI_BLOCK.value
+        try:
+            mode = ScsiLunDiskMode(disk_mode)
+        except ValueError:
+            raise kvmagent.KvmError('unsupported SCSI LUN disk mode[%s]' % disk_mode)
+        passthrough = mode == ScsiLunDiskMode.SCSI_BLOCK
+        attributes = {'type': 'block', 'device': 'lun' if passthrough else 'disk'}
+        if passthrough:
+            attributes['sgio'] = get_sgio_value()
+        disk = etree.Element('disk', attrib=attributes)
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(disk, 'source', None, {'dev': volume.installPath})
+        bus = 'virtio' if mode == ScsiLunDiskMode.VIRTIO_BLK else 'scsi'
+        e(disk, 'target', None, {'dev': Vm._get_disk_target_dev_format(bus) % dev_letter, 'bus': bus})
+        return disk
+
+    @staticmethod
     def set_volume_serial_id(vol_uuid, volume_xml_obj):
         vol_type = volume_xml_obj.get('type')
         if vol_type == 'vhostuser':
@@ -4085,13 +4110,7 @@ class Vm(object):
             return disk
 
         def scsilun_volume():
-            # default value of sgio is 'filtered'
-            #NOTE(weiw): scsi lun not support aio or qos
-            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
-            e(disk, 'source', None, {'dev': volume.installPath})
-            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-            return disk
+            return Vm.make_scsi_lun_disk(volume, dev_letter)
 
         def iscsibased_volume():
             # type: () -> etree.Element
@@ -7992,11 +8011,10 @@ class Vm(object):
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
-                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
-                    e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
-                    e(disk, 'source', None, {'dev': volume.installPath})
-                    e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    disk = Vm.make_scsi_lun_disk(volume, Vm.DEVICE_LETTERS[volume.deviceId])
                     Vm.set_device_address(disk, volume)
+                    Vm.set_volume_serial_id(volume.volumeUuid, disk)
+                    devices.append(disk)
 
         def make_pci_device(pciDevices):
             devices = elements['devices']
