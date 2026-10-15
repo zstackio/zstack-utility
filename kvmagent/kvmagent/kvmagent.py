@@ -3,6 +3,8 @@
 @author: frank
 '''
 import re
+import time
+import psutil
 
 from zstacklib.utils import plugin
 from zstacklib.utils import http
@@ -182,9 +184,95 @@ def deleteImage(path):
 
 
 class KvmDaemon(daemon.Daemon):
+    STOP_TIMEOUT = 30
+
     def __init__(self, pidfile, py_process_name, config={}):
         super(KvmDaemon, self).__init__(pidfile, py_process_name)
-        
+
+    @staticmethod
+    def _process_is_alive(process):
+        try:
+            # is_running() hides AccessDenied while constructing its fresh
+            # Process. Explicit creation-time reads must fail, not imply exit.
+            if psutil.Process(process.pid).create_time() != process.create_time():
+                return False
+            if process.status() != psutil.STATUS_ZOMBIE:
+                return True
+            # A zombie leader may still have live workers. Only an inspectable
+            # group containing the leader alone proves that the agent exited.
+            threads = process.threads()
+            if psutil.Process(process.pid).create_time() != process.create_time():
+                return False
+            if (len(threads) != 1 or threads[0].id != process.pid or
+                    process.num_threads() != 1):
+                raise KvmError('Cannot establish thread-group exit for zombie pid %s' % process.pid)
+            return False
+        except psutil.ZombieProcess:
+            # ZombieProcess subclasses NoSuchProcess, but is not proof of exit.
+            raise KvmError('Cannot inspect thread-group exit for zombie pid %s' % process.pid)
+        except psutil.NoSuchProcess:
+            return False
+
+    def _get_agent_process(self, pid):
+        try:
+            process = psutil.Process(pid)
+            # Process.__init__ suppresses AccessDenied when reading this field;
+            # require a known identity before relying on its PID reuse checks.
+            process.create_time()
+            if not self._process_is_alive(process):
+                return None
+            try:
+                command = process.cmdline()
+            except psutil.ZombieProcess:
+                if not self._process_is_alive(process):
+                    return None
+                raise
+            if not command:
+                raise KvmError('Cannot identify live process with pid %s' % pid)
+            if (len(command) != 4 or
+                    not re.match(r'^python(?:\d+(?:\.\d+)*)?$', os.path.basename(command[0])) or
+                    command[1] != '-c' or command[3] not in ('start', 'restart') or
+                    not re.match(r'^from\s+kvmagent\s+import\s+kdaemon\s*;\s*kdaemon\.main\(\)\s*;?\s*$', command[2])):
+                raise KvmError('Refusing to stop non-KVM command with pid %s' % pid)
+            return process if self._process_is_alive(process) else None
+        except psutil.ZombieProcess:
+            raise KvmError('Cannot identify zombie process with pid %s' % pid)
+        except psutil.NoSuchProcess:
+            return None
+
+    def _process_exists(self, pid):
+        try:
+            return self._process_is_alive(psutil.Process(pid))
+        except psutil.ZombieProcess:
+            raise KvmError('Cannot inspect zombie process with pid %s' % pid)
+        except psutil.NoSuchProcess:
+            return False
+
+    def stop_agent_by_pid(self, pid, wait_stop):
+        process = self._get_agent_process(pid)
+        if process is None:
+            return
+        started = time.monotonic()
+        killed = False
+        try:
+            # Retain this Process: terminate/kill also check PID + create_time.
+            process.terminate()
+            while self._process_is_alive(process):
+                elapsed = time.monotonic() - started
+                if elapsed >= self.STOP_TIMEOUT:
+                    raise KvmError('Timed out after %s seconds stopping KVM agent pid %s' %
+                                   (self.STOP_TIMEOUT, pid))
+                if not killed and elapsed >= wait_stop:
+                    process.kill()
+                    killed = True
+                time.sleep(min(0.1, self.STOP_TIMEOUT - elapsed))
+        except psutil.ZombieProcess:
+            raise KvmError('Cannot establish thread-group exit for zombie pid %s' % pid)
+        except psutil.NoSuchProcess:
+            if self._process_is_alive(process):
+                raise
+        print("Stop Daemon Successfully")
+
     def run(self):
         self.agent = new_rest_service()
         self.agent.start(in_thread=False)
