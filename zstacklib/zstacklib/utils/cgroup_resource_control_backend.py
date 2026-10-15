@@ -28,6 +28,9 @@ class CgroupResourceControlBackend(object):
     def enable_cpu_controller(self, target):
         raise NotImplementedError
 
+    def enable_memory_controller(self, target):
+        raise NotImplementedError
+
     def initialize_cpus(self, target):
         raise NotImplementedError
 

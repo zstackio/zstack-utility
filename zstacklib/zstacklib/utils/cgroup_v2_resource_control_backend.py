@@ -69,7 +69,7 @@ class CgroupV2ResourceControlBackend(CgroupResourceControlBackend):
             if not managed:
                 raise ResourceControlError('Memory controller is unavailable for control group[%s]' % memory_target)
             resource_utils.mkdir(memory_target)
-        self._enable_memory_controller(memory_target)
+        self.enable_memory_controller(memory_target)
         limit_file = os.path.join(memory_target, 'memory.max')
         if not os.path.isfile(limit_file):
             raise ResourceControlError('Memory controller is unavailable for control group[%s]' % memory_target)
@@ -103,7 +103,7 @@ class CgroupV2ResourceControlBackend(CgroupResourceControlBackend):
                 resource_utils.write(control, '+cpuset')
             current = child
 
-    def _enable_memory_controller(self, target):
+    def enable_memory_controller(self, target):
         if os.path.isfile(os.path.join(target, 'memory.max')):
             return
         relative = os.path.relpath(target, self.root)
