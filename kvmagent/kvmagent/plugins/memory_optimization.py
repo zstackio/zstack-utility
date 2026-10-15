@@ -1033,7 +1033,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 result.get('operationUuid') == command.get('operationUuid') and
                 result.get('bootId') == self._current_boot_id() and
                 state.get('phase') == 'RECOVERY_NOT_ISSUED' and
-                isinstance(proof, dict) and proof.get('schemaVersion') == 1 and
+                isinstance(proof, dict) and type(proof.get('schemaVersion')) is int and
+                proof['schemaVersion'] == 1 and
                 proof.get('hostUuid') == self._load_host_uuid() and
                 proof.get('bootId') == self._current_boot_id() and
                 proof.get('recoveryOperationUuid') == command.get('operationUuid') and
@@ -1041,6 +1042,105 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 proof.get('drainControlOperationUuid') == recovery.get('drainControlOperationUuid') and
                 proof.get('expectedPoolGeneration') == recovery.get('expectedPoolGeneration') and
                 proof.get('notIssued') is True)
+
+    def _seal_rejected_recovery(self, command):
+        """Seal only a manager-retained pre-claim rejection, never an unknown write.
+
+        The original Agent had no journal for an invalid envelope. Bind the
+        manager's immutable request hash to a durable tombstone under the same
+        Host writer lock used by recovery, so a delayed old request cannot run.
+        """
+        failure = self._recovery_failure(command, 'RECOVERY_REJECTION_PROOF_UNQUALIFIED')
+        recovery = command.get('recovery')
+        request_hash = command.get('recoveryRequestHash')
+        host = self._load_host_uuid()
+        boot = self._current_boot_id()
+        submitted = command.get('taskSubmittedAt')
+        boot_epoch = self._boot_epoch_millis()
+        if (command.get('action') != 'reconcile' or command.get('scope') != 'Host' or
+                not host or command.get('hostUuid') != host or not boot or
+                command.get('bootId') != boot or command.get('policy') != {} or
+                isinstance(command.get('desiredRevision'), bool) or
+                not isinstance(command.get('desiredRevision'), INTEGER_TYPES) or
+                command['desiredRevision'] < 1 or
+                not self._valid_identifier(command.get('operationUuid')) or
+                not self._valid_identifier(command.get('expectedControlOperationUuid')) or
+                command['operationUuid'] == command['expectedControlOperationUuid'] or
+                not isinstance(request_hash, STRING_TYPES) or
+                re.match(r'^[0-9a-f]{64}$', request_hash) is None or
+                not isinstance(recovery, dict) or
+                set(recovery) != {'expectedHostBootId', 'expectedPoolGeneration', 'confirmed'} or
+                recovery.get('confirmed') is not True or recovery.get('expectedHostBootId') != boot or
+                not isinstance(recovery.get('expectedPoolGeneration'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{64}$', recovery['expectedPoolGeneration']) is None or
+                isinstance(submitted, bool) or not isinstance(submitted, INTEGER_TYPES) or
+                not isinstance(boot_epoch, INTEGER_TYPES) or
+                not boot_epoch <= submitted <= int(time.time() * 1000)):
+            return failure
+        sealed = {key: command[key] for key in (
+            'hostUuid', 'scope', 'operationUuid', 'expectedControlOperationUuid',
+            'recovery', 'recoveryRequestHash', 'taskSubmittedAt')}
+        sealed.update(action='recoverUncertain', policy={}, desiredRevision=command.get('desiredRevision'))
+        lock = None
+        try:
+            lock = self._acquire_host_control_lock()
+            path = self._operation_path(command['operationUuid'])
+            if os.path.islink(path):
+                return failure
+            kind, prior = self._operation_file_state(command['operationUuid'])
+            if kind == 'present':
+                if self._valid_recovery_not_issued(sealed, prior):
+                    return prior['readback']
+                return failure
+            if (kind != 'missing' or command.get('reconcileAction') != 'seal-rejected-recovery' or
+                    command.get('classification') != 'RECOVERY_REQUEST_INVALID'):
+                return failure
+            old_uuid = command['expectedControlOperationUuid']
+            old_path = self._operation_path(old_uuid)
+            if (os.path.islink(self.active_control_path) or
+                    os.path.islink(old_path) or os.path.realpath(old_path) != old_path):
+                return failure
+            old_kind, old = self._operation_file_state(old_uuid)
+            if (old_kind != 'present' or not isinstance(old, dict) or
+                    old.get('operationUuid') != old_uuid or old.get('hostUuid') != host or
+                    old.get('bootId') != boot or old.get('stage') != 'UNKNOWN' or
+                    old.get('action') != 'apply' or old.get('scope') != 'Host' or
+                    old.get('desiredRevision') != command.get('desiredRevision') or
+                    not isinstance(old.get('requestHash'), STRING_TYPES) or
+                    re.match(r'^[0-9a-f]{64}$', old['requestHash']) is None):
+                return failure
+            old_hash = self._operation_hash(old)
+            active = self._get_active_control()
+            if active:
+                anchor_path = self._operation_path(active)
+                if os.path.islink(anchor_path) or os.path.realpath(anchor_path) != anchor_path:
+                    return failure
+            anchor = self._load_operation({'operationUuid': active}) if active else None
+            if (not isinstance(anchor, dict) or active in (old_uuid, command['operationUuid']) or
+                    anchor.get('operationUuid') != active or anchor.get('hostUuid') != host or
+                    anchor.get('bootId') != boot or anchor.get('stage') != 'APPLIED' or
+                    anchor.get('action') not in ('apply', 'clearOverride') or
+                    (anchor.get('readback') or {}).get('status') != 'Succeeded'):
+                return failure
+            live = self._service_request('monitor-state', {})
+            operations = self._readonly_query('operations', {'hostUuid': host, 'limit': 1})
+            cq = operations.get('cq') or {}
+            if ('pending_operations' not in live or live['pending_operations'] not in (None, []) or
+                    type(cq.get('C')) is not int or cq['C'] != 0 or
+                    type(cq.get('Q')) is not int or cq['Q'] != 0 or
+                    (live.get('host_zram') or {}).get('pool_generation') != recovery['expectedPoolGeneration'] or
+                    self._current_boot_id() != boot or self._get_active_control() != active or
+                    self._operation_hash(self._load_operation({'operationUuid': old_uuid})) != old_hash):
+                return failure
+            result = self._recovery_not_issued(sealed, 'RECOVERY_REQUEST_INVALID')
+            result['state']['recoveryRejectionProof']['managerRequestHash'] = request_hash
+            if not self._record_operation(sealed, 'REJECTED', result):
+                return self._recovery_failure(command, 'RECOVERY_REJECTION_JOURNAL_UNAVAILABLE')
+            return result
+        except Exception:
+            return failure
+        finally:
+            self._release_operation(lock)
 
     @staticmethod
     def _activation_request_fingerprint(request):
@@ -1320,10 +1420,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'expectedControlOperationUuid', 'policy', 'recovery'}
         # Keep the actual common MemoryOptimizationManager command envelope:
         # recovery is Host scoped, but dispatch still carries standard task,
-        # target-generation and communication-budget fields.
+        # target-generation and communication-budget fields. KVMHost also
+        # appends transport addons after the Manager serializes its command.
         optional_command_fields = {
             'resourceUuid', 'desiredRevision', 'targetSnapshotGeneration',
-            'expectedInstanceGeneration', 'communication'}
+            'expectedInstanceGeneration', 'communication', 'kvmHostAddons'}
         if (not required_command_fields.issubset(set(command)) or
                 set(command) - required_command_fields - optional_command_fields or
                 command.get('scope') != 'Host' or command.get('policy') != {} or
@@ -2948,6 +3049,63 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return 'LOCAL_CONTROL_FENCE_UNKNOWN'
         return None
 
+    def _validate_confirmed_ksm_reconnect(self, command):
+        """Under the writer lock, authorize only a proven previous-boot KSM target."""
+        if 'confirmedKsmReconnect' not in command:
+            return None
+        reason = 'KSM_RECONNECT_PROOF_UNQUALIFIED'
+        policy = command.get('policy')
+        ksm = policy.get('ksm') if isinstance(policy, dict) else None
+        operation_uuid = command.get('expectedControlOperationUuid')
+        boot_id = self._current_boot_id()
+        if (command.get('confirmedKsmReconnect') is not True or
+                command.get('action') != 'apply' or command.get('scope') != 'Host' or
+                command.get('policyMode') != 'delta' or
+                not isinstance(policy, dict) or set(policy) - set(('ksm', 'schemaVersion')) or
+                ('schemaVersion' in policy and
+                 (type(policy['schemaVersion']) not in INTEGER_TYPES or policy['schemaVersion'] != 1)) or
+                not isinstance(ksm, dict) or
+                not set(('enabled', 'pagesToScan', 'sleepMillis')).issubset(ksm) or
+                not boot_id or command.get('reconnectObservationBootId') != boot_id or
+                not self._valid_identifier(operation_uuid) or
+                operation_uuid == command.get('operationUuid') or
+                os.path.islink(self.active_control_path) or
+                os.path.islink(self._operation_path(operation_uuid)) or
+                self._get_active_control() != operation_uuid):
+            return reason
+        file_state, old = self._operation_file_state(operation_uuid)
+        if file_state != 'present' or not isinstance(old, dict):
+            return reason
+        old_policy = old.get('policy')
+        old_ksm = old_policy.get('ksm') if isinstance(old_policy, dict) else None
+        readback = old.get('readback')
+        if (old.get('operationUuid') != operation_uuid or
+                old.get('hostUuid') != command.get('hostUuid') or
+                old.get('scope') != 'Host' or
+                old.get('resourceUuid') not in (None, command.get('hostUuid')) or
+                old.get('stage') != 'APPLIED' or old.get('action') not in (None, 'apply') or
+                not isinstance(old.get('bootId'), STRING_TYPES) or not old['bootId'] or
+                old['bootId'] == boot_id or
+                not isinstance(old_ksm, dict) or not old_ksm or
+                ('zeroPagesEnabled' in ksm) != ('zeroPagesEnabled' in old_ksm) or
+                not self._strict_service_match(ksm, old_ksm) or
+                old.get('policyHash') != self._policy_digest(old_policy) or
+                not re.match(r'^[0-9a-f]{64}\Z', str(old.get('requestHash', ''))) or
+                not isinstance(readback, dict) or readback.get('success') is not True or
+                readback.get('status') != 'Succeeded' or
+                readback.get('appliedRevision') != old.get('desiredRevision')):
+            return reason
+        try:
+            self._validate_policy({'ksm': old_ksm})
+            self._validate_policy({'ksm': ksm})
+        except ValueError:
+            return reason
+        proven = self._ksm_proof_policy(readback.get('ksmReadback'), old.get('desiredRevision'))
+        if (proven is None or not self._strict_service_match(proven, ksm) or
+                self._has_unresolved_operation_journal()):
+            return reason
+        return None
+
     def _load_host_uuid(self):
         # Do not cache: a later /host/connect may refresh the identity.
         # Never infer it from the request or an unrelated on-disk UUID.
@@ -4307,7 +4465,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return False
 
     def _has_unresolved_operation_journal(self):
-        unresolved = frozenset(('PREPARING', 'UNKNOWN', 'DRAINING', 'RESET_ISSUED',
+        unresolved = frozenset(('PREPARING', 'UNKNOWN', 'RECOVERING', 'ACTIVATING',
+                                self.FIRST_USE_AUTHORIZING_STAGE, 'DRAINING', 'RESET_ISSUED',
                                 'RESET_VERIFIED', 'BACKEND_CLAIMED',
                                 'AWAITING_SERVICE_READBACK'))
         try:
@@ -5224,6 +5383,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 if (command.get('expectedControlOperationUuid') != self._get_active_control() or
                         self._resume_control_record() is None):
                     raise ValueError('CONTROL_OPERATION_FENCED')
+            if action in ('pause', 'drain'):
+                active_control = self._get_active_control()
+                if active_control and command.get('expectedControlOperationUuid') != active_control:
+                    raise ValueError('KSM_CONTROL_OPERATION_FENCED')
+                self._validate_maintenance_control_before_effects(command)
             if not self._record_operation(command, 'PREPARING'):
                 return {'success': False, 'status': 'Unknown',
                         'state': {'phase': 'UNKNOWN'},
@@ -5322,6 +5486,148 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         finally:
             self._release_operation(operation_lock)
 
+    def _validate_maintenance_control_before_effects(self, command):
+        """Validate the one recovery control that can safely precede maintenance."""
+        if os.path.islink(self.active_control_path):
+            raise ValueError('KSM_CONTROL_OPERATION_UNKNOWN')
+        active_uuid = self._get_active_control()
+        if not active_uuid:
+            return
+        path = self._operation_path(active_uuid)
+        if os.path.islink(path) or os.path.realpath(path) != path:
+            raise ValueError('KSM_CONTROL_OPERATION_UNKNOWN')
+        kind, record = self._operation_file_state(active_uuid)
+        if (not isinstance(record, dict) or record.get('operationUuid') != active_uuid or
+                kind != 'present' or
+                record.get('stage') != 'APPLIED' or
+                record.get('hostUuid') != self._load_host_uuid() or
+                record.get('bootId') != self._current_boot_id() or
+                record.get('action') not in (None, 'apply', 'recoverUncertain')):
+            raise ValueError('KSM_CONTROL_OPERATION_UNKNOWN')
+        if record.get('action') == 'recoverUncertain':
+            self._validate_final_cpu_no_ksm_control(command, record, active_uuid)
+
+    def _validate_final_cpu_no_ksm_control(self, command, recovery, active_uuid):
+        """Allow ordinary maintenance after only a fully proven no-KSM CPU recovery."""
+        unknown = 'FINAL_CPU_RECOVERY_CONTROL_UNKNOWN'
+        try:
+            intent = recovery.get('recoveryIntent')
+            result = recovery.get('readback')
+            state = result.get('state') if isinstance(result, dict) else None
+            proof = state.get('recoveryProof') if isinstance(state, dict) else None
+            receipt = intent.get('cpuReceipt') if isinstance(intent, dict) else None
+            boot = self._current_boot_id()
+            host = self._load_host_uuid()
+            original_uuid = intent.get('unresolvedOperationUuid') if isinstance(intent, dict) else None
+            anchor_uuid = intent.get('priorActiveControl') if isinstance(intent, dict) else None
+            request_hash = recovery.get('requestHash')
+            if (not isinstance(intent, dict) or not isinstance(result, dict) or
+                    not isinstance(state, dict) or not isinstance(proof, dict) or
+                    not isinstance(receipt, dict)):
+                raise ValueError(unknown)
+            if (recovery.get('operationUuid') != active_uuid or
+                    recovery.get('action') != 'recoverUncertain' or recovery.get('stage') != 'APPLIED' or
+                    recovery.get('scope') != 'Host' or recovery.get('hostUuid') != host or
+                    recovery.get('resourceUuid') not in (None, host) or recovery.get('bootId') != boot or
+                    not isinstance(request_hash, STRING_TYPES) or
+                    not re.match(r'^[0-9a-f]{64}$', request_hash) or
+                    recovery.get('policy') != {} or recovery.get('policyHash') != self._policy_digest({}) or
+                    command.get('expectedControlOperationUuid') != active_uuid or
+                    intent.get('kind') != 'finalCpuGate' or intent.get('hostUuid') != host or
+                    intent.get('expectedBootId') != boot or intent.get('recoveryOperationUuid') != active_uuid or
+                    not self._valid_identifier(original_uuid) or not self._valid_identifier(anchor_uuid) or
+                    anchor_uuid == original_uuid or intent.get('priorActiveControl') != anchor_uuid or
+                    not re.match(r'^[0-9a-f]{64}$', intent.get('expectedPoolGeneration', '')) or
+                    not re.match(r'^[0-9a-f]{64}$', intent.get('originalJournalHash', '')) or
+                    not re.match(r'^[0-9a-f]{64}$', intent.get('originalRequestHash', '')) or
+                    result.get('success') is not True or result.get('status') != 'Succeeded' or
+                    result.get('operationUuid') != active_uuid or result.get('bootId') != boot or
+                    state.get('phase') != 'POLICY_RECOVERED' or state.get('bootId') != boot or
+                    state.get('lastConfirmedOperationUuid') != active_uuid or
+                    state.get('cpuReceipt') != receipt or
+                    type(proof.get('schemaVersion')) is not int or proof.get('schemaVersion') != 1 or
+                    proof.get('hostUuid') != host or proof.get('bootId') != boot or
+                    proof.get('recoveryOperationUuid') != active_uuid or
+                    proof.get('unresolvedOperationUuid') != original_uuid or
+                    proof.get('expectedPoolGeneration') != intent.get('expectedPoolGeneration') or
+                    proof.get('originalRequestHash') != intent.get('originalRequestHash') or
+                    proof.get('originalOutcome') != 'Unknown' or proof.get('finalCpuRestored') is not True):
+                raise ValueError(unknown)
+            recovery_path = self._operation_path(active_uuid)
+            original_path = self._operation_path(original_uuid)
+            anchor_path = self._operation_path(anchor_uuid)
+            if any(os.path.islink(path) or os.path.realpath(path) != path
+                   for path in (recovery_path, original_path, anchor_path)):
+                raise ValueError(unknown)
+            recovery_kind, current_recovery = self._operation_file_state(active_uuid)
+            original_kind, original = self._operation_file_state(original_uuid)
+            anchor_kind, anchor = self._operation_file_state(anchor_uuid)
+            if (recovery_kind != 'present' or current_recovery != recovery or
+                    original_kind != 'present' or not isinstance(original, dict) or
+                    anchor_kind != 'present' or not isinstance(anchor, dict) or
+                    original.get('operationUuid') != original_uuid or original.get('stage') != 'UNKNOWN' or
+                    original.get('action') != 'apply' or original.get('scope') != 'Host' or
+                    original.get('hostUuid') != host or original.get('bootId') != boot or
+                    not isinstance(original.get('requestHash'), STRING_TYPES) or
+                    not re.match(r'^[0-9a-f]{64}$', original.get('requestHash', '')) or
+                    original.get('requestHash') != intent.get('originalRequestHash') or
+                    self._operation_hash(original) != intent.get('originalJournalHash') or
+                    original.get('desiredRevision') != intent.get('desiredRevision') or
+                    original.get('policyHash') != self._policy_digest(original.get('policy') or {}) or
+                    anchor.get('operationUuid') != anchor_uuid or anchor.get('stage') != 'APPLIED' or
+                    anchor.get('action') not in (None, 'apply') or anchor.get('scope') != 'Host' or
+                    anchor.get('hostUuid') != host or anchor.get('bootId') != boot or
+                    anchor.get('policyHash') != self._policy_digest(anchor.get('policy') or {}) or
+                    type(anchor.get('desiredRevision')) is not int or
+                    type(original.get('desiredRevision')) is not int or
+                    anchor.get('desiredRevision') >= original.get('desiredRevision') or
+                    (anchor.get('readback') or {}).get('success') is not True or
+                    (anchor.get('readback') or {}).get('status') != 'Succeeded' or
+                    original.get('policyMode') != 'delta'):
+                raise ValueError(unknown)
+            original_policy = original.get('policy')
+            anchor_policy = anchor.get('policy')
+            original_readback = original.get('readback') or {}
+            anchor_readback = anchor.get('readback') or {}
+            original_state = original_readback.get('state') or {}
+            anchor_state = anchor_readback.get('state') or {}
+            original_evidence = original.get('applyEvidence') or {}
+            anchor_evidence = anchor.get('applyEvidence') or {}
+            if (not isinstance(original_policy, dict) or original_policy.get('ksm') or
+                    not isinstance(anchor_policy, dict) or anchor_policy.get('ksm') or
+                    not isinstance(original_readback, dict) or original_readback.get('ksmReadback') is not None or
+                    not isinstance(original_state, dict) or original_state.get('ksmReadback') is not None or
+                    not isinstance(anchor_readback, dict) or anchor_readback.get('ksmReadback') is not None or
+                    not isinstance(anchor_state, dict) or anchor_state.get('ksmReadback') is not None or
+                    not isinstance(original_evidence, dict) or original_evidence.get('ksmReadback') is not None or
+                    not isinstance(anchor_evidence, dict) or anchor_evidence.get('ksmReadback') is not None or
+                    any(key.lower().startswith('ksm') for key in (original_evidence.get('state') or {}).get('sections', {})) or
+                    any(key.lower().startswith('ksm') for key in (anchor_evidence.get('state') or {}).get('sections', {}))):
+                raise ValueError(unknown)
+            cpu_readback = state.get('cpuReadback')
+            target = intent.get('cpuTarget')
+            original_revision = original.get('desiredRevision')
+            if (proof.get('originalPolicyHash') != original.get('policyHash') or
+                    proof.get('originalDesiredRevision') != original_revision or
+                    recovery.get('desiredRevision') != original_revision or
+                    result.get('appliedRevision') != original_revision or
+                    state.get('lastConfirmedAppliedRevision') != original_revision or
+                    receipt.get('request_id') != self._derived_service_request_id(original_uuid, 'cpu') or
+                    type(intent.get('cpuExpectedRevision')) is not int or
+                    receipt.get('revision') != intent.get('cpuExpectedRevision') + 1 or
+                    not isinstance(cpu_readback, dict) or
+                    not isinstance(target, dict) or
+                    set(target) != set(('efficiency_enabled', 'idle_cpu_threshold_percent', 'idle_duration_seconds'))):
+                raise ValueError(unknown)
+            receipt = self._strict_service_success('host-cpu', receipt)
+            cpu_readback = self._strict_service_success('host-cpu-state', cpu_readback)
+            if (cpu_readback['revision'] != receipt.get('revision') or
+                    not self._strict_service_match(cpu_readback, target) or
+                    not self._strict_service_match(receipt, target)):
+                raise ValueError(unknown)
+        except Exception:
+            raise ValueError(unknown)
+
     def _control_managed_ksm(self, action, command):
         """Pause/resume only native units proven by the fenced operation journal."""
         if action in ('pause', 'drain'):
@@ -5332,9 +5638,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 raise RuntimeError('KSM_CONTROL_OPERATION_FENCED')
             record = self._load_operation({'operationUuid': active_uuid})
             if (not isinstance(record, dict) or record.get('operationUuid') != active_uuid or
-                    record.get('stage') != 'APPLIED' or record.get('action') not in (None, 'apply') or
+                    record.get('stage') != 'APPLIED' or
                     record.get('hostUuid') != self._load_host_uuid() or
                     record.get('bootId') != self._current_boot_id()):
+                raise RuntimeError('KSM_CONTROL_OPERATION_UNKNOWN')
+            if record.get('action') == 'recoverUncertain':
+                self._validate_final_cpu_no_ksm_control(command, record, active_uuid)
+                return None
+            if record.get('action') not in (None, 'apply'):
                 raise RuntimeError('KSM_CONTROL_OPERATION_UNKNOWN')
             policy = record.get('policy') or {}
             ksm = policy.get('ksm') if isinstance(policy, dict) else None
@@ -5584,6 +5895,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return self._reply(self._verify_rejected_resume_fence(command))
         operation_uuid = command.get('operationUuid')
         prior = self._load_operation(command) or {}
+        proof = ((prior.get('readback') or {}).get('state') or {}).get('recoveryRejectionProof')
+        if (command.get('reconcileAction') == 'seal-rejected-recovery' or
+                (isinstance(proof, dict) and 'managerRequestHash' in proof)):
+            return self._reply(self._seal_rejected_recovery(command))
         if not prior:
             tombstone = self._mark_not_issued(command)
             if tombstone is not None:
@@ -5960,10 +6275,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
         Capacity and host CPU share one service revision. The original 202
         capacity receipt must therefore be tied to this operation, verified by
-        a capacity GET before its final CPU PUT, then fenced by that exact CPU
-        receipt and the final CPU/capacity GET revisions. Any intervening
-        writer leaves the result Unknown. This does not parse free text, host
-        metrics, or VM inventory.
+        a capacity GET and the final CPU/capacity GET revisions. When this
+        operation writes CPU policy, its exact receipt is also required; a
+        capacity-only update with dispatch already off performs no CPU PUT.
+        Any intervening writer leaves the result Unknown. This does not parse
+        free text, host metrics, or VM inventory.
         """
         operation_uuid = command.get('operationUuid')
         if (not isinstance(prior, dict) or prior.get('action') not in (None, 'apply') or
@@ -6071,18 +6387,38 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'cpuThresholdPercent', cpu_before.get('idle_cpu_threshold_percent'))
         expected_cpu_duration = zram.get(
             'cpuHoldSeconds', cpu_before.get('idle_duration_seconds'))
-        if (not isinstance(cpu_receipt, dict) or cpu_receipt.get('_http_status') != 200 or
-                not self._revision(cpu_receipt.get('revision')) or
-                cpu_receipt.get('request_id') != expected_cpu_request_id or
-                not self._revision(cpu_expected_revision) or
-                cpu_expected_revision != sections.get('revision') or
-                cpu_receipt.get('agent_desired_enabled') is not expected_cpu_enabled or
-                cpu_receipt.get('agent_desired_threshold_percent') != expected_cpu_threshold or
-                cpu_receipt.get('agent_desired_duration_seconds') != expected_cpu_duration or
-                cpu_receipt.get('efficiency_enabled') is not expected_cpu_enabled or
-                not isinstance(cpu_observed, dict) or cpu_observed.get('_http_status') != 200 or
+        cpu_write_required = (cpu_before['efficiency_enabled'] or
+                              any(key in zram for key in (
+                                  'enabled', 'cpuThresholdPercent', 'cpuHoldSeconds')) or
+                              'enabled' in (policy.get('writeback') or {}))
+        if cpu_write_required:
+            if (not isinstance(cpu_receipt, dict) or cpu_receipt.get('_http_status') != 200 or
+                    not self._revision(cpu_receipt.get('revision')) or
+                    cpu_receipt.get('request_id') != expected_cpu_request_id or
+                    not self._revision(cpu_expected_revision) or
+                    cpu_expected_revision != sections.get('revision') or
+                    cpu_receipt.get('agent_desired_enabled') is not expected_cpu_enabled or
+                    cpu_receipt.get('agent_desired_threshold_percent') != expected_cpu_threshold or
+                    cpu_receipt.get('agent_desired_duration_seconds') != expected_cpu_duration or
+                    cpu_receipt.get('efficiency_enabled') is not expected_cpu_enabled):
+                return None
+            final_revision = cpu_receipt['revision']
+        else:
+            # The existing apply path skips CPU writes only when dispatch was
+            # already off and the delta contains no CPU policy. Its capacity
+            # CAS must start at that original CPU revision; all subsequent
+            # readbacks must remain at the capacity receipt revision. A
+            # missing receipt from a requested/guarded CPU write is never
+            # evidence for this branch.
+            if (any(key in original_section_map for key in (
+                    'cpu', 'cpuGuard', 'cpuGuardReadback')) or
+                    expected_capacity_revision != cpu_before['revision'] or
+                    evidence_state.get('sectionComplete', {}).get('tuning') is not True):
+                return None
+            final_revision = sections['revision']
+        if (not isinstance(cpu_observed, dict) or cpu_observed.get('_http_status') != 200 or
                 not self._revision(cpu_observed.get('revision')) or
-                cpu_observed.get('revision') != cpu_receipt.get('revision') or
+                cpu_observed.get('revision') != final_revision or
                 cpu_observed.get('efficiency_enabled') is not expected_cpu_enabled or
                 cpu_observed.get('idle_cpu_threshold_percent') != expected_cpu_threshold or
                 cpu_observed.get('idle_duration_seconds') != expected_cpu_duration or
@@ -6093,10 +6429,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         current_cpu = (readback.get('sections') or {}).get('cpu')
         if (not isinstance(current, dict) or current.get('_http_status') != 200 or
                 not self._revision(current.get('revision')) or
-                current.get('revision') != cpu_receipt.get('revision') or
+                current.get('revision') != final_revision or
                 not isinstance(current_cpu, dict) or current_cpu.get('_http_status') != 200 or
                 not self._revision(current_cpu.get('revision')) or
-                current_cpu.get('revision') != cpu_receipt.get('revision') or
+                current_cpu.get('revision') != final_revision or
                 current_cpu.get('efficiency_enabled') is not expected_cpu_enabled or
                 current_cpu.get('idle_cpu_threshold_percent') != expected_cpu_threshold or
                 current_cpu.get('idle_duration_seconds') != expected_cpu_duration or
@@ -6796,7 +7132,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 return {'success': False, 'status': 'Unknown', 'state': {},
                         'reasonCode': 'OPERATION_CONCURRENT',
                         'operationUuid': command.get('operationUuid')}
-            cold_fence_error = self._validate_cold_ksm_partial_fence(command)
+            cold_fence_error = (self._validate_cold_ksm_partial_fence(command) or
+                                self._validate_confirmed_ksm_reconnect(command))
             if cold_fence_error is not None:
                 self._release_operation(operation_lock)
                 operation_lock = None
