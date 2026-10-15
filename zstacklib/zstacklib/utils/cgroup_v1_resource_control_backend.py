@@ -24,6 +24,9 @@ class CgroupV1ResourceControlBackend(CgroupResourceControlBackend):
     def enable_cpu_controller(self, target):
         pass
 
+    def enable_memory_controller(self, target):
+        pass
+
     def require_cpu_target(self, target):
         pass
 

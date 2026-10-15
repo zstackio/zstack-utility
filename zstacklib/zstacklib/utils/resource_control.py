@@ -149,7 +149,7 @@ class ResourceControlManager(object):
             desired, desired_memory, memory_backend,
             isolation_mode='SHARED'):
         if desired_memory and memory_backend is not None:
-            self._validate_active_slice_memory(slice_name, desired_memory, memory_backend)
+            self._prepare_active_slice_memory(slice_name, desired_memory, memory_backend)
         units = [self._value(handle, 'value') for handle in handles or []
                  if self._value(handle, 'handleType') == 'SYSTEMD_UNIT']
         changed = self.systemd.prune_services(slice_name, units)
@@ -254,12 +254,13 @@ class ResourceControlManager(object):
         backend.release_cpu_set(slice_target)
         return {'synced': True}
 
-    def _validate_active_slice_memory(self, slice_name, desired_memory, memory_backend):
+    def _prepare_active_slice_memory(self, slice_name, desired_memory, memory_backend):
         properties = self.systemd.properties(slice_name)
         if properties.get('ActiveState') != 'active':
             return
         memory_target = memory_backend.require_target(properties.get('ControlGroup'))
         memory_backend.require_subtree_memory_limit(memory_target)
+        memory_backend.enable_memory_controller(memory_target)
         memory_backend.validate_memory_limit(memory_target, desired_memory)
 
     def _apply_non_systemd_handle(

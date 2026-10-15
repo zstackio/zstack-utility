@@ -486,7 +486,7 @@ def test_role_memory_limit_is_applied_once_at_slice_boundary(monkeypatch):
         manager.backend_factory, "cpu", Mock(return_value=CgroupV2ResourceControlBackend("/sys/fs/cgroup")))
     monkeypatch.setattr(
         manager.backend_factory, "memory", Mock(return_value=CgroupV2ResourceControlBackend("/sys/fs/cgroup")))
-    monkeypatch.setattr(manager, "_validate_active_slice_memory", lambda *_args: None)
+    monkeypatch.setattr(manager, "_prepare_active_slice_memory", lambda *_args: None)
     monkeypatch.setattr(manager.systemd, "prune_services", lambda *_args: False)
     monkeypatch.setattr(manager.systemd, "configure_slice", lambda *_args: False)
     monkeypatch.setattr(manager.systemd, "configure_service", lambda *_args: False)
@@ -598,16 +598,62 @@ def test_v1_subtree_memory_capability_checks_hierarchical_accounting(tmp_path, m
         "ActiveState": "active", "ControlGroup": "/role.slice",
     })
     if hierarchy == "1":
-        manager._validate_active_slice_memory("role.slice", 2 * resource_utils.MEBIBYTE, backend)
+        manager._prepare_active_slice_memory("role.slice", 2 * resource_utils.MEBIBYTE, backend)
     else:
         with pytest.raises(ResourceControlError, match="Subtree memory limits are not supported"):
-            manager._validate_active_slice_memory("role.slice", 2 * resource_utils.MEBIBYTE, backend)
+            manager._prepare_active_slice_memory("role.slice", 2 * resource_utils.MEBIBYTE, backend)
 
 
 def test_v2_subtree_memory_capability_does_not_require_target_activation(tmp_path):
     backend = CgroupV2ResourceControlBackend(str(tmp_path))
     assert backend.supports_subtree_memory_limit(str(tmp_path / "inactive.slice")), \
         "The v2 subtree limit capability must not prevent controller activation during apply"
+
+
+@pytest.mark.parametrize("usage", [1, 3])
+def test_active_v2_slice_initializes_memory_controller_before_usage_validation(tmp_path, monkeypatch, usage):
+    manager = ResourceControlManager()
+    target = tmp_path / "role.slice"
+    target.mkdir()
+    (tmp_path / "cgroup.controllers").write_text("memory")
+    control = tmp_path / "cgroup.subtree_control"
+    control.write_text("")
+    backend = CgroupV2ResourceControlBackend(str(tmp_path))
+    monkeypatch.setattr(manager.systemd, "properties", lambda _unit: {
+        "ActiveState": "active", "ControlGroup": "/role.slice",
+    })
+    write = resource_utils.write
+
+    def activate_memory_controller(path, value):
+        write(path, value)
+        if path == str(control) and value == "+memory":
+            (target / "memory.max").write_text("max")
+            (target / "memory.current").write_text(str(usage * resource_utils.MEBIBYTE))
+
+    monkeypatch.setattr(resource_utils, "write", activate_memory_controller)
+    desired = 2 * resource_utils.MEBIBYTE
+    if usage > 2:
+        with pytest.raises(ResourceControlError, match="is below current usage"):
+            manager._prepare_active_slice_memory("role.slice", desired, backend)
+        assert (target / "memory.max").read_text() == "max"
+    else:
+        manager._prepare_active_slice_memory("role.slice", desired, backend)
+        assert backend.apply_memory(str(target), desired, str(target)) == desired
+    assert control.read_text() == "+memory", "Active slices need controller activation before reading usage"
+
+
+def test_active_v2_slice_rejects_unavailable_memory_controller(tmp_path, monkeypatch):
+    manager = ResourceControlManager()
+    (tmp_path / "role.slice").mkdir()
+    (tmp_path / "cgroup.controllers").write_text("cpuset")
+    (tmp_path / "cgroup.subtree_control").write_text("")
+    monkeypatch.setattr(manager.systemd, "properties", lambda _unit: {
+        "ActiveState": "active", "ControlGroup": "/role.slice",
+    })
+    backend = CgroupV2ResourceControlBackend(str(tmp_path))
+    with pytest.raises(ResourceControlError, match="Memory controller cannot be delegated"):
+        manager._prepare_active_slice_memory("role.slice", resource_utils.MEBIBYTE, backend)
+    assert not (tmp_path / "role.slice" / "memory.max").exists()
 
 
 def test_exclusive_boundary_rejects_cgroup_v1(monkeypatch):
@@ -647,7 +693,7 @@ def test_memory_only_role_does_not_apply_cpu_boundary(monkeypatch):
         manager.backend_factory, "cpu", Mock(return_value=CgroupV2ResourceControlBackend("/sys/fs/cgroup")))
     monkeypatch.setattr(
         manager.backend_factory, "memory", Mock(return_value=CgroupV2ResourceControlBackend("/sys/fs/cgroup")))
-    monkeypatch.setattr(manager, "_validate_active_slice_memory", lambda *_args: None)
+    monkeypatch.setattr(manager, "_prepare_active_slice_memory", lambda *_args: None)
     monkeypatch.setattr(manager.systemd, "prune_services", lambda *_args: False)
     monkeypatch.setattr(manager.systemd, "configure_slice", configure_slice)
     monkeypatch.setattr(manager.systemd, "configure_service", lambda *_args: False)
@@ -680,7 +726,7 @@ def test_apply_stages_service_slice_without_restarting_running_service(tmp_path,
         manager.backend_factory, "cpu", Mock(return_value=CgroupV2ResourceControlBackend("/sys/fs/cgroup")))
     monkeypatch.setattr(
         manager.backend_factory, "memory", Mock(return_value=CgroupV2ResourceControlBackend("/sys/fs/cgroup")))
-    monkeypatch.setattr(manager, "_validate_active_slice_memory", lambda *_args: None)
+    monkeypatch.setattr(manager, "_prepare_active_slice_memory", lambda *_args: None)
     monkeypatch.setattr(manager.systemd, "_systemctl", lambda args, _timeout: commands.append(args) or "")
     monkeypatch.setattr(manager, "_ensure_active_slice_target", lambda *_args: "/sys/fs/cgroup/zstack-compute.slice")
     monkeypatch.setattr(manager, "_active_slice_target", lambda *_args: "/sys/fs/cgroup/zstack-compute.slice")
@@ -691,7 +737,7 @@ def test_apply_stages_service_slice_without_restarting_running_service(tmp_path,
         "ActiveState": "inactive" if unit == "collectd.service" else "active",
         "ControlGroup": ("/zstack-compute.slice" if active_in_slice else "/system.slice") + "/" + unit,
     })
-    monkeypatch.setattr(manager, "_validate_active_slice_memory", lambda *_args: None)
+    monkeypatch.setattr(manager, "_prepare_active_slice_memory", lambda *_args: None)
     monkeypatch.setattr(CgroupResourceControlBackend, "find_target", lambda self, group: self.root + group)
     monkeypatch.setattr(manager, "validate_cpu_set", lambda value: value)
 
@@ -723,7 +769,7 @@ def test_legacy_systemd_hybrid_keeps_cpu_fallback_and_stages_role_memory(monkeyp
         "ActiveState": "active",
         "ControlGroup": ("/zstack-compute.slice" if unit.endswith(".slice") else "/system.slice/node_exporter.service"),
     })
-    monkeypatch.setattr(manager, "_validate_active_slice_memory", lambda *_args: None)
+    monkeypatch.setattr(manager, "_prepare_active_slice_memory", lambda *_args: None)
     monkeypatch.setattr(manager, "validate_cpu_set", lambda value: value)
 
     result = manager.apply("COMPUTE", "0-3", [service], 2 * 1024 ** 3, "zstack-compute.slice")
@@ -773,7 +819,7 @@ def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(
         "ActiveState": "inactive" if unit == "collectd.service" else "active",
         "ControlGroup": "/zstack-compute.slice/" + unit,
     })
-    monkeypatch.setattr(manager, "_validate_active_slice_memory", lambda *_args: None)
+    monkeypatch.setattr(manager, "_prepare_active_slice_memory", lambda *_args: None)
     monkeypatch.setattr(manager, "validate_cpu_set", lambda value: value)
 
     result = manager.apply("COMPUTE", "1-2", services, 2 * 1024 ** 3, "zstack-compute.slice")
