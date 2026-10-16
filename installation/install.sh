@@ -1517,7 +1517,7 @@ is_install_general_libs_rh(){
             avahi-tools \
             audit"
     if [ "$ZSTACK_RELEASE" = "ky10gfb" ]; then
-      deps_list="${deps_list//python-setuptools/python2-setuptools}"
+      deps_list="${deps_list//python-setuptools/python2-setuptools python2-pip}"
     fi
     if [ "$BASEARCH" == "x86_64" ]; then
       deps_list="${deps_list} mcelog"
