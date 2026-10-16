@@ -1514,6 +1514,7 @@ is_install_general_libs_rh(){
             python-backports-ssl_match_hostname \
             python-setuptools \
             avahi \
+            gnutls-utils \
             avahi-tools \
             audit"
     if [ "$ZSTACK_RELEASE" = "ky10gfb" ]; then
