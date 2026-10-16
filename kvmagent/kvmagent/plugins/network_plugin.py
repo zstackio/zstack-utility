@@ -669,12 +669,29 @@ class NetworkPlugin(kvmagent.KvmAgent):
         #    shell.call("echo %d >  /sys/class/net/%s/bridge/multicast_mld_version" % (mldVersion, bridgeName), False)
 
     def _configure_bridge_multicast(self, cmd):
-        if not getattr(cmd, 'enableMulticastQuerier', False):
+        enableSnooping = getattr(cmd, 'enableMulticastSnooping', None)
+        if enableSnooping is None:
+            if getattr(cmd, 'enableMulticastQuerier', False):
+                igmpVersion = getattr(cmd, 'igmpVersion', 0)
+                mldVersion = getattr(cmd, 'mldVersion', 0)
+                self._enable_bridge_igmp_snooping(cmd.bridgeName, igmpVersion, mldVersion)
             return
 
-        igmpVersion = getattr(cmd, 'igmpVersion', 0)
-        mldVersion = getattr(cmd, 'mldVersion', 0)
-        self._enable_bridge_igmp_snooping(cmd.bridgeName, igmpVersion, mldVersion)
+        snooping = '1' if enableSnooping else '0'
+        querier = '1' if enableSnooping and getattr(cmd, 'enableMulticastQuerier', False) else '0'
+        bridgePath = '/sys/class/net/%s/bridge' % cmd.bridgeName
+        settings = [('multicast_snooping', snooping), ('multicast_querier', querier)]
+        if not enableSnooping:
+            settings.reverse()
+
+        for name, value in settings:
+            path = '%s/%s' % (bridgePath, name)
+            try:
+                if not linux.write_file(path, value):
+                    raise IOError('sysfs path does not exist')
+            except Exception as e:
+                raise Exception('failed to set bridge[%s] %s to %s: %s' %
+                                (cmd.bridgeName, name, value, str(e)))
 
     def _configure_isolated(self, vlan_interface):
         isolated_br = "isolated_%s" % vlan_interface
