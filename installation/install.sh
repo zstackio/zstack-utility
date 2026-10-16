@@ -1529,10 +1529,16 @@ is_install_general_libs_rh(){
     [ x"$ZSTACK_OFFLINE_INSTALL" = x'y' ] && missing_list=$deps_list
     if [ ! -z $ZSTACK_YUM_REPOS ]; then
         yum --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS clean metadata >/dev/null 2>&1
+        if [ "$ZSTACK_RELEASE" = "ky10gfb" ]; then
+            yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y python3-dnf dnf >>$ZSTACK_INSTALL_LOG 2>&1 || fail "upgrade Kylin package manager failed."
+        fi
         echo yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y general libs... >>$ZSTACK_INSTALL_LOG
         yum install --disablerepo="*" --enablerepo=$ZSTACK_YUM_REPOS -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
     else
         yum clean metadata >/dev/null 2>&1
+        if [ "$ZSTACK_RELEASE" = "ky10gfb" ]; then
+            yum install -y python3-dnf dnf >>$ZSTACK_INSTALL_LOG 2>&1 || fail "upgrade Kylin package manager failed."
+        fi
         echo "yum install -y libselinux-python java ..." >>$ZSTACK_INSTALL_LOG
         yum install -y $always_update_list $missing_list >>$ZSTACK_INSTALL_LOG 2>&1
     fi
