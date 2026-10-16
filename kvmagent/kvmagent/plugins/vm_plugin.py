@@ -2182,9 +2182,21 @@ class Vm(object):
     def restore(self, path):
         @LibvirtAutoReconnect
         def restore_from_file(conn):
+            saved_xml = etree.fromstring(conn.saveImageGetXMLDesc(path, 0))
+            saved_uuid = saved_xml.findtext('uuid')
+            if saved_xml.findtext('name') != self.uuid or not saved_uuid:
+                raise kvmagent.KvmError('memory snapshot does not contain the domain identity of vm[uuid:%s]' % self.uuid)
+
+            # Short product IDs receive a random libvirt UUID when XML is built.
+            # Keep the saved identity, including for snapshots made before this fix,
+            # while retaining the newly restored disk paths and other current XML.
+            root = etree.fromstring(self.domain_xml)
+            root.find('uuid').text = saved_uuid
+            self.domain_xml = etree.tostring(root)
+            self.domain_xmlobject.uuid.put_text(saved_uuid)
+            logger.debug('restoring vm:\n%s' % self.domain_xml)
             return conn.restoreFlags(path, self.domain_xml)
 
-        logger.debug('restoring vm:\n%s' % self.domain_xml)
         restore_from_file()
 
     def start(self, timeout=60, create_paused=False, wait_console=True):
