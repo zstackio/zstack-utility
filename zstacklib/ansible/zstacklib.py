@@ -417,6 +417,7 @@ class ZstackRunner(object):
         if self.become:
             ps_vars['ansible_pipelining'] = False
         play_source = dict(
+            gather_facts=False,
             hosts=self.host,
             tasks=[{'action': action,
                     'register': 'shell_out',
