@@ -22,7 +22,7 @@ class Vastai(GPUBase):
     
     VENDOR_NAME = "Vastai"
     VENDOR_ENUM_NAME = "Vastai"
-    VENDOR_IDS = {"1edb"}
+    VENDOR_IDS = {"1edb", "1ec6"}
     PCI_NAME_KEYWORDS = {"Vastai"}
     CLI_TOOL = "vasmi"
     DEVICE_TYPES = {"3D controller", "Processing accelerators"}
@@ -30,8 +30,8 @@ class Vastai(GPUBase):
     @classmethod
     def get_pci_only_candidates(cls, device_ids, device_names):
         """
-        When vasmi is not available, identify VastAI GPU by PCI: vendor 1edb,
-        class 3D controller or Processing accelerators.
+        When vasmi cannot report a device, identify VastAI GPU by PCI: vendor
+        1edb or 1ec6, class 3D controller or Processing accelerators.
         """
         from zstacklib.utils.pci import normalize_pci_address
 
