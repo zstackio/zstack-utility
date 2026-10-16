@@ -444,6 +444,29 @@ class NetworkPlugin(kvmagent.KvmAgent):
         return root_uplink, devices
 
     @staticmethod
+    def _get_upper_devices(devices):
+        upper_devices = []
+        pending = list(devices)
+        visited = set()
+        while pending:
+            device = pending.pop(0)
+            if device in visited:
+                continue
+            visited.add(device)
+            net_path = '/sys/class/net/%s' % device
+            if not os.path.isdir(net_path):
+                continue
+            for name in sorted(os.listdir(net_path)):
+                if not name.startswith('upper_') or not name[len('upper_'):]:
+                    continue
+                upper = name[len('upper_'):]
+                if upper not in upper_devices:
+                    upper_devices.append(upper)
+                if upper not in visited:
+                    pending.append(upper)
+        return upper_devices
+
+    @staticmethod
     def _is_device_unmanaged(device):
         if not device:
             return False
@@ -480,8 +503,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
         try:
             if restart_nm:
                 bash_errorout('systemctl stop NetworkManager')
-            self._write_nm_conf(conf_name, l2_devices)
+            # Keep the base rule separate from this L2's devices.
             self._write_nm_conf(root_uplink, base_devices, preserve_dns=preserve_dns)
+            self._write_nm_conf(conf_name, l2_devices)
         finally:
             if restart_nm:
                 bash_r('systemctl start NetworkManager')
@@ -498,18 +522,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
         finally:
             if os.path.exists(temporary_path):
                 os.unlink(temporary_path)
-
-    def _set_device_unmanaged(self, devices):
-        if not self._is_nm_running():
-            return
-
-        # Keep controllers before their ports to preserve master relations.
-        for device in devices:
-            if not linux.is_network_device_existing(device):
-                continue
-            shell.call('nmcli device set %s managed no' % device)
-
-        shell.call('nmcli general reload 1')
 
     def _check_unmanaged_devices(self, devices):
         if not self._is_nm_running():
@@ -536,7 +548,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 devices.append(device)
         return devices
 
-    def _write_l2_nm_conf(self, physical_device, conf_name, cloud_devices, restart_nm=False):
+    def _write_l2_nm_conf(self, physical_device, conf_name, cloud_devices):
         root_uplink, base_devices = self._get_root_uplink_devices(physical_device)
         l2_devices = self._get_ordered_devices(physical_device, root_uplink, cloud_devices)
         devices = base_devices + l2_devices
@@ -557,26 +569,31 @@ class NetworkPlugin(kvmagent.KvmAgent):
         nm_was_active = shell.run('systemctl is-active --quiet NetworkManager') == 0
         if not nm_was_active:
             self._set_device_keyfile(
-                conf_name, l2_devices, root_uplink, base_devices, preserve_dns=preserve_dns)
+                conf_name, l2_devices, root_uplink, base_devices,
+                preserve_dns=preserve_dns)
             self._set_devices_up(devices)
             return devices
 
-        # Use `systemctl stop/start NetworkManager` for NoVlan or existing L3 devices.
+        # Stop NM only when this L2 needs to change an existing managed device.
         existing_devices = [device for device in devices if linux.is_network_device_existing(device)]
         managed_devices = [
             device for device in existing_devices if not self._is_device_unmanaged(device)]
-        # `ip addr show dev <device>` must survive the unmanaged handoff.
-        has_ip_config = any(linux.is_network_ip_using(device) for device in managed_devices)
-        need_restart_nm = bool(managed_devices) and (restart_nm or has_ip_config)
-        # Preserve DNS around `nmcli device set <device> managed no` and `nmcli general reload 1`.
-        dns_config = linux.get_dns_config(managed_devices, preserve_resolv_conf=preserve_dns or need_restart_nm)
+        need_restart_nm = bool(managed_devices)
+        dns_devices = list(managed_devices)
+        if need_restart_nm:
+            # Upper devices only contribute to the DNS snapshot; keep their NM rules.
+            dns_devices += [
+                device for device in self._get_upper_devices([root_uplink])
+                if device not in dns_devices]
+        dns_config = linux.get_dns_config(
+            dns_devices, preserve_resolv_conf=preserve_dns or need_restart_nm)
 
         try:
             self._set_device_keyfile(
                 conf_name, l2_devices, root_uplink, base_devices,
                 preserve_dns=preserve_dns, restart_nm=need_restart_nm)
-            if not need_restart_nm:
-                self._set_device_unmanaged(managed_devices)
+            if not need_restart_nm and self._is_nm_running():
+                shell.call('nmcli general reload 1')
 
             self._check_unmanaged_devices(existing_devices)
         except Exception:
@@ -1301,8 +1318,7 @@ configure lldp status rx-only \n
                     (cmd.bridgeName, new_vlan))
 
         devices = self._write_l2_nm_conf(
-            cmd.physicalInterfaceName, cmd.bridgeName, transition_devices,
-            restart_nm=not cmd.newVlan)
+            cmd.physicalInterfaceName, cmd.bridgeName, transition_devices)
         self._ifup_device_if_down(cmd.physicalInterfaceName)
 
         old_interface = cmd.physicalInterfaceName
@@ -1354,8 +1370,9 @@ configure lldp status rx-only \n
         return jsonobject.dumps(rsp)
 
     def create_novlan_bridge_with_nm(self, cmd, rsp):
+        linux.check_bridge_with_interface(cmd.physicalInterfaceName, cmd.bridgeName)
         devices = self._write_l2_nm_conf(
-            cmd.physicalInterfaceName, cmd.bridgeName, [cmd.bridgeName], restart_nm=True)
+            cmd.physicalInterfaceName, cmd.bridgeName, [cmd.bridgeName])
         self.create_novlan_bridge(cmd, rsp)
         if rsp.success:
             self._check_unmanaged_devices(devices)
@@ -1439,6 +1456,7 @@ configure lldp status rx-only \n
         return jsonobject.dumps(rsp)
 
     def create_vlan_bridge_with_nm(self, cmd, vlan_interface, mtu):
+        linux.check_bridge_with_interface(vlan_interface, cmd.bridgeName)
         l2_devices = [cmd.bridgeName, vlan_interface]
         devices = self._write_l2_nm_conf(
             cmd.physicalInterfaceName, cmd.bridgeName, l2_devices)
@@ -1835,6 +1853,9 @@ configure lldp status rx-only \n
         vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
 
         try:
+            if linux.is_network_ip_using(vlanInterfName):
+                logger.debug('keep VLAN[%s] because host IP is still in use' % vlanInterfName)
+                return jsonobject.dumps(rsp)
             if kvmagent.get_host_distribution() in kvmagent.NM_DISTROS:
                 linux.delete_vlan_eth(vlanInterfName)
                 self._remove_l2_nm_conf(vlanInterfName)
