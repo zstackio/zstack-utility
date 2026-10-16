@@ -1,16 +1,20 @@
 # Memory optimization deployment
 
-The standard `zstackbuild` Ant build compiles the adjacent `zstack-zram`
-checkout into an RPM. The build manifest, runtime inventory and installer enter
-the WAR's KVM Agent materials; the RPM itself is published through the existing
-RPM repository and ISO package lists, not copied from the WAR. Set `zstackzram.checkout` to
-use a different checkout. The service repository specifies the required Go
-toolchain and RPM build tools.
+The standard and OSS BIN builds consume the published service RPM pinned by
+`zstackzram.rpm.url` and `zstackzram.rpm.sha256` in their respective
+`zstackbuild/build.properties` and `zstackbuild/build.oss.properties` files.
+Ant verifies the bytes before extracting the RPM's original build manifest and
+staging its inventory, installer and canonical NEVRA-named RPM into the WAR's
+KVM Agent materials. The RPM remains published through the existing RPM
+repository and ISO package lists; it is not copied from the WAR. Cloud
+`product.version` and `build.num` do not select or rebuild the service RPM.
 
-The RPM Version follows `product.version`, including the standard `build.num`
-when supplied. RPM Release defaults to `1`; `zstackzram.rpmRelease` can select
-a higher release for a package rebuild of the same product version. Git branch
-names remain source selectors and are not used as RPM Release values.
+`build-zstack-zram-rpm` is the separate component release target. It freezes
+the selected `zstackzram.checkout` and takes Version and Release defaults from
+that frozen source's RPM spec. A new component build is published once through
+the existing RPM repository workflow; later BINs update the URL and SHA pin to
+consume that published package. The service repository specifies the required
+Go toolchain and RPM build tools.
 
 Adding or reconnecting a supported Host uses the existing `zstack_repo` selection
 (`false` retains the Host's enabled repositories) and downloads the exact declared

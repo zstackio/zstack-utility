@@ -103,9 +103,6 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
         raise ValueError('INSTALLER_MISSING_OR_SYMLINK')
     if os.path.lexists(output):
         raise ValueError('OUTPUT_EXISTS')
-    if not re.match(r'[0-9a-f]{64}\Z', snapshot_sha or '') or \
-            not re.match(r'[0-9a-f]{64}\Z', dirty_patch_sha or ''):
-        raise ValueError('SOURCE_PIN_INVALID')
     profiles = sorted(set(host_profiles))
     if not profiles or any(not re.match(r'[a-z0-9][a-z0-9._-]*\Z', p) for p in profiles):
         raise ValueError('HOST_PROFILE_INVALID')
@@ -114,6 +111,15 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
         build = json.load(open(build_manifest_path))
     except (IOError, OSError, ValueError):
         raise ValueError('BUILD_MANIFEST_INVALID')
+    if snapshot_sha is None:
+        snapshot_sha = build.get('sourceSnapshotSha256')
+    if dirty_patch_sha is None:
+        dirty_patch_sha = build.get('dirtyPatchSha256')
+    if (not isinstance(snapshot_sha, STRING_TYPES) or
+            not isinstance(dirty_patch_sha, STRING_TYPES) or
+            not re.match(r'[0-9a-f]{64}\Z', snapshot_sha) or
+            not re.match(r'[0-9a-f]{64}\Z', dirty_patch_sha)):
+        raise ValueError('SOURCE_PIN_INVALID')
     if (build.get('schemaVersion') != 1 or build.get('package') != PACKAGE_NAME or
             build.get('sourceSnapshotSha256') != snapshot_sha or
             build.get('dirtyPatchSha256') != dirty_patch_sha or
@@ -133,6 +139,9 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
     if (name != PACKAGE_NAME or arch != 'x86_64' or
             build.get('rpmVersion') != version or not release_matches_build):
         raise ValueError('RPM_IDENTITY_OR_ABI_MISMATCH')
+    if (not re.match(r'[0-9]+(?:\.[0-9]+)*\Z', version) or
+            not re.match(r'[A-Za-z0-9._+]+\Z', release)):
+        raise ValueError('RPM_FILENAME_COMPONENT_INVALID')
     if not REQUIRED_RPM_FILES.issubset(files):
         raise ValueError('RPM_FILE_INVENTORY_INCOMPLETE')
     if any(path.endswith('.ko') or path.startswith('/lib/modules/') or
@@ -145,7 +154,8 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
         raise ValueError('CONFIG_NOREPLACE_REQUIRED')
 
     os.mkdir(output, 0o755)
-    staged_rpm = os.path.join(output, os.path.basename(rpm_path))
+    rpm_filename = '%s-%s-%s.%s.rpm' % (name, version, release, arch)
+    staged_rpm = os.path.join(output, rpm_filename)
     shutil.copyfile(rpm_path, staged_rpm)
     os.chmod(staged_rpm, 0o644)
     shutil.copyfile(build_manifest_path, os.path.join(output, 'BUILD-MANIFEST.json'))
@@ -192,8 +202,8 @@ def main():
     parser.add_argument('--rpm-dir')
     parser.add_argument('--build-manifest', required=True)
     parser.add_argument('--output', required=True)
-    parser.add_argument('--source-snapshot-sha256', required=True)
-    parser.add_argument('--dirty-patch-sha256', required=True)
+    parser.add_argument('--source-snapshot-sha256')
+    parser.add_argument('--dirty-patch-sha256')
     parser.add_argument('--host-profiles', required=True)
     parser.add_argument('--installer-script')
     args = parser.parse_args()

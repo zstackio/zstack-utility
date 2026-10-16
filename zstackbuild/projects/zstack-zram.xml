@@ -3,11 +3,12 @@
 <project name="zstack-zram RPM builder" basedir="../">
     <property name="zstackzram.go" value="/usr/lib/golang1.24/bin/go" />
     <property name="zstackzram.stage.dir" location="${build.dir}/zstack-zram-rpm-stage" />
+    <property name="zstackzram.rpm.input.dir" location="${build.dir}/zstack-zram-rpm-input" />
+    <property name="zstackzram.rpm.input" location="${zstackzram.rpm.input.dir}/zstack-zram.rpm" />
+    <property name="zstackzram.rpm.cpio" location="${zstackzram.rpm.input.dir}/zstack-zram.cpio" />
+    <property name="zstackzram.rpm.manifest" location="${zstackzram.rpm.input.dir}/BUILD-MANIFEST.json" />
     <property name="zstackzram.metadata.file" location="${build.dir}/zstack-zram-build/metadata.properties" />
     <property name="zstackzram.snapshot.dir" location="${build.dir}/build-metadata/zstack-zram-source" />
-    <!-- product.version already includes the standard build.num, when supplied.
-         Keep RPM Release independent of the source branch (build_version). -->
-    <property name="zstackzram.rpmRelease" value="1" />
     <condition property="zstackzram.enabled">
         <equals arg1="${zstackzram.targetArch}" arg2="x86_64" casesensitive="false" />
     </condition>
@@ -21,8 +22,6 @@
             <arg value="--source-checkout" /><arg value="${zstackzram.checkout}" />
             <arg value="--snapshot-dir" /><arg value="${zstackzram.snapshot.dir}" />
             <arg value="--output" /><arg value="${zstackzram.metadata.file}" />
-            <arg value="--version" /><arg value="${product.version}" />
-            <arg value="--release" /><arg value="${zstackzram.rpmRelease}" />
             <arg value="--host-profiles" /><arg value="${zstackzram.hostProfiles}" />
             <arg value="--target-arch" /><arg value="${zstackzram.targetArch}" />
         </exec>
@@ -59,14 +58,38 @@
         </exec>
     </target>
 
-    <target name="stage-zstack-zram-rpm" depends="build-zstack-zram-rpm" if="zstackzram.enabled">
+    <target name="stage-zstack-zram-rpm" if="zstackzram.enabled">
+        <checkProperty property="zstackzram.rpm.url" />
+        <checkProperty property="zstackzram.rpm.sha256" />
+        <delete dir="${zstackzram.rpm.input.dir}" />
+        <mkdir dir="${zstackzram.rpm.input.dir}" />
+        <get src="${zstackzram.rpm.url}" dest="${zstackzram.rpm.input}" usetimestamp="false" />
+        <echo file="${zstackzram.rpm.input.dir}/rpm.sha256">${zstackzram.rpm.sha256}  ${zstackzram.rpm.input}</echo>
+        <exec executable="sha256sum" failonerror="true">
+            <arg value="--check" />
+            <arg value="${zstackzram.rpm.input.dir}/rpm.sha256" />
+        </exec>
+        <!-- Keep the RPM payload byte-for-byte: Ant's output redirector is text-oriented. -->
+        <exec executable="/bin/bash" failonerror="true">
+            <arg value="-c" />
+            <arg value='rpm2cpio "$1" &gt; "$2"' />
+            <arg value="ant-rpm2cpio" />
+            <arg value="${zstackzram.rpm.input}" />
+            <arg value="${zstackzram.rpm.cpio}" />
+        </exec>
+        <exec executable="/bin/bash" failonerror="true">
+            <arg value="-c" />
+            <arg value='cpio -i --quiet --to-stdout ./usr/share/doc/zstack-zram/BUILD-MANIFEST.json &lt; "$1" &gt; "$2"' />
+            <arg value="ant-extract-zstack-zram-manifest" />
+            <arg value="${zstackzram.rpm.cpio}" />
+            <arg value="${zstackzram.rpm.manifest}" />
+        </exec>
+        <delete dir="${zstackzram.stage.dir}" />
         <exec executable="/bin/python" failonerror="true">
             <arg value="${zstackutility.source}/kvmagent/scripts/stage_memory_optimization_rpm.py" />
-            <arg value="--rpm-dir" /><arg value="${zstackzram.rpm.output}" />
-            <arg value="--build-manifest" /><arg value="${zstackzram.rpm.output}/BUILD-MANIFEST.json" />
+            <arg value="--rpm" /><arg value="${zstackzram.rpm.input}" />
+            <arg value="--build-manifest" /><arg value="${zstackzram.rpm.manifest}" />
             <arg value="--output" /><arg value="${zstackzram.stage.dir}" />
-            <arg value="--source-snapshot-sha256" /><arg value="${zstackzram.sourceSnapshotSha256}" />
-            <arg value="--dirty-patch-sha256" /><arg value="${zstackzram.dirtyPatchSha256}" />
             <arg value="--host-profiles" /><arg value="${zstackzram.hostProfiles}" />
             <arg value="--installer-script" />
             <arg value="${zstackutility.source}/kvmagent/scripts/install_memory_optimization_rpm.py" />
