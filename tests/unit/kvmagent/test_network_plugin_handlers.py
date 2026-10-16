@@ -96,6 +96,7 @@ class _NetworkPluginProto(Protocol):
     _configure_bridge_mtu: Callable[..., None]
     _configure_bridge_learning: Callable[..., None]
     _enable_bridge_igmp_snooping: Callable[..., None]
+    _configure_bridge_multicast: Callable[..., None]
     update_bridge_vlan: Callable[..., object]
     update_bridge_vlan_with_nm: Callable[..., object]
     update_bridge_vxlan: Callable[..., object]
@@ -1786,6 +1787,80 @@ class TestNetworkPluginCheckMacvlanVlanEth:
 
         assert rsp['success'] is True
         ifup.assert_called_once_with('eth0')
+
+
+@pytest.mark.kvmagent
+class TestNetworkPluginMulticastSnooping:
+    @pytest.mark.parametrize(
+        "snooping, querier, expected",
+        [
+            (True, True, ("1", "1")),
+            (True, False, ("1", "0")),
+            (False, True, ("0", "0")),
+            (False, False, ("0", "0")),
+        ],
+    )
+    def test_zstac_88822_configures_bridge_multicast(self, snooping, querier, expected):
+        plugin = _make_plugin()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.write_file = MagicMock(return_value="written")
+
+        cmd = SimpleNamespace(
+            bridgeName="br0",
+            enableMulticastSnooping=snooping,
+            enableMulticastQuerier=querier,
+        )
+        plugin._configure_bridge_multicast(cmd)
+
+        snooping_path = "/sys/class/net/br0/bridge/multicast_snooping"
+        querier_path = "/sys/class/net/br0/bridge/multicast_querier"
+        expected_calls = (
+            [call(snooping_path, expected[0]), call(querier_path, expected[1])]
+            if snooping else
+            [call(querier_path, expected[1]), call(snooping_path, expected[0])]
+        )
+        assert linux.write_file.call_args_list == expected_calls
+
+    def test_zstac_88822_legacy_command_keeps_previous_behavior(self):
+        plugin = _make_plugin()
+        enable = MagicMock()
+        setattr(plugin, "_enable_bridge_igmp_snooping", enable)
+
+        plugin._configure_bridge_multicast(SimpleNamespace(bridgeName="br0", enableMulticastQuerier=False))
+        enable.assert_not_called()
+        plugin._configure_bridge_multicast(SimpleNamespace(bridgeName="br0", enableMulticastQuerier=True))
+        enable.assert_called_once_with("br0", 0, 0)
+
+    def test_zstac_88822_reports_snooping_write_failure(self):
+        plugin = _make_plugin()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.write_file = MagicMock(side_effect=["written", None])
+
+        with pytest.raises(Exception, match="multicast_snooping"):
+            plugin._configure_bridge_multicast(SimpleNamespace(
+                bridgeName="br0", enableMulticastSnooping=False, enableMulticastQuerier=True,
+            ))
+
+    def test_zstac_88822_bridge_creation_reports_multicast_failure(self):
+        plugin = _make_plugin()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        linux.create_vlan_bridge = MagicMock()
+        linux.write_file = MagicMock(side_effect=OSError("read-only bridge setting"))
+        setattr(plugin, "_get_interface_mtu", MagicMock(return_value=1500))
+        setattr(plugin, "_configure_bridge", MagicMock())
+        setattr(plugin, "_configure_bridge_mtu", MagicMock())
+        setattr(plugin, "_configure_bridge_learning", MagicMock())
+
+        result = plugin.create_vlan_bridge(_make_req({
+            "bridgeName": "br0", "physicalInterfaceName": "eth0", "vlan": 100,
+            "mtu": 1500, "disableIptables": False, "l2NetworkUuid": "l2-uuid",
+            "enableMulticastSnooping": False, "enableMulticastQuerier": True,
+        }))
+        rsp = _load_rsp(result)
+
+        assert rsp["success"] is False
+        assert "multicast_querier" in cast(str, rsp["error"])
+        assert "read-only bridge setting" in cast(str, rsp["error"])
 
 
 @pytest.mark.kvmagent
