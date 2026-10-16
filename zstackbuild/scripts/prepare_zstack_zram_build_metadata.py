@@ -112,6 +112,17 @@ def _freeze_source(source, snapshot_dir):
     return os.path.join(snapshot_dir, 'source'), manifest_path, patch
 
 
+def _spec_default(source, macro):
+    spec_path = os.path.join(source, 'packaging', 'rpm', 'zram-memory.spec')
+    if os.path.islink(spec_path) or not os.path.isfile(spec_path):
+        raise ValueError('RPM_SPEC_MISSING_OR_SYMLINK')
+    pattern = r'(?m)^%global\s+zram_rpm_' + re.escape(macro) + r'_default\s+([A-Za-z0-9._+]+)\s*$'
+    matches = re.findall(pattern, open(spec_path, 'r').read())
+    if len(matches) != 1:
+        raise ValueError('RPM_SPEC_DEFAULT_INVALID:' + macro)
+    return matches[0]
+
+
 def prepare(source_checkout, snapshot_dir, output, version, release, epoch,
             build_environment_id, host_profiles, target_arch='x86_64'):
     source_checkout = os.path.abspath(source_checkout)
@@ -119,10 +130,6 @@ def prepare(source_checkout, snapshot_dir, output, version, release, epoch,
     output = os.path.abspath(output)
     if os.path.lexists(output):
         raise ValueError('BUILD_METADATA_OUTPUT_EXISTS')
-    if not re.match(r'[0-9]+(?:\.[0-9]+)*\Z', version):
-        raise ValueError('RPM_VERSION_INVALID')
-    if not re.match(r'[A-Za-z0-9._+]+\Z', release):
-        raise ValueError('RPM_RELEASE_INVALID')
     if target_arch != 'x86_64':
         raise ValueError('ZSTACK_ZRAM_TARGET_ARCH_UNSUPPORTED')
     if epoch in ('', None):
@@ -142,6 +149,12 @@ def prepare(source_checkout, snapshot_dir, output, version, release, epoch,
     build_environment_id = build_environment_id.strip() or _build_environment_id()
 
     source, manifest, patch = _freeze_source(source_checkout, snapshot_dir)
+    version = version or _spec_default(source, 'version')
+    release = release or _spec_default(source, 'release')
+    if not re.match(r'[0-9]+(?:\.[0-9]+)*\Z', version):
+        raise ValueError('RPM_VERSION_INVALID')
+    if not re.match(r'[A-Za-z0-9._+]+\Z', release):
+        raise ValueError('RPM_RELEASE_INVALID')
     manifest_bytes = open(manifest, 'rb').read()
     digest = hashlib.sha256(manifest_bytes).hexdigest()
     data = json.loads(manifest_bytes)
@@ -184,8 +197,8 @@ def main():
     parser.add_argument('--source-checkout', required=True)
     parser.add_argument('--snapshot-dir', required=True)
     parser.add_argument('--output', required=True)
-    parser.add_argument('--version', required=True)
-    parser.add_argument('--release', required=True)
+    parser.add_argument('--version', default='')
+    parser.add_argument('--release', default='')
     parser.add_argument('--source-date-epoch', default='')
     parser.add_argument('--build-environment-id', default='')
     parser.add_argument('--host-profiles', required=True)
