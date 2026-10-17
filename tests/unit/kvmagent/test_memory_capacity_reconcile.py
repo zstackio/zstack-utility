@@ -852,6 +852,135 @@ def test_service_disable_history_allows_only_readonly_first_use_reconciliation(
         assert len(reads) == count
 
 
+@pytest.mark.parametrize('tamper', [None, 'reason', 'policy_hash', 'intent', 'revision',
+                                    'pending', 'cpu_enabled', 'stale_service_state'])
+def test_only_exact_prewrite_rejections_enter_readonly_admission_reconcile(
+        tmp_path, monkeypatch, tamper):
+    reason = 'FIRST_ZRAM_OBSERVATION_NOT_FRESH_OR_SAFE'
+    policy = {'zram': {'enabled': True}}
+    plugin = MemoryOptimizationPlugin()
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    command = {'hostUuid': HOST, 'scope': 'Host', 'resourceUuid': HOST,
+               'action': 'apply', 'operationUuid': 'e' * 32,
+               'desiredRevision': 15, 'policyMode': 'effective', 'policy': policy}
+    task_submitted_at = int(time.time() * 1000)
+    assert plugin._record_operation(command, 'UNKNOWN', {'reason': reason})
+    record = plugin._load_operation(command)
+    if tamper == 'reason':
+        record['readback'] = {'reason': 'UNRELATED_FAILURE'}
+    elif tamper == 'policy_hash':
+        record['policyHash'] = '0' * 64
+    elif tamper == 'intent':
+        record['activationIntent'] = {}
+    elif tamper == 'revision':
+        record['desiredRevision'] += 1
+    if tamper is not None:
+        assert plugin._write_operation_record(record)
+
+    state_dir = tmp_path / 'state'
+    state_dir.mkdir()
+    config = {'managed': True, 'mode': 'observe', 'resource_authorized': False,
+              'state_dir': str(state_dir), 'device': '/dev/zram0',
+              'initial_efficiency_enabled': False}
+    config_path, template_path = tmp_path / 'config.json', tmp_path / 'template.json'
+    config_path.write_text(json.dumps(config))
+    template_path.write_bytes(config_path.read_bytes())
+    plugin.zram_config_path, plugin.zram_config_template_path = str(config_path), str(template_path)
+    plugin.drain_config = str(config_path)
+    monkeypatch.setattr(plugin, '_first_use_runtime_identity', lambda template, current: {})
+    native = {
+        'mode': 'observe', 'resource_authorized': False,
+        'lifecycle': {'schemaVersion': 1, 'abiProfile': 'zram-service-v1',
+                      'readbackAllowed': True, 'paused': False, 'activeState': 'compatibility'},
+        'maintenance_blocks_activation': False, 'pending_operations': [],
+        'host_zram': {'pool_generation': '', 'device': '', 'quality': 'unavailable',
+                      'reason': 'NO_QUALIFIED_MANAGED_POOL:first-use'},
+        # The original prewrite rejection is specifically caused by unavailable
+        # host safety observations. No-pool proof must still establish that no
+        # execution occurred without treating missing PSI as a successful new apply.
+        'host': {'qualified': False, 'safe': False, 'observed_at': time.time()},
+        'observed_at': time.time(),
+    }
+    if tamper == 'pending':
+        native['pending_operations'] = [{'operation_uuid': 'f' * 32}]
+    elif tamper == 'stale_service_state':
+        native['observed_at'] = time.time() - 10
+    reads = []
+    writes = []
+    real_open = open
+
+    def native_open(path, mode='r', *args, **kwargs):
+        native_values = {
+            '/proc/swaps': 'Filename Type Size Used Priority\n',
+            '/sys/block/zram0/disksize': '0\n',
+            '/sys/block/zram0/mm_stat': '0 0 0 0 0 0 0 0\n',
+            '/sys/block/zram0/backing_dev': 'none\n',
+        }
+        if str(path) in native_values:
+            return io.StringIO(native_values[str(path)])
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr('builtins.open', native_open)
+
+    def service_call(action, payload):
+        if action in ('state', 'host-cpu-state'):
+            reads.append(action)
+            if action == 'state':
+                return native
+            return {'efficiency_enabled': tamper == 'cpu_enabled'}
+        writes.append(action)
+        return {'success': True}
+
+    monkeypatch.setattr(plugin, '_service_request', service_call)
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'ksmZeroPages': True, 'zram': True, 'writeback': True})
+    ksm_writes = []
+    monkeypatch.setattr(plugin, '_apply_ksm_policy',
+                        lambda requested: ksm_writes.append(requested) or {})
+    before = plugin._load_operation(command)
+    # Match MemoryOptimizationManager's reconcile wire: policy is deliberately
+    # empty; the Agent must validate against the immutable original journal.
+    reconcile_command = {
+        'hostUuid': HOST, 'scope': command['scope'], 'resourceUuid': command['resourceUuid'],
+        'action': 'reconcile', 'operationUuid': command['operationUuid'],
+        'desiredRevision': command['desiredRevision'], 'policy': {},
+        'reconcileAction': 'seal-if-never-issued',
+        'taskSubmittedAt': task_submitted_at, 'bootId': before['bootId'],
+    }
+    result = json.loads(plugin.reconcile({'body': json.dumps(reconcile_command)}))
+    after = plugin._load_operation(command)
+
+    if tamper is None:
+        assert result['status'] == 'Failed'
+        assert result['reasonCode'] == 'FIRST_ZRAM_ADMISSION_NOT_ISSUED'
+        assert result['state']['policyWritesIssued'] is False
+        assert after['stage'] == 'NOT_ISSUED'
+        assert after['requestHash'] == before['requestHash']
+        assert after['policy'] == before['policy']
+        assert after['applyEvidence'] == before['applyEvidence']
+        assert after['action'] == before['action']
+        assert after['scope'] == before['scope']
+        assert after['resourceUuid'] == before['resourceUuid']
+        assert after['desiredRevision'] == before['desiredRevision']
+        assert after['bootId'] == before['bootId']
+        assert not writes and not ksm_writes
+        read_count = len(reads)
+        assert json.loads(plugin.reconcile({'body': json.dumps(reconcile_command)})) == result
+        assert len(reads) == read_count
+        mismatched_wire = dict(reconcile_command,
+                               desiredRevision=reconcile_command['desiredRevision'] + 1)
+        assert json.loads(plugin.reconcile({'body': json.dumps(mismatched_wire)}))['status'] == 'Unknown'
+        assert plugin._load_operation(command) == after
+        replay = plugin.apply(command)
+        assert replay == result
+        assert plugin._load_operation(command) == after
+        assert not writes and not ksm_writes
+    else:
+        assert result['status'] == 'Unknown'
+        assert after == before
+        assert not writes and not ksm_writes
+
+
 def test_writeback_only_disable_is_completed_nonactive_first_use_history(tmp_path):
     """A real writeback-only delta is safe history, not a generic Host write."""
     plugin, _, _, command, result = _capacity_apply_fixture(
@@ -913,6 +1042,9 @@ def test_capacity_only_blocker_reconciles_blocked_without_cpu_put_or_replay(tmp_
                                     'active_prepared_backend_ksm_wrong_capacity',
                                     'active_prepared_backend_ksm_wrong_boot',
                                     'active_prepared_backend_ksm_enabled',
+                                    'active_prepared_backend_ksm_clear',
+                                    'active_prepared_backend_ksm_clear_config_drift',
+                                    'active_prepared_backend_ksm_clear_seal_config_drift',
                                     'active_prior_preparation_ksm',
                                     'active_prior_preparation_wrong_uuid',
                                     'active_prior_preparation_wrong_capacity',
@@ -1277,6 +1409,9 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                       'active_prepared_backend_ksm_wrong_capacity',
                       'active_prepared_backend_ksm_wrong_boot',
                       'active_prepared_backend_ksm_enabled',
+                      'active_prepared_backend_ksm_clear',
+                      'active_prepared_backend_ksm_clear_config_drift',
+                      'active_prepared_backend_ksm_clear_seal_config_drift',
                       'active_prior_preparation_ksm',
                       'active_prior_preparation_wrong_uuid',
                       'active_prior_preparation_wrong_capacity',
@@ -1503,6 +1638,9 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                   'active_prepared_backend_ksm_wrong_capacity',
                   'active_prepared_backend_ksm_wrong_boot',
                   'active_prepared_backend_ksm_enabled',
+                  'active_prepared_backend_ksm_clear',
+                  'active_prepared_backend_ksm_clear_config_drift',
+                  'active_prepared_backend_ksm_clear_seal_config_drift',
                   'active_prior_preparation_ksm',
                   'active_prior_preparation_wrong_uuid',
                   'active_prior_preparation_wrong_capacity',
@@ -1549,6 +1687,9 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                         'active_prepared_backend_ksm_wrong_capacity',
                         'active_prepared_backend_ksm_wrong_boot',
                         'active_prepared_backend_ksm_enabled',
+                        'active_prepared_backend_ksm_clear',
+                        'active_prepared_backend_ksm_clear_config_drift',
+                        'active_prepared_backend_ksm_clear_seal_config_drift',
                         'active_prior_preparation_ksm',
                         'active_prior_preparation_wrong_uuid',
                         'active_prior_preparation_wrong_capacity',
@@ -1574,6 +1715,10 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
             active_ksm_policy = ({} if tamper.startswith('active_prior_preparation_') else {
                 'enabled': True, 'pagesToScan': 200,
                 'sleepMillis': 40, 'zeroPagesEnabled': False})
+            if tamper in ('active_prepared_backend_ksm_clear',
+                          'active_prepared_backend_ksm_clear_config_drift',
+                          'active_prepared_backend_ksm_clear_seal_config_drift'):
+                active_ksm_policy = {'zeroPagesEnabled': False}
             active_writeback_enabled = False
             ksm_command = {
                 'hostUuid': HOST, 'scope': 'Host', 'action': 'apply',
@@ -1646,13 +1791,214 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
             registration_result = plugin.apply(registration)
             assert registration_result['success'] is True, registration_result
             assert plugin._get_active_control() == registration['operationUuid']
-        if tamper == 'active_prepared_backend_ksm':
+        if tamper in ('active_prepared_backend_ksm',
+                      'active_prepared_backend_ksm_clear',
+                      'active_prepared_backend_ksm_clear_config_drift'):
             # Exercise the real no-pool admission and inventory decorator with
             # the prepared-backend KSM active record, not only the proof helper.
             monkeypatch.setattr(plugin, '_maintenance_service_state', lambda: 'active')
             inventory = plugin._fresh_backend_maintenance_inventory(HOST)
             assert inventory['poolGeneration'] == 'none', inventory
             assert plugin._first_use_no_pool_verified() is True
+            if tamper in ('active_prepared_backend_ksm_clear',
+                          'active_prepared_backend_ksm_clear_config_drift'):
+                clear_command = {
+                    'hostUuid': HOST, 'scope': 'Host', 'action': 'apply',
+                    'operationUuid': '7' * 32, 'desiredRevision': 5,
+                    'policyMode': 'effective',
+                    'policy': {'schemaVersion': 1, 'ksm': {}, 'writeback': {
+                        'enabled': False,
+                        'backendResourceUuid': resource_uuid,
+                        'backendCapacityBytes': request['backend_capacity_bytes'],
+                    }},
+                }
+
+                # Exercise the real clear path and its managed-config identity
+                # check. Stub only native/service leaves so drift is rejected
+                # before any KSM write or restart.
+                monkeypatch.delattr(plugin, '_apply_ksm_policy')
+                expected_config = {
+                    'CONFIG_REVISION': 4, 'KSM_NPAGES_MIN': 200,
+                    'KSM_NPAGES_MAX': 200, 'KSM_NPAGES_BOOST': 0,
+                    'KSM_NPAGES_DECAY': 0, 'KSM_SLEEP_MSEC': 40,
+                    'KSM_THRES_COEF': 100, 'KSM_THRES_CONST': 2048,
+                }
+                config_identity = dict(expected_config)
+                if tamper in ('active_prepared_backend_ksm_clear_config_drift',
+                              'active_prepared_backend_ksm_clear_seal_config_drift'):
+                    config_identity['CONFIG_REVISION'] = 3
+                monkeypatch.setattr(plugin, '_managed_ksm_config_identity',
+                                    lambda: dict(config_identity))
+                monkeypatch.setattr(plugin, '_native_sleep_for_policy', lambda value: value)
+                monkeypatch.setattr(plugin, '_verify_native_ksm_profile', lambda: None)
+                monkeypatch.setattr(plugin, '_read_ksm_zero_pages', lambda: '0')
+                monkeypatch.setattr(plugin, '_native_service_state',
+                                    lambda unit, state: 'active' if state == 'active' else 'enabled')
+                native_writes = []
+                published = []
+                monkeypatch.setattr(plugin, '_publish_ksm_config',
+                                    lambda content: (published.append(content), native_writes.append('config')))
+                monkeypatch.setattr(plugin, '_write_ksm_sysfs',
+                                    lambda name, value: native_writes.append((name, value)))
+                monkeypatch.setattr(memory_optimization_module.subprocess, 'check_call',
+                                    lambda argv: native_writes.append(tuple(argv)))
+                updated_ack = dict(ksm_readback, configRevision='5')
+                monkeypatch.setattr(plugin, '_read_ksm_ack',
+                                    lambda: updated_ack if published else dict(ksm_readback))
+
+                if tamper == 'active_prepared_backend_ksm_clear_config_drift':
+                    # Check the ordinary clear before introducing the separate
+                    # rejected-operation journal used by the seal scenario.
+                    drift_result = plugin.apply(clear_command)
+                    assert drift_result['success'] is False, drift_result
+                    assert drift_result['status'] == 'Unknown', drift_result
+                    assert drift_result['reasonCode'] == 'KSM_CLEAR_CONFIG_ACK_MISMATCH'
+                    assert native_writes == [] and not published
+                    assert plugin._get_active_control() == ksm_command['operationUuid']
+                    return
+
+                # Seal the real pre-write KSM-clear rejection while the
+                # active control still has zeroPagesEnabled=false and the
+                # prepared B binding. This matches the reported active state; the
+                # second seal below additionally covers the later empty KSM
+                # control after the ordinary clear succeeds.
+                active_rejected = {
+                    'hostUuid': HOST, 'scope': 'Host', 'resourceUuid': HOST,
+                    'action': 'apply', 'operationUuid': '9' * 32,
+                    'desiredRevision': 5, 'policyMode': 'effective',
+                    'policy': {'schemaVersion': 1, 'ksm': {}, 'writeback': {
+                        'enabled': False,
+                        'backendResourceUuid': resource_uuid,
+                        'backendCapacityBytes': request['backend_capacity_bytes'],
+                    }},
+                }
+                active_submitted_at = int(time.time() * 1000)
+                assert plugin._record_operation(active_rejected, 'UNKNOWN', {
+                    'reason': 'KSM_CLEAR_PRIOR_JOURNAL_INVALID'})
+                active_before = plugin._load_operation(active_rejected)
+                assert ksm_command['policy']['ksm'] == {'zeroPagesEnabled': False}
+                assert plugin._get_active_control() == ksm_command['operationUuid']
+                state_reads[0] = 0
+                active_reconcile = {
+                    'hostUuid': HOST, 'scope': 'Host', 'resourceUuid': HOST,
+                    'action': 'reconcile', 'operationUuid': active_rejected['operationUuid'],
+                    'desiredRevision': active_rejected['desiredRevision'], 'policy': {},
+                    'expectedControlOperationUuid': active_rejected['operationUuid'],
+                    'reconcileAction': 'seal-if-never-issued',
+                    'taskSubmittedAt': active_submitted_at, 'bootId': boot_id,
+                }
+                active_result = json.loads(plugin.reconcile({
+                    'body': json.dumps(active_reconcile)}))
+                active_after = plugin._load_operation(active_rejected)
+                if tamper == 'active_prepared_backend_ksm_clear_seal_config_drift':
+                    # A stale managed block cannot prove ownership for sealing
+                    # the rejection either; preserve the original Unknown.
+                    assert active_result['status'] == 'Unknown', active_result
+                    assert active_result['reasonCode'] == 'FIRST_ZRAM_LOCAL_CONTROL_FENCED'
+                    assert active_after == active_before
+                    assert native_writes == [] and not published
+                    assert service_policy_calls == []
+                    return
+                assert active_result['status'] == 'Failed', active_result
+                assert active_result['reasonCode'] == 'FIRST_ZRAM_ADMISSION_NOT_ISSUED'
+                assert active_after['stage'] == 'NOT_ISSUED'
+                assert active_after['policy'] == active_before['policy']
+                assert active_after['applyEvidence'] == active_before['applyEvidence']
+                assert plugin._get_active_control() == ksm_command['operationUuid']
+                assert native_writes == [] and not published
+                assert service_policy_calls == []
+                active_read_count = state_reads[0]
+                assert json.loads(plugin.reconcile({
+                    'body': json.dumps(active_reconcile)})) == active_result
+                assert state_reads[0] == active_read_count
+                assert plugin.apply(active_rejected) == active_result
+                assert plugin._load_operation(active_rejected) == active_after
+                assert plugin._get_active_control() == ksm_command['operationUuid']
+                assert native_writes == [] and not published
+
+                clear_result = plugin.apply(clear_command)
+                assert clear_result['success'] is True, clear_result
+                assert clear_result['status'] == 'Succeeded', clear_result
+                assert plugin._load_operation(clear_command)['stage'] == 'APPLIED'
+                assert plugin._get_active_control() == clear_command['operationUuid']
+                assert published and native_writes
+                assert service_policy_calls == []
+                # The successful clear advanced the actual managed block and
+                # its KSM receipt together; keep the subsequent readonly seal
+                # observation consistent with that post-write state.
+                config_identity['CONFIG_REVISION'] = 5
+                with open(config_path, 'r') as stream:
+                    assert json.load(stream)['backend'] == prepared_config['backend']
+                # A later ordinary clear can be rejected before any KSM write
+                # even though the active control retains the prepared B
+                # binding. Reconcile that exact journal through the public
+                # handler and require the complete existing preparation/ACK
+                # proof; this is not a generic unknown-operation shortcut.
+                rejected_command = {
+                    'hostUuid': HOST, 'scope': 'Host', 'resourceUuid': HOST,
+                    'action': 'apply', 'operationUuid': '8' * 32,
+                    'desiredRevision': 15, 'policyMode': 'effective',
+                    'policy': {'schemaVersion': 1, 'ksm': {}, 'writeback': {
+                        'enabled': False,
+                        'backendResourceUuid': resource_uuid,
+                        'backendCapacityBytes': request['backend_capacity_bytes'],
+                    }},
+                }
+                rejected_submitted_at = int(time.time() * 1000)
+                assert plugin._record_operation(rejected_command, 'UNKNOWN', {
+                    'reason': 'KSM_CLEAR_PRIOR_JOURNAL_INVALID'})
+                rejected_before = plugin._load_operation(rejected_command)
+                state_reads[0] = 0
+                reconcile_reads = []
+
+                def reconcile_service(action, payload):
+                    reconcile_reads.append(action)
+                    if action == 'state':
+                        return native_state('observe', False)
+                    if action == 'host-cpu-state':
+                        return {'efficiency_enabled': False, 'revision': 1}
+                    raise AssertionError('prewrite reconciliation issued %s' % action)
+
+                plugin.service_call = reconcile_service
+                rejected_reconcile = {
+                    'hostUuid': HOST, 'scope': rejected_command['scope'],
+                    'resourceUuid': rejected_command['resourceUuid'],
+                    'action': 'reconcile', 'operationUuid': rejected_command['operationUuid'],
+                    'desiredRevision': rejected_command['desiredRevision'], 'policy': {},
+                    'expectedControlOperationUuid': rejected_command['operationUuid'],
+                    'reconcileAction': 'seal-if-never-issued',
+                    'taskSubmittedAt': rejected_submitted_at, 'bootId': boot_id,
+                }
+                rejected_result = json.loads(plugin.reconcile({
+                    'body': json.dumps(rejected_reconcile)}))
+                rejected_after = plugin._load_operation(rejected_command)
+                assert rejected_result['status'] == 'Failed', rejected_result
+                assert rejected_result['reasonCode'] == 'FIRST_ZRAM_ADMISSION_NOT_ISSUED'
+                assert rejected_result['state']['policyWritesIssued'] is False
+                assert rejected_after['stage'] == 'NOT_ISSUED'
+                assert rejected_after['requestHash'] == rejected_before['requestHash']
+                assert rejected_after['policy'] == rejected_before['policy']
+                assert rejected_after['applyEvidence'] == rejected_before['applyEvidence']
+                assert plugin._get_active_control() == clear_command['operationUuid']
+                with open(config_path, 'r') as stream:
+                    assert json.load(stream)['backend'] == prepared_config['backend']
+                assert len(reconcile_reads) == 2
+                read_count = len(reconcile_reads)
+                assert json.loads(plugin.reconcile({
+                    'body': json.dumps(rejected_reconcile)})) == rejected_result
+                assert len(reconcile_reads) == read_count
+                write_count = len(native_writes)
+                publish_count = len(published)
+                assert service_policy_calls == []
+
+                replay_result = plugin.apply(rejected_command)
+                assert replay_result == rejected_result
+                assert plugin._load_operation(rejected_command) == rejected_after
+                assert plugin._get_active_control() == clear_command['operationUuid']
+                assert len(native_writes) == write_count
+                assert len(published) == publish_count
+                assert service_policy_calls == []
+                return
         if (isinstance(tamper, str) and
                 tamper.startswith('active_prior_preparation_')):
             expected = tamper == 'active_prior_preparation_ksm'
