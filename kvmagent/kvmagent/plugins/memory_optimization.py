@@ -2439,7 +2439,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 revision >= 0)
 
     def _first_use_admission_rejected(self, record):
-        """Recognize the one legacy rejection before first-use intent/writes.
+        """Recognize exact durable pre-write rejections eligible for sealing.
 
         The durable applyEvidence is retained by later queries. A generic
         Unknown/error string, or any authorization/maintenance intent, is
@@ -2448,19 +2448,52 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if not isinstance(record, dict):
             return False
         policy = record.get('policy')
-        if not isinstance(policy, dict) or not isinstance(policy.get('zram'), dict):
+        if not isinstance(policy, dict):
             return False
-        return (record.get('stage') in ('UNKNOWN', 'NOT_ISSUED') and
-                self._first_zram_enable_requested(record) and
-                self._valid_identifier(record.get('hostUuid')) and
-                record.get('hostUuid') == self._load_host_uuid() and
-                isinstance(record.get('bootId'), STRING_TYPES) and bool(record['bootId']) and
-                self._valid_identifier(record.get('operationUuid')) and
-                isinstance(record.get('requestHash'), STRING_TYPES) and
-                re.match(r'^[0-9a-f]{64}\Z', record['requestHash']) is not None and
-                record.get('applyEvidence') == {'reason': 'FIRST_ZRAM_LOCAL_CONTROL_FENCED'} and
-                not any(key in record for key in ('firstZramUse', 'activationIntent',
-                                                  'maintenanceProof', 'mixedClearEvidence')))
+        if (record.get('stage') not in ('UNKNOWN', 'NOT_ISSUED') or
+                record.get('action') != 'apply' or
+                not self._valid_identifier(record.get('hostUuid')) or
+                record.get('hostUuid') != self._load_host_uuid() or
+                not isinstance(record.get('bootId'), STRING_TYPES) or not record['bootId'] or
+                not self._valid_identifier(record.get('operationUuid')) or
+                not isinstance(record.get('requestHash'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{64}\Z', record['requestHash']) is None):
+            return False
+        evidence = record.get('applyEvidence')
+        if not isinstance(evidence, dict) or set(evidence) != set(('reason',)):
+            return False
+        reason = evidence.get('reason')
+        if reason == 'FIRST_ZRAM_LOCAL_CONTROL_FENCED':
+            # Preserve the existing legacy path unchanged.
+            return (isinstance(policy.get('zram'), dict) and
+                    self._first_zram_enable_requested(record) and
+                    not any(key in record for key in ('firstZramUse', 'activationIntent',
+                                                      'maintenanceProof', 'mixedClearEvidence')))
+        if reason == 'FIRST_ZRAM_OBSERVATION_NOT_FRESH_OR_SAFE':
+            return (record.get('policyHash') == self._policy_digest(policy) and
+                    isinstance(policy.get('zram'), dict) and
+                    self._first_zram_enable_requested(record) and
+                    not any(key in record for key in (
+                        'firstZramUse', 'activationIntent', 'maintenanceProof',
+                        'mixedClearEvidence', 'maintenanceProgress')))
+        if reason == 'KSM_CLEAR_PRIOR_JOURNAL_INVALID':
+            writeback = policy.get('writeback')
+            capacity = writeback.get('backendCapacityBytes') if isinstance(writeback, dict) else None
+            return (record.get('policyHash') == self._policy_digest(policy) and
+                    not any(key in record for key in (
+                        'firstZramUse', 'activationIntent', 'maintenanceProof',
+                        'mixedClearEvidence', 'maintenanceProgress')) and
+                    set(policy) == set(('schemaVersion', 'ksm', 'writeback')) and
+                    type(policy.get('schemaVersion')) in INTEGER_TYPES and
+                    policy.get('schemaVersion') == 1 and policy.get('ksm') == {} and
+                    isinstance(writeback, dict) and
+                    set(writeback) == set(('enabled', 'backendResourceUuid',
+                                           'backendCapacityBytes')) and
+                    writeback.get('enabled') is False and
+                    self._valid_identifier(writeback.get('backendResourceUuid')) and
+                    isinstance(capacity, INTEGER_TYPES) and not isinstance(capacity, bool) and
+                    capacity > 0)
+        return False
 
     def _first_use_admission_not_issued(self, record):
         if not self._first_use_admission_rejected(record) or record.get('stage') != 'NOT_ISSUED':
@@ -3435,15 +3468,109 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         try:
             lock = self._acquire_host_control_lock()
             latest = self._load_operation(command)
-            if (latest != prior or not self._first_use_admission_rejected(latest) or
+            evidence = latest.get('applyEvidence') if isinstance(latest, dict) else None
+            readback = latest.get('readback') if isinstance(latest, dict) else None
+            prewrite_reason = ('FIRST_ZRAM_OBSERVATION_NOT_FRESH_OR_SAFE',
+                               'KSM_CLEAR_PRIOR_JOURNAL_INVALID')
+            prewrite_candidate = (
+                isinstance(latest, dict) and latest.get('stage') in ('UNKNOWN', 'NOT_ISSUED') and
+                any(isinstance(section, dict) and section.get('reason') in prewrite_reason
+                    for section in (evidence, readback)))
+            if (latest != prior or
+                    (not self._first_use_admission_rejected(latest) and not prewrite_candidate) or
                     command.get('hostUuid') != self._load_host_uuid() or
                     command.get('operationUuid') != latest.get('operationUuid')):
                 raise RuntimeError('FIRST_ZRAM_RECONCILE_IDENTITY_UNKNOWN')
             if latest.get('bootId') != self._current_boot_id():
                 raise RuntimeError('FIRST_ZRAM_RECONCILE_BOOT_CHANGED')
-            if self._first_use_admission_not_issued(latest):
+            reason = (latest.get('applyEvidence') or {}).get('reason')
+            if reason == 'FIRST_ZRAM_LOCAL_CONTROL_FENCED' and \
+                    self._first_use_admission_not_issued(latest):
+                # Keep the pre-existing local-fence compatibility behavior.
                 return latest['readback']
-            if latest.get('stage') != 'UNKNOWN':
+            if reason in ('FIRST_ZRAM_OBSERVATION_NOT_FRESH_OR_SAFE',
+                          'KSM_CLEAR_PRIOR_JOURNAL_INVALID'):
+                # MemoryOptimizationManager sends a query command, not the
+                # original apply policy. Bind it to the immutable apply record
+                # and use that record's policy/hash for all eligibility checks.
+                submitted = command.get('taskSubmittedAt')
+                boot_epoch = self._boot_epoch_millis()
+                updated_at = latest.get('updatedAt')
+                if (command.get('action') != 'reconcile' or
+                        command.get('reconcileAction') != 'seal-if-never-issued' or
+                        command.get('policy') != {} or
+                        command.get('hostUuid') != latest.get('hostUuid') or
+                        command.get('scope') != latest.get('scope') or
+                        command.get('resourceUuid') != latest.get('resourceUuid') or
+                        command.get('desiredRevision') != latest.get('desiredRevision') or
+                        command.get('bootId') != self._current_boot_id() or
+                        latest.get('bootId') != self._current_boot_id() or
+                        isinstance(submitted, bool) or not isinstance(submitted, INTEGER_TYPES) or
+                        isinstance(boot_epoch, bool) or not isinstance(boot_epoch, INTEGER_TYPES) or
+                        submitted < boot_epoch or submitted > int(time.time() * 1000) or
+                        isinstance(updated_at, bool) or not isinstance(updated_at, INTEGER_TYPES) or
+                        submitted > updated_at or
+                        not self._first_use_admission_rejected(latest) or
+                        latest.get('policyHash') != self._policy_digest(latest.get('policy')) or
+                        (latest.get('stage') == 'UNKNOWN' and
+                         (not isinstance(latest.get('readback'), dict) or
+                          latest.get('readback') != latest.get('applyEvidence'))) or
+                        any(key in latest for key in ('firstZramUse', 'activationIntent',
+                                                      'maintenanceProof', 'mixedClearEvidence',
+                                                      'maintenanceProgress'))):
+                    raise RuntimeError('FIRST_ZRAM_RECONCILE_IDENTITY_UNKNOWN')
+                if self._first_use_admission_not_issued(latest):
+                    return latest['readback']
+                if latest.get('stage') != 'UNKNOWN':
+                    raise RuntimeError('FIRST_ZRAM_RECONCILE_IDENTITY_UNKNOWN')
+                if reason == 'FIRST_ZRAM_OBSERVATION_NOT_FRESH_OR_SAFE':
+                    if (not self._first_zram_enable_requested(latest) or
+                            os.path.islink(self.zram_config_path) or
+                            os.path.islink(self.zram_config_template_path) or
+                            not os.path.isfile(self.zram_config_path) or
+                            not os.path.isfile(self.zram_config_template_path)):
+                        raise RuntimeError('FIRST_ZRAM_RECONCILE_IDENTITY_UNKNOWN')
+                    with open(self.zram_config_path, 'rb') as stream:
+                        current = stream.read()
+                    with open(self.zram_config_template_path, 'rb') as stream:
+                        template = stream.read()
+                    if current != template:
+                        raise RuntimeError('FIRST_ZRAM_CONFIG_READBACK_UNKNOWN')
+                    self._first_use_runtime_identity(template, current)
+                else:
+                    state_dir = self._read_maintenance_config()[1]
+                    current_path = os.path.join(state_dir, 'backend-maintenance', 'current.json')
+                    if (not os.path.isfile(current_path) or os.path.islink(current_path) or
+                        latest.get('policyMode') != 'effective'):
+                        raise RuntimeError('FIRST_ZRAM_BACKEND_PREPARATION_UNPROVEN')
+                native = self._service_request('state', {})
+                cpu_state = self._service_request('host-cpu-state', {})
+                if (not isinstance(native, dict) or not isinstance(cpu_state, dict) or
+                        cpu_state.get('efficiency_enabled') is not False):
+                    raise RuntimeError('FIRST_ZRAM_RECONCILE_READBACK_UNKNOWN')
+                native = dict(native)
+                native['host_cpu'] = cpu_state
+                if not self._first_use_state_safe(
+                        native, allow_host_pressure_unavailable=True):
+                    raise RuntimeError('FIRST_ZRAM_RECONCILE_READBACK_UNKNOWN')
+                if not self._first_use_no_pool_verified(
+                        {'operationUuid': latest['operationUuid']}, rejected_record=latest):
+                    raise RuntimeError('FIRST_ZRAM_LOCAL_CONTROL_FENCED')
+                result = {'success': False, 'status': 'Failed',
+                          'reasonCode': 'FIRST_ZRAM_ADMISSION_NOT_ISSUED',
+                          'operationUuid': latest['operationUuid'],
+                          'state': {'phase': 'NOT_ISSUED', 'bootId': latest['bootId'],
+                                    'requestHash': latest['requestHash'],
+                                    'policyWritesIssued': False}}
+                updated = dict(latest, stage='NOT_ISSUED', readback=result,
+                               updatedAt=int(time.time() * 1000))
+                if not self._write_operation_record(updated):
+                    raise RuntimeError('FIRST_ZRAM_RECONCILE_JOURNAL_UNAVAILABLE')
+                return result
+            if prewrite_candidate:
+                # A reason mismatch or malformed immutable policy is still an
+                # unresolved operation. Do not let it fall through to the
+                # generic reconciler, which may update its readback.
                 raise RuntimeError('FIRST_ZRAM_RECONCILE_IDENTITY_UNKNOWN')
             if (os.path.islink(self.zram_config_path) or os.path.islink(self.zram_config_template_path) or
                     not os.path.isfile(self.zram_config_path) or
@@ -3489,7 +3616,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._release_operation(lock)
 
     def _first_use_state_safe(self, native, require_reclaim=False, observation_time=None,
-                              allow_failed_backend_maintenance=False):
+                              allow_failed_backend_maintenance=False,
+                              allow_host_pressure_unavailable=False):
         if not isinstance(native, dict):
             return False
         lifecycle = native.get('lifecycle')
@@ -3529,12 +3657,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 not maintenance_ok or
                 pending or
                 not self._is_uninitialized_pool_snapshot(pool) or
-                not isinstance(host, dict) or host.get('qualified') is not True or
-                host.get('safe') is not True or
+                not isinstance(host, dict) or
+                (not allow_host_pressure_unavailable and
+                 (host.get('qualified') is not True or host.get('safe') is not True)) or
                 not self._native_observation_is_fresh(
                     native.get('observed_at'), 3, now=observation_time) or
-                not self._native_observation_is_fresh(
-                    host.get('observed_at'), 3, now=observation_time)):
+                (not allow_host_pressure_unavailable and
+                 not self._native_observation_is_fresh(
+                     host.get('observed_at'), 3, now=observation_time))):
             return False
         if not isinstance(cpu, dict) or cpu.get('efficiency_enabled') is not False:
             return False
@@ -5533,7 +5663,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     def _first_use_no_pool_verified(self, command=None, failed_backend_record=None,
                                     failed_backend_receipt=None,
-                                    backend_preparation_out=None):
+                                    backend_preparation_out=None,
+                                    rejected_record=None):
         """Prove an explicitly uninitialized first-use host; absence alone is not proof."""
         if command is not None:
             if not isinstance(command, dict):
@@ -5600,6 +5731,30 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         current_config, template_config, stopped_command=command)
                     if active_control_requires_backend_proof and backend_preparation is None:
                         return False
+                    rejected_reason = ((rejected_record.get('applyEvidence') or {}).get('reason')
+                                       if isinstance(rejected_record, dict) else None)
+                    if rejected_reason == 'KSM_CLEAR_PRIOR_JOURNAL_INVALID':
+                        if not isinstance(backend_preparation, dict):
+                            return False
+                        preparation_record = backend_preparation.get('record')
+                        preparation = (preparation_record.get('backendPreparation')
+                                       if isinstance(preparation_record, dict) else None)
+                        if not isinstance(preparation, dict):
+                            return False
+                        prepared_backend = {
+                            'operationUuid': backend_preparation.get('operationUuid'),
+                            'record': preparation_record,
+                            'bootId': self._current_boot_id(),
+                            'resourceUuid': backend_preparation.get('resourceUuid'),
+                            'capacityBytes': preparation.get('backendCapacityBytes'),
+                        }
+                        try:
+                            current_ksm = self._managed_ksm_clear_ack(
+                                prepared_backend=prepared_backend)
+                        except (IOError, OSError, RuntimeError, ValueError, TypeError):
+                            return False
+                        if current_ksm is None:
+                            return False
             else:
                 if active_control_requires_backend_proof:
                     return False
@@ -5663,7 +5818,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 if self._has_unresolved_operation_journal():
                     return False
             elif not self._first_use_local_history_clear(
-                    command, backend_preparation=backend_preparation,
+                    command, rejected_record=rejected_record,
+                    backend_preparation=backend_preparation,
                     failed_backend_record=failed_backend_record):
                 # The existing history validator excludes only this exact
                 # PREPARING operation (UUID + request hash); all other
@@ -5701,6 +5857,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             # must not be interpreted as an empty first-use state.
             valid = (self._first_use_local_history_clear(
                         command,
+                        rejected_record=rejected_record,
                         backend_preparation=backend_preparation,
                         failed_backend_record=failed_backend_record)
                     if command is not None else
@@ -5710,6 +5867,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     isinstance(backend_preparation, dict) and
                     isinstance(backend_preparation.get('stopProof'), dict)):
                 backend_preparation_out['proof'] = backend_preparation['stopProof']
+                backend_preparation_out['backendPreparation'] = {
+                    'operationUuid': backend_preparation.get('operationUuid'),
+                    'record': backend_preparation.get('record'),
+                }
             return valid
         except (IOError, OSError, ValueError, TypeError):
             return False
@@ -7949,7 +8110,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                 'state': {'phase': 'UNKNOWN'},
                                 'reasonCode': 'OPERATION_NOT_FOUND',
                                 'operationUuid': operation_uuid})
-        if self._first_use_admission_rejected(prior):
+        evidence = prior.get('applyEvidence') if isinstance(prior, dict) else None
+        readback = prior.get('readback') if isinstance(prior, dict) else None
+        prewrite_reasons = ('FIRST_ZRAM_OBSERVATION_NOT_FRESH_OR_SAFE',
+                            'KSM_CLEAR_PRIOR_JOURNAL_INVALID')
+        prewrite_candidate = (
+            isinstance(prior, dict) and prior.get('stage') in ('UNKNOWN', 'NOT_ISSUED') and
+            any(isinstance(section, dict) and section.get('reason') in prewrite_reasons
+                for section in (evidence, readback)))
+        if self._first_use_admission_rejected(prior) or prewrite_candidate:
             return self._reply(self._reconcile_first_zram_admission(command, prior))
         if (isinstance(prior.get('firstZramUse'), dict) and
                 prior.get('stage') in (self.FIRST_USE_AUTHORIZING_STAGE, 'UNKNOWN')):
@@ -8874,6 +9043,51 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                           if isinstance(prior_state, dict) and
                           isinstance(prior_state.get('sections'), dict)
                           else prior_state)
+        prior_writeback = (prior_policy.get('writeback')
+                           if isinstance(prior_policy, dict) else None)
+        target_writeback = policy.get('writeback')
+        if (isinstance(prior, dict) and isinstance(prior_state, dict) and
+                prior_state.get('ksmOnly') is True and
+                isinstance(prior_policy, dict) and
+                isinstance(prior_writeback, dict) and
+                set(prior_writeback) == set(('enabled', 'backendResourceUuid',
+                                             'backendCapacityBytes')) and
+                prior_writeback.get('enabled') is False and
+                isinstance(target_writeback, dict) and
+                target_writeback == prior_writeback and
+                self._policy_mode(command) == 'effective' and
+                policy.get('ksm') in (None, {})):
+            # A completed cold preparation may be retained as disabled
+            # backend metadata in the active KSM-only record. Keep the
+            # generic ownership predicate strict; use the existing complete
+            # no-pool/preparation proof to authorize only this exact clear.
+            proof = {}
+            if not self._first_use_no_pool_verified(
+                    command, backend_preparation_out=proof):
+                raise RuntimeError('KSM_CLEAR_PRIOR_JOURNAL_INVALID')
+            preparation = proof.get('backendPreparation')
+            if (not isinstance(preparation, dict) or
+                    not isinstance(preparation.get('record'), dict) or
+                    not isinstance(preparation.get('operationUuid'), STRING_TYPES)):
+                raise RuntimeError('KSM_CLEAR_PRIOR_JOURNAL_INVALID')
+            prior_readback = prior.get('readback')
+            prior_ack = (prior_readback.get('ksmReadback')
+                         if isinstance(prior_readback, dict) else None)
+            if self._ksm_proof_policy(
+                    prior_ack, prior.get('desiredRevision')) is None:
+                raise RuntimeError('KSM_CLEAR_PRIOR_JOURNAL_INVALID')
+            current_ack = self._managed_ksm_clear_ack(prepared_backend={
+                'operationUuid': preparation['operationUuid'],
+                'record': preparation['record'],
+                'bootId': self._current_boot_id(),
+                'resourceUuid': prior_writeback.get('backendResourceUuid'),
+                'capacityBytes': prior_writeback.get('backendCapacityBytes'),
+            })
+            if current_ack is None or current_ack != prior_ack:
+                raise RuntimeError('KSM_CLEAR_PRIOR_JOURNAL_INVALID')
+            if context_holder is not None:
+                context_holder['preparedKsmClear'] = {'priorKsmAck': current_ack}
+            return None
         if (not isinstance(prior_policy, dict) or not isinstance(prior_state, dict) or
                 not isinstance(prior_sections, dict) or
                 not any(key in prior_sections for key in ('capacity', 'cpu', 'tuning')) or
@@ -9381,7 +9595,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if delta_ksm_untouched:
                 ksm_readback = None
             elif mixed_context is None:
-                ksm_readback = self._apply_ksm_policy(command)
+                prepared_clear = mixed_context_holder.get('preparedKsmClear')
+                ksm_readback = (self._apply_ksm_policy(command, clear_context=prepared_clear)
+                                if prepared_clear is not None else
+                                self._apply_ksm_policy(command))
             else:
                 ksm_readback = self._apply_ksm_policy(command, clear_context=mixed_context)
             if mixed_context is not None:
@@ -9993,7 +10210,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 raise RuntimeError(reason)
             time.sleep(0.2)
 
-    def _managed_ksm_clear_ack(self, require_ksm_only=True):
+    def _managed_ksm_clear_ack(self, require_ksm_only=True, prepared_backend=None):
         """Return the current full ack only when existing managed ownership is proven."""
         operation_uuid = self._get_active_control()
         if not operation_uuid:
@@ -10019,14 +10236,35 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
         revision = record.get('desiredRevision') if isinstance(record, dict) else None
         prior_proof = readback.get('ksmReadback') if isinstance(readback, dict) else None
+        prepared_backend_ksm = False
+        if prepared_backend is not None:
+            expected_fields = frozenset(('operationUuid', 'record', 'bootId',
+                                         'resourceUuid', 'capacityBytes'))
+            if (not isinstance(prepared_backend, dict) or
+                    set(prepared_backend) != expected_fields or
+                    not isinstance(prepared_backend.get('operationUuid'), STRING_TYPES) or
+                    not isinstance(prepared_backend.get('record'), dict) or
+                    prepared_backend.get('bootId') != current_boot_id or
+                    not isinstance(prepared_backend.get('resourceUuid'), STRING_TYPES) or
+                    isinstance(prepared_backend.get('capacityBytes'), bool) or
+                    not isinstance(prepared_backend.get('capacityBytes'), INTEGER_TYPES)):
+                raise RuntimeError('KSM_CLEAR_PRIOR_JOURNAL_INVALID')
+            preparation_uuid = prepared_backend['operationUuid']
+            prepared_backend_ksm = self._first_use_backend_bound_ksm_record(
+                record, {preparation_uuid: prepared_backend['record']},
+                expected_boot=current_boot_id, expected_operation=operation_uuid,
+                expected_resource_uuid=prepared_backend['resourceUuid'],
+                expected_capacity=prepared_backend['capacityBytes'])
         host_is_ksm_only = bool(
             isinstance(state, dict) and state.get('ksmOnly') is True and
             isinstance(prior_policy, dict) and
-            self._ksm_only_disabled_service_sections(prior_policy))
+            (self._ksm_only_disabled_service_sections(prior_policy) or
+             prepared_backend_ksm))
         contradictory_mixed_claim = bool(
             isinstance(state, dict) and state.get('ksmOnly') is True and
             isinstance(prior_policy, dict) and
-            not self._ksm_only_disabled_service_sections(prior_policy))
+            not (self._ksm_only_disabled_service_sections(prior_policy) or
+                 prepared_backend_ksm))
         journal_proves_ownership = bool(
             isinstance(record, dict) and record.get('operationUuid') == operation_uuid and
             record.get('hostUuid') == self._load_host_uuid() and
