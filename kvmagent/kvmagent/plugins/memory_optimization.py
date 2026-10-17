@@ -11,6 +11,7 @@ import copy
 import hashlib
 import os
 import socket
+import signal
 import subprocess
 import stat
 import tempfile
@@ -42,6 +43,7 @@ from kvmagent.plugins.memory_optimization_ksm_native import (
     parse_memtotal_kb, render_config)
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
+from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import zram_driver
 
@@ -2169,6 +2171,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 (bool(policy['ksm']) or (allow_empty_noop and not policy['ksm'])) and
                 self._ksm_only_disabled_service_sections(policy)):
             return False
+        if not policy['ksm'] and (
+                record.get('policyMode') != 'effective' or
+                set(policy) - set(('ksm', 'schemaVersion')) or
+                ('schemaVersion' in policy and
+                 (type(policy['schemaVersion']) not in INTEGER_TYPES or policy['schemaVersion'] != 1)) or
+                readback.get('operationUuid') != record.get('operationUuid') or
+                not isinstance(record.get('bootId'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z',
+                         record['bootId']) is None):
+            return False
         revision = record.get('desiredRevision')
         if isinstance(revision, bool) or not isinstance(revision, INTEGER_TYPES) or revision < 1:
             return False
@@ -2195,6 +2207,190 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                   actual != expected):
                 return False
         return True
+
+    def _first_use_backend_bound_ksm_record(self, record, preparations,
+                                           expected_boot=None,
+                                           expected_operation=None,
+                                           expected_resource_uuid=None,
+                                           expected_capacity=None):
+        """Accept KSM-only history retaining the exact disabled prepared backend."""
+        if not isinstance(record, dict) or not isinstance(preparations, dict):
+            return False
+        policy = record.get('policy')
+        writeback = policy.get('writeback') if isinstance(policy, dict) else None
+        capacity = (writeback.get('backendCapacityBytes')
+                    if isinstance(writeback, dict) else None)
+        resource_uuid = (writeback.get('backendResourceUuid')
+                         if isinstance(writeback, dict) else None)
+        readback = record.get('readback')
+        if (not isinstance(policy, dict) or set(policy) !=
+                set(('ksm', 'schemaVersion', 'writeback')) or
+                type(policy.get('schemaVersion')) not in INTEGER_TYPES or
+                policy.get('schemaVersion') != 1 or
+                not isinstance(writeback, dict) or
+                set(writeback) != set(('enabled', 'backendResourceUuid',
+                                       'backendCapacityBytes')) or
+                writeback.get('enabled') is not False or
+                not isinstance(resource_uuid, STRING_TYPES) or
+                re.match(r'^[0-9a-f]{32}$', resource_uuid) is None or
+                isinstance(capacity, bool) or not isinstance(capacity, INTEGER_TYPES) or
+                capacity <= 0 or
+                record.get('policyHash') != self._policy_digest(policy) or
+                not isinstance(readback, dict) or
+                readback.get('operationUuid') !=
+                record.get('operationUuid') or
+                (expected_operation is not None and
+                 record.get('operationUuid') != expected_operation) or
+                (expected_boot is not None and record.get('bootId') != expected_boot) or
+                (expected_resource_uuid is not None and
+                 resource_uuid != expected_resource_uuid) or
+                (expected_capacity is not None and capacity != expected_capacity)):
+            return False
+        matched = False
+        for preparation_uuid, preparation_record in preparations.items():
+            if (not isinstance(preparation_record, dict) or
+                    preparation_record.get('operationUuid') != preparation_uuid or
+                    preparation_record.get('hostUuid') != self._load_host_uuid()):
+                continue
+            preparation_boot = preparation_record.get('bootId')
+            evidence = self._completed_backend_preparation_evidence(
+                preparation_uuid, preparation_record, self._load_host_uuid(),
+                preparation_boot)
+            if evidence is None:
+                continue
+            receipt = evidence.get('receipt')
+            request = evidence.get('request')
+            if (not isinstance(receipt, dict) or not isinstance(request, dict) or
+                    receipt.get('stage') != 'APPLIED' or
+                    receipt.get('backend_resource_uuid') != resource_uuid or
+                    request.get('backend_capacity_bytes') != capacity or
+                    preparation_boot != record.get('bootId') or
+                    receipt.get('host_boot_id') != preparation_boot):
+                continue
+            matched = True
+            break
+        if not matched:
+            return False
+        # Reuse the strict KSM proof validator after removing only the exact
+        # disabled backend metadata proven above. The original policy hash was
+        # checked before this view is constructed.
+        ksm_record = dict(record)
+        ksm_policy = dict(policy)
+        ksm_policy.pop('writeback')
+        ksm_record['policy'] = ksm_policy
+        return self._first_use_terminal_ksm_record(ksm_record, allow_empty_noop=True)
+
+    def _first_use_terminal_service_disable(self, record, cpu_state=None, tuning_state=None):
+        """Accept a completed service disable as history, never as pool proof.
+
+        Older Agents sent explicit disabled targets through CPU/tuning even
+        before a pool existed. Their receipts are not KSM-only acknowledgments;
+        current control ownership and first-use native safety stay separate.
+        """
+        if not isinstance(record, dict):
+            return False
+        policy, readback = record.get('policy'), record.get('readback')
+        revision, operation_uuid = record.get('desiredRevision'), record.get('operationUuid')
+        if (record.get('stage') != 'APPLIED' or record.get('action') != 'apply' or
+                record.get('scope') != 'Host' or record.get('hostUuid') != self._load_host_uuid() or
+                record.get('resourceUuid') not in (None, record.get('hostUuid')) or
+                record.get('policyMode', 'effective') not in ('delta', 'effective') or
+                not self._valid_identifier(operation_uuid) or
+                not isinstance(record.get('bootId'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z',
+                         record['bootId']) is None or
+                not isinstance(record.get('requestHash'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{64}\Z', record['requestHash']) is None or
+                isinstance(revision, bool) or not isinstance(revision, INTEGER_TYPES) or revision < 1 or
+                not isinstance(policy, dict) or
+                set(policy) - set(('ksm', 'zram', 'writeback', 'schemaVersion')) or
+                not self._ksm_only_disabled_service_sections(policy) or
+                not (policy.get('zram') or policy.get('writeback')) or
+                ('schemaVersion' in policy and
+                 (type(policy['schemaVersion']) not in INTEGER_TYPES or policy['schemaVersion'] != 1)) or
+                record.get('policyHash') != self._policy_digest(policy) or
+                set(record) - set(('action', 'applyEvidence', 'bootId', 'desiredRevision', 'hostUuid',
+                                   'operationUuid', 'policy', 'policyHash', 'policyMode', 'readback',
+                                   'requestHash', 'resourceUuid', 'scope', 'stage', 'updatedAt')) or
+                not isinstance(readback, dict) or readback.get('success') is not True or
+                set(readback) - set(('success', 'status', 'operationUuid', 'appliedRevision',
+                                     'sampleTime', 'ksmReadback', 'state')) or
+                readback.get('status') != 'Succeeded' or readback.get('operationUuid') != operation_uuid or
+                not self._strict_service_match(readback.get('appliedRevision'), revision) or
+                not self._strict_service_match(record.get('applyEvidence'), readback) or
+                not self._strict_service_match(readback, record.get('applyEvidence'))):
+            return False
+        ksm = policy.get('ksm', {})
+        if not isinstance(ksm, dict):
+            return False
+        if ksm:
+            proof = self._ksm_proof_policy(readback.get('ksmReadback'), revision)
+            if proof is None or set(ksm) - set(('enabled', 'zeroPagesEnabled', 'pagesToScan', 'sleepMillis')):
+                return False
+            for key, value in ksm.items():
+                if key == 'zeroPagesEnabled' and key not in proof and value is False:
+                    continue  # An explicit unsupported zero-page ABI is not a fabricated zero.
+                if key not in proof or not self._strict_service_match(value, proof[key]):
+                    return False
+        state = readback.get('state')
+        if (not isinstance(state, dict) or state.get('phase') != 'READBACK' or
+                set(state) != {'phase', 'sectionComplete', 'sequence', 'sections'} or
+                not self._strict_service_match(state.get('sectionComplete'), {'cpu': True, 'tuning': True}) or
+                set(state.get('sectionComplete', {})) != {'cpu', 'tuning'}):
+            return False
+        sections = state.get('sections')
+        if not isinstance(sections, dict):
+            return False
+        try:
+            before = self._strict_service_success('host-cpu-state', sections.get('cpuBefore'))
+            cpu = self._strict_service_success('host-cpu', sections.get('cpu'))
+            cpu_read = self._strict_service_success('host-cpu-state', sections.get('cpuReadback'))
+            tuning = self._strict_service_success('apply', sections.get('tuning'))
+            tuning_read = self._strict_service_success('tuning-state', sections.get('tuningReadback'))
+            target = {'efficiency_enabled': False,
+                      'idle_cpu_threshold_percent': before['idle_cpu_threshold_percent'],
+                      'idle_duration_seconds': before['idle_duration_seconds']}
+            expected_revision = before['revision']
+            expected_sections = {'cpuBefore', 'cpu', 'cpuReadback', 'tuning', 'tuningReadback'}
+            sequence = ['tuning_apply_returned', 'tuning_target_verified', 'cpu_target_verified']
+            if before['efficiency_enabled']:
+                guard = self._strict_service_success('host-cpu', sections.get('cpuGuard'))
+                guard_read = self._strict_service_success('host-cpu-state', sections.get('cpuGuardReadback'))
+                if (guard.get('request_id') != self._derived_service_request_id(operation_uuid, 'cpu-hold') or
+                        guard['revision'] != before['revision'] + 1 or
+                        not self._strict_service_match(guard, target) or
+                        not self._strict_service_match(guard_read, dict(target, revision=guard['revision']))):
+                    return False
+                expected_revision = guard_read['revision']
+                expected_sections.update(('cpuGuard', 'cpuGuardReadback'))
+                sequence = ['cpu_guard_written', 'cpu_guard_verified_off'] + sequence
+            valid = bool(
+                set(sections) == expected_sections and state.get('sequence') == sequence and
+                cpu.get('request_id') == self._derived_service_request_id(operation_uuid, 'cpu') and
+                self._strict_service_match(cpu, dict(
+                    target, agent_expected_revision=expected_revision, agent_desired_enabled=False,
+                    agent_desired_threshold_percent=target['idle_cpu_threshold_percent'],
+                    agent_desired_duration_seconds=target['idle_duration_seconds'])) and
+                self._strict_service_match(cpu_read, dict(target, revision=cpu['revision'])) and
+                tuning.get('agent_request_id') == self._derived_service_request_id(operation_uuid, 'tuning') and
+                tuning['revision'] == tuning_read['revision'] and
+                self._strict_service_match(tuning['settings'], {'writeback': {'enabled': False}}) and
+                self._strict_service_match(tuning['settings'], tuning_read['settings']) and
+                self._strict_service_match(tuning_read['settings'], tuning['settings']))
+            if not valid:
+                return False
+            if cpu_state is None and tuning_state is None:
+                return True
+            if not isinstance(cpu_state, dict) or not isinstance(tuning_state, dict):
+                return False
+            expected_cpu = self._strict_service_success(
+                'host-cpu-state', sections.get('cpuReadback'))
+            expected_tuning = self._strict_service_success(
+                'tuning-state', sections.get('tuningReadback'))
+            return (self._strict_service_match(cpu_state, expected_cpu) and
+                    self._strict_service_match(tuning_state, expected_tuning))
+        except (RuntimeError, ValueError, TypeError):
+            return False
 
     def _first_use_terminal_vm_binding(self, record):
         """A completed VM participation write is not a prior Host writer."""
@@ -2279,8 +2475,727 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                          'requestHash': record['requestHash'],
                                          'policyWritesIssued': False})
 
-    def _first_use_local_history_clear(self, command, rejected_record=None):
-        """Permit proven KSM-only/VM history, but no other prior Host writer."""
+    def _completed_backend_preparation_evidence(self, operation_uuid, record,
+                                                host_uuid=None, boot_id=None):
+        """Validate immutable worker and finalized journal evidence for one prep."""
+        host_uuid = host_uuid or self._load_host_uuid()
+        boot_id = boot_id or self._current_boot_id()
+        if (not self._valid_identifier(operation_uuid) or not host_uuid or not boot_id or
+                not isinstance(record, dict) or
+                record.get('operationUuid') != operation_uuid or
+                record.get('action') != 'prepareWritebackBackend' or
+                record.get('scope') != 'Host' or record.get('stage') != 'APPLIED' or
+                record.get('hostUuid') != host_uuid or record.get('bootId') != boot_id or
+                not isinstance(record.get('requestHash'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{64}\Z', record.get('requestHash', '')) is None or
+                record.get('maintenanceIntentPath') != os.path.join(
+                    self.operation_dir, 'backend-maintenance',
+                    '%s.intent.json' % operation_uuid)):
+            return None
+        operation_path = self._operation_path(operation_uuid)
+        if (os.path.islink(operation_path) or not os.path.isfile(operation_path) or
+                os.path.realpath(operation_path) != operation_path):
+            return None
+        journal_state, saved_record = self._operation_file_state(operation_uuid)
+        if journal_state != 'present' or saved_record != record:
+            return None
+        receipt = record.get('readback')
+        if not isinstance(receipt, dict):
+            return None
+        receipt_state = receipt.get('state')
+        if not isinstance(receipt_state, dict):
+            return None
+        final_receipt = receipt_state.get('maintenance')
+        if (not isinstance(receipt, dict) or receipt.get('success') is not True or
+                receipt.get('status') != 'Succeeded' or receipt.get('operationUuid') != operation_uuid or
+                receipt_state.get('phase') != 'APPLIED' or
+                not isinstance(final_receipt, dict) or final_receipt.get('stage') != 'APPLIED'):
+            return None
+        try:
+            _, paths = self._maintenance_intent_paths(operation_uuid, create=False)
+            for path in paths.values():
+                if (os.path.islink(path) or not os.path.isfile(path) or
+                        os.path.realpath(path) != path):
+                    return None
+            with open(paths['intentPath'], 'r') as stream:
+                intent = json.load(stream)
+            with open(paths['requestPath'], 'r') as stream:
+                request = json.load(stream)
+            with open(paths['receiptPath'], 'r') as stream:
+                worker_receipt = json.load(stream)
+        except (IOError, OSError, ValueError, TypeError):
+            return None
+        expected_intent = os.path.join(
+            self.operation_dir, 'backend-maintenance', '%s.intent.json' % operation_uuid)
+        if (paths['intentPath'] != expected_intent or
+                not isinstance(intent, dict) or intent.get('schema') != 1 or
+                intent.get('operationUuid') != operation_uuid or
+                intent.get('hostUuid') != host_uuid or intent.get('bootId') != boot_id or
+                intent.get('requestHash') != record.get('requestHash') or
+                intent.get('controlOperationUuid') != record.get('expectedControlOperationUuid') or
+                intent.get('unit') != self._maintenance_systemd_unit(operation_uuid) or
+                intent.get('requestPath') != paths['requestPath'] or
+                intent.get('receiptPath') != paths['receiptPath'] or
+                intent.get('stderrPath') != paths['stderrPath'] or
+                intent.get('configPath') != self.drain_config or
+                intent.get('workerLaunchAttempted') is not True or
+                not isinstance(request, dict) or request.get('request_id') != operation_uuid or
+                request.get('expected_host_boot_id') != boot_id or
+                request.get('expected_pool_generation') != 'none' or
+                not isinstance(record.get('backendPreparation'), dict) or
+                record['backendPreparation'].get('candidateId') != request.get('candidate_id') or
+                record['backendPreparation'].get('expectedHostBootId') != boot_id or
+                record['backendPreparation'].get('expectedPoolGeneration') != 'none' or
+                record['backendPreparation'].get('backendCapacityBytes') !=
+                request.get('backend_capacity_bytes') or
+                not self._maintenance_receipt_matches_request(worker_receipt, request, boot_id) or
+                not self._maintenance_receipt_matches_request(final_receipt, request, boot_id)):
+            return None
+        common_fields = ('request_id', 'candidate_id', 'request_fingerprint',
+                         'host_boot_id', 'backend_resource_uuid', 'target_identity')
+        if (not isinstance(worker_receipt, dict) or worker_receipt.get('schema') != 1 or
+                worker_receipt.get('stage') != 'AWAITING_SERVICE_READBACK' or
+                worker_receipt.get('request_fingerprint') is None or
+                re.match(r'^[0-9a-f]{64}\Z', worker_receipt.get('request_fingerprint', '')) is None or
+                any(worker_receipt.get(key) != final_receipt.get(key) for key in common_fields) or
+                not isinstance(final_receipt.get('backend_resource_uuid'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{32}\Z', final_receipt.get('backend_resource_uuid', '')) is None):
+            return None
+        worker, exit_status = self._systemd_worker_exit(intent['unit'])
+        if worker != 'exited' or exit_status != 0:
+            return None
+        return {'operationUuid': operation_uuid, 'record': record, 'intent': intent,
+                'request': request, 'workerReceipt': worker_receipt,
+                'receipt': final_receipt, 'paths': paths}
+
+    def _first_use_active_service_disable_safe(self, record, command=None,
+                                              failed_backend_record=None):
+        """Bind an active disabled Host receipt to current or stop-bound state."""
+        if (not isinstance(record, dict) or record.get('bootId') != self._current_boot_id() or
+                not self._first_use_terminal_service_disable(record)):
+            return False
+        try:
+            service_state = self._maintenance_service_state()
+            if service_state == 'active':
+                cpu_state = self._service_request('host-cpu-state', {})
+                tuning_state = self._service_request('tuning-state', {})
+            elif service_state == 'inactive' and isinstance(command, dict):
+                current = self._load_operation(command)
+                if not isinstance(current, dict):
+                    return False
+                progress = current.get('maintenanceProgress')
+                if not isinstance(progress, dict):
+                    return False
+                stop = progress.get('controllerStop')
+                if not isinstance(stop, dict):
+                    return False
+                identity = stop.get('identity') if isinstance(stop, dict) else None
+                request = stop.get('request') if isinstance(stop, dict) else None
+                native_state = stop.get('nativeState') if isinstance(stop, dict) else None
+                operation_uuid = command.get('operationUuid')
+                stopped_continuation = bool(
+                    isinstance(stop, dict) and current.get('stage') == 'UNKNOWN' and
+                    stop.get('attempted') is True and stop.get('completed') is True and
+                    stop.get('continuationReady') is True and
+                    stop.get('workerLaunchAttempted') is False and
+                    isinstance(request, dict) and request.get('request_id') == operation_uuid and
+                    request.get('expected_host_boot_id') == self._current_boot_id() and
+                    request.get('expected_pool_generation') == 'none' and
+                    not os.path.lexists(current.get('maintenanceIntentPath', '')))
+                failed_worker = (
+                    isinstance(failed_backend_record, dict) and
+                    current == failed_backend_record and
+                    current.get('stage') in ('FAILED_REQUIRES_REVIEW', 'UNKNOWN') and
+                    stop.get('workerLaunchAttempted') is True)
+                if (current.get('action') != 'prepareWritebackBackend' or
+                        (current.get('stage') not in ('PREPARING', 'DRAINING') and
+                         not failed_worker and not stopped_continuation) or
+                        current.get('requestHash') != self._operation_hash(command) or
+                        not isinstance(stop, dict) or stop.get('attempted') is not True or
+                        stop.get('completed') is not True or
+                        (stop.get('workerLaunchAttempted') is not False and
+                         not failed_worker) or
+                        stop.get('hostUuid') != self._load_host_uuid() or
+                        stop.get('bootId') != self._current_boot_id() or
+                        stop.get('requestHash') != current.get('requestHash') or
+                        not isinstance(identity, dict) or
+                        identity.get('bootId') != self._current_boot_id() or
+                        identity.get('unit') != self.MANAGED_ZRAM_UNIT or
+                        identity.get('killMode') != 'process' or
+                        identity.get('restart') != 'no' or
+                        isinstance(identity.get('pid'), bool) or
+                        not isinstance(identity.get('pid'), INTEGER_TYPES) or identity['pid'] <= 0 or
+                        not isinstance(identity.get('processStartTime'), STRING_TYPES) or
+                        not identity['processStartTime'].isdigit() or
+                        any(re.match(r'^[0-9a-f]{64}$', str(identity.get(key, ''))) is None
+                            for key in ('unitSha256', 'binarySha256', 'templateSha256',
+                                        'sourceConfigSha256')) or
+                        not isinstance(request, dict) or request.get('request_id') != operation_uuid or
+                        request.get('expected_host_boot_id') != self._current_boot_id() or
+                        request.get('expected_pool_generation') != 'none' or
+                        not isinstance(native_state, dict) or
+                        not isinstance(stop.get('nativeStateCheckedAt'), (int, float)) or
+                        not self._first_use_state_safe(
+                            native_state,
+                            observation_time=stop.get('nativeStateCheckedAt')) or
+                        not isinstance(native_state.get('host_tuning_state'), dict)):
+                    return False
+                output = self._bounded_command_output([
+                    'systemctl', 'show', self.MANAGED_ZRAM_UNIT,
+                    '--property=Id', '--property=MainPID', '--property=ActiveState',
+                    '--property=KillMode', '--property=Restart'], 5)
+                if not isinstance(output, STRING_TYPES):
+                    output = output.decode('utf-8')
+                props = dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
+                if (props.get('Id') != self.MANAGED_ZRAM_UNIT or
+                        props.get('MainPID') not in ('0', '', None) or
+                        props.get('ActiveState') != 'inactive' or
+                        props.get('KillMode') != 'process' or props.get('Restart') != 'no' or
+                        self._controller_process_start_time(identity['pid']) is not None):
+                    return False
+                cpu_state = native_state.get('host_cpu')
+                tuning_state = native_state.get('host_tuning_state')
+            else:
+                return False
+            if not self._first_use_terminal_service_disable(record, cpu_state, tuning_state):
+                return False
+            policy = record.get('policy') or {}
+            if policy.get('ksm'):
+                readback = record.get('readback') or {}
+                if not self._ksm_proof_matches(
+                        readback.get('ksmReadback'), record.get('desiredRevision')):
+                    return False
+            return True
+        except (IOError, OSError, RuntimeError, ValueError, TypeError,
+                subprocess.CalledProcessError):
+            return False
+
+    def _first_use_backend_preparation_proof(self, current_config, template_config,
+                                            stopped_command=None):
+        """Validate the one allowed cold-backend delta and its completed proof."""
+        if (not isinstance(current_config, dict) or not isinstance(template_config, dict) or
+                'backend' in template_config or not isinstance(current_config.get('backend'), dict)):
+            raise FirstZramConfigRejected('FIRST_ZRAM_CONFIG_NOT_FACTORY')
+
+        try:
+            def reject_duplicate_keys(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError('DUPLICATE_RUNTIME_CONFIG_KEY')
+                    result[key] = value
+                return result
+
+            def reject_nonfinite(value):
+                raise ValueError('NONFINITE_RUNTIME_CONFIG_NUMBER')
+
+            def strict_json(raw):
+                return json.loads(raw.decode('utf-8'), object_pairs_hook=reject_duplicate_keys,
+                                  parse_constant=reject_nonfinite)
+
+            def canonical(value):
+                return json.dumps(value, sort_keys=True, separators=(',', ':'),
+                                  allow_nan=False)
+
+            def exact_int(value):
+                return isinstance(value, INTEGER_TYPES) and not isinstance(value, bool)
+
+            def exact_number(value):
+                if isinstance(value, bool):
+                    return False
+                if isinstance(value, INTEGER_TYPES):
+                    return True
+                return (isinstance(value, float) and
+                        not math.isnan(value) and not math.isinf(value))
+
+            def check_object(value, required, optional, types):
+                if (not isinstance(value, dict) or not set(value) <= set(required + optional) or
+                        not set(required) <= set(value)):
+                    raise ValueError('RUNTIME_CONFIG_SCHEMA_INVALID')
+                for key, expected in types.items():
+                    if key not in value:
+                        continue
+                    current = value[key]
+                    if expected == 'int':
+                        valid = exact_int(current)
+                    elif expected == 'number':
+                        valid = exact_number(current)
+                    elif expected == 'bool':
+                        valid = isinstance(current, bool)
+                    elif expected == 'string':
+                        valid = isinstance(current, STRING_TYPES)
+                    elif expected == 'strings':
+                        valid = (isinstance(current, list) and
+                                 all(isinstance(item, STRING_TYPES) for item in current))
+                    elif expected == 'object':
+                        valid = isinstance(current, dict)
+                    else:
+                        valid = False
+                    if not valid:
+                        raise ValueError('RUNTIME_CONFIG_TYPE_INVALID:%s' % key)
+
+            def check_runtime_config(value):
+                required = ['version', 'mode', 'resource_authorized', 'state_dir',
+                            'monitor_socket', 'control_socket', 'device', 'vm_uuids',
+                            'internal_rule', 'budget']
+                optional = ['ram_admission', 'backend', 'managed', 'monitor_gid',
+                            'algorithm_preference', 'startup_observation_seconds',
+                            'vm_selection', 'initial_efficiency_enabled',
+                            'discovery_interval_seconds', 'discovery_timeout_seconds',
+                            'vm_list_ttl_seconds', 'vm_identity_request_bytes']
+                check_object(value, required, optional, {
+                    'version': 'int', 'mode': 'string',
+                    'resource_authorized': 'bool', 'state_dir': 'string',
+                    'monitor_socket': 'string', 'control_socket': 'string',
+                    'device': 'string', 'vm_uuids': 'strings', 'managed': 'bool',
+                    'monitor_gid': 'int', 'algorithm_preference': 'strings',
+                    'startup_observation_seconds': 'int', 'vm_selection': 'string',
+                    'initial_efficiency_enabled': 'bool',
+                    'discovery_interval_seconds': 'int',
+                    'discovery_timeout_seconds': 'int', 'vm_list_ttl_seconds': 'int',
+                    'vm_identity_request_bytes': 'int',
+                })
+                rule = value['internal_rule']
+                check_object(rule, [], ['cpu_only', 'cpu_fraction',
+                    'memory_change_bytes_per_second', 'io_bytes_per_second',
+                    'idle_seconds', 'cooldown_seconds', 'step_bytes',
+                    'require_external_data'], {
+                        'cpu_only': 'bool', 'cpu_fraction': 'number',
+                        'memory_change_bytes_per_second': 'int',
+                        'io_bytes_per_second': 'int', 'idle_seconds': 'int',
+                        'cooldown_seconds': 'int', 'step_bytes': 'int',
+                        'require_external_data': 'bool',
+                    })
+                budget = value['budget']
+                check_object(budget, [], ['required_available_override_bytes', 'version',
+                    'pool_bytes', 'allocator_limit_bytes', 'host_floor_bytes',
+                    'metadata_reserve_bytes', 'metadata_committed_bytes',
+                    'transient_reserve_bytes', 'step_limit_bytes',
+                    'host_bytes_per_minute', 'vm_bytes_per_minute'], {
+                        'required_available_override_bytes': 'int', 'version': 'int',
+                        'pool_bytes': 'int', 'allocator_limit_bytes': 'int',
+                        'host_floor_bytes': 'int', 'metadata_reserve_bytes': 'int',
+                        'metadata_committed_bytes': 'int', 'transient_reserve_bytes': 'int',
+                        'step_limit_bytes': 'int', 'host_bytes_per_minute': 'int',
+                        'vm_bytes_per_minute': 'int',
+                    })
+                if 'backend' in value:
+                    backend = value['backend']
+                    check_object(backend, ['device', 'minimum_filesystem_free_bytes'],
+                        ['file_path'], {'device': 'string',
+                        'minimum_filesystem_free_bytes': 'int', 'file_path': 'string'})
+                if 'ram_admission' in value:
+                    admission = value['ram_admission']
+                    check_object(admission, ['socket', 'gid', 'qemu_executable', 'qemu_sha256'],
+                        [], {'socket': 'string', 'gid': 'int', 'qemu_executable': 'string',
+                             'qemu_sha256': 'string'})
+
+            def read_regular(path):
+                if (not os.path.isabs(path) or os.path.realpath(path) != path or
+                        os.path.islink(path)):
+                    raise ValueError('RUNTIME_CONFIG_EVIDENCE_PATH_INVALID')
+                info = os.lstat(path)
+                if not stat.S_ISREG(info.st_mode):
+                    raise ValueError('RUNTIME_CONFIG_EVIDENCE_NOT_REGULAR')
+                with open(path, 'rb') as stream:
+                    return stream.read()
+
+            template_bytes = read_regular(self.zram_config_template_path)
+            parsed_template = strict_json(template_bytes)
+            if canonical(parsed_template) != canonical(template_config):
+                raise ValueError('RUNTIME_CONFIG_TEMPLATE_CHANGED')
+            current_bytes = read_regular(self.zram_config_path)
+            parsed_current = strict_json(current_bytes)
+            if canonical(parsed_current) != canonical(current_config):
+                raise ValueError('RUNTIME_CONFIG_CURRENT_CHANGED')
+            check_runtime_config(parsed_current)
+            template_control_fields = (
+                'version', 'mode', 'resource_authorized', 'managed', 'state_dir',
+                'monitor_socket', 'control_socket', 'monitor_gid', 'device',
+                'vm_uuids', 'vm_selection', 'initial_efficiency_enabled',
+                'ram_admission')
+            if any(key in template_config and
+                   (key not in parsed_current or
+                    canonical(parsed_current[key]) != canonical(template_config[key]))
+                   for key in template_control_fields):
+                raise FirstZramConfigRejected('FIRST_ZRAM_CONFIG_NOT_FACTORY')
+
+            receipt, status_error = self._read_backend_maintenance_receipt()
+            if status_error or not isinstance(receipt, dict) or receipt.get('stage') != 'APPLIED':
+                raise ValueError('BACKEND_MAINTENANCE_RECEIPT_UNPROVEN')
+            operation_uuid = receipt.get('request_id')
+            if not self._valid_identifier(operation_uuid):
+                raise ValueError('BACKEND_MAINTENANCE_OPERATION_ID_INVALID')
+            journal_state, record = self._operation_file_state(operation_uuid)
+            boot_id = self._current_boot_id()
+            host_uuid = self._load_host_uuid()
+            evidence = (self._completed_backend_preparation_evidence(
+                operation_uuid, record, host_uuid, boot_id)
+                        if journal_state == 'present' else None)
+            if (evidence is None or host_uuid != self._load_host_uuid()):
+                raise ValueError('BACKEND_MAINTENANCE_OPERATION_UNPROVEN')
+            if evidence['receipt'] != receipt:
+                raise ValueError('BACKEND_MAINTENANCE_OPERATION_READBACK_UNPROVEN')
+            intent, paths = evidence['intent'], evidence['paths']
+            state_dir = parsed_current.get('state_dir')
+            if (not isinstance(state_dir, STRING_TYPES) or not os.path.isabs(state_dir) or
+                    os.path.realpath(state_dir) != state_dir or os.path.islink(state_dir)):
+                raise ValueError('BACKEND_MAINTENANCE_STATE_DIR_UNPROVEN')
+            request_dir = os.path.join(state_dir, 'backend-maintenance', operation_uuid)
+            archive_dir = os.path.join(request_dir, 'pre-reset-archive')
+            if (receipt.get('archive') != archive_dir or
+                    os.path.realpath(request_dir) != request_dir or
+                    os.path.islink(request_dir) or not os.path.isdir(request_dir) or
+                    os.path.realpath(archive_dir) != archive_dir or
+                    os.path.islink(archive_dir) or not os.path.isdir(archive_dir)):
+                raise ValueError('BACKEND_MAINTENANCE_ARCHIVE_PATH_UNPROVEN')
+            before_path = os.path.join(request_dir, 'config.before.json')
+            before_bytes = read_regular(before_path)
+            before_config = strict_json(before_bytes)
+            check_runtime_config(before_config)
+            manifest_path = os.path.join(archive_dir, 'manifest.json')
+            archive_config_path = os.path.join(archive_dir, 'config.json')
+            manifest = strict_json(read_regular(manifest_path))
+            archive_config_bytes = read_regular(archive_config_path)
+            archive_config = strict_json(archive_config_bytes)
+            check_runtime_config(archive_config)
+            archive_names = frozenset((
+                'stock-pool.json', 'zram-ownership.json', 'capacity-effective.json',
+                'backend-ownership.json', 'backend-settings.json', 'backend-setup.json',
+                'ram-admission.json', 'writeback-schedule.json',
+                'backend-maintenance-current.json', 'config.json',
+            ))
+            if (not isinstance(manifest, dict) or
+                    not set(manifest) <= archive_names | frozenset(('target_device',
+                                                                     'pool_generation')) and
+                    not all(name.startswith('maintenance/') and
+                            os.path.normpath(name) == name and
+                            not name.startswith('../') and '/..' not in name
+                            for name in set(manifest) - archive_names -
+                            frozenset(('target_device', 'pool_generation'))) or
+                    not isinstance(manifest.get('config.json'), STRING_TYPES) or
+                    re.match(r'^[0-9a-f]{64}$', manifest['config.json']) is None or
+                    hashlib.sha256(archive_config_bytes).hexdigest() != manifest['config.json']):
+                raise ValueError('BACKEND_MAINTENANCE_ARCHIVE_CONFIG_UNPROVEN')
+            for name, digest in manifest.items():
+                if name in ('target_device', 'pool_generation'):
+                    if not isinstance(digest, STRING_TYPES):
+                        raise ValueError('BACKEND_MAINTENANCE_ARCHIVE_MANIFEST_INVALID')
+                elif (not isinstance(digest, STRING_TYPES) or
+                      re.match(r'^[0-9a-f]{64}$', digest) is None):
+                    raise ValueError('BACKEND_MAINTENANCE_ARCHIVE_MANIFEST_INVALID')
+            progress = record.get('maintenanceProgress')
+            controller_stop = (progress.get('controllerStop')
+                               if isinstance(progress, dict) else None)
+            controller_identity = (controller_stop.get('identity')
+                                   if isinstance(controller_stop, dict) else None)
+            if progress is not None and not isinstance(progress, dict):
+                raise ValueError('BACKEND_MAINTENANCE_SOURCE_CONFIG_UNPROVEN')
+            if isinstance(progress, dict) and 'controllerStop' in progress:
+                if (not isinstance(controller_stop, dict) or
+                        not isinstance(controller_identity, dict) or
+                        controller_identity.get('sourceConfigSha256') != manifest['config.json'] or
+                        controller_identity.get('templateSha256') !=
+                        hashlib.sha256(template_bytes).hexdigest()):
+                    raise ValueError('BACKEND_MAINTENANCE_SOURCE_CONFIG_UNPROVEN')
+            # OpenRuntime writes a complete typed snapshot before changing
+            # Backend. All non-backend effective fields must remain identical;
+            # the original archive binds the stable template controls and any
+            # backend already present before this request.
+            current_without_backend = dict(parsed_current)
+            current_without_backend.pop('backend')
+            before_without_backend = dict(before_config)
+            before_backend = before_without_backend.pop('backend', None)
+            if canonical(current_without_backend) != canonical(before_without_backend):
+                raise ValueError('BACKEND_MAINTENANCE_CONFIG_SNAPSHOT_MISMATCH')
+            if ('backend' in archive_config) != ('backend' in before_config):
+                raise ValueError('BACKEND_MAINTENANCE_PRIOR_BACKEND_UNPROVEN')
+            if ('backend' in archive_config and
+                    canonical(archive_config['backend']) != canonical(before_backend)):
+                raise ValueError('BACKEND_MAINTENANCE_PRIOR_BACKEND_UNPROVEN')
+            prior_preparation_records = {}
+            if 'backend' in before_config:
+                prior_required_files = ('backend-maintenance-current.json',
+                                        'backend-ownership.json', 'backend-settings.json')
+                prior_files = {}
+                for name in prior_required_files:
+                    digest = manifest.get(name)
+                    if not isinstance(digest, STRING_TYPES) or re.match(
+                            r'^[0-9a-f]{64}$', digest) is None:
+                        raise ValueError('BACKEND_MAINTENANCE_PRIOR_BACKEND_UNPROVEN')
+                    data = read_regular(os.path.join(archive_dir, name))
+                    if hashlib.sha256(data).hexdigest() != digest:
+                        raise ValueError('BACKEND_MAINTENANCE_PRIOR_BACKEND_UNPROVEN')
+                    prior_files[name] = strict_json(data)
+                prior_receipt = prior_files['backend-maintenance-current.json']
+                prior_uuid = (prior_receipt.get('request_id')
+                              if isinstance(prior_receipt, dict) else None)
+                prior_boot = (prior_receipt.get('host_boot_id')
+                              if isinstance(prior_receipt, dict) else None)
+                prior_state, prior_record = ('missing', None)
+                if (self._valid_identifier(prior_uuid) and
+                        isinstance(prior_boot, STRING_TYPES) and prior_boot):
+                    prior_state, prior_record = self._operation_file_state(prior_uuid)
+                prior_evidence = (self._completed_backend_preparation_evidence(
+                    prior_uuid, prior_record, host_uuid, prior_boot)
+                    if prior_state == 'present' else None)
+                owner = prior_files['backend-ownership.json']
+                settings = prior_files['backend-settings.json']
+                owner_fields = ('version', 'generation', 'configured', 'identity', 'claimed_at')
+                owner_identity = owner.get('identity') if isinstance(owner, dict) else None
+                owner_spec = owner.get('configured') if isinstance(owner, dict) else None
+                if (prior_evidence is None or prior_evidence['receipt'] != prior_receipt or
+                        prior_receipt.get('stage') != 'APPLIED' or
+                        not isinstance(owner, dict) or
+                        set(owner) != set(owner_fields) or
+                        not exact_int(owner.get('version')) or owner.get('version') != 1 or
+                        owner.get('generation') != prior_receipt.get('backend_resource_uuid') or
+                        not isinstance(owner.get('claimed_at'), STRING_TYPES) or
+                        canonical(owner_identity) !=
+                        canonical(prior_receipt.get('target_identity')) or
+                        not isinstance(settings, dict) or
+                        not set(settings) <= set(('revision', 'desired', 'apply_state',
+                                                  'request_id', 'request_fingerprint')) or
+                        not set(('revision', 'desired', 'apply_state')) <= set(settings) or
+                        isinstance(settings.get('revision'), bool) or
+                        not exact_int(settings.get('revision')) or settings.get('revision') <= 0 or
+                        settings.get('apply_state') != 'APPLIED' or
+                        settings.get('request_id') != prior_uuid or
+                        settings.get('request_fingerprint') !=
+                        prior_receipt.get('request_fingerprint')):
+                    raise ValueError('BACKEND_MAINTENANCE_PRIOR_BACKEND_UNPROVEN')
+                prior_request = prior_evidence['request']
+                prior_backend = prior_request.get('backend')
+                check_object(owner_spec, ['device', 'minimum_filesystem_free_bytes'],
+                             ['file_path'], {'device': 'string',
+                                 'minimum_filesystem_free_bytes': 'int',
+                                 'file_path': 'string'})
+                check_object(owner_identity, ['boot_id', 'canonical_device', 'rdev',
+                    'node_inode', 'sysfs_inode', 'capacity_bytes', 'direct_io',
+                    'stack_sha256'], ['file_path', 'file_inode', 'file_device',
+                    'file_size', 'file_stack_sha256'], {
+                        'boot_id': 'string', 'canonical_device': 'string',
+                        'rdev': 'int', 'node_inode': 'int', 'sysfs_inode': 'int',
+                        'capacity_bytes': 'int', 'direct_io': 'bool',
+                        'stack_sha256': 'string', 'file_path': 'string',
+                        'file_inode': 'int', 'file_device': 'int', 'file_size': 'int',
+                        'file_stack_sha256': 'string',
+                    })
+                check_object(prior_backend, ['minimum_filesystem_free_bytes', 'exclusive'],
+                             ['device', 'file_path', 'size_bytes'], {
+                                 'minimum_filesystem_free_bytes': 'int',
+                                 'exclusive': 'bool', 'device': 'string',
+                                 'file_path': 'string', 'size_bytes': 'int'})
+                prior_spec = owner_spec
+                settings_spec = (settings.get('desired')
+                                 if isinstance(settings, dict) else None)
+                if (not isinstance(prior_spec, dict) or
+                        canonical(prior_spec) != canonical(before_backend) or
+                        not isinstance(settings_spec, dict) or
+                        canonical(settings_spec) != canonical(prior_backend)):
+                    raise ValueError('BACKEND_MAINTENANCE_PRIOR_BACKEND_UNPROVEN')
+                prior_preparation_records[prior_uuid] = prior_record
+            for key in template_control_fields:
+                template_has_value = key in template_config
+                if ((key in parsed_current) != template_has_value or
+                        (key in archive_config) != template_has_value or
+                        (key in before_config) != template_has_value or
+                        (template_has_value and
+                         (canonical(parsed_current[key]) != canonical(template_config[key]) or
+                          canonical(archive_config[key]) != canonical(template_config[key]) or
+                          canonical(before_config[key]) != canonical(template_config[key])))):
+                    raise ValueError('BACKEND_MAINTENANCE_TEMPLATE_CONTROL_MISMATCH')
+            backend_spec = parsed_current['backend']
+            active_control = self._get_active_control()
+            offline_readback_bound = False
+            if isinstance(stopped_command, dict):
+                stopped_operation = stopped_command.get('operationUuid')
+                stopped_record = self._load_operation(stopped_command)
+                stopped_progress = (stopped_record.get('maintenanceProgress')
+                                    if isinstance(stopped_record, dict) else None)
+                stop = (stopped_progress.get('controllerStop')
+                        if isinstance(stopped_progress, dict) else None)
+                saved_proof = (stop.get('backendPreparationProof')
+                               if isinstance(stop, dict) else None)
+                stop_request = stop.get('request') if isinstance(stop, dict) else None
+                identity = stop.get('identity') if isinstance(stop, dict) else None
+                native_state = stop.get('nativeState') if isinstance(stop, dict) else None
+                with open(self.zram_config_path, 'rb') as stream:
+                    current_config_bytes = stream.read()
+                record_hash = hashlib.sha256(
+                    json.dumps(record, sort_keys=True, separators=(',', ':'))
+                    .encode('utf-8')).hexdigest()
+                expected_saved_proof = {
+                    'operationUuid': operation_uuid, 'requestHash': record['requestHash'],
+                    'resourceUuid': receipt['backend_resource_uuid'],
+                    'recordSha256': record_hash,
+                    'activeControlOperationUuid': active_control,
+                    'serviceReadbackVerified': True,
+                }
+                offline_readback_bound = bool(
+                    stopped_operation and self._valid_identifier(stopped_operation) and
+                    isinstance(stopped_record, dict) and
+                    stopped_record == self._load_operation({'operationUuid': stopped_operation}) and
+                    stopped_record.get('operationUuid') == stopped_operation and
+                    stopped_record.get('action') == 'prepareWritebackBackend' and
+                    stopped_record.get('hostUuid') == host_uuid and
+                    stopped_record.get('bootId') == boot_id and
+                    stopped_record.get('requestHash') == self._operation_hash(stopped_command) and
+                    stopped_record.get('stage') in ('PREPARING', 'DRAINING', 'UNKNOWN') and
+                    isinstance(stop, dict) and stop.get('attempted') is True and
+                    stop.get('completed') is True and stop.get('workerLaunchAttempted') is False and
+                    stop.get('hostUuid') == host_uuid and stop.get('bootId') == boot_id and
+                    stop.get('requestHash') == stopped_record.get('requestHash') and
+                    ((stopped_record.get('stage') == 'UNKNOWN' and
+                      stop.get('continuationReady') is True) or
+                     (stopped_record.get('stage') == 'PREPARING' and
+                      (stop.get('continuationReady') is None or
+                       stop.get('continuationReady') is False or
+                       stop.get('continuationReady') is True)) or
+                     (stopped_record.get('stage') not in ('PREPARING', 'UNKNOWN') and
+                      (stop.get('continuationReady') is None or
+                       stop.get('continuationReady') is False))) and
+                    not os.path.lexists(stopped_record.get('maintenanceIntentPath', '')) and
+                    isinstance(identity, dict) and identity.get('bootId') == boot_id and
+                    identity.get('unit') == self.MANAGED_ZRAM_UNIT and
+                    identity.get('killMode') == 'process' and identity.get('restart') == 'no' and
+                    isinstance(identity.get('pid'), INTEGER_TYPES) and
+                    not isinstance(identity.get('pid'), bool) and identity.get('pid') > 0 and
+                    isinstance(identity.get('processStartTime'), STRING_TYPES) and
+                    identity.get('processStartTime').isdigit() and
+                    all(re.match(r'^[0-9a-f]{64}$', str(identity.get(key, ''))) is not None
+                        for key in ('unitSha256', 'binarySha256', 'templateSha256',
+                                    'sourceConfigSha256')) and
+                    identity.get('sourceConfigSha256') == hashlib.sha256(
+                        current_config_bytes).hexdigest() and
+                    isinstance(stop_request, dict) and
+                    stop_request.get('request_id') == stopped_operation and
+                    stop_request.get('expected_host_boot_id') == boot_id and
+                    stop_request.get('expected_pool_generation') == 'none' and
+                    isinstance(native_state, dict) and
+                    isinstance(stop.get('nativeStateCheckedAt'), (int, float)) and
+                    self._first_use_state_safe(
+                        native_state, observation_time=stop.get('nativeStateCheckedAt')) and
+                    saved_proof == expected_saved_proof and
+                    self._maintenance_service_state() == 'inactive')
+            intent_control = intent.get('controlOperationUuid')
+            if intent_control is not None:
+                if not self._valid_identifier(intent_control):
+                    raise ValueError('BACKEND_MAINTENANCE_ACTIVE_CONTROL_UNPROVEN')
+                # The intent links the preparation to its historical control;
+                # current authorization is proved independently below.
+                intent_record = self._load_operation({'operationUuid': intent_control})
+                intent_is_ksm = (self._first_use_terminal_ksm_record(
+                    intent_record, allow_empty_noop=True) or
+                    self._first_use_backend_bound_ksm_record(
+                        intent_record, prior_preparation_records) if
+                    isinstance(intent_record, dict) else False)
+                if (not isinstance(intent_record, dict) or
+                        intent_record.get('operationUuid') != intent_control or
+                        not (intent_is_ksm or
+                             self._first_use_terminal_service_disable(intent_record))):
+                    raise ValueError('BACKEND_MAINTENANCE_ACTIVE_CONTROL_UNPROVEN')
+            if active_control:
+                # Preserve the existing KSM-only exception, but independently
+                # require the current active control's same-boot terminal
+                # journal and live native ACK. A generic applied Host policy
+                # must not bless first-use history.
+                active_record = self._load_operation({'operationUuid': active_control})
+                active_readback = (active_record.get('readback')
+                                   if isinstance(active_record, dict) else None)
+                active_revision = (active_record.get('desiredRevision')
+                                   if isinstance(active_record, dict) else None)
+                if not isinstance(active_record, dict):
+                    raise ValueError('BACKEND_MAINTENANCE_ACTIVE_CONTROL_UNPROVEN')
+                active_ksm_record = self._first_use_terminal_ksm_record(
+                    active_record, allow_empty_noop=True)
+                if not active_ksm_record:
+                    active_ksm_record = self._first_use_backend_bound_ksm_record(
+                        active_record, {operation_uuid: record}, expected_boot=boot_id,
+                        expected_operation=active_control,
+                        expected_resource_uuid=receipt.get('backend_resource_uuid'),
+                        expected_capacity=evidence['request'].get('backend_capacity_bytes'))
+                if not active_ksm_record:
+                    # An earlier backend may remain as disabled metadata in
+                    # the active KSM-only control after this request prepared
+                    # a different backend. Accept it only when the verified
+                    # archive contains the exact completed preparation for A.
+                    active_ksm_record = self._first_use_backend_bound_ksm_record(
+                        active_record, prior_preparation_records,
+                        expected_boot=boot_id, expected_operation=active_control)
+                if active_ksm_record:
+                    active_ksm_policy = (active_record.get('policy') or {}).get('ksm')
+                    if active_ksm_policy:
+                        if (active_record.get('bootId') != boot_id or
+                                not isinstance(active_readback, dict) or
+                            not self._ksm_proof_matches(active_readback.get('ksmReadback'),
+                                                        active_revision)):
+                            raise ValueError('BACKEND_MAINTENANCE_ACTIVE_CONTROL_UNPROVEN')
+                elif (active_record.get('bootId') != boot_id or
+                      not self._first_use_active_service_disable_safe(
+                          active_record, stopped_command)):
+                    raise ValueError('BACKEND_MAINTENANCE_ACTIVE_CONTROL_UNPROVEN')
+            request = evidence['request']
+            if (not isinstance(request, dict) or
+                    set(request) != frozenset(('request_id', 'candidate_id',
+                        'expected_host_boot_id', 'expected_pool_generation',
+                        'backend_capacity_bytes', 'target_identity', 'backend',
+                        'reset_confirmed')) or
+                    request.get('request_id') != operation_uuid or
+                    request.get('expected_host_boot_id') != boot_id or
+                    request.get('expected_pool_generation') != 'none' or
+                    request.get('reset_confirmed') is not True or
+                    not isinstance(request.get('candidate_id'), STRING_TYPES) or
+                    re.match(r'^candidate:[0-9a-f]{64}$', request.get('candidate_id')) is None or
+                    not isinstance(request.get('backend'), dict) or
+                    set(request['backend']) != frozenset((
+                        'device', 'minimum_filesystem_free_bytes', 'exclusive')) or
+                    request['backend'].get('exclusive') is not True or
+                    not isinstance(request['backend'].get('device'), STRING_TYPES) or
+                    isinstance(request['backend'].get('minimum_filesystem_free_bytes'), bool) or
+                    not isinstance(request['backend'].get('minimum_filesystem_free_bytes'), INTEGER_TYPES) or
+                    request['backend'].get('minimum_filesystem_free_bytes') < 0):
+                raise ValueError('BACKEND_MAINTENANCE_REQUEST_UNPROVEN')
+            target = request.get('target_identity')
+            capacity = request.get('backend_capacity_bytes')
+            if (not isinstance(target, dict) or target.get('boot_id') != boot_id or
+                    isinstance(capacity, bool) or not isinstance(capacity, INTEGER_TYPES) or
+                    capacity <= 0 or target.get('capacity_bytes') != capacity or
+                    target.get('canonical_device') != request['backend'].get('device') or
+                    backend_spec != {'device': request['backend']['device'],
+                                     'minimum_filesystem_free_bytes':
+                                         request['backend']['minimum_filesystem_free_bytes']}):
+                raise ValueError('BACKEND_MAINTENANCE_TARGET_UNPROVEN')
+            if (evidence['receipt'] != receipt or
+                    not self._maintenance_receipt_matches_request(receipt, request, boot_id) or
+                    not isinstance(receipt.get('request_fingerprint'), STRING_TYPES) or
+                    re.match(r'^[0-9a-f]{64}$', receipt.get('request_fingerprint')) is None or
+                    not isinstance(receipt.get('backend_resource_uuid'), STRING_TYPES) or
+                    re.match(r'^[0-9a-f]{32}$', receipt.get('backend_resource_uuid')) is None):
+                raise ValueError('BACKEND_MAINTENANCE_RECEIPT_UNPROVEN')
+            if not offline_readback_bound:
+                readback_ok, readback_error = self._verify_maintenance_service_readback(
+                    host_uuid, request, receipt)
+                if not readback_ok:
+                    raise ValueError(readback_error or 'BACKEND_MAINTENANCE_SERVICE_READBACK_UNPROVEN')
+            return {'operationUuid': operation_uuid, 'requestHash': record['requestHash'],
+                    'resourceUuid': receipt['backend_resource_uuid'], 'record': record,
+                    'stopProof': {
+                        'operationUuid': operation_uuid,
+                        'requestHash': record['requestHash'],
+                        'resourceUuid': receipt['backend_resource_uuid'],
+                        'recordSha256': hashlib.sha256(
+                            json.dumps(record, sort_keys=True, separators=(',', ':'))
+                            .encode('utf-8')).hexdigest(),
+                        'activeControlOperationUuid': active_control,
+                        'serviceReadbackVerified': True,
+                    }}
+        except (IOError, OSError, ValueError, TypeError, KeyError):
+            raise RuntimeError('FIRST_ZRAM_BACKEND_PREPARATION_UNPROVEN')
+
+    def _first_use_local_history_clear(self, command, rejected_record=None,
+                                       backend_preparation=None, failed_backend_record=None):
+        """Permit proven KSM/VM, service-disable and completed backend-prep history."""
         operation_uuid = command['operationUuid']
         directory = self.operation_dir
         if (not os.path.isdir(directory) or os.path.islink(directory) or
@@ -2296,13 +3211,60 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             names = os.listdir(directory)
             allowed = {'.host-control.flock', 'active-control', 'vm-bindings',
                        'drain', 'backend-maintenance'}
+            completed_preparations = {}
+            for name in names:
+                path = os.path.join(directory, name)
+                if name.endswith('.json') and os.path.isfile(path) and not os.path.islink(path):
+                    with open(path, 'r') as stream:
+                        candidate_record = json.load(stream)
+                    if (isinstance(candidate_record, dict) and
+                            candidate_record.get('action') == 'prepareWritebackBackend'):
+                        candidate_uuid = name[:-5]
+                        # The current cold-prepare operation is validated in
+                        # the exact operation branch below. It is intentionally
+                        # not historical completed-preparation evidence yet.
+                        if candidate_uuid == operation_uuid:
+                            continue
+                        evidence = self._completed_backend_preparation_evidence(
+                            candidate_uuid, candidate_record)
+                        if evidence is None:
+                            return False
+                        completed_preparations[candidate_uuid] = candidate_record
+            if bool(completed_preparations) != (backend_preparation is not None):
+                failed_prepare_context = (
+                    backend_preparation is not None and
+                    backend_preparation.get('operationUuid') == operation_uuid and
+                    'record' not in backend_preparation and
+                    isinstance(failed_backend_record, dict) and
+                    failed_backend_record.get('operationUuid') == operation_uuid)
+                if not failed_prepare_context:
+                    return False
+            if (backend_preparation is not None and
+                    completed_preparations.get(backend_preparation.get('operationUuid')) !=
+                    backend_preparation.get('record')):
+                return False
             for name in names:
                 path = os.path.join(directory, name)
                 if os.path.islink(path):
                     return False
                 if name in allowed:
-                    if name in ('drain', 'backend-maintenance'):
+                    if name == 'drain':
                         if not os.path.isdir(path) or os.listdir(path):
+                            return False
+                    elif name == 'backend-maintenance':
+                        if not os.path.isdir(path) or os.path.realpath(path) != path:
+                            return False
+                        expected = {operation_id + suffix for operation_id in completed_preparations
+                                    for suffix in ('.request.json', '.receipt.json',
+                                                   '.stderr', '.intent.json')}
+                        if (backend_preparation is not None and
+                                'record' not in backend_preparation and
+                                backend_preparation.get('operationUuid') == operation_uuid and
+                                isinstance(failed_backend_record, dict) and
+                                failed_backend_record.get('operationUuid') == operation_uuid):
+                            expected.update(operation_uuid + suffix for suffix in (
+                                '.request.json', '.receipt.json', '.stderr', '.intent.json'))
+                        if set(os.listdir(path)) != expected:
                             return False
                     elif name == 'vm-bindings':
                         if not os.path.isdir(path) or not self._cold_ksm_vm_bindings_valid(path):
@@ -2323,31 +3285,145 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     if (rejected_record is not None and record == rejected_record and
                             self._first_use_admission_rejected(record)):
                         continue
+                    failed_stop = ((record.get('maintenanceProgress') or {}).get('controllerStop')
+                                   if isinstance(record.get('maintenanceProgress'), dict) else None)
+                    failed_identity = (failed_stop.get('identity')
+                                       if isinstance(failed_stop, dict) else None)
+                    failed_request = (failed_stop.get('request')
+                                      if isinstance(failed_stop, dict) else None)
+                    failed_backend = (
+                        failed_backend_record is not None and record == failed_backend_record and
+                        record.get('stage') in ('DRAINING', 'UNKNOWN', 'FAILED_REQUIRES_REVIEW') and
+                        record.get('action') == 'prepareWritebackBackend' and
+                        record.get('hostUuid') == self._load_host_uuid() and
+                        record.get('bootId') == self._current_boot_id() and
+                        record.get('requestHash') == self._operation_hash(command) and
+                        isinstance(failed_stop, dict) and failed_stop.get('attempted') is True and
+                        failed_stop.get('completed') is True and
+                        failed_stop.get('continuationReady') is True and
+                        failed_stop.get('workerLaunchAttempted') is True and
+                        failed_stop.get('hostUuid') == record.get('hostUuid') and
+                        failed_stop.get('bootId') == record.get('bootId') and
+                        failed_stop.get('requestHash') == record.get('requestHash') and
+                        isinstance(failed_identity, dict) and
+                        failed_identity.get('bootId') == self._current_boot_id() and
+                        failed_identity.get('unit') == self.MANAGED_ZRAM_UNIT and
+                        failed_identity.get('killMode') == 'process' and
+                        failed_identity.get('restart') == 'no' and
+                        all(re.match(r'^[0-9a-f]{64}$', str(failed_identity.get(key, ''))) for key in
+                            ('unitSha256', 'binarySha256', 'templateSha256', 'sourceConfigSha256')) and
+                        isinstance(failed_request, dict) and
+                        failed_request.get('request_id') == operation_uuid and
+                        failed_request.get('expected_host_boot_id') == self._current_boot_id() and
+                        failed_request.get('expected_pool_generation') == 'none' and
+                        isinstance(failed_request.get('target_identity'), dict) and
+                        failed_request['target_identity'].get('boot_id') == self._current_boot_id() and
+                        isinstance(failed_stop.get('nativeState'), dict) and
+                        self._first_use_state_safe(
+                            failed_stop['nativeState'],
+                            observation_time=failed_stop.get('nativeStateCheckedAt')))
+                    if failed_backend:
+                        continue
+                    stop = ((record.get('maintenanceProgress') or {}).get('controllerStop')
+                            if isinstance(record.get('maintenanceProgress'), dict) else None)
+                    identity = stop.get('identity') if isinstance(stop, dict) else None
+                    stop_request = stop.get('request') if isinstance(stop, dict) else None
+                    stop_unknown = (record.get('stage') == 'UNKNOWN' and
+                                    record.get('action') == 'prepareWritebackBackend' and
+                                    isinstance(stop, dict) and stop.get('attempted') is True and
+                                    stop.get('workerLaunchAttempted') is False and
+                                    stop.get('hostUuid') == self._load_host_uuid() and
+                                    stop.get('bootId') == self._current_boot_id() and
+                                    stop.get('requestHash') == self._operation_hash(command) and
+                                    isinstance(identity, dict) and
+                                    isinstance(identity.get('pid'), INTEGER_TYPES) and
+                                    not isinstance(identity.get('pid'), bool) and identity['pid'] > 0 and
+                                    isinstance(identity.get('processStartTime'), STRING_TYPES) and
+                                    identity['processStartTime'].isdigit() and
+                                    identity.get('bootId') == self._current_boot_id() and
+                                    identity.get('unit') == self.MANAGED_ZRAM_UNIT and
+                                    identity.get('unitPath') ==
+                                    '/usr/lib/systemd/system/zram-memory.service' and
+                                    identity.get('killMode') == 'process' and
+                                    identity.get('restart') == 'no' and
+                                    all(re.match(r'^[0-9a-f]{64}$', str(identity.get(key, ''))) for key in
+                                        ('unitSha256', 'binarySha256', 'templateSha256',
+                                         'sourceConfigSha256')) and
+                                    isinstance(stop_request, dict) and
+                                    stop_request.get('request_id') == operation_uuid and
+                                    stop_request.get('expected_host_boot_id') == self._current_boot_id() and
+                                    stop_request.get('expected_pool_generation') == 'none' and
+                                    isinstance(stop_request.get('target_identity'), dict) and
+                                    stop_request['target_identity'].get('boot_id') ==
+                                    self._current_boot_id() and
+                                    isinstance(stop.get('nativeState'), dict) and
+                                    self._first_use_state_safe(
+                                        stop['nativeState'],
+                                        observation_time=stop.get('nativeStateCheckedAt')))
                     if (not isinstance(record, dict) or
                             record.get('operationUuid') != operation_uuid or
-                            record.get('stage') != 'PREPARING' or
+                            (record.get('stage') != 'PREPARING' and not stop_unknown) or
                             record.get('requestHash') != self._operation_hash(command)):
                         return False
                     continue
+                if (name[:-5] in completed_preparations and
+                        record == completed_preparations[name[:-5]]):
+                    continue
                 if not (self._first_use_terminal_ksm_record(record, allow_empty_noop=True) or
+                        self._first_use_backend_bound_ksm_record(
+                            record, completed_preparations) or
+                        self._first_use_terminal_service_disable(record) or
                         self._first_use_terminal_vm_binding(record) or
                         self._first_use_admission_not_issued(record)):
                     return False
             if active:
                 active_record = self._load_operation({'operationUuid': active})
-                if not self._first_use_terminal_ksm_record(active_record):
-                    return False
-                active_readback = active_record.get('readback') or {}
-                active_revision = active_record.get('desiredRevision')
-                # A new first-use request must match current KSM ownership.
-                # The rejection-only caller already proves, under this lock,
-                # that its exact same-boot request never authorized/wrote ZRAM.
-                # Keep validating the original terminal KSM receipt above, but
-                # do not require historical settings to match today's config
-                # just to record that this rejected request was not issued.
-                if (rejected_record is None and
-                        not self._ksm_proof_matches(active_readback.get('ksmReadback'),
-                                                    active_revision)):
+                active_backend_bound = False
+                if (backend_preparation is not None and
+                        isinstance(backend_preparation.get('record'), dict) and
+                        isinstance(backend_preparation.get('stopProof'), dict)):
+                    expected_active = backend_preparation['stopProof'].get(
+                        'activeControlOperationUuid')
+                    if active == expected_active:
+                        active_backend_bound = self._first_use_backend_bound_ksm_record(
+                            active_record,
+                            {backend_preparation['operationUuid']:
+                             backend_preparation['record']},
+                            expected_boot=self._current_boot_id(),
+                            expected_operation=active,
+                            expected_resource_uuid=backend_preparation.get('resourceUuid'),
+                            expected_capacity=(backend_preparation['record'].get(
+                                'backendPreparation') or {}).get('backendCapacityBytes'))
+                        if not active_backend_bound:
+                            # A prior disabled backend may remain on the active
+                            # KSM-only control after the current preparation has
+                            # replaced it. The history whitelist above has
+                            # already validated each prior preparation; match
+                            # this control only to that exact completed set.
+                            active_backend_bound = self._first_use_backend_bound_ksm_record(
+                                active_record, completed_preparations,
+                                expected_boot=self._current_boot_id(),
+                                expected_operation=active)
+                if (self._first_use_terminal_ksm_record(
+                        active_record, allow_empty_noop=True) or active_backend_bound):
+                    active_readback = active_record.get('readback') or {}
+                    active_revision = active_record.get('desiredRevision')
+                    # A new first-use request must match current KSM ownership.
+                    # The rejection-only caller already proves, under this lock,
+                    # that its exact same-boot request never authorized/wrote ZRAM.
+                    # Keep validating the original terminal KSM receipt above, but
+                    # do not require historical settings to match today's config
+                    # just to record that this rejected request was not issued.
+                    # A completed empty target released KSM policy ownership;
+                    # its full historical ACK proves completion, not a setting
+                    # that a later first-use operation may restore or enforce.
+                    if (rejected_record is None and
+                            (active_record.get('policy') or {}).get('ksm') and
+                            not self._ksm_proof_matches(active_readback.get('ksmReadback'),
+                                                        active_revision)):
+                        return False
+                elif not self._first_use_active_service_disable_safe(
+                        active_record, command, failed_backend_record=failed_backend_record):
                     return False
             return True
         except (IOError, OSError, ValueError, TypeError):
@@ -2412,7 +3488,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         finally:
             self._release_operation(lock)
 
-    def _first_use_state_safe(self, native, require_reclaim=False):
+    def _first_use_state_safe(self, native, require_reclaim=False, observation_time=None,
+                              allow_failed_backend_maintenance=False):
         if not isinstance(native, dict):
             return False
         lifecycle = native.get('lifecycle')
@@ -2437,6 +3514,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         lifecycle_state = lifecycle.get('activeState') if isinstance(lifecycle, dict) else None
         hold_ok = (isinstance(lifecycle, dict) and
                    ('migrationHold' not in lifecycle or lifecycle.get('migrationHold') is None))
+        maintenance_ok = (native.get('maintenance_blocks_activation') is False and
+                          not allow_failed_backend_maintenance)
+        if allow_failed_backend_maintenance:
+            maintenance_ok = (native.get('maintenance_blocks_activation') is True and
+                              native.get('reason') == 'MAINTENANCE_BLOCKS_ACTIVATION')
         if (native.get('mode') != expected_mode or
                 native.get('resource_authorized') is not expected_auth or
                 not isinstance(lifecycle, dict) or lifecycle.get('schemaVersion') != 1 or
@@ -2444,13 +3526,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 lifecycle.get('readbackAllowed') is not True or 'paused' not in lifecycle or
                 lifecycle.get('paused') is not False or
                 not hold_ok or lifecycle_state != 'compatibility' or
-                native.get('maintenance_blocks_activation') is not False or
+                not maintenance_ok or
                 pending or
                 not self._is_uninitialized_pool_snapshot(pool) or
                 not isinstance(host, dict) or host.get('qualified') is not True or
                 host.get('safe') is not True or
-                not self._native_observation_is_fresh(native.get('observed_at'), 3) or
-                not self._native_observation_is_fresh(host.get('observed_at'), 3)):
+                not self._native_observation_is_fresh(
+                    native.get('observed_at'), 3, now=observation_time) or
+                not self._native_observation_is_fresh(
+                    host.get('observed_at'), 3, now=observation_time)):
             return False
         if not isinstance(cpu, dict) or cpu.get('efficiency_enabled') is not False:
             return False
@@ -2461,7 +3545,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """Require RPM verification to report no drift outside managed config."""
         command = ['rpm', '-V', 'zstack-zram']
         try:
-            output = subprocess.check_output(command, stderr=subprocess.STDOUT)
+            output = MemoryOptimizationPlugin._bounded_command_output(command, 30)
             exit_code = 0
         except subprocess.CalledProcessError as exc:
             # rpm -V uses exit 1 to report a package-file mismatch. That is
@@ -2506,10 +3590,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _first_use_runtime_identity(template_bytes, config_bytes):
         """Bind first-use authorization to the effective RPM service process."""
         try:
-            output = subprocess.check_output([
+            output = MemoryOptimizationPlugin._bounded_command_output([
                 'systemctl', 'show', 'zram-memory.service',
-                '--property=FragmentPath,DropInPaths,MainPID,ActiveState'],
-                stderr=subprocess.STDOUT)
+                '--property=FragmentPath,DropInPaths,MainPID,ActiveState'], 5)
             if not isinstance(output, STRING_TYPES):
                 output = output.decode('utf-8')
             props = dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
@@ -2531,15 +3614,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             fields = tail.split()
             if not delim or len(fields) <= 19 or not fields[19].isdigit():
                 raise RuntimeError('FIRST_ZRAM_RUNTIME_IDENTITY_UNKNOWN')
-            package = subprocess.check_output([
-                'rpm', '-q', '--qf', '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}', 'zstack-zram'],
-                stderr=subprocess.STDOUT)
+            package = MemoryOptimizationPlugin._bounded_command_output([
+                'rpm', '-q', '--qf', '%{NAME}-%{VERSION}-%{RELEASE}.%{ARCH}', 'zstack-zram'], 30)
             owners = {}
             for path in ('/usr/lib/systemd/system/zram-memory.service',
                          '/usr/share/zstack-zram/config.json',
                          '/usr/local/libexec/zram-efficiency'):
-                value = subprocess.check_output(['rpm', '-qf', '--qf', '%{NAME}', path],
-                                                stderr=subprocess.STDOUT)
+                value = MemoryOptimizationPlugin._bounded_command_output(
+                    ['rpm', '-qf', '--qf', '%{NAME}', path], 30)
                 owners[path] = value.decode('utf-8').strip() if not isinstance(value, STRING_TYPES) else value.strip()
             if not isinstance(package, STRING_TYPES):
                 package = package.decode('utf-8')
@@ -2568,8 +3650,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             }
         except RuntimeError:
             raise
-        except (IOError, OSError, subprocess.CalledProcessError, ValueError, TypeError) as exc:
-            raise RuntimeError('FIRST_ZRAM_RUNTIME_IDENTITY_UNKNOWN') from exc
+        except (IOError, OSError, subprocess.CalledProcessError, ValueError, TypeError):
+            raise RuntimeError('FIRST_ZRAM_RUNTIME_IDENTITY_UNKNOWN')
 
     @staticmethod
     def _first_use_digest(value):
@@ -2770,8 +3852,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if lock is not None:
                 self._release_operation(lock)
 
-    def _write_first_use_config(self, command):
-        """Promote only the unmodified vendor observe template, atomically."""
+    def _write_first_use_config(self, command, expected_source_sha256):
+        """Atomically promote the previously validated vendor config snapshot."""
         config_path = self.zram_config_path
         template_path = self.zram_config_template_path
         if (os.path.islink(config_path) or os.path.islink(template_path) or
@@ -2784,7 +3866,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 template = stream.read()
         except (IOError, OSError):
             raise RuntimeError('FIRST_ZRAM_CONFIG_READ_UNKNOWN')
-        if hashlib.sha256(current).hexdigest() != hashlib.sha256(template).hexdigest():
+        if (not isinstance(expected_source_sha256, STRING_TYPES) or
+                hashlib.sha256(current).hexdigest() != expected_source_sha256):
             # Authorization has already been durably recorded before this
             # compare-and-swap. A concurrent edit now has an ambiguous outcome
             # and must retain the operation fence as Unknown, never REJECTED.
@@ -2864,6 +3947,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         # one-time bootstrap; user-maintained config is never overwritten.
         try:
             current_config = json.loads(current.decode('utf-8'))
+            template_config = json.loads(template.decode('utf-8'))
         except (UnicodeError, ValueError):
             if hashlib.sha256(current).hexdigest() != hashlib.sha256(template).hexdigest():
                 raise FirstZramConfigRejected('FIRST_ZRAM_CONFIG_NOT_FACTORY')
@@ -2873,14 +3957,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 current_config.get('resource_authorized') is True):
             return False
         if hashlib.sha256(current).hexdigest() != hashlib.sha256(template).hexdigest():
-            raise FirstZramConfigRejected('FIRST_ZRAM_CONFIG_NOT_FACTORY')
+            backend_preparation = self._first_use_backend_preparation_proof(
+                current_config, template_config)
+        else:
+            backend_preparation = None
         if (not isinstance(current_config, dict) or current_config.get('managed') is not True or
                 current_config.get('mode') != 'observe' or
                 current_config.get('resource_authorized') is not False or
                 current_config.get('initial_efficiency_enabled') is not False):
             raise RuntimeError('FIRST_ZRAM_TEMPLATE_INVALID')
         runtime_identity = self._first_use_runtime_identity(template, current)
-        if not self._first_use_local_history_clear(command):
+        if not self._first_use_local_history_clear(
+                command, backend_preparation=backend_preparation):
             raise RuntimeError('FIRST_ZRAM_LOCAL_CONTROL_FENCED')
         cpu_before = self._service_request('host-cpu-state', {})
         if cpu_before.get('efficiency_enabled') is not False:
@@ -2912,11 +4000,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise RuntimeError('FIRST_ZRAM_JOURNAL_UNAVAILABLE')
         record['stage'] = self.FIRST_USE_AUTHORIZING_STAGE
         record['firstZramUse'] = {
-            'hostUuid': self.host_uuid,
+            'hostUuid': self._load_host_uuid(),
             'bootId': self._current_boot_id(),
             'observedAt': before.get('observed_at'),
             'templateSha256': hashlib.sha256(template).hexdigest(),
             'expectedConfigSha256': hashlib.sha256(target_bytes).hexdigest(),
+            'sourceConfigSha256': hashlib.sha256(current).hexdigest(),
             'runtimeIdentity': runtime_identity,
             'baseline': {'capacityRevision': capacity_before['revision'],
                          'cpuRevision': cpu_before.get('revision'),
@@ -2927,9 +4016,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                          'activeControl': self._get_active_control()},
             'requestHash': self._operation_hash(command),
         }
+        if backend_preparation is not None:
+            record['firstZramUse']['backendPreparation'] = {
+                'operationUuid': backend_preparation['operationUuid'],
+                'requestHash': backend_preparation['requestHash'],
+                'resourceUuid': backend_preparation['resourceUuid'],
+            }
         if not self._write_operation_record(record):
             raise RuntimeError('FIRST_ZRAM_JOURNAL_UNAVAILABLE')
-        self._write_first_use_config(command)
+        self._write_first_use_config(
+            command, record['firstZramUse']['sourceConfigSha256'])
         self._bounded_controller_restart()
         deadline = time.time() + 15
         after = None
@@ -4200,6 +5296,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._update_operation_record(command['operationUuid'], 'DRAINING', result)
             return result
         except ValueError as exc:
+            stop_failure = None
             if self._valid_identifier(command.get('operationUuid')):
                 state, prior = self._operation_file_state(command['operationUuid'])
                 if state == 'missing' or (state == 'present' and isinstance(prior, dict) and
@@ -4267,7 +5364,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
                                              'ZRAM_POOL_PREPARATION_WORKER_STATE_UNKNOWN')
         if exit_status != 0:
-            reason, detail = self._backend_maintenance_exit_error(paths['stderrPath'])
+            reason, detail, _ = self._backend_maintenance_exit_error(paths['stderrPath'])
             result = self._maintenance_result(command, 'Failed', 'FAILED_REQUIRES_REVIEW', reason)
             if detail:
                 result['failureDetail'] = detail
@@ -4342,8 +5439,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
                                                     'OPERATION_JOURNAL_UNAVAILABLE', latest)
                 try:
-                    subprocess.check_call(['systemctl', 'start', self.MANAGED_ZRAM_UNIT], timeout=30)
-                except (IOError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    self._bounded_command_output(
+                        ['systemctl', 'start', self.MANAGED_ZRAM_UNIT], 30)
+                except (IOError, OSError, RuntimeError, subprocess.CalledProcessError):
                     service_state = self._maintenance_service_state()
                     if service_state not in ('active', 'starting'):
                         unknown = self._maintenance_result(command, 'Unknown', 'SERVICE_START_UNKNOWN',
@@ -4433,17 +5531,144 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise ValueError('MAINTENANCE_ZRAM_DEVICE_UNKNOWN')
         return config, state_dir, device
 
-    def _first_use_no_pool_verified(self):
+    def _first_use_no_pool_verified(self, command=None, failed_backend_record=None,
+                                    failed_backend_receipt=None,
+                                    backend_preparation_out=None):
         """Prove an explicitly uninitialized first-use host; absence alone is not proof."""
-        if self._get_active_control():
-            return False
+        if command is not None:
+            if not isinstance(command, dict):
+                return False
+            if 'operationUuid' in command:
+                if not self._valid_identifier(command.get('operationUuid')):
+                    return False
+            else:
+                # Inventory callers may only have a host context, not an
+                # operation nonce. Treat that like a global no-current-op
+                # check; never exclude a journal on their behalf.
+                command = None
+        active_control = self._get_active_control()
+        active_control_requires_backend_proof = False
+        if active_control:
+            active_record = self._load_operation({'operationUuid': active_control})
+            if (not self._valid_identifier(active_control) or
+                    not isinstance(active_record, dict) or
+                    active_record.get('operationUuid') != active_control or
+                    not isinstance(active_record.get('bootId'), STRING_TYPES) or
+                    not active_record['bootId']):
+                return False
+            active_ksm = self._first_use_terminal_ksm_record(
+                active_record, allow_empty_noop=True)
+            if active_ksm:
+                if ((active_record.get('policy') or {}).get('ksm') and
+                        active_record.get('bootId') != self._current_boot_id()):
+                    return False
+            elif not self._first_use_active_service_disable_safe(
+                    active_record, command, failed_backend_record=failed_backend_record):
+                # A KSM-only control may retain the already-prepared backend
+                # as disabled metadata. It is accepted only after the complete
+                # current APPLIED preparation proof below binds that metadata;
+                # it is never an independent no-pool authorization.
+                active_control_requires_backend_proof = True
         try:
             config, state_dir, device = self._read_maintenance_config()
+            current_path = os.path.join(state_dir, 'backend-maintenance', 'current.json')
+            maintenance_fence = os.path.join(state_dir, 'maintenance')
+            backend_preparation = None
             if any(os.path.lexists(os.path.join(state_dir, name)) for name in (
-                    'stock-pool.json', 'zram-ownership.json', 'managed-zram.json',
-                    os.path.join('backend-maintenance', 'current.json'))):
+                    'stock-pool.json', 'zram-ownership.json', 'managed-zram.json')):
                 return False
-            if self._has_unresolved_operation_journal():
+            if failed_backend_receipt is None:
+                # A finalized no-pool preparation is accepted only through
+                # its complete worker/journal/current receipt proof. A live
+                # maintenance fence still blocks all first-use paths.
+                if os.path.lexists(maintenance_fence):
+                    return False
+                if os.path.lexists(current_path):
+                    if (os.path.islink(current_path) or
+                            os.path.realpath(os.path.dirname(current_path)) !=
+                            os.path.dirname(current_path) or
+                            os.path.islink(self.zram_config_path) or
+                            os.path.islink(self.zram_config_template_path)):
+                        return False
+                    with open(self.zram_config_path, 'rb') as stream:
+                        current_bytes = stream.read()
+                    with open(self.zram_config_template_path, 'rb') as stream:
+                        template_bytes = stream.read()
+                    current_config = json.loads(current_bytes.decode('utf-8'))
+                    template_config = json.loads(template_bytes.decode('utf-8'))
+                    backend_preparation = self._first_use_backend_preparation_proof(
+                        current_config, template_config, stopped_command=command)
+                    if active_control_requires_backend_proof and backend_preparation is None:
+                        return False
+            else:
+                if active_control_requires_backend_proof:
+                    return False
+                # Go persists the exact failed receipt at current.json and
+                # leaves an empty maintenance directory as an activation
+                # fence. The fence itself has no operation identity; bind it
+                # only through the exact receipt, local request/worker files,
+                # stop intent, boot, and operation record checked here.
+                if (not isinstance(failed_backend_record, dict) or command is None or
+                        not os.path.lexists(current_path) or os.path.islink(current_path) or
+                        not os.path.isfile(current_path) or
+                        not os.path.isdir(os.path.dirname(current_path)) or
+                        os.path.islink(os.path.dirname(current_path)) or
+                        not os.path.isdir(maintenance_fence) or os.path.islink(maintenance_fence) or
+                        os.listdir(maintenance_fence)):
+                    return False
+                operation_uuid = command.get('operationUuid')
+                if not self._valid_identifier(operation_uuid):
+                    return False
+                _, paths = self._maintenance_intent_paths(operation_uuid, create=False)
+                if any(os.path.islink(paths[key]) or not os.path.isfile(paths[key])
+                       for key in ('requestPath', 'receiptPath', 'stderrPath', 'intentPath')):
+                    return False
+                with open(paths['requestPath'], 'r') as stream:
+                    persisted_request = json.load(stream)
+                with open(paths['receiptPath'], 'r') as stream:
+                    persisted_receipt = json.load(stream)
+                with open(current_path, 'r') as stream:
+                    current_receipt = json.load(stream)
+                stop = ((failed_backend_record.get('maintenanceProgress') or {}).get('controllerStop')
+                        if isinstance(failed_backend_record.get('maintenanceProgress'), dict) else None)
+                readback = failed_backend_record.get('readback')
+                readback_state = readback.get('state') if isinstance(readback, dict) else None
+                if (not isinstance(stop, dict) or stop.get('workerLaunchAttempted') is not True or
+                        persisted_request != stop.get('request') or
+                        persisted_request.get('request_id') != operation_uuid or
+                        failed_backend_record.get('stage') not in ('UNKNOWN', 'FAILED_REQUIRES_REVIEW') or
+                        not isinstance(readback_state, dict) or
+                        readback_state.get('maintenance') != failed_backend_receipt or
+                        not self._maintenance_receipt_matches_request(
+                            failed_backend_receipt, persisted_request, self._current_boot_id()) or
+                        failed_backend_receipt.get('stage') != 'FAILED_REQUIRES_REVIEW' or
+                        persisted_receipt != failed_backend_receipt or
+                        current_receipt != failed_backend_receipt):
+                    return False
+                reason_code, _, stderr_error = self._backend_maintenance_exit_error(
+                    paths['stderrPath'])
+                receipt_reason = failed_backend_receipt.get('reason')
+                if (not isinstance(receipt_reason, STRING_TYPES) or
+                        not isinstance(stderr_error, STRING_TYPES) or
+                        receipt_reason != stderr_error):
+                    return False
+                worker, exit_status = self._systemd_worker_exit(
+                    self._maintenance_systemd_unit(operation_uuid))
+                if worker != 'exited' or exit_status != 1:
+                    return False
+                backend_preparation = ({'operationUuid': command.get('operationUuid')}
+                                       if command is not None and failed_backend_record is not None
+                                       else None)
+            if command is None:
+                if self._has_unresolved_operation_journal():
+                    return False
+            elif not self._first_use_local_history_clear(
+                    command, backend_preparation=backend_preparation,
+                    failed_backend_record=failed_backend_record):
+                # The existing history validator excludes only this exact
+                # PREPARING operation (UUID + request hash); all other
+                # operation and KSM/VM evidence remains subject to its full
+                # whitelist.
                 return False
             swap_rows = open('/proc/swaps', 'r').read().splitlines()
             if not swap_rows or not swap_rows[0].startswith('Filename'):
@@ -4454,15 +5679,199 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             base = os.path.join('/sys/block', device_name)
             with open(os.path.join(base, 'disksize'), 'r') as stream:
                 disksize = stream.read().strip()
-            with open(os.path.join(base, 'mem_limit'), 'r') as stream:
-                memory_limit = stream.read().strip()
+            # zram's mem_limit sysfs attribute is write-only on supported
+            # kernels. The effective allocator limit is the fourth mm_stat
+            # field, matching Go's readZramMemoryLimit contract.
+            with open(os.path.join(base, 'mm_stat'), 'r') as stream:
+                mm_stat = stream.read().split()
+            if len(mm_stat) < 4 or len(mm_stat) > 16:
+                return False
+            memory_limit = mm_stat[3]
+            if not memory_limit.isdigit():
+                return False
             with open(os.path.join(base, 'backing_dev'), 'r') as stream:
                 backing = stream.read().strip()
             if disksize != '0' or memory_limit != '0' or backing != 'none':
                 return False
-            return True
+            # Permit a verified current-boot KSM-only controller, or a
+            # completed empty KSM target that no longer owns settings.
+            # Reuse the complete operation-history whitelist and the live
+            # ACK check for still-managed KSM; an
+            # ordinary Host writer, Unknown record, or old ZRAM operation
+            # must not be interpreted as an empty first-use state.
+            valid = (self._first_use_local_history_clear(
+                        command,
+                        backend_preparation=backend_preparation,
+                        failed_backend_record=failed_backend_record)
+                    if command is not None else
+                    self._first_use_local_history_clear(
+                        {'operationUuid': None}, backend_preparation=backend_preparation))
+            if (valid and isinstance(backend_preparation_out, dict) and
+                    isinstance(backend_preparation, dict) and
+                    isinstance(backend_preparation.get('stopProof'), dict)):
+                backend_preparation_out['proof'] = backend_preparation['stopProof']
+            return valid
         except (IOError, OSError, ValueError, TypeError):
             return False
+
+    @staticmethod
+    def _bounded_command_output(command, timeout_seconds):
+        """Run a small local command with a Python 2-compatible poll deadline."""
+        process = subprocess.Popen(command, stdout=subprocess.PIPE,
+                                   stderr=subprocess.STDOUT)
+        deadline = linux.monotime() + timeout_seconds
+        while process.poll() is None:
+            remaining = deadline - linux.monotime()
+            if remaining <= 0:
+                # This terminates only the systemctl client process. The
+                # managed service is never stopped or force-killed here.
+                try:
+                    process.terminate()
+                except OSError:
+                    pass
+                if process.poll() is None:
+                    try:
+                        process.kill()
+                    except OSError:
+                        pass
+                process.wait()
+                raise RuntimeError('BOUNDED_COMMAND_TIMEOUT')
+            time.sleep(min(0.05, remaining))
+        output = process.communicate()[0]
+        if process.returncode != 0:
+            error = subprocess.CalledProcessError(process.returncode, command)
+            # Match check_output's useful failure evidence, including on
+            # Python 2 where subprocess APIs do not accept timeout=.
+            error.output = output
+            raise error
+        return output
+
+    @staticmethod
+    def _controller_process_start_time(pid):
+        try:
+            with open('/proc/%s/stat' % pid, 'r') as stream:
+                stat_text = stream.read()
+            _comm, delim, tail = stat_text.rpartition(')')
+            fields = tail.split()
+            if not delim or len(fields) <= 19 or not fields[19].isdigit():
+                return None
+            return fields[19]
+        except (IOError, OSError):
+            return None
+
+    def _cold_controller_identity(self, template_bytes, config_bytes):
+        """Return a pinned identity only for the vendor-owned, non-restarting unit."""
+        try:
+            identity = self._first_use_runtime_identity(template_bytes, config_bytes)
+            output = self._bounded_command_output([
+                'systemctl', 'show', self.MANAGED_ZRAM_UNIT,
+                '--property=Id', '--property=FragmentPath', '--property=DropInPaths',
+                '--property=MainPID', '--property=ActiveState', '--property=KillMode',
+                '--property=Restart', '--property=ExecStop'],
+                5)
+            if not isinstance(output, STRING_TYPES):
+                output = output.decode('utf-8')
+            props = dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
+            pid = str(identity.get('pid')) if isinstance(identity, dict) else ''
+            if (not isinstance(identity, dict) or
+                    props.get('Id') != self.MANAGED_ZRAM_UNIT or
+                    props.get('FragmentPath') != '/usr/lib/systemd/system/zram-memory.service' or
+                    props.get('DropInPaths', '').strip() or props.get('MainPID') != pid or
+                    props.get('ActiveState') != 'active' or props.get('KillMode') != 'process' or
+                    props.get('Restart') != 'no' or props.get('ExecStop', '').strip()):
+                return None
+            identity = dict(identity)
+            identity.update({'unit': self.MANAGED_ZRAM_UNIT,
+                             'fragmentPath': props['FragmentPath'],
+                             'killMode': props['KillMode'], 'restart': props['Restart']})
+            if (identity.get('bootId') != self._current_boot_id() or
+                    self._controller_process_start_time(pid) != identity.get('processStartTime')):
+                return None
+            return identity
+        except (IOError, OSError, ValueError, TypeError, RuntimeError,
+                subprocess.CalledProcessError):
+            return None
+
+    def _signal_and_wait_cold_controller(self, command, identity, timeout=75):
+        """SIGTERM only the revalidated PID; never stop the unit or force-kill."""
+        try:
+            config, _, _ = self._read_maintenance_config()
+            with open(self.zram_config_template_path, 'rb') as stream:
+                template_bytes = stream.read()
+            with open(self.zram_config_path, 'rb') as stream:
+                config_bytes = stream.read()
+            current = self._cold_controller_identity(template_bytes, config_bytes)
+            if (current != identity or not self._first_use_no_pool_verified(command)):
+                return False, 'COLD_CONTROLLER_IDENTITY_CHANGED', None, None
+            native = self._service_request('state', {})
+            cpu = self._service_request('host-cpu-state', {})
+            tuning = self._service_request('tuning-state', {})
+            checked_at = time.time()
+            if isinstance(native, dict):
+                native = dict(native)
+                native['host_cpu'] = cpu
+                native['host_tuning_state'] = tuning
+            if not self._first_use_state_safe(native, observation_time=checked_at):
+                return False, 'COLD_CONTROLLER_NATIVE_STATE_UNSAFE', None, None
+            # Re-read the unit immediately before the signal and reject an
+            # observed PID/start-time change. This narrows (but cannot make
+            # atomic) the check-to-signal window. No systemctl stop/kill path is
+            # used, so systemd cannot escalate this bounded request to SIGKILL.
+            output = self._bounded_command_output([
+                'systemctl', 'show', self.MANAGED_ZRAM_UNIT,
+                '--property=Id', '--property=MainPID', '--property=ActiveState',
+                '--property=KillMode', '--property=Restart'],
+                5)
+            if not isinstance(output, STRING_TYPES):
+                output = output.decode('utf-8')
+            props = dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
+            pid = str(identity['pid'])
+            if (props.get('Id') != self.MANAGED_ZRAM_UNIT or props.get('MainPID') != pid or
+                    props.get('ActiveState') != 'active' or props.get('KillMode') != 'process' or
+                    props.get('Restart') != 'no' or
+                    self._controller_process_start_time(pid) != identity.get('processStartTime')):
+                return False, 'COLD_CONTROLLER_IDENTITY_CHANGED', None, None
+            # The unit read can itself take seconds. Require the observation to
+            # remain fresh at the actual signal boundary; do not reuse an older
+            # checkedAt merely because it passed before systemctl returned.
+            checked_at = time.time()
+            if not self._first_use_state_safe(native, observation_time=checked_at):
+                return False, 'COLD_CONTROLLER_NATIVE_STATE_STALE', None, None
+            os.kill(int(pid), signal.SIGTERM)
+        except (IOError, OSError, ValueError, TypeError, RuntimeError,
+                subprocess.CalledProcessError):
+            return False, 'COLD_CONTROLLER_STOP_UNKNOWN', None, None
+
+        deadline = linux.monotime() + timeout
+        while linux.monotime() < deadline:
+            try:
+                remaining = deadline - linux.monotime()
+                if remaining <= 0:
+                    break
+                output = self._bounded_command_output([
+                    'systemctl', 'show', self.MANAGED_ZRAM_UNIT,
+                    '--property=Id', '--property=MainPID', '--property=ActiveState',
+                    '--property=KillMode', '--property=Restart'],
+                    min(1, remaining))
+                if not isinstance(output, STRING_TYPES):
+                    output = output.decode('utf-8')
+                props = dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
+                if props.get('Id') != self.MANAGED_ZRAM_UNIT:
+                    return False, 'COLD_CONTROLLER_STOP_UNKNOWN', None, None
+                main_pid = props.get('MainPID')
+                if main_pid not in ('0', '', None) and main_pid != str(identity['pid']):
+                    return False, 'COLD_CONTROLLER_IDENTITY_CHANGED', None, None
+                current_start = self._controller_process_start_time(identity['pid'])
+                if current_start is not None and current_start != identity['processStartTime']:
+                    return False, 'COLD_CONTROLLER_IDENTITY_CHANGED', None, None
+                if (main_pid == '0' and props.get('ActiveState') == 'inactive' and
+                        current_start is None):
+                    return True, None, native, checked_at
+            except (IOError, OSError, ValueError, TypeError,
+                    RuntimeError, subprocess.CalledProcessError):
+                return False, 'COLD_CONTROLLER_STOP_UNKNOWN', None, None
+            time.sleep(min(0.2, max(0, deadline - linux.monotime())))
+        return False, 'COLD_CONTROLLER_STOP_TIMEOUT', None, None
 
     def _has_unresolved_operation_journal(self):
         unresolved = frozenset(('PREPARING', 'UNKNOWN', 'RECOVERING', 'ACTIVATING',
@@ -4524,7 +5933,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return None
 
     def _decorate_backend_maintenance_inventory(self, inventory, service_state, command,
-                                               observation_error=None):
+                                               observation_error=None,
+                                               allow_cold_active=False):
         reasons = []
         if not isinstance(inventory, dict):
             return inventory
@@ -4541,14 +5951,30 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             generation = drained_generation
         elif drained_generation and generation != drained_generation:
             reasons.append('DRAIN_POOL_GENERATION_MISMATCH')
+        first_use_ok = False
         if generation:
             inventory['poolGeneration'] = generation
-        elif self._first_use_no_pool_verified():
+        elif self._first_use_no_pool_verified(command):
+            first_use_ok = True
             inventory['poolGeneration'] = 'none'
         else:
             inventory['poolGeneration'] = None
 
         candidates = inventory.get('candidates')
+        owner_proof = None
+        if (drained_generation and inventory.get('poolGeneration') == drained_generation and
+                control_uuid):
+            owner_proof = self._drained_backend_owner_proof(
+                host_uuid, control_uuid, drained_generation)
+        if owner_proof and isinstance(candidates, list):
+            for candidate in candidates:
+                if self._drained_backend_candidate_matches(owner_proof, candidate):
+                    # The ordinary probe found exactly the previous backend
+                    # disk, and sysfs shows its sole holder is the drained
+                    # ZRAM device. Keep every other offline eligibility rule.
+                    candidate['eligible'] = True
+                    candidate['state'] = 'NEEDS_OFFLINE_PREPARATION'
+                    candidate['reasons'] = ['NEEDS_OFFLINE_PREPARATION']
         eligible = isinstance(candidates, list) and any(
             isinstance(candidate, dict) and candidate.get('type') == 'block' and
             candidate.get('eligible') is True and
@@ -4557,7 +5983,26 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             isinstance(candidate.get('identity'), STRING_TYPES) and
             re.match(r'^candidate:[0-9a-f]{64}$', candidate.get('identity'))
             for candidate in candidates)
-        if not self._service_unit_stopped():
+        cold_active = False
+        if allow_cold_active and self._maintenance_service_state() == 'active':
+            try:
+                native = self._service_request('state', {})
+                cpu = self._service_request('host-cpu-state', {})
+                if isinstance(native, dict):
+                    native = dict(native)
+                    native['host_cpu'] = cpu
+                config, _, _ = self._read_maintenance_config()
+                with open(self.zram_config_template_path, 'rb') as stream:
+                    template_bytes = stream.read()
+                with open(self.zram_config_path, 'rb') as stream:
+                    config_bytes = stream.read()
+                cold_active = (inventory.get('poolGeneration') == 'none' and
+                               self._first_use_state_safe(native) and
+                               self._first_use_no_pool_verified(command) and
+                               self._cold_controller_identity(template_bytes, config_bytes) is not None)
+            except (IOError, OSError, ValueError, TypeError, RuntimeError):
+                cold_active = False
+        if not self._service_unit_stopped() and not cold_active:
             reasons.append('MEMORY_SERVICE_NOT_STOPPED')
         if not eligible:
             reasons.append('NO_ELIGIBLE_WRITEBACK_CANDIDATE')
@@ -4573,9 +6018,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if (inventory.get('poolGeneration') not in ('none', None) and
                 (not control_uuid or not drained_generation)):
             reasons.append('DRAIN_PROOF_UNAVAILABLE')
-        if inventory.get('poolGeneration') == 'none' and not self._first_use_no_pool_verified():
+        if inventory.get('poolGeneration') == 'none' and not first_use_ok:
             reasons.append('FIRST_USE_NO_POOL_PROOF_UNAVAILABLE')
-        if self._has_unresolved_operation_journal():
+        if self._has_unresolved_operation_journal() and not first_use_ok:
             # A completed drain journal is the permitted maintenance anchor.
             active = self._load_operation({'operationUuid': control_uuid}) if control_uuid else None
             if not (isinstance(active, dict) and active.get('action') == 'drain' and
@@ -4672,7 +6117,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         })
         return inventory
 
-    def _fresh_backend_maintenance_inventory(self, host_uuid):
+    def _fresh_backend_maintenance_inventory(self, host_uuid, command=None,
+                                             allow_cold_active=False):
         backend, config, status, observation_error = {}, {}, None, None
         try:
             status = self._readonly_query('backend-state', {'hostUuid': host_uuid})
@@ -4686,7 +6132,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             backend, config = {}, {}
         inventory = probe_writeback_backends(host_uuid, backend, config)
         return self._decorate_backend_maintenance_inventory(
-            inventory, status, {'hostUuid': host_uuid}, observation_error)
+            inventory, status, command or {'hostUuid': host_uuid}, observation_error,
+            allow_cold_active=allow_cold_active)
 
     @staticmethod
     def _atomic_json(path, value):
@@ -4957,11 +6404,30 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         'operationUuid': command['operationUuid']}
                 raise ValueError('OPERATION_UUID_REUSE' if journal_state == 'present' else
                                  'OPERATION_JOURNAL_UNAVAILABLE')
-            if self._maintenance_service_state() != 'inactive':
-                raise ValueError('MEMORY_SERVICE_NOT_STOPPED')
+            service_state = self._maintenance_service_state()
+            cold_identity = None
+            backend_preparation_check = {}
+            if service_state != 'inactive':
+                if service_state != 'active':
+                    raise ValueError('MEMORY_SERVICE_STATE_UNKNOWN')
+                with open(self.zram_config_template_path, 'rb') as stream:
+                    template_bytes = stream.read()
+                with open(self.zram_config_path, 'rb') as stream:
+                    config_bytes = stream.read()
+                cold_identity = self._cold_controller_identity(template_bytes, config_bytes)
+                native = self._service_request('state', {})
+                cpu = self._service_request('host-cpu-state', {})
+                if isinstance(native, dict):
+                    native = dict(native)
+                    native['host_cpu'] = cpu
+                if (cold_identity is None or not self._first_use_state_safe(native) or
+                        not self._first_use_no_pool_verified(
+                            backend_preparation_out=backend_preparation_check)):
+                    raise ValueError('COLD_BACKEND_FIRST_USE_NOT_PROVEN')
             if not os.path.isfile(self.drain_binary) or not os.path.isfile(self.drain_config):
                 raise ValueError('BACKEND_MAINTENANCE_EXECUTOR_UNAVAILABLE')
-            inventory = self._fresh_backend_maintenance_inventory(host_uuid)
+            inventory = self._fresh_backend_maintenance_inventory(
+                host_uuid, command=command, allow_cold_active=cold_identity is not None)
             request = self._backend_preparation_request(command, inventory)
             directory, paths = self._maintenance_intent_paths(command['operationUuid'])
             if any(os.path.lexists(path) for path in paths.values()):
@@ -4969,8 +6435,73 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE',
                         'operationUuid': command['operationUuid']}
             request['request_id'] = command['operationUuid']
-            self._atomic_json(paths['requestPath'], request)
             unit = self._maintenance_systemd_unit(command['operationUuid'])
+            stop_progress = None
+            if cold_identity is not None:
+                controller_stop = {
+                    'attempted': True, 'unit': self.MANAGED_ZRAM_UNIT,
+                    'hostUuid': host_uuid, 'bootId': self._current_boot_id(),
+                    'requestHash': request_hash, 'identity': cold_identity,
+                    'request': request, 'nativeState': native,
+                    'workerLaunchAttempted': False}
+                if isinstance(backend_preparation_check.get('proof'), dict):
+                    controller_stop['backendPreparationProof'] = \
+                        backend_preparation_check['proof']
+                stop_progress = {'controllerStop': controller_stop}
+                starting = self._maintenance_result(
+                    command, 'Draining', 'CONTROLLER_STOP_REQUESTED')
+                if not self._record_operation(command, 'PREPARING', starting):
+                    return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                            'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE',
+                            'operationUuid': command['operationUuid']}
+                if not self._persist_maintenance_progress(
+                        command['operationUuid'], 'PREPARING', starting, stop_progress):
+                    return self._maintenance_result(
+                        command, 'Unknown', 'UNKNOWN', 'OPERATION_JOURNAL_UNAVAILABLE')
+                stopped, stop_error, stop_native, native_checked_at = self._signal_and_wait_cold_controller(
+                    command, cold_identity)
+                if not stopped:
+                    unknown = self._maintenance_result(
+                        command, 'Unknown', 'CONTROLLER_STOP_UNRESOLVED', stop_error)
+                    self._persist_maintenance_progress(
+                        command['operationUuid'], 'UNKNOWN', unknown, stop_progress)
+                    return unknown
+                # Bind the completed stop to the exact fresh native observation
+                # revalidated immediately before SIGTERM, not the earlier
+                # inventory sample used during initial admission.
+                stop_progress['controllerStop']['nativeState'] = stop_native
+                stop_progress['controllerStop']['nativeStateCheckedAt'] = native_checked_at
+                stop_progress['controllerStop']['completed'] = True
+                if not self._persist_maintenance_progress(
+                        command['operationUuid'], 'PREPARING', starting, stop_progress):
+                    return self._maintenance_result(
+                        command, 'Unknown', 'UNKNOWN', 'OPERATION_JOURNAL_UNAVAILABLE')
+                if not self._first_use_no_pool_verified(command):
+                    unknown = self._maintenance_result(
+                        command, 'Unknown', 'CONTROLLER_STOP_READBACK_UNKNOWN',
+                        'COLD_BACKEND_FIRST_USE_NOT_PROVEN')
+                    self._persist_maintenance_progress(
+                        command['operationUuid'], 'UNKNOWN', unknown, stop_progress)
+                    return unknown
+                stop_progress['controllerStop']['continuationReady'] = True
+                if not self._persist_maintenance_progress(
+                        command['operationUuid'], 'PREPARING', starting, stop_progress):
+                    return self._maintenance_result(
+                        command, 'Unknown', 'UNKNOWN', 'OPERATION_JOURNAL_UNAVAILABLE')
+                # The selected candidate is re-probed after controller exit;
+                # an old active-service observation is never sent to Go.
+                fresh_inventory = self._fresh_backend_maintenance_inventory(
+                    host_uuid, command=command)
+                fresh_request = self._backend_preparation_request(command, fresh_inventory)
+                if fresh_request != request:
+                    unknown = self._maintenance_result(
+                        command, 'Unknown', 'CANDIDATE_READBACK_CHANGED',
+                        'COLD_BACKEND_CANDIDATE_CHANGED')
+                    self._persist_maintenance_progress(
+                        command['operationUuid'], 'UNKNOWN', unknown, stop_progress)
+                    return unknown
+
+            self._atomic_json(paths['requestPath'], request)
             intent = {'schema': 1, 'operationUuid': command['operationUuid'],
                       'hostUuid': host_uuid, 'bootId': self._current_boot_id(),
                       'requestHash': request_hash, 'unit': unit,
@@ -4982,11 +6513,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             # process exits in the syscall window, reconcile observes status;
             # apply with this UUID is never allowed to launch again.
             self._atomic_json(paths['intentPath'], intent)
-            if not self._record_operation(command, 'PREPARING',
-                    self._maintenance_result(command, 'Draining', 'WORKER_STARTING')):
-                return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
-                        'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE',
-                        'operationUuid': command['operationUuid']}
+            worker_starting = self._maintenance_result(command, 'Draining', 'WORKER_STARTING')
+            if cold_identity is None:
+                if not self._record_operation(command, 'PREPARING', worker_starting):
+                    return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                            'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE',
+                            'operationUuid': command['operationUuid']}
+            else:
+                stop_progress['controllerStop']['workerLaunchAttempted'] = True
+                if not self._persist_maintenance_progress(
+                        command['operationUuid'], 'PREPARING', worker_starting, stop_progress):
+                    return self._maintenance_result(
+                        command, 'Unknown', 'UNKNOWN', 'OPERATION_JOURNAL_UNAVAILABLE')
             subprocess.check_call([
                 'systemd-run', '--unit=%s' % unit, '--no-block',
                 '--property=UMask=0077', '--property=RemainAfterExit=yes',
@@ -5000,13 +6538,26 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._update_operation_record(command['operationUuid'], 'DRAINING', result)
             return result
         except ValueError as exc:
+            stop_failure = None
             if self._valid_identifier(command.get('operationUuid')):
                 state, prior = self._operation_file_state(command['operationUuid'])
-                if state == 'missing' or (state == 'present' and isinstance(prior, dict) and
-                                          prior.get('requestHash') == self._operation_hash(command)):
+                prior_progress = prior.get('maintenanceProgress') if isinstance(prior, dict) else None
+                stop = prior_progress.get('controllerStop') if isinstance(prior_progress, dict) else None
+                if (state == 'present' and isinstance(stop, dict) and
+                        stop.get('attempted') is True and
+                        prior.get('requestHash') == self._operation_hash(command)):
+                    failure = self._maintenance_result(
+                        command, 'Unknown', 'CONTROLLER_STOPPED_PREPARATION_UNRESOLVED', str(exc))
+                    self._persist_maintenance_progress(
+                        command['operationUuid'], 'UNKNOWN', failure, prior_progress)
+                    stop_failure = failure
+                elif state == 'missing' or (state == 'present' and isinstance(prior, dict) and
+                                             prior.get('requestHash') == self._operation_hash(command)):
                     self._record_operation(command, 'REJECTED', {'success': False, 'status': 'Failed',
                         'state': {'phase': 'FAILED'}, 'reasonCode': str(exc),
                         'operationUuid': command.get('operationUuid')})
+            if stop_failure is not None:
+                return stop_failure
             return {'success': False, 'status': 'Failed', 'state': {'phase': 'FAILED'},
                     'reason': str(exc), 'reasonCode': str(exc),
                     'operationUuid': command.get('operationUuid')}
@@ -5054,29 +6605,288 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def _backend_maintenance_exit_error(stderr_path):
-        """Return only structured, uppercase error codes from the Go worker."""
+        """Normalize a Go worker error while preserving its exact receipt binding."""
         try:
             with open(stderr_path, 'r') as stream:
                 value = json.load(stream)
             raw = value.get('error') if isinstance(value, dict) else None
             if not isinstance(raw, STRING_TYPES):
-                return 'BACKEND_MAINTENANCE_EXECUTOR_FAILED', None
+                return 'BACKEND_MAINTENANCE_EXECUTOR_FAILED', None, None
             parts = raw.split(': ', 1)
             code = parts[0]
             if not re.match(r'^[A-Z][A-Z0-9_]{2,127}$', code):
-                return 'BACKEND_MAINTENANCE_EXECUTOR_FAILED', None
+                return 'BACKEND_MAINTENANCE_EXECUTOR_FAILED', None, raw
             detail = None
             if len(parts) == 2 and re.match(r'^[A-Z][A-Z0-9_]{2,127}$', parts[1]):
                 detail = parts[1]
-            return code, detail
+            return code, detail, raw
         except (IOError, OSError, ValueError, TypeError):
-            return 'BACKEND_MAINTENANCE_EXECUTOR_FAILED', None
+            return 'BACKEND_MAINTENANCE_EXECUTOR_FAILED', None, None
+
+    def _continue_cold_backend_prepare(self, command, prior):
+        """Explicit reconcile continuation after the one recorded SIGTERM attempt."""
+        try:
+            lock = self._acquire_host_control_lock()
+        except (IOError, OSError):
+            return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                             'OPERATION_CONCURRENT')
+        try:
+            current = self._load_operation(command)
+            progress = (current.get('maintenanceProgress') if isinstance(current, dict) else None)
+            stop = progress.get('controllerStop') if isinstance(progress, dict) else None
+            if (current != prior or current.get('action') != 'prepareWritebackBackend' or
+                    current.get('stage') != 'UNKNOWN' or
+                    current.get('hostUuid') != self._load_host_uuid() or
+                    current.get('bootId') != self._current_boot_id() or
+                    current.get('requestHash') != self._operation_hash(command) or
+                    not isinstance(stop, dict) or stop.get('attempted') is not True or
+                    stop.get('completed') is not True or
+                    stop.get('continuationReady') is not True or
+                    stop.get('workerLaunchAttempted') is not False or
+                    stop.get('requestHash') != current.get('requestHash') or
+                    stop.get('hostUuid') != current.get('hostUuid') or
+                    stop.get('bootId') != current.get('bootId') or
+                    not isinstance(stop.get('identity'), dict) or
+                    not isinstance(stop.get('request'), dict)):
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'COLD_CONTROLLER_STOP_INTENT_INVALID')
+            intent_path = current.get('maintenanceIntentPath')
+            if (not isinstance(intent_path, STRING_TYPES) or os.path.lexists(intent_path)):
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'COLD_CONTROLLER_STOP_CONTINUATION_UNSAFE')
+            identity = stop['identity']
+            if (identity.get('bootId') != self._current_boot_id() or
+                    identity.get('unit') != self.MANAGED_ZRAM_UNIT or
+                    identity.get('killMode') != 'process' or identity.get('restart') != 'no' or
+                    self._controller_process_start_time(identity.get('pid')) is not None or
+                    self._maintenance_service_state() != 'inactive'):
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'COLD_CONTROLLER_STOP_UNRESOLVED')
+            # The stopped daemon's Unix socket is intentionally unavailable.
+            # Reuse only the exact native snapshot freshly checked immediately
+            # before the durably-bound SIGTERM. Its timestamps are evidence of
+            # that prior check, not a new observation; independently re-check
+            # local no-pool/sysfs/history and the candidate after stop.
+            native = stop.get('nativeState')
+            checked_at = stop.get('nativeStateCheckedAt')
+            if (not self._first_use_state_safe(native, observation_time=checked_at) or
+                    not self._first_use_no_pool_verified(command)):
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'COLD_BACKEND_FIRST_USE_NOT_PROVEN')
+            with open(self.zram_config_path, 'rb') as stream:
+                config_bytes = stream.read()
+            if hashlib.sha256(config_bytes).hexdigest() != identity.get('sourceConfigSha256'):
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'COLD_BACKEND_CONFIG_CHANGED')
+            inventory = self._fresh_backend_maintenance_inventory(
+                current['hostUuid'], command=command)
+            rebuilt = self._backend_preparation_request(command, inventory)
+            saved = dict(stop['request'])
+            if saved != rebuilt:
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'COLD_BACKEND_CANDIDATE_CHANGED')
+            directory, paths = self._maintenance_intent_paths(command['operationUuid'])
+            if any(os.path.lexists(path) for path in paths.values()):
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'OPERATION_JOURNAL_UNAVAILABLE')
+            self._atomic_json(paths['requestPath'], rebuilt)
+            intent = {'schema': 1, 'operationUuid': command['operationUuid'],
+                      'hostUuid': current['hostUuid'], 'bootId': current['bootId'],
+                      'requestHash': current['requestHash'],
+                      'unit': self._maintenance_systemd_unit(command['operationUuid']),
+                      'requestPath': paths['requestPath'], 'receiptPath': paths['receiptPath'],
+                      'stderrPath': paths['stderrPath'], 'configPath': self.drain_config,
+                      'controlOperationUuid': self._get_active_control(),
+                      'workerLaunchAttempted': True}
+            self._atomic_json(paths['intentPath'], intent)
+            stop = dict(stop, workerLaunchAttempted=True, completed=True)
+            progress = dict(progress, controllerStop=stop)
+            pending = self._maintenance_result(command, 'Draining', 'WORKER_STARTING')
+            if not self._persist_maintenance_progress(
+                    command['operationUuid'], 'PREPARING', pending, progress):
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'OPERATION_JOURNAL_UNAVAILABLE')
+            subprocess.check_call([
+                'systemd-run', '--unit=%s' % intent['unit'], '--no-block',
+                '--property=UMask=0077', '--property=RemainAfterExit=yes',
+                '--property=TimeoutStartSec=infinity',
+                '--property=StandardInput=file:%s' % paths['requestPath'],
+                '--property=StandardOutput=file:%s' % paths['receiptPath'],
+                '--property=StandardError=file:%s' % paths['stderrPath'],
+                self.drain_binary, '--config', self.drain_config,
+                '--prepare-backend-maintenance'])
+            result = self._maintenance_result(command, 'Draining', 'EXECUTOR_RUNNING')
+            self._update_operation_record(command['operationUuid'], 'DRAINING', result)
+            return result
+        except Exception as exc:
+            logger.warn('cold backend prepare continuation is uncertain: %s', exc)
+            result = self._maintenance_result(
+                command, 'Unknown', 'UNKNOWN', 'BACKEND_MAINTENANCE_EXECUTOR_UNKNOWN')
+            self._update_operation_record(command['operationUuid'], 'UNKNOWN', result)
+            return result
+        finally:
+            self._release_operation(lock)
+
+    def _restore_cold_controller_after_prepare_failure(
+            self, command, current, request, receipt):
+        """Restore only the same cold controller after a proven failed prepare."""
+        reason = receipt.get('reason') or 'BACKEND_MAINTENANCE_PREPARE_FAILED'
+        failed = self._maintenance_result(
+            command, 'Failed', 'FAILED_REQUIRES_REVIEW', reason, receipt)
+        progress = current.get('maintenanceProgress')
+        stop = progress.get('controllerStop') if isinstance(progress, dict) else None
+        identity = stop.get('identity') if isinstance(stop, dict) else None
+        if (not isinstance(progress, dict) or not isinstance(stop, dict) or
+                current.get('action') != 'prepareWritebackBackend' or
+                current.get('hostUuid') != self._load_host_uuid() or
+                current.get('bootId') != self._current_boot_id() or
+                current.get('requestHash') != self._operation_hash(command) or
+                stop.get('attempted') is not True or stop.get('completed') is not True or
+                stop.get('continuationReady') is not True or
+                stop.get('workerLaunchAttempted') is not True or
+                stop.get('requestHash') != current.get('requestHash') or
+                stop.get('hostUuid') != current.get('hostUuid') or
+                stop.get('bootId') != current.get('bootId') or
+                not isinstance(identity, dict) or
+                identity.get('bootId') != self._current_boot_id() or
+                identity.get('unit') != self.MANAGED_ZRAM_UNIT or
+                identity.get('killMode') != 'process' or identity.get('restart') != 'no' or
+                not self._maintenance_receipt_matches_request(
+                    receipt, request, self._current_boot_id()) or
+                receipt.get('stage') != 'FAILED_REQUIRES_REVIEW'):
+            self._update_operation_record(command['operationUuid'], 'FAILED_REQUIRES_REVIEW', failed)
+            return failed
+        attempted = progress.get('serviceStartAttempted') is True
+        if progress.get('serviceStartAttempted') not in (None, False, True):
+            self._update_operation_record(command['operationUuid'], 'FAILED_REQUIRES_REVIEW', failed)
+            return failed
+        try:
+            if (self.drain_config != self.zram_config_path or
+                    os.path.islink(self.zram_config_path) or
+                    os.path.islink(self.zram_config_template_path)):
+                raise ValueError('COLD_BACKEND_CONFIG_PATH_CHANGED')
+            with open(self.zram_config_path, 'rb') as stream:
+                config_bytes = stream.read()
+            with open(self.zram_config_template_path, 'rb') as stream:
+                template_bytes = stream.read()
+            if (hashlib.sha256(config_bytes).hexdigest() != identity.get('sourceConfigSha256') or
+                    hashlib.sha256(template_bytes).hexdigest() != identity.get('templateSha256')):
+                raise ValueError('COLD_BACKEND_CONFIG_CHANGED')
+            config, _, _ = self._read_maintenance_config()
+            if config.get('initial_efficiency_enabled') is not False:
+                raise ValueError('COLD_BACKEND_POLICY_NOT_DISABLED')
+            intent_path = current.get('maintenanceIntentPath')
+            with open(intent_path, 'r') as stream:
+                intent = json.load(stream)
+            if (not isinstance(intent, dict) or
+                    intent.get('operationUuid') != command.get('operationUuid') or
+                    intent.get('requestHash') != current.get('requestHash') or
+                    intent.get('controlOperationUuid') != self._get_active_control()):
+                raise ValueError('COLD_BACKEND_CONTROL_CHANGED')
+            if not self._first_use_no_pool_verified(
+                    command, failed_backend_record=current,
+                    failed_backend_receipt=receipt):
+                raise ValueError('COLD_BACKEND_FIRST_USE_NOT_PROVEN')
+        except (IOError, OSError, ValueError, TypeError):
+            if attempted:
+                return self._maintenance_result(
+                    command, 'Unknown', 'SERVICE_START_UNRESOLVED',
+                    'COLD_CONTROLLER_RESTORE_NOT_PROVEN', receipt)
+            self._update_operation_record(command['operationUuid'], 'FAILED_REQUIRES_REVIEW', failed)
+            return failed
+
+        service_state = self._maintenance_service_state()
+        if service_state == 'starting':
+            return self._maintenance_result(
+                command, 'Unknown', 'SERVICE_STARTING',
+                'COLD_CONTROLLER_RESTORE_IN_PROGRESS', receipt)
+        if service_state == 'inactive':
+            if attempted:
+                return self._maintenance_result(
+                    command, 'Unknown', 'SERVICE_START_UNRESOLVED',
+                    'COLD_CONTROLLER_RESTORE_UNRESOLVED', receipt)
+            next_progress = dict(progress)
+            next_progress.update({'serviceStartAttempted': True,
+                                  'serviceUnit': self.MANAGED_ZRAM_UNIT})
+            pending = self._maintenance_result(
+                command, 'Unknown', 'SERVICE_START_REQUESTED',
+                'COLD_CONTROLLER_RESTORE_REQUESTED', receipt)
+            if not self._persist_maintenance_progress(
+                    command['operationUuid'], 'UNKNOWN', pending, next_progress):
+                return self._maintenance_result(
+                    command, 'Unknown', 'UNKNOWN', 'OPERATION_JOURNAL_UNAVAILABLE', receipt)
+            progress = next_progress
+            try:
+                self._bounded_command_output(
+                    ['systemctl', 'start', self.MANAGED_ZRAM_UNIT], 30)
+            except (IOError, OSError, RuntimeError, subprocess.CalledProcessError):
+                service_state = self._maintenance_service_state()
+                if service_state not in ('active', 'starting'):
+                    return self._maintenance_result(
+                        command, 'Unknown', 'SERVICE_START_UNRESOLVED',
+                        'COLD_CONTROLLER_RESTORE_UNRESOLVED', receipt)
+        elif service_state != 'active':
+            if not attempted:
+                self._update_operation_record(command['operationUuid'],
+                                              'FAILED_REQUIRES_REVIEW', failed)
+                return failed
+            return self._maintenance_result(
+                command, 'Unknown', 'SERVICE_STATE_UNKNOWN',
+                'COLD_CONTROLLER_RESTORE_UNRESOLVED', receipt)
+
+        service_state = self._maintenance_service_state()
+        if service_state == 'starting':
+            return self._maintenance_result(
+                command, 'Unknown', 'SERVICE_STARTING',
+                'COLD_CONTROLLER_RESTORE_IN_PROGRESS', receipt)
+        if service_state != 'active':
+            return self._maintenance_result(
+                command, 'Unknown', 'SERVICE_START_UNRESOLVED',
+                'COLD_CONTROLLER_RESTORE_UNRESOLVED', receipt)
+        try:
+            runtime = self._first_use_runtime_identity(template_bytes, config_bytes)
+            if runtime.get('bootId') != current.get('bootId'):
+                raise ValueError('COLD_CONTROLLER_RESTORE_IDENTITY_UNKNOWN')
+            native = self._service_request('state', {})
+            native = dict(native) if isinstance(native, dict) else native
+            if isinstance(native, dict):
+                native['host_cpu'] = self._service_request('host-cpu-state', {})
+            if (not self._first_use_state_safe(
+                    native, allow_failed_backend_maintenance=True) or
+                    not self._first_use_no_pool_verified(
+                        command, failed_backend_record=self._load_operation(command),
+                        failed_backend_receipt=receipt)):
+                raise ValueError('COLD_CONTROLLER_RESTORE_READBACK_UNKNOWN')
+        except Exception:
+            return self._maintenance_result(
+                command, 'Unknown', 'SERVICE_READBACK_UNKNOWN',
+                'COLD_CONTROLLER_RESTORE_READBACK_UNKNOWN', receipt)
+        restored = dict(progress)
+        restored['serviceRestored'] = True
+        if not self._persist_maintenance_progress(
+                command['operationUuid'], 'FAILED_REQUIRES_REVIEW', failed, restored):
+            return self._maintenance_result(
+                command, 'Unknown', 'UNKNOWN', 'OPERATION_JOURNAL_UNAVAILABLE', receipt)
+        return failed
 
     def _reconcile_backend_maintenance(self, command, prior):
+        command = dict(command)
         operation_uuid = command.get('operationUuid')
+        command['maintenanceIntentPath'] = os.path.join(
+            self.operation_dir, 'backend-maintenance', '%s.intent.json' % operation_uuid)
         if (prior.get('hostUuid') != self._load_host_uuid() or
                 prior.get('bootId') != self._current_boot_id()):
             return self._maintenance_result(command, 'Unknown', 'UNKNOWN', 'OPERATION_BOOT_CHANGED')
+        progress = prior.get('maintenanceProgress')
+        stop = progress.get('controllerStop') if isinstance(progress, dict) else None
+        if (prior.get('stage') == 'UNKNOWN' and isinstance(stop, dict) and
+                stop.get('attempted') is True and stop.get('workerLaunchAttempted') is False):
+            if stop.get('completed') is not True or stop.get('continuationReady') is not True:
+                return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
+                                                 'COLD_CONTROLLER_STOP_UNRESOLVED')
+            intent_path = prior.get('maintenanceIntentPath')
+            if isinstance(intent_path, STRING_TYPES) and not os.path.lexists(intent_path):
+                return self._continue_cold_backend_prepare(command, prior)
         intent_path = prior.get('maintenanceIntentPath')
         if (not isinstance(intent_path, STRING_TYPES) or
                 intent_path != os.path.join(self.operation_dir, 'backend-maintenance',
@@ -5114,7 +6924,41 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
                                              'BACKEND_MAINTENANCE_WORKER_STATE_UNKNOWN')
         if exit_status != 0:
-            reason_code, detail = self._backend_maintenance_exit_error(paths['stderrPath'])
+            reason_code, detail, _ = self._backend_maintenance_exit_error(paths['stderrPath'])
+            receipt, receipt_error = self._read_backend_maintenance_receipt()
+            if (not receipt_error and
+                    self._maintenance_receipt_matches_request(
+                        receipt, persisted_request, self._current_boot_id()) and
+                    receipt.get('stage') == 'FAILED_REQUIRES_REVIEW'):
+                # A failed Go worker writes its durable failure receipt before
+                # returning exit 1. Continue only the narrowly proven cold
+                # controller restoration path; this does not convert failure
+                # into success or replay the prepare request.
+                failed = self._maintenance_result(
+                    command, 'Failed', 'FAILED_REQUIRES_REVIEW', reason_code, receipt)
+                if detail:
+                    failed['failureDetail'] = detail
+                prior_progress = prior.get('maintenanceProgress')
+                restore_was_attempted = (
+                    prior.get('stage') == 'UNKNOWN' and
+                    prior.get('action') == 'prepareWritebackBackend' and
+                    isinstance(prior_progress, dict) and
+                    prior_progress.get('serviceStartAttempted') is True and
+                    prior_progress.get('serviceUnit') == self.MANAGED_ZRAM_UNIT)
+                if restore_was_attempted:
+                    # A prior service-start attempt is deliberately query-only.
+                    # Keep its UNKNOWN journal and failed Go receipt intact until
+                    # the existing continuation proves the service outcome.
+                    failed_prior = prior
+                else:
+                    if not self._update_operation_record(
+                            operation_uuid, 'FAILED_REQUIRES_REVIEW', failed):
+                        return self._maintenance_result(
+                            command, 'Unknown', 'UNKNOWN',
+                            'OPERATION_JOURNAL_UNAVAILABLE', receipt)
+                    failed_prior = self._load_operation({'operationUuid': operation_uuid})
+                return self._continue_backend_maintenance(
+                    command, failed_prior, persisted_request, receipt)
             result = self._maintenance_result(command, 'Failed', 'FAILED_REQUIRES_REVIEW',
                                               reason_code)
             result['reasonCode'] = reason_code
@@ -5130,10 +6974,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                              error or 'BACKEND_MAINTENANCE_RECEIPT_UNKNOWN')
         stage = receipt.get('stage')
         if stage == 'FAILED_REQUIRES_REVIEW':
-            result = self._maintenance_result(command, 'Failed', stage,
-                                              receipt.get('reason') or stage, receipt)
-            self._update_operation_record(operation_uuid, stage, result)
-            return result
+            return self._continue_backend_maintenance(
+                command, prior, persisted_request, receipt)
         if stage == 'AWAITING_SERVICE_READBACK':
             return self._continue_backend_maintenance(
                 command, prior, persisted_request, receipt)
@@ -5186,6 +7028,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 result = self._maintenance_result(command, 'Succeeded', 'APPLIED', receipt=latest)
                 self._update_operation_record(operation_uuid, 'APPLIED', result)
                 return result
+            if latest.get('stage') == 'FAILED_REQUIRES_REVIEW':
+                return self._restore_cold_controller_after_prepare_failure(
+                    command, current, request, latest)
             if latest.get('stage') != 'AWAITING_SERVICE_READBACK':
                 return self._maintenance_result(command, 'Unknown', 'UNKNOWN',
                     'BACKEND_MAINTENANCE_RECEIPT_PENDING:%s' % latest.get('stage'), latest)
@@ -5216,8 +7061,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                                      'OPERATION_JOURNAL_UNAVAILABLE', latest)
                 progress = next_progress
                 try:
-                    subprocess.check_call(['systemctl', 'start', self.MANAGED_ZRAM_UNIT], timeout=30)
-                except (IOError, OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                    self._bounded_command_output(
+                        ['systemctl', 'start', self.MANAGED_ZRAM_UNIT], 30)
+                except (IOError, OSError, RuntimeError, subprocess.CalledProcessError):
                     # The start command can time out after systemd accepted
                     # it. Observe before deciding; never replay while active.
                     service_state = self._maintenance_service_state()
@@ -5752,6 +7598,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                   'bootId': self._current_boot_id(),
                   'poolGeneration': command.get('poolGeneration'),
                   'device': command.get('device'), 'configPath': self.drain_config}
+        owner_proof = command.get('backendOwnerProof')
+        if isinstance(owner_proof, dict):
+            if (owner_proof.get('hostUuid') != command.get('hostUuid') or
+                    owner_proof.get('controlOperationUuid') != command.get('operationUuid') or
+                    owner_proof.get('bootId') != intent['bootId'] or
+                    owner_proof.get('poolGeneration') != intent['poolGeneration'] or
+                    owner_proof.get('zramDevice') != intent['device']):
+                raise ValueError('DRAIN_BACKEND_OWNER_PROOF_MISMATCH')
+            intent['backendOwnerProof'] = owner_proof
         if not intent['bootId'] or not intent['poolGeneration'] or not intent['device']:
             raise ValueError('DRAIN_INTENT_INCOMPLETE')
         fd, temp_intent = tempfile.mkstemp(prefix='.drain-intent-', dir=self.operation_dir)
@@ -5783,6 +7638,185 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 'stderrPath': error_path, 'configPath': self.drain_config,
                 'serviceUnit': self.drain_unit}
 
+    def _capture_stock_drain_backend_owner(self, command, pool_generation, device):
+        """Pin an already-owned active backend before the drain stops its reader."""
+        host_uuid = command.get('hostUuid')
+        boot_id = self._current_boot_id()
+        try:
+            status = self._readonly_query('backend-state', {'hostUuid': host_uuid})
+            detail = self._readonly_query('backend-view', {'hostUuid': host_uuid})
+            status_pool = status.get('host_zram') or status.get('pool') or {}
+            if (status_pool.get('pool_generation') != pool_generation or
+                    status_pool.get('device') != device):
+                return None
+            resource = status.get('backend_resource')
+            if (not isinstance(resource, dict) or resource.get('state') != 'ACTIVE' or
+                    resource.get('active') is not True or
+                    detail.get('claimed') is not True or
+                    detail.get('identity_qualified') is not True or
+                    detail.get('ownership_generation') != resource.get('resource_uuid')):
+                return None
+            backend = dict(detail)
+            backend['backend_resource'] = resource
+            configured = detail.get('configured') or {}
+            inventory = probe_writeback_backends(host_uuid, backend, configured)
+            candidates = inventory.get('candidates') if isinstance(inventory, dict) else None
+            active = [candidate for candidate in candidates or []
+                      if isinstance(candidate, dict) and candidate.get('type') == 'block' and
+                      candidate.get('state') == 'ACTIVE' and candidate.get('active') is True and
+                      candidate.get('eligible') is True and
+                      candidate.get('writebackReady', candidate.get('writeback_ready')) is True]
+            if len(active) != 1:
+                return None
+            candidate = active[0]
+            identity = candidate.get('stableIdentity', candidate.get('stable_identity'))
+            resource_uuid = resource.get('resource_uuid')
+            fingerprint = resource.get('fingerprint')
+            if (inventory.get('hostUuid', inventory.get('host_uuid')) != host_uuid or
+                    inventory.get('bootId', inventory.get('boot_id')) != boot_id or
+                    candidate.get('resourceUuid', candidate.get('resource_uuid')) != resource_uuid or
+                    candidate.get('fingerprint') != fingerprint or
+                    candidate.get('identity') != fingerprint or
+                    not isinstance(identity, dict) or
+                    identity.get('bootId', identity.get('boot_id')) != boot_id or
+                    identity.get('device') != candidate.get('device') or
+                    identity.get('capacityBytes', identity.get('capacity_bytes')) !=
+                    candidate.get('capacityBytes', candidate.get('capacity_bytes'))):
+                return None
+            if (not re.match(r'^[0-9a-fA-F]{32}$', str(resource_uuid or '')) or
+                    not re.match(r'^[0-9a-fA-F]{64}$', str(fingerprint or ''))):
+                return None
+            return {
+                'schemaVersion': 1,
+                'hostUuid': host_uuid,
+                'controlOperationUuid': command.get('operationUuid'),
+                'resourceUuid': resource_uuid,
+                'fingerprint': fingerprint,
+                'ownershipGeneration': detail.get('ownership_generation'),
+                'bootId': boot_id,
+                'poolGeneration': pool_generation,
+                'zramDevice': device,
+                'candidateIdentity': candidate.get('identity'),
+                'candidateState': candidate.get('state'),
+                'capacityBytes': candidate.get('capacityBytes', candidate.get('capacity_bytes')),
+                'stableIdentity': identity,
+                'observedAt': resource.get('observed_at'),
+            }
+        except Exception:
+            # An unreadable or stale backend view must not block the ordinary
+            # RAM drain, but it can never authorize offline backend preparation.
+            return None
+
+    def _drained_backend_owner_proof(self, host_uuid, control_uuid, pool_generation):
+        """Read the owner proof only from the exact, current drained control journal."""
+        if (not self._valid_identifier(control_uuid) or
+                os.path.islink(self.active_control_path) or
+                os.path.realpath(self.active_control_path) != self.active_control_path or
+                self._get_active_control() != control_uuid):
+            return None
+        operation_path = self._operation_path(control_uuid)
+        if (os.path.islink(operation_path) or
+                os.path.realpath(operation_path) != operation_path):
+            return None
+        state, record = self._operation_file_state(control_uuid)
+        boot_id = self._current_boot_id()
+        if (state != 'present' or not isinstance(record, dict) or
+                record.get('operationUuid') != control_uuid or
+                record.get('action') != 'drain' or record.get('stage') != 'APPLIED' or
+                record.get('hostUuid') != host_uuid or record.get('bootId') != boot_id):
+            return None
+        intent_path = os.path.join(self.operation_dir, '%s.drain-intent.json' % control_uuid)
+        if (os.path.islink(intent_path) or
+                os.path.realpath(intent_path) != intent_path):
+            return None
+        try:
+            with open(intent_path, 'r') as stream:
+                intent = json.load(stream)
+        except (IOError, OSError, ValueError, TypeError):
+            return None
+        if (not isinstance(intent, dict) or intent.get('operationUuid') != control_uuid or
+                intent.get('bootId') != boot_id or intent.get('poolGeneration') != pool_generation or
+                intent.get('configPath') != self.drain_config or
+                intent.get('unit') != 'zstack-memory-drain-%s' % control_uuid or
+                intent.get('receiptPath') != os.path.join(
+                    self.drain_dir, '%s.receipt.json' % control_uuid) or
+                intent.get('stderrPath') != os.path.join(
+                    self.drain_dir, '%s.stderr' % control_uuid)):
+            return None
+        proof = intent.get('backendOwnerProof')
+        expected = frozenset(('schemaVersion', 'hostUuid', 'controlOperationUuid',
+                              'resourceUuid', 'fingerprint', 'ownershipGeneration',
+                              'bootId', 'poolGeneration', 'zramDevice', 'candidateIdentity',
+                              'candidateState', 'capacityBytes', 'stableIdentity', 'observedAt'))
+        if (not isinstance(proof, dict) or set(proof) != expected or
+                proof.get('schemaVersion') != 1 or proof.get('hostUuid') != host_uuid or
+                proof.get('controlOperationUuid') != control_uuid or
+                proof.get('bootId') != boot_id or proof.get('poolGeneration') != pool_generation or
+                proof.get('zramDevice') != intent.get('device') or
+                proof.get('candidateState') != 'ACTIVE' or
+                proof.get('ownershipGeneration') != proof.get('resourceUuid') or
+                proof.get('candidateIdentity') != proof.get('fingerprint') or
+                not re.match(r'^[0-9a-fA-F]{32}$', str(proof.get('resourceUuid') or '')) or
+                not re.match(r'^[0-9a-fA-F]{64}$', str(proof.get('fingerprint') or '')) or
+                not isinstance(proof.get('observedAt'), STRING_TYPES)):
+            return None
+        identity = proof.get('stableIdentity')
+        stable_fields = frozenset(('bootId', 'device', 'byIdPath', 'majorMinor', 'serial',
+                                   'wwn', 'capacityBytes', 'transport', 'sysfsPath',
+                                   'sysfsInode', 'rdev', 'nodeInode'))
+        if (not isinstance(identity, dict) or set(identity) != stable_fields or
+                identity.get('bootId') != boot_id or
+                identity.get('device') == proof.get('zramDevice') or
+                identity.get('capacityBytes') != proof.get('capacityBytes') or
+                any(not isinstance(identity.get(key), STRING_TYPES)
+                    for key in ('device', 'byIdPath', 'majorMinor', 'serial', 'wwn',
+                                'transport', 'sysfsPath', 'sysfsInode')) or
+                not identity.get('sysfsPath').startswith(('/sys/devices/', '/sys/block/'))):
+            return None
+        if (not re.match(r'^[1-9][0-9]*$', identity.get('sysfsInode')) or
+                not identity.get('byIdPath') or not identity.get('serial')):
+            return None
+        for key in ('capacityBytes', 'rdev', 'nodeInode'):
+            value = identity.get(key)
+            if isinstance(value, bool) or not isinstance(value, INTEGER_TYPES) or value <= 0:
+                return None
+        return proof
+
+    @staticmethod
+    def _drained_backend_candidate_matches(proof, candidate):
+        """Require the same fresh disk identity and its sole original ZRAM holder."""
+        if (not isinstance(candidate, dict) or candidate.get('type') != 'block' or
+                candidate.get('eligible') is not False or
+                candidate.get('writebackReady', candidate.get('writeback_ready')) is not False or
+                candidate.get('state') != 'INELIGIBLE' or
+                candidate.get('reasons') != ['ACTIVE_BLOCK_HOLDERS'] or
+                candidate.get('hostBootId', candidate.get('host_boot_id')) != proof.get('bootId') or
+                candidate.get('device') != (proof.get('stableIdentity') or {}).get('device') or
+                candidate.get('capacityBytes', candidate.get('capacity_bytes')) !=
+                proof.get('capacityBytes') or
+                candidate.get('resourceUuid', candidate.get('resource_uuid')) is not None or
+                not re.match(r'^[0-9a-f]{64}$', str(candidate.get('fingerprint') or '')) or
+                candidate.get('identity') != 'candidate:' + candidate.get('fingerprint')):
+            return False
+        identity = candidate.get('stableIdentity', candidate.get('stable_identity'))
+        if identity != proof.get('stableIdentity'):
+            return False
+        zram_name = os.path.basename(proof.get('zramDevice') or '')
+        sysfs_path = identity.get('sysfsPath')
+        if (not zram_name or os.path.realpath(sysfs_path) != sysfs_path or
+                not sysfs_path.startswith(('/sys/devices/', '/sys/block/'))):
+            return False
+        holders_path = os.path.join(sysfs_path, 'holders')
+        try:
+            holders = os.listdir(holders_path)
+            if holders != [zram_name]:
+                return False
+            expected = os.path.realpath(os.path.join('/sys/class/block', zram_name))
+            actual = os.path.realpath(os.path.join(holders_path, zram_name))
+            return (expected.startswith('/sys/devices/') and actual == expected)
+        except (IOError, OSError):
+            return False
+
     def _prepare_stock_drain(self, command):
         """Fence pool identity and disable host admission before withdrawal."""
         native = self._service_request('state', {})
@@ -5796,6 +7830,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         # is frozen in the durable drain intent before the executor starts.
         if command.get('poolGeneration') is not None and command['poolGeneration'] != generation:
             raise ValueError('DRAIN_POOL_GENERATION_MISMATCH')
+        backend_owner_proof = self._capture_stock_drain_backend_owner(
+            command, generation, device)
         cpu = self._service_request('host-cpu-state', {})
         if not isinstance(cpu.get('revision'), int):
             raise ValueError('DRAIN_CPU_REVISION_UNKNOWN')
@@ -5814,7 +7850,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             verified = self._service_request('host-cpu-state', {})
             if verified.get('efficiency_enabled') is not False:
                 raise RuntimeError('DRAIN_HOST_DISABLE_UNVERIFIED')
-        return {'poolGeneration': generation, 'device': device}
+        return {'poolGeneration': generation, 'device': device,
+                'backendOwnerProof': backend_owner_proof}
 
     def _requires_new_optimization(self, command):
         policy = command.get('policy') or {}
@@ -5891,6 +7928,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def reconcile(self, req):
         command = self._request_body(req)
+        if command.get('reconcileAction') == 'verify-completed':
+            # This internal action is deliberately separate from normal
+            # reconciliation: it may only return a durable, already-APPLIED
+            # receipt. It must never resume a worker or repair a journal.
+            return self._reply(self._verify_completed_operation(command))
         if command.get('reconcileAction') == 'verify-rejected-resume':
             return self._reply(self._verify_rejected_resume_fence(command))
         operation_uuid = command.get('operationUuid')
@@ -6090,6 +8132,142 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._update_operation_record(operation_uuid, 'UNKNOWN', result)
         return self._reply(result)
 
+    def _verify_completed_operation(self, command):
+        """Return an immutable APPLIED receipt only when its current identity binds."""
+        operation_uuid = command.get('operationUuid')
+
+        def unknown(reason):
+            return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                    'reasonCode': reason, 'operationUuid': operation_uuid}
+
+        host_uuid = self._load_host_uuid()
+        boot_id = self._current_boot_id()
+        revision = command.get('desiredRevision')
+        scope = command.get('scope')
+        resource_uuid = command.get('resourceUuid')
+        if scope == 'Host':
+            command_resource_matches = resource_uuid == host_uuid
+        elif scope == 'Global':
+            command_resource_matches = resource_uuid == 'global'
+        elif scope == 'Cluster':
+            command_resource_matches = (isinstance(resource_uuid, STRING_TYPES) and
+                                        re.match(r'^[0-9a-f]{32}\Z', resource_uuid) is not None)
+        else:
+            command_resource_matches = False
+        if (not self._valid_identifier(operation_uuid) or
+                command.get('action') != 'reconcile' or
+                scope not in ('Host', 'Cluster', 'Global') or not command_resource_matches or
+                command.get('hostUuid') != host_uuid or not host_uuid or
+                command.get('bootId') != boot_id or not boot_id or
+                isinstance(revision, bool) or not isinstance(revision, INTEGER_TYPES) or
+                revision < 0):
+            return unknown('VERIFY_COMPLETED_REQUEST_IDENTITY_INVALID')
+
+        path = self._operation_path(operation_uuid)
+        if os.path.islink(path) or not os.path.isfile(path) or os.path.realpath(path) != path:
+            return unknown('VERIFY_COMPLETED_OPERATION_UNAVAILABLE')
+        state, prior = self._operation_file_state(operation_uuid)
+        if state != 'present' or not isinstance(prior, dict):
+            return unknown('VERIFY_COMPLETED_OPERATION_UNAVAILABLE')
+        expected_control = (operation_uuid if prior.get('action') == 'apply' else
+                            prior.get('expectedControlOperationUuid'))
+        if (prior.get('operationUuid') != operation_uuid or
+                prior.get('action') not in ('apply', 'prepareWritebackBackend') or
+                prior.get('scope') != scope or prior.get('resourceUuid') != resource_uuid or
+                command.get('expectedControlOperationUuid') != expected_control or
+                self._get_active_control() != expected_control or
+                prior.get('stage') != 'APPLIED' or prior.get('hostUuid') != host_uuid or
+                prior.get('bootId') != boot_id or prior.get('desiredRevision') != revision or
+                isinstance(prior.get('desiredRevision'), bool) or
+                not isinstance(prior.get('desiredRevision'), INTEGER_TYPES) or
+                not isinstance(prior.get('requestHash'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{64}\Z', prior.get('requestHash', '')) is None):
+            return unknown('VERIFY_COMPLETED_OPERATION_IDENTITY_MISMATCH')
+
+        receipt = prior.get('readback')
+        if (not isinstance(receipt, dict) or receipt.get('success') is not True or
+                receipt.get('status') != 'Succeeded' or
+                receipt.get('operationUuid') != operation_uuid or
+                (prior.get('action') == 'apply' and
+                 (receipt.get('appliedRevision') != revision or
+                  isinstance(receipt.get('appliedRevision'), bool) or
+                  not isinstance(receipt.get('appliedRevision'), INTEGER_TYPES))) or
+                (prior.get('action') == 'prepareWritebackBackend' and
+                 receipt.get('appliedRevision') is not None and
+                 (receipt.get('appliedRevision') != revision or
+                  isinstance(receipt.get('appliedRevision'), bool) or
+                  not isinstance(receipt.get('appliedRevision'), INTEGER_TYPES))) or
+                not isinstance(receipt.get('state'), dict)):
+            return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
+        if prior.get('action') == 'apply':
+            policy = prior.get('policy')
+            state = receipt['state']
+            phase = state.get('phase')
+            if not isinstance(policy, dict):
+                return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
+            if state.get('ksmOnly') is True or phase == 'KSM_READBACK':
+                if (policy.get('zram') or policy.get('writeback') or
+                        not self._first_use_terminal_ksm_record(prior, allow_empty_noop=True)):
+                    return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
+            elif phase == 'POOL_READY':
+                if (not (isinstance(state.get('nativeReadback'), dict) or
+                         isinstance(state.get('maintenanceActivation'), dict)) or
+                        ('complete' in state and state.get('complete') is not True)):
+                    return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
+            elif phase == 'READBACK':
+                sections = state.get('sections')
+                complete = state.get('sectionComplete')
+                if (state.get('complete') is not True or not isinstance(sections, dict) or
+                        not isinstance(complete, dict) or not complete or
+                        any(value is not True for value in complete.values())):
+                    return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
+            else:
+                return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
+        else:
+            evidence = self._completed_backend_preparation_evidence(
+                operation_uuid, prior, host_uuid, boot_id)
+            if evidence is None:
+                return unknown('VERIFY_COMPLETED_MAINTENANCE_FILES_UNPROVEN')
+            intent = evidence['intent']
+            request = evidence['request']
+            saved_receipt = evidence['receipt']
+            current_receipt, receipt_error = self._read_backend_maintenance_receipt()
+            if (receipt_error or current_receipt != saved_receipt):
+                return unknown('VERIFY_COMPLETED_MAINTENANCE_RECEIPT_UNPROVEN')
+            if self._maintenance_service_state() != 'active':
+                return unknown('VERIFY_COMPLETED_MAINTENANCE_SERVICE_UNPROVEN')
+            try:
+                current_state = self._service_request('state', {})
+            except Exception:
+                return unknown('VERIFY_COMPLETED_MAINTENANCE_STATE_UNAVAILABLE')
+            if not isinstance(current_state, dict):
+                return unknown('VERIFY_COMPLETED_MAINTENANCE_STATE_UNAVAILABLE')
+            pending = current_state.get('pending_operations')
+            if pending is None and 'pending_operations' in current_state:
+                pending = []
+            host_observation = current_state.get('host')
+            if (current_state.get('maintenance_blocks_activation') is not False or
+                    not self._is_uninitialized_pool_snapshot(current_state.get('host_zram')) or
+                    not isinstance(pending, list) or pending or
+                    not isinstance(host_observation, dict) or
+                    host_observation.get('qualified') is not True or
+                    host_observation.get('safe') is not True or
+                    not self._native_observation_is_fresh(current_state, 3) or
+                    not self._native_observation_is_fresh(host_observation, 3)):
+                return unknown('VERIFY_COMPLETED_MAINTENANCE_POOL_UNPROVEN')
+            verified, _ = self._verify_maintenance_service_readback(
+                host_uuid, request, saved_receipt)
+            if not verified:
+                return unknown('VERIFY_COMPLETED_MAINTENANCE_READBACK_UNPROVEN')
+
+        # Never modify the stored readback. This response copy adds only
+        # identity/revision values proven by the journal and current host.
+        result = dict(receipt)
+        result['state'] = dict(receipt['state'])
+        result.update({'hostUuid': host_uuid, 'bootId': boot_id,
+                       'appliedRevision': revision})
+        return result
+
     def _boot_epoch_millis(self):
         try:
             with open('/proc/stat') as stream:
@@ -6244,7 +8422,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                   'state': {'phase': native['state'], 'receipt': receipt, 'nativeReadback': native},
                   'appliedRevision': prior.get('desiredRevision'),
                   'operationUuid': operation_uuid}
-        self._update_operation_record(operation_uuid, 'APPLIED', result)
+        if self._update_operation_record(operation_uuid, 'APPLIED', result):
+            owner_proof = self._drained_backend_owner_proof(
+                prior.get('hostUuid'), operation_uuid, expected_pool)
+            if owner_proof:
+                result['state']['backendOwnerProof'] = owner_proof
+                if not self._update_operation_record(operation_uuid, 'APPLIED', result):
+                    result['state'].pop('backendOwnerProof', None)
         return result
 
     @staticmethod
@@ -8349,6 +10533,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         state['actual'] = actual
         try:
             result['capabilities'] = self.discover_capabilities()
+            if isinstance(result['capabilities'], dict):
+                # This marker describes the Agent code that served the state
+                # request, not the separately versioned Go service package.
+                result['capabilities']['readOnlyCompletedReconcile'] = True
         except Exception as exc:
             result['capabilities'] = {'supported': None,
                                        'reasonCode': 'CAPABILITY_UNKNOWN',
