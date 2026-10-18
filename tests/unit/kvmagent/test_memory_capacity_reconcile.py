@@ -181,6 +181,135 @@ def test_state_capabilities_identify_agent_readonly_completed_reconcile(
         assert result['state']['capabilities']['readOnlyCompletedReconcile'] is True
 
 
+def test_state_preserves_native_pool_blocker_and_native_observation_time(
+        tmp_path, monkeypatch):
+    plugin = MemoryOptimizationPlugin()
+    boot_id = MemoryOptimizationPlugin._current_boot_id()
+    assert boot_id
+    plugin.configure({'hostUuid': HOST,
+                      'operationDir': str(tmp_path / 'operations')})
+    monkeypatch.setattr(plugin, '_read_ksm_sysfs', lambda name: '0' if name == 'run' else '1')
+    monkeypatch.setattr(plugin, '_read_ksm_zero_pages', lambda: '0')
+    monkeypatch.setattr(plugin, '_read_native_ksm_config', lambda: {})
+    monkeypatch.setattr(plugin, '_native_service_state', lambda unit, expected: 'inactive')
+    monkeypatch.setattr(plugin, '_get_active_control', lambda: None)
+    monkeypatch.setattr(plugin, '_complete_vm_inventory', lambda vms: (vms or {}, True))
+    monkeypatch.setattr(plugin, '_maintenance_proof_for_state', lambda state: None)
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': True})
+
+    native_observed_at = time.strftime('%Y-%m-%dT%H:%M:%SZ',
+                                       time.gmtime(time.time() - 60))
+    blocker = 'NO_QUALIFIED_MANAGED_POOL: EXCLUSIVE_ZRAM_ROUTE_REQUIRED'
+    snapshot = {
+        '_http_status': 200,
+        'mode': 'reclaim',
+        'resource_authorized': True,
+        'observed_at': native_observed_at,
+        'host_zram': {
+            'quality': 'unavailable',
+            'pool_generation': '',
+            'device': '',
+            'reason': blocker,
+            'observed_at': native_observed_at,
+        },
+        'backend_health': {
+            'state': 'UNKNOWN',
+            'reason': blocker,
+            'new_io_permitted_by_backend_health': False,
+            'backoff_until': '0001-01-01T00:00:00Z',
+        },
+    }
+    calls = []
+
+    def service_call(action, payload):
+        calls.append(action)
+        if action == 'state':
+            return dict(snapshot)
+        if action == 'tuning-state':
+            return {'settings': {}}
+        if action == 'capacity-state':
+            return {'revision': 5}
+        if action == 'backend-state':
+            return {'backend_resource': None}
+        if action == 'host-cpu-state':
+            return {'efficiency_enabled': False}
+        raise AssertionError('unexpected state enrichment read: %s' % action)
+
+    plugin.service_call = service_call
+    result = json.loads(plugin.state({'body': json.dumps({
+        'hostUuid': HOST, 'operationUuid': 'state-observation-1'})}))
+
+    assert result['success'] is True
+    assert result['status'] == 'Succeeded'
+    assert result['hostUuid'] == HOST
+    assert result['bootId'] == boot_id
+    assert result['sampleTime'] >= int(time.time() * 1000) - 5000
+    assert result['state']['bootId'] == boot_id
+    assert result['state']['observed_at'] == native_observed_at
+    assert result['state']['host_zram']['reason'] == blocker
+    assert result['state']['host_zram']['observed_at'] == native_observed_at
+    assert result['state']['backend_health']['state'] == 'UNKNOWN'
+    assert result['state']['backend_health']['reason'] == blocker
+    assert result['state']['backend_health']['new_io_permitted_by_backend_health'] is False
+    assert result['state']['backend_health']['backoff_until'] == '0001-01-01T00:00:00Z'
+    assert calls.count('state') == 1
+    assert {'tuning-state', 'capacity-state', 'backend-state', 'host-cpu-state'} <= set(calls)
+
+
+def test_state_service_failure_does_not_become_successful_fresh_observation(
+        tmp_path, monkeypatch):
+    plugin = MemoryOptimizationPlugin()
+    plugin.configure({'hostUuid': HOST,
+                      'operationDir': str(tmp_path / 'operations')})
+    monkeypatch.setattr(plugin, '_read_ksm_sysfs', lambda name: '0' if name == 'run' else '1')
+    monkeypatch.setattr(plugin, '_read_ksm_zero_pages', lambda: '0')
+    monkeypatch.setattr(plugin, '_read_native_ksm_config', lambda: {})
+    monkeypatch.setattr(plugin, '_native_service_state', lambda unit, expected: 'inactive')
+    monkeypatch.setattr(plugin, '_get_active_control', lambda: None)
+    monkeypatch.setattr(plugin, '_complete_vm_inventory', lambda vms: (vms or {}, True))
+    monkeypatch.setattr(plugin, '_maintenance_proof_for_state', lambda state: None)
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': True})
+
+    def service_call(action, payload):
+        if action == 'state':
+            return {'_http_status': 503, 'error': 'service unavailable'}
+        if action == 'tuning-state':
+            return {'settings': {}}
+        if action == 'capacity-state':
+            return {'revision': 5}
+        if action == 'backend-state':
+            return {'backend_resource': None}
+        if action == 'host-cpu-state':
+            return {'efficiency_enabled': False}
+        raise AssertionError('unexpected state enrichment read: %s' % action)
+
+    plugin.service_call = service_call
+    result = json.loads(plugin.state({'body': json.dumps({
+        'hostUuid': HOST, 'operationUuid': 'state-observation-failed'})}))
+
+    assert result['success'] is False
+    assert result['status'] == 'Unknown'
+    assert result['hostUuid'] == HOST
+    assert result['sampleTime'] > 0
+    assert 'host_zram' not in result['state']
+
+    calls = []
+    original_service_call = plugin.service_call
+
+    def recording_service_call(action, payload):
+        calls.append(action)
+        return original_service_call(action, payload)
+
+    plugin.service_call = recording_service_call
+    wrong_host_result = json.loads(plugin.state({'body': json.dumps({
+        'hostUuid': 'other-host', 'operationUuid': 'state-observation-wrong-host'})}))
+    assert wrong_host_result['success'] is False
+    assert wrong_host_result['status'] == 'Unknown'
+    assert 'state' not in calls
+
+
 def test_first_use_rpm_verification_uses_bounded_output_and_preserves_rpm_v_semantics(
         monkeypatch):
     calls = []
