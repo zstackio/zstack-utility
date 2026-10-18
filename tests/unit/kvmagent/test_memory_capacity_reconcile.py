@@ -1051,6 +1051,8 @@ def test_capacity_only_blocker_reconciles_blocked_without_cpu_put_or_replay(tmp_
                                     'active_prior_preparation_wrong_boot',
                                     'active_prior_preparation_enabled',
                                     'active_prior_preparation_bad_current_receipt',
+                                    'prepared_backend_observation_reconcile',
+                                    'prepared_backend_observation_bad_receipt_reconcile',
                                     'non_ksm_after_ksm_prepare',
                                     'late_host_uuid',
                                     'host_uuid_switch_during_proof'])
@@ -1403,6 +1405,18 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
             'enabled': True, 'logicalCapacityBytes': LOGICAL_BYTES,
             'ramLimitBytes': PHYSICAL_BYTES}},
     }
+    if tamper in ('prepared_backend_observation_reconcile',
+                  'prepared_backend_observation_bad_receipt_reconcile'):
+        # Match an ordinary pre-write ZRAM-only request while keeping test
+        # identities synthetic. The prepared-B proof is separate
+        # completed history, not part of this apply policy.
+        command.update({'operationUuid': '8' * 32, 'desiredRevision': 17,
+                        'resourceUuid': HOST})
+        command['policy'] = {
+            'schemaVersion': 1,
+            'zram': {'enabled': True, 'logicalCapacityBytes': LOGICAL_BYTES,
+                     'ramLimitBytes': PHYSICAL_BYTES},
+        }
     if tamper not in (None, 'corrupt_historical_preparation', 'ordinary_registration', 'ksm_history', 'ksm_before_prepare',
                       'ksm_before_and_after_prepare', 'active_prepared_backend_ksm',
                       'active_prepared_backend_ksm_wrong_resource',
@@ -1418,6 +1432,8 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                       'active_prior_preparation_wrong_boot',
                       'active_prior_preparation_enabled',
                       'active_prior_preparation_bad_current_receipt',
+                      'prepared_backend_observation_reconcile',
+                      'prepared_backend_observation_bad_receipt_reconcile',
                       'non_ksm_after_ksm_prepare'):
         assert plugin._record_operation(command, 'PREPARING')
     state_reads = [0]
@@ -1630,6 +1646,8 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
 
     if tamper in (None, 'expanded_runtime_config', 'multiple_preparations',
                   'no_controller_stop',
+                  'prepared_backend_observation_reconcile',
+                  'prepared_backend_observation_bad_receipt_reconcile',
                   'late_host_uuid',
                   'corrupt_historical_preparation',
                   'ordinary_registration', 'ksm_history', 'ksm_before_prepare',
@@ -2045,6 +2063,52 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                 assert inventory_result['status'] == 'Unknown', inventory_result
                 assert inventory_result['reason'] == 'FIRST_ZRAM_BACKEND_PREPARATION_UNPROVEN'
                 assert inventory_result['state'] == {}
+            return
+        if tamper in ('prepared_backend_observation_reconcile',
+                      'prepared_backend_observation_bad_receipt_reconcile'):
+            # Exercise the normal public reconcile wire for a same-boot
+            # pre-write UNKNOWN while the complete prepared-B proof remains
+            # available. Reconcile may seal only the exact valid proof; it
+            # must not replay the original apply or mutate config/device state.
+            if tamper == 'prepared_backend_observation_bad_receipt_reconcile':
+                live_receipt['stage'] = 'FAILED_REQUIRES_REVIEW'
+            submitted_at = int(time.time() * 1000) - 1000
+            assert plugin._record_operation(command, 'UNKNOWN', {
+                'reason': 'FIRST_ZRAM_OBSERVATION_NOT_FRESH_OR_SAFE'})
+            before = plugin._load_operation(command)
+            config_before_seal = config_path.read_bytes()
+            active_before_seal = plugin._get_active_control()
+            reconcile_command = {
+                'hostUuid': HOST, 'scope': 'Host', 'resourceUuid': HOST,
+                'action': 'reconcile', 'operationUuid': command['operationUuid'],
+                'desiredRevision': command['desiredRevision'], 'policy': {},
+                'reconcileAction': 'seal-if-never-issued',
+                'taskSubmittedAt': submitted_at, 'bootId': boot_id,
+            }
+            state_reads[0] = 0
+            result = json.loads(plugin.reconcile({'body': json.dumps(reconcile_command)}))
+            after = plugin._load_operation(command)
+            assert config_path.read_bytes() == config_before_seal
+            assert plugin._get_active_control() == active_before_seal
+            assert not restarts and not service_policy_calls
+            if tamper == 'prepared_backend_observation_bad_receipt_reconcile':
+                assert result['status'] == 'Unknown', result
+                assert after == before
+            else:
+                assert result['status'] == 'Failed', result
+                assert result['reasonCode'] == 'FIRST_ZRAM_ADMISSION_NOT_ISSUED', result
+                assert result['state']['policyWritesIssued'] is False
+                assert after['stage'] == 'NOT_ISSUED'
+                assert after['policy'] == before['policy']
+                assert after['policyHash'] == before['policyHash']
+                assert after['requestHash'] == before['requestHash']
+                assert after['applyEvidence'] == before['applyEvidence']
+                reads_before_replay = state_reads[0]
+                assert json.loads(plugin.reconcile({
+                    'body': json.dumps(reconcile_command)})) == result
+                assert state_reads[0] == reads_before_replay
+                assert plugin.apply(command) == result
+                assert plugin._load_operation(command) == after
             return
         result = plugin.apply(command)
         if tamper in ('ordinary_registration', 'non_ksm_after_ksm_prepare',

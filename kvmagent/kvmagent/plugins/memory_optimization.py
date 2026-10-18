@@ -3534,8 +3534,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         current = stream.read()
                     with open(self.zram_config_template_path, 'rb') as stream:
                         template = stream.read()
-                    if current != template:
+                    try:
+                        current_config = json.loads(current.decode('utf-8'))
+                        template_config = json.loads(template.decode('utf-8'))
+                    except (UnicodeError, ValueError):
                         raise RuntimeError('FIRST_ZRAM_CONFIG_READBACK_UNKNOWN')
+                    if current != template:
+                        self._first_use_backend_preparation_proof(
+                            current_config, template_config)
                     self._first_use_runtime_identity(template, current)
                 else:
                     state_dir = self._read_maintenance_config()[1]
