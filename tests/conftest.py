@@ -17,6 +17,7 @@ import re
 import sys
 import types
 import json
+import time as _time
 from pathlib import Path
 from unittest.mock import MagicMock, PropertyMock
 
@@ -228,6 +229,7 @@ _mock_linux.get_cpu_speed.return_value = 2400
 _mock_linux.get_cpu_model.return_value = 'Intel(R) Xeon(R) CPU'
 _mock_linux.get_host_physicl_cpu_num.return_value = 1
 _mock_linux.get_cpu_core_num.return_value = 4
+_mock_linux.monotime = getattr(_time, 'monotonic', _time.time)
 _mock_linux.mkdir = MagicMock()
 _mock_linux.recover_fake_dead = MagicMock()
 _mock_linux.rm_file_checked = MagicMock()

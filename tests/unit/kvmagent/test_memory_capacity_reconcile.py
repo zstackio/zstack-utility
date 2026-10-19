@@ -350,7 +350,8 @@ def _configured(logical, physical):
 
 
 def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=False,
-                            capacity_requested=True, include_zram=True):
+                            capacity_requested=True, include_zram=True,
+                            typed_quiescence_rejection=False, monkeypatch=None):
     """Use the real Agent apply/reconcile methods with a typed service boundary."""
     shared = {'revision': 4}
     configured = _configured(OLD_LOGICAL_BYTES, OLD_PHYSICAL_BYTES)
@@ -373,6 +374,7 @@ def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=Fal
                                               'operation_interval_seconds': 5}}},
     }
     calls = []
+    apply_attempts = [0]
 
     def service_call(action, payload):
         calls.append((action, payload))
@@ -382,6 +384,11 @@ def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=Fal
             return dict(service_state['cpu'])
         if action == 'tuning-state':
             return dict(service_state['tuning'])
+        if action == 'operations':
+            return {'_http_status': 200, 'cq': {'C': 0, 'Q': 0}, 'entries': []}
+        if action == 'monitor-state':
+            return {'_http_status': 200, 'pending_operations': [],
+                    'lifecycle': {'paused': False, 'migrationHold': {}}}
         if action == 'capacity':
             shared['revision'] += 1
             configured_now = _configured(LOGICAL_BYTES, PHYSICAL_BYTES)
@@ -414,6 +421,10 @@ def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=Fal
                     'idle_cpu_threshold_percent': payload['idle_cpu_threshold_percent'],
                     'idle_duration_seconds': payload['idle_duration_seconds']}
         if action == 'apply':
+            apply_attempts[0] += 1
+            if typed_quiescence_rejection and apply_attempts[0] == 1:
+                return {'_http_status': 409,
+                        'error': 'TUNING_REQUIRES_QUIESCENT_EXECUTOR'}
             service_state['tuning'] = {
                 '_http_status': 200, 'revision': payload['expected_revision'],
                 'request_id': payload['request_id'], 'settings': payload['settings']}
@@ -422,6 +433,10 @@ def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=Fal
 
     plugin = MemoryOptimizationPlugin(service_call=service_call)
     plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    if typed_quiescence_rejection:
+        assert monkeypatch is not None
+        monkeypatch.setattr(memory_optimization_module.linux, 'monotime', lambda: 0.0)
+        monkeypatch.setattr(memory_optimization_module.time, 'sleep', lambda seconds: None)
     capacity_policy = ({'logicalCapacityBytes': LOGICAL_BYTES,
                         'ramLimitBytes': PHYSICAL_BYTES} if capacity_requested else {})
     policy = {}
@@ -438,6 +453,154 @@ def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=Fal
     assert plugin._record_operation(
         command, 'APPLIED' if applied['status'] == 'Succeeded' else 'UNKNOWN', applied)
     return plugin, service_state, calls, command, applied
+
+
+def test_typed_quiescence_retry_preserves_disabled_history_receipt(tmp_path, monkeypatch):
+    plugin, _, calls, _, applied = _capacity_apply_fixture(
+        tmp_path, zram={'enabled': False}, capacity_requested=False,
+        typed_quiescence_rejection=True, monkeypatch=monkeypatch)
+
+    assert applied['status'] == 'Succeeded', applied
+    assert len([payload for action, payload in calls if action == 'apply']) == 2
+    record = _journal(plugin)
+    assert plugin._first_use_terminal_service_disable(record)
+
+
+@pytest.mark.parametrize('scenario', ['quiet_retry', 'deadline', 'nonbusy_409', 'transport_loss'])
+def test_tuning_quiescence_retries_exact_prewrite_rejection_before_cpu_restore(
+        tmp_path, monkeypatch, scenario):
+    """Only the exact typed pre-write rejection may retry, within a bounded quiet window."""
+    cpu = {'_http_status': 200, 'revision': 27, 'efficiency_enabled': True,
+           'idle_cpu_threshold_percent': 5, 'idle_duration_seconds': 60}
+    settings = {'vm_management': {'mode': 'all_running', 'vm_uuids': []},
+                'writeback': {'enabled': True}}
+    tuning = {'_http_status': 200, 'revision': 13, 'settings': settings}
+    apply_calls = []
+    cpu_writes = []
+    events = []
+    poll_count = [0]
+    clock = [0.0]
+
+    def service_call(action, payload):
+        events.append(action)
+        if action == 'host-cpu-state':
+            return dict(cpu)
+        if action == 'tuning-state':
+            return dict(tuning)
+        if action == 'operations':
+            poll_count[0] += 1
+            busy = scenario == 'deadline' or poll_count[0] == 1
+            return {'_http_status': 200, 'cq': {'C': 1 if busy else 0, 'Q': 0}}
+        if action == 'monitor-state':
+            return {'_http_status': 200,
+                    'pending_operations': (['executor'] if
+                                           scenario == 'deadline' or poll_count[0] == 1 else []),
+                    'lifecycle': {'paused': False, 'migrationHold': {}}}
+        if action == 'host-cpu':
+            cpu_writes.append({key: payload[key] for key in (
+                'expected_revision', 'efficiency_enabled',
+                'idle_cpu_threshold_percent', 'idle_duration_seconds')})
+            cpu.update(revision=payload['expected_revision'] + 1,
+                       efficiency_enabled=payload['efficiency_enabled'],
+                       idle_cpu_threshold_percent=payload['idle_cpu_threshold_percent'],
+                       idle_duration_seconds=payload['idle_duration_seconds'])
+            return dict(cpu, request_id=payload['request_id'])
+        if action == 'apply':
+            apply_calls.append(dict(payload))
+            if scenario == 'transport_loss':
+                raise IOError('transport lost after request')
+            if scenario == 'nonbusy_409':
+                return {'_http_status': 409, 'error': 'REVISION_CONFLICT'}
+            if scenario == 'deadline' or len(apply_calls) == 1:
+                return {'_http_status': 409,
+                        'error': 'TUNING_REQUIRES_QUIESCENT_EXECUTOR'}
+            tuning.update(revision=tuning['revision'] + 1,
+                          settings=payload['settings'])
+            return dict(tuning)
+        raise AssertionError('unexpected service action: %s' % action)
+
+    plugin = MemoryOptimizationPlugin(service_call=service_call)
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    command = {'hostUuid': HOST, 'resourceUuid': HOST, 'scope': 'Host',
+               'action': 'apply', 'operationUuid': 'a' * 32,
+               'desiredRevision': 34,
+               'communication': {'communicationSeconds': 0.25 if scenario == 'deadline' else 2},
+               'policy': {'ksm': {'enabled': True, 'zeroPagesEnabled': True},
+                          'zram': {'enabled': True},
+                          'writeback': {'enabled': False}}}
+    monkeypatch.setattr(memory_optimization_module.linux, 'monotime',
+                        lambda: clock[0])
+    monkeypatch.setattr(memory_optimization_module.time, 'sleep',
+                        lambda seconds: clock.__setitem__(0, clock[0] + seconds))
+
+    result = plugin._apply_service_policy_fail_closed(command)
+
+    if scenario == 'quiet_retry':
+        assert result['status'] == 'Succeeded', result
+        assert len(apply_calls) == 2
+        assert apply_calls[0]['request_id'] == apply_calls[1]['request_id']
+        assert apply_calls[0]['settings'] == apply_calls[1]['settings']
+        assert apply_calls[0]['settings']['writeback']['enabled'] is False
+        assert [item['efficiency_enabled'] for item in cpu_writes] == [False, True]
+        assert cpu['efficiency_enabled'] is True
+        assert poll_count[0] >= 2
+        assert events.index('host-cpu') < events.index('apply')
+        assert events.index('apply') < max(i for i, action in enumerate(events)
+                                           if action == 'host-cpu')
+    else:
+        assert result['status'] == 'Unknown', result
+        assert len(apply_calls) == 1
+        assert len(cpu_writes) == 1 and cpu_writes[0]['efficiency_enabled'] is False
+        assert cpu['efficiency_enabled'] is False
+        assert 'host-cpu' not in events[events.index('apply') + 1:]
+        if scenario == 'deadline':
+            assert result['reasonCode'] == 'SERVICE_TUNING_QUIESCENCE_DEADLINE_EXCEEDED'
+            assert poll_count[0] > 0
+        else:
+            assert 'operations' not in events
+            assert 'monitor-state' not in events
+
+
+def test_tuning_quiescence_does_not_retry_vm_shard_apply(tmp_path, monkeypatch):
+    """A 409 after an apply with VM shards must not replay its side effects."""
+    cpu = {'_http_status': 200, 'revision': 8, 'efficiency_enabled': False,
+           'idle_cpu_threshold_percent': 5, 'idle_duration_seconds': 60}
+    settings = {'vm_management': {'mode': 'all_running', 'vm_uuids': []},
+                'writeback': {'enabled': False}}
+    tuning = {'_http_status': 200, 'revision': 3, 'settings': settings}
+    apply_calls = []
+    events = []
+
+    def service_call(action, payload):
+        events.append(action)
+        if action == 'host-cpu-state':
+            return dict(cpu)
+        if action == 'tuning-state':
+            return dict(tuning)
+        if action == 'apply':
+            apply_calls.append(dict(payload))
+            # The real local apply transport stages VM shards before its
+            # tuning PUT; treat this response as the later typed rejection.
+            return {'_http_status': 409,
+                    'error': 'TUNING_REQUIRES_QUIESCENT_EXECUTOR'}
+        raise AssertionError('unexpected service action: %s' % action)
+
+    plugin = MemoryOptimizationPlugin(service_call=service_call)
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    monkeypatch.setattr(memory_optimization_module.linux, 'monotime', lambda: 0.0)
+    command = {'hostUuid': HOST, 'resourceUuid': HOST, 'scope': 'Host',
+               'action': 'apply', 'operationUuid': 'c' * 32,
+               'desiredRevision': 35,
+               'targetSnapshotGeneration': 'b' * 32,
+               'policy': {'zram': {'enabled': True, 'selectionMode': 'list',
+                                   'selectedVmUuids': ['d' * 32]}}}
+
+    result = plugin._apply_service_policy_fail_closed(command)
+
+    assert result['status'] == 'Unknown'
+    assert len(apply_calls) == 1, result
+    assert 'operations' not in events
+    assert 'monitor-state' not in events
 
 
 def _reconcile(plugin):
