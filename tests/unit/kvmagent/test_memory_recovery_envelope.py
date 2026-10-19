@@ -565,7 +565,7 @@ def partial_service_apply_recovery(tmp_path, monkeypatch):
     original_ksm = {'configRevision': '34', 'pages_to_scan': '2000',
                     'run': '1', 'sleep_millisecs': '20', 'use_zero_pages': '1'}
     unknown = {'success': False, 'status': 'Unknown', 'operationUuid': original_uuid,
-               'appliedRevision': None, 'reasonCode': 'SERVICE_APPLY_FAILED',
+               'appliedRevision': None, 'reasonCode': 'MEMORY_RESULT_UNKNOWN',
                'reason': 'SERVICE_APPLY_FAILED:TUNING_REQUIRES_QUIESCENT_EXECUTOR',
                'ksmReadback': original_ksm,
                'state': {'phase': 'UNKNOWN',
@@ -620,6 +620,135 @@ def partial_service_apply_recovery(tmp_path, monkeypatch):
     return {'plugin': plugin, 'anchor': anchor, 'original': original,
             'recovery': recovery, 'calls': calls, 'cpu': cpu_current,
             'tuning': tuning_current, 'ksm': current_ksm}
+
+
+@pytest.mark.parametrize('tamper', [None, 'boot', 'control', 'revision', 'request-hash',
+                                    'intent-null', 'attempt-null', 'readback-applied-revision',
+                                    'readback-missing-revision', 'readback-extra-proof',
+                                    'ksm-ack', 'pool'])
+def test_partial_service_apply_reconcile_seals_exact_unissued_recovery(
+        partial_service_apply_recovery, monkeypatch, tamper):
+    fixture = partial_service_apply_recovery
+    plugin = fixture['plugin']
+    recovery = fixture['recovery']
+    original = fixture['original']
+    original_path = plugin._operation_path(original['operationUuid'])
+    recovery_path = plugin._operation_path(recovery['operationUuid'])
+    with open(original_path, 'rb') as stream:
+        original_bytes = stream.read()
+
+    unknown = {'success': False, 'status': 'Unknown', 'appliedRevision': None,
+               'reasonCode': 'RECOVERY_PARTIAL_APPLY_NOT_PROVEN',
+               'operationUuid': recovery['operationUuid'],
+               'state': {'phase': 'UNKNOWN'}}
+    if tamper == 'readback-applied-revision':
+        unknown['appliedRevision'] = recovery['desiredRevision']
+    elif tamper == 'readback-missing-revision':
+        del unknown['appliedRevision']
+    elif tamper == 'readback-extra-proof':
+        unknown['state']['writeReceipt'] = {'status': 'Succeeded'}
+    assert plugin._record_operation(recovery, 'UNKNOWN', unknown)
+    with open(recovery_path, 'rb') as stream:
+        recovery_before = json.loads(stream.read().decode('utf-8'))
+    assert 'recoveryIntent' not in recovery_before
+    assert 'recoveryAttempt' not in recovery_before
+    assert 'recoveryReceipt' not in recovery_before
+
+    query = dict(recovery, action='reconcile', policy={}, recoveryRequestHash='5' * 64)
+    if tamper == 'boot':
+        query['recovery']['expectedHostBootId'] = '22222222-2222-4222-8222-222222222222'
+    elif tamper == 'control':
+        query['expectedControlOperationUuid'] = '9' * 32
+    elif tamper == 'revision':
+        query['desiredRevision'] += 1
+    elif tamper in ('request-hash', 'intent-null', 'attempt-null'):
+        if tamper == 'request-hash':
+            recovery_before['requestHash'] = 'not-a-hash'
+        elif tamper == 'intent-null':
+            recovery_before['recoveryIntent'] = None
+        else:
+            recovery_before['recoveryAttempt'] = None
+        assert plugin._write_operation_record(recovery_before)
+    elif tamper == 'ksm-ack':
+        plugin._read_ksm_ack = lambda: dict(fixture['ksm'], run='0')
+    elif tamper == 'pool':
+        original_service = plugin.service_call
+
+        def drifted_service(action, payload):
+            result = original_service(action, payload)
+            if action == 'monitor-state':
+                result['host_zram']['pool_generation'] = 'b' * 64
+            return result
+
+        plugin.service_call = drifted_service
+    ksm_writes = []
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs',
+                        lambda key, value: ksm_writes.append((key, value)))
+    monkeypatch.setattr('kvmagent.plugins.memory_optimization.subprocess.check_call',
+                        lambda args: ksm_writes.append(tuple(args)))
+
+    result = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+
+    assert result['success'] is False, result
+    if tamper is None:
+        assert result['status'] == 'Failed', result
+        assert result['state']['phase'] == 'RECOVERY_NOT_ISSUED', result
+        assert result['state']['recoveryRejectionProof']['notIssued'] is True
+        assert plugin._load_operation(recovery)['stage'] == 'REJECTED'
+        assert plugin._load_operation(recovery)['requestHash'] == recovery_before['requestHash']
+    else:
+        assert result['status'] == 'Unknown', result
+        latest_recovery = plugin._load_operation(recovery)
+        assert latest_recovery['stage'] != 'REJECTED'
+        if tamper == 'intent-null':
+            assert 'recoveryIntent' in latest_recovery and latest_recovery['recoveryIntent'] is None
+        else:
+            assert 'recoveryIntent' not in latest_recovery
+    with open(original_path, 'rb') as stream:
+        assert stream.read() == original_bytes
+    assert not any(action in ('apply', 'host-cpu') for action, _ in fixture['calls'])
+    assert not ksm_writes
+
+    if tamper is None:
+        # The durable rejection is idempotent for the same manager query and
+        # blocks replay under the original recovery UUID.
+        before_repeat = len(fixture['calls'])
+        assert json.loads(plugin.reconcile({'body': json.dumps(query)})) == result
+        assert len(fixture['calls']) == before_repeat
+        assert plugin.apply(recovery)['status'] == 'Failed'
+        assert not any(action in ('apply', 'host-cpu') for action, _ in fixture['calls'])
+
+        for field, value in (
+                ('expectedHostBootId', '22222222-2222-4222-8222-222222222222'),
+                ('confirmed', False)):
+            invalid_replay = json.loads(json.dumps(query))
+            invalid_replay['recovery'][field] = value
+            rejected_replay = json.loads(plugin.reconcile(
+                {'body': json.dumps(invalid_replay)}))
+            assert rejected_replay['status'] == 'Unknown', rejected_replay
+            assert rejected_replay['reasonCode'] == 'RECOVERY_REJECTION_PROOF_UNQUALIFIED'
+            assert plugin._load_operation(recovery)['stage'] == 'REJECTED'
+        assert not any(action in ('apply', 'host-cpu') for action, _ in fixture['calls'])
+
+        # A delayed journal artifact invalidates the prior not-issued proof;
+        # do not replay the old Failed response as if no recovery had started.
+        sealed = plugin._load_operation(recovery)
+        for field in ('recoveryAttempt', 'readback-applied-revision'):
+            late_record = json.loads(json.dumps(sealed))
+            if field == 'recoveryAttempt':
+                late_record['recoveryAttempt'] = None
+            else:
+                late_record['readback']['appliedRevision'] = 34
+            assert plugin._write_operation_record(late_record)
+            late = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+            assert late['status'] == 'Unknown', late
+            assert late['reasonCode'] == 'RECOVERY_REJECTION_PROOF_UNQUALIFIED'
+            assert plugin._load_operation(recovery)['stage'] == 'REJECTED'
+            assert plugin._write_operation_record(sealed)
+        assert not any(action in ('apply', 'host-cpu') for action, _ in fixture['calls'])
+        assert not ksm_writes
+        with open(original_path, 'rb') as stream:
+            assert stream.read() == original_bytes
 
 
 def test_partial_service_apply_recovery_finishes_only_tuning_and_final_cpu(partial_service_apply_recovery,
