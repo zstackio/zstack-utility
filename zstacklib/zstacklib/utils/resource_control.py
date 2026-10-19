@@ -237,6 +237,9 @@ class ResourceControlManager(object):
         return self._summarize_apply(results)
 
     def _release_systemd_slice(self, backend, role_type, slice_name, handles, memory_backend):
+        slice_target = self._active_slice_target(backend, slice_name)
+        if slice_target is not None:
+            backend.release_cpu_set(slice_target)
         changed = self.systemd.release_slice(slice_name)
         if changed:
             self.systemd.reload()
@@ -244,14 +247,12 @@ class ResourceControlManager(object):
             memory_target = self._active_slice_target(memory_backend, slice_name)
             if memory_target is not None:
                 memory_backend.apply_memory(memory_target, 0)
-        slice_target = self._active_slice_target(backend, slice_name)
         if slice_target is None:
             results = [
                 self._release_non_systemd_handle(backend, role_type, handle, memory_backend)
                 for handle in handles or []
             ]
             return self._summarize_release(results)
-        backend.release_cpu_set(slice_target)
         return {'synced': True}
 
     def _prepare_active_slice_memory(self, slice_name, desired_memory, memory_backend):
