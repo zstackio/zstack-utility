@@ -780,6 +780,171 @@ def test_verify_completed_rejects_unbound_or_incomplete_operation_without_writes
     assert result['success'] is False
 
 
+@pytest.mark.parametrize('operation,tamper', [
+    ('clear', None), ('clear', 'same_boot'), ('clear', 'native_drift'),
+    ('clear', 'config_drift'), ('clear', 'missing_ack'), ('clear', 'wrong_host'),
+    ('clear', 'bad_hash'), ('clear', 'mixed_prior'), ('clear', 'boot_changed'),
+    ('clear', 'control_changed'), ('clear', 'host_changed'), ('clear', 'policy_hash'),
+    ('seal', None), ('seal', 'bad_hash'), ('seal', 'wrong_boot'),
+    ('seal', 'wrong_revision'), ('seal', 'partial_write'), ('seal', 'mixed_target'),
+    ('seal', 'policy_hash'), ('seal', 'wrong_expected'), ('seal', 'wrong_scope'),
+    ('seal', 'future_time'), ('seal', 'wrong_host'), ('seal', 'intent'),
+])
+def test_pure_ksm_none_after_reboot_uses_current_proof_and_seals_only_prewrite(
+        tmp_path, monkeypatch, operation, tamper):
+    plugin = MemoryOptimizationPlugin()
+    boot = plugin._current_boot_id()
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    plugin.KSM_CONF = str(tmp_path / 'ksmtuned.conf')
+    plugin.KSM_LOCK = str(tmp_path / 'ksmtuned.lock')
+    current = {'run': '0', 'pages_to_scan': '2000', 'sleep_millisecs': '20',
+               'use_zero_pages': '0'}
+    old_ack = dict(current, run='1', use_zero_pages='1', configRevision='1')
+    old_command = {'action': 'apply', 'scope': 'Host', 'hostUuid': HOST,
+                   'resourceUuid': HOST, 'operationUuid': 'a' * 32,
+                   'desiredRevision': 1, 'policyMode': 'effective',
+                   'policy': {'schemaVersion': 1, 'ksm': {
+                       'enabled': True, 'pagesToScan': 2000,
+                       'sleepMillis': 20, 'zeroPagesEnabled': True}}}
+    assert plugin._record_operation(old_command, 'APPLIED', {
+        'success': True, 'status': 'Succeeded', 'appliedRevision': 1,
+        'operationUuid': old_command['operationUuid'],
+        'state': {'ksmOnly': True, 'source': 'ksmtuned'}, 'ksmReadback': old_ack})
+    old = plugin._load_operation(old_command)
+    old['bootId'] = 'fedcba98-7654-3210-fedc-ba9876543210'
+    if tamper == 'same_boot':
+        old['bootId'] = boot
+        current.update(run='1', use_zero_pages='1')
+    if tamper == 'wrong_host':
+        old['hostUuid'] = 'other-host'
+    if tamper == 'bad_hash' and operation == 'clear':
+        old['requestHash'] = 'bad'
+    if tamper == 'policy_hash' and operation == 'clear':
+        old['policyHash'] = '0' * 64
+    if tamper == 'mixed_prior':
+        old['policy']['zram'] = {'enabled': True}
+        old['policyHash'] = plugin._policy_digest(old['policy'])
+    assert plugin._write_operation_record(old)
+    plugin._set_active_control(old_command['operationUuid'])
+    old_path = plugin._operation_path(old_command['operationUuid'])
+    with open(old_path, 'rb') as stream:
+        old_bytes = stream.read()
+    with open(plugin.KSM_CONF, 'w') as stream:
+        stream.write(memory_optimization_module.render_config('', 1, 2000, 20))
+    monkeypatch.setattr(memory_optimization_module, 'native_sleep_msec',
+                        lambda interval, total: interval)
+    monkeypatch.setattr(plugin, '_native_sleep_for_policy', lambda interval: interval)
+    monkeypatch.setattr(plugin, '_verify_native_ksm_profile', lambda: None)
+    monkeypatch.setattr(plugin, '_read_ksm_sysfs', lambda field: current[field])
+    monkeypatch.setattr(plugin, '_read_ksm_zero_pages', lambda: current['use_zero_pages'])
+    monkeypatch.setattr(plugin, '_native_service_state',
+                        lambda unit, state: 'inactive' if state == 'active' else 'disabled')
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': False, 'ksm': True, 'ksmZeroPages': True,
+        'zram': False, 'writeback': False})
+    writes = []
+    def write_native(field, value):
+        writes.append((field, value))
+        current[field] = value
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs', write_native)
+    monkeypatch.setattr(memory_optimization_module.subprocess, 'check_call',
+                        lambda argv: writes.append(tuple(argv)))
+    def forbidden_service(*args, **kwargs):
+        raise AssertionError('pure KSM must not require or write the ZRAM service')
+    monkeypatch.setattr(plugin, '_service_request', forbidden_service)
+    command = {'action': 'apply', 'scope': 'Host', 'hostUuid': HOST,
+               'resourceUuid': HOST, 'operationUuid': 'b' * 32,
+               'desiredRevision': 2, 'policyMode': 'effective',
+               'policy': {'schemaVersion': 1, 'ksm': {}}}
+    if operation == 'clear':
+        if tamper == 'native_drift':
+            current['pages_to_scan'] = '2001'
+        if tamper == 'config_drift':
+            with open(plugin.KSM_CONF, 'w') as stream:
+                stream.write(memory_optimization_module.render_config('', 3, 2000, 20))
+        if tamper == 'missing_ack':
+            monkeypatch.setattr(plugin, '_read_ksm_ack', lambda: None)
+        if tamper == 'boot_changed':
+            def change_boot():
+                monkeypatch.setattr(plugin, '_current_boot_id', lambda: 'changed')
+            monkeypatch.setattr(plugin, '_verify_native_ksm_profile', change_boot)
+        if tamper == 'control_changed':
+            monkeypatch.setattr(plugin, '_verify_native_ksm_profile',
+                                lambda: plugin._set_active_control('c' * 32))
+        if tamper == 'host_changed':
+            def change_host():
+                monkeypatch.setattr(plugin, '_load_host_uuid', lambda: 'other-host')
+            monkeypatch.setattr(plugin, '_verify_native_ksm_profile', change_host)
+        result = plugin.apply(command)
+        if tamper in (None, 'same_boot'):
+            assert result['status'] == 'Succeeded', result
+            assert result['ksmReadback']['configRevision'] == '2'
+            assert result['ksmReadback']['run'] == current['run']
+            assert result['ksmReadback']['use_zero_pages'] == current['use_zero_pages']
+            assert not any(item[0] == 'run' for item in writes)
+            assert not any(item[0] == 'systemctl' for item in writes)
+            assert plugin._load_operation(command)['bootId'] == boot
+            assert plugin._get_active_control() == command['operationUuid']
+            assert plugin._first_use_terminal_ksm_record(
+                plugin._load_operation(command), allow_empty_noop=True)
+        else:
+            assert result['status'] == 'Unknown', result
+            assert writes == []
+            assert plugin._get_active_control() == (
+                'c' * 32 if tamper == 'control_changed' else old_command['operationUuid'])
+    else:
+        submitted = int(time.time() * 1000)
+        if tamper == 'mixed_target':
+            command['policy']['zram'] = {'enabled': True}
+        assert plugin._record_operation(command, 'UNKNOWN', {
+            'reason': 'KSM_CLEAR_PRIOR_JOURNAL_INVALID'})
+        failed = plugin._load_operation(command)
+        if tamper == 'bad_hash':
+            failed['requestHash'] = 'bad'
+        if tamper == 'wrong_boot':
+            failed['bootId'] = old['bootId']
+        if tamper == 'policy_hash':
+            failed['policyHash'] = '0' * 64
+        if tamper == 'intent':
+            failed['activationIntent'] = {}
+        if tamper == 'partial_write':
+            failed['applyEvidence']['ksmReadback'] = dict(old_ack)
+        assert plugin._write_operation_record(failed)
+        query = {'action': 'reconcile', 'scope': 'Host', 'hostUuid': HOST,
+                 'resourceUuid': HOST, 'operationUuid': command['operationUuid'],
+                 'desiredRevision': 3 if tamper == 'wrong_revision' else 2,
+                 'bootId': boot, 'policy': {}, 'taskSubmittedAt': submitted,
+                 'expectedControlOperationUuid': command['operationUuid'],
+                 'reconcileAction': 'seal-if-never-issued'}
+        if tamper == 'wrong_expected':
+            query['expectedControlOperationUuid'] = 'c' * 32
+        if tamper == 'wrong_scope':
+            query['scope'] = 'Cluster'
+        if tamper == 'wrong_host':
+            query['hostUuid'] = 'other-host'
+        if tamper == 'future_time':
+            query['taskSubmittedAt'] += 60000
+        result = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+        if tamper is None:
+            assert result['status'] == 'Failed', result
+            assert result['reasonCode'] == 'KSM_CLEAR_NOT_ISSUED'
+            assert result.get('appliedRevision') is None
+            assert result['state']['policyWritesIssued'] is False
+            sealed = plugin._load_operation(command)
+            assert sealed['stage'] == 'NOT_ISSUED'
+            assert sealed['applyEvidence'] == failed['applyEvidence']
+            assert sealed['requestHash'] == failed['requestHash']
+            assert json.loads(plugin.reconcile({'body': json.dumps(query)})) == result
+            assert plugin.apply(command) == result
+        else:
+            assert result['status'] == 'Unknown', result
+            assert plugin._load_operation(command) == failed
+        assert writes == []
+        assert plugin._get_active_control() == old_command['operationUuid']
+    with open(old_path, 'rb') as stream:
+        assert stream.read() == old_bytes
+
+
 def test_verify_completed_accepts_real_effective_empty_ksm_receipt_read_only(
         tmp_path, monkeypatch):
     plugin = MemoryOptimizationPlugin()
