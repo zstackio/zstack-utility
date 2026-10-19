@@ -8933,6 +8933,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                 'operationUuid': operation_uuid})
         evidence = prior.get('applyEvidence') if isinstance(prior, dict) else None
         readback = prior.get('readback') if isinstance(prior, dict) else None
+        if (isinstance(evidence, dict) and
+                evidence.get('reason') == 'KSM_CLEAR_PRIOR_JOURNAL_INVALID' and
+                prior.get('policy') == {'schemaVersion': 1, 'ksm': {}}):
+            sealed = self._mark_not_issued(command)
+            return self._reply(sealed or {
+                'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                'operationUuid': operation_uuid})
         prewrite_reasons = ('FIRST_ZRAM_OBSERVATION_NOT_FRESH_OR_SAFE',
                             'KSM_CLEAR_PRIOR_JOURNAL_INVALID')
         prewrite_candidate = (
@@ -9322,6 +9330,59 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         'reasonCode': 'OPERATION_RECONCILE_REQUIRED',
                         'operationUuid': operation_uuid}
             if prior:
+                evidence = prior.get('applyEvidence')
+                if (isinstance(evidence, dict) and
+                        evidence.get('reason') == 'KSM_CLEAR_PRIOR_JOURNAL_INVALID' and
+                        prior.get('policy') == {'schemaVersion': 1, 'ksm': {}}):
+                    readback = prior.get('readback')
+                    revision = prior.get('desiredRevision')
+                    request_hash = prior.get('requestHash')
+                    result = {'success': False, 'status': 'Failed',
+                              'reasonCode': 'KSM_CLEAR_NOT_ISSUED',
+                              'operationUuid': operation_uuid,
+                              'state': {'phase': 'NOT_ISSUED', 'bootId': current_boot,
+                                        'requestHash': request_hash,
+                                        'policyWritesIssued': False}}
+                    # Only the immutable, reason-only pre-write rejection is
+                    # eligible. A partial write or a different query identity
+                    # remains Unknown and cannot rewrite this journal.
+                    valid = (
+                        command.get('action') == 'reconcile' and command.get('policy') == {} and
+                        command.get('scope') == prior.get('scope') == 'Host' and
+                        command.get('resourceUuid') == prior.get('resourceUuid') == host_uuid and
+                        command.get('expectedControlOperationUuid') == operation_uuid and
+                        prior.get('operationUuid') == operation_uuid and
+                        prior.get('hostUuid') == host_uuid and prior.get('bootId') == current_boot and
+                        prior.get('action') == 'apply' and prior.get('policyMode') == 'effective' and
+                        self._revision(revision) and command.get('desiredRevision') == revision and
+                        not isinstance(command.get('desiredRevision'), bool) and
+                        isinstance(request_hash, STRING_TYPES) and
+                        re.match(r'^[0-9a-f]{64}\Z', request_hash) is not None and
+                        prior.get('policyHash') == self._policy_digest(prior['policy']) and
+                        evidence == {'reason': 'KSM_CLEAR_PRIOR_JOURNAL_INVALID'} and
+                        isinstance(prior.get('updatedAt'), INTEGER_TYPES) and
+                        not isinstance(prior.get('updatedAt'), bool) and submitted <= prior['updatedAt'] and
+                        not any(key in prior for key in (
+                            'firstZramUse', 'activationIntent', 'maintenanceProof',
+                            'mixedClearEvidence', 'maintenanceProgress', 'backendPreparation',
+                            'poolPreparation')) and
+                        ((prior.get('stage') == 'UNKNOWN' and readback == evidence) or
+                         (prior.get('stage') == 'NOT_ISSUED' and readback == result)))
+                    if (not valid or self._current_boot_id() != current_boot or
+                            self._load_host_uuid() != host_uuid):
+                        return {'success': False, 'status': 'Unknown',
+                                'state': {'phase': 'UNKNOWN'},
+                                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                                'operationUuid': operation_uuid}
+                    if prior.get('stage') == 'NOT_ISSUED':
+                        return readback
+                    updated = dict(prior, stage='NOT_ISSUED', readback=result,
+                                   updatedAt=int(time.time() * 1000))
+                    if self._write_operation_record(updated):
+                        return result
+                    return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                            'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE',
+                            'operationUuid': operation_uuid}
                 if prior.get('stage') in ('NOT_ISSUED', 'APPLIED') and isinstance(prior.get('readback'), dict):
                     return prior['readback']
                 return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
@@ -10888,6 +10949,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         policy = command.get('policy') or {}
         ksm = policy.get('ksm') or {}
         inherited_clear = not ksm
+        clear_boot = self._current_boot_id() if inherited_clear else None
+        clear_control = self._get_active_control() if inherited_clear else None
         if not ksm:
             # A sparse clear target may still need to advance the revision of
             # an already managed controller. Reuse only a complete current
@@ -10895,7 +10958,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             # journal or ownership marker; an empty target alone never takes
             # over distro/native KSM.
             prior_ack = (clear_context.get('priorKsmAck') if isinstance(clear_context, dict)
-                         else self._managed_ksm_clear_ack())
+                         else self._managed_ksm_clear_ack(clear_command=command))
             if prior_ack is None and isinstance(clear_context, dict):
                 raise RuntimeError('KSM_CLEAR_PRIOR_PROOF_MISSING')
             if prior_ack is None:
@@ -10953,6 +11016,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             content = render_config(existing_text, revision, pages, native_sleep)
         except NativeKsmConfigError as exc:
             raise ValueError(str(exc))
+
+        if inherited_clear:
+            if (clear_boot != self._current_boot_id() or
+                    command.get('hostUuid') != self._load_host_uuid() or
+                    clear_control != self._get_active_control()):
+                raise RuntimeError('KSM_CLEAR_IDENTITY_CHANGED')
+            if clear_context is None and self._managed_ksm_clear_ack(clear_command=command) != prior_ack:
+                raise RuntimeError('KSM_CLEAR_PRIOR_PROOF_MISMATCH')
 
         # Service state is not inferred from run=0 because native ksmtuned may
         # temporarily stop scanning under pressure. For explicit disable, stop
@@ -11031,7 +11102,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 raise RuntimeError(reason)
             time.sleep(0.2)
 
-    def _managed_ksm_clear_ack(self, require_ksm_only=True, prepared_backend=None):
+    def _managed_ksm_clear_ack(self, require_ksm_only=True, prepared_backend=None,
+                               clear_command=None):
         """Return the current full ack only when existing managed ownership is proven."""
         operation_uuid = self._get_active_control()
         if not operation_uuid:
@@ -11086,6 +11158,34 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             isinstance(prior_policy, dict) and
             not (self._ksm_only_disabled_service_sections(prior_policy) or
                  prepared_backend_ksm))
+        # A reboot invalidates the old native ACK. For a new Host-only clear,
+        # the old terminal journal proves ownership of the persistent config;
+        # the complete native ACK below must be read again on this boot.
+        cross_boot_clear = False
+        if (isinstance(record, dict) and record.get('bootId') != current_boot_id and
+                isinstance(clear_command, dict)):
+            pending = self._load_operation(clear_command)
+            cross_boot_clear = bool(
+                require_ksm_only and prepared_backend is None and host_is_ksm_only and
+                clear_command.get('action') == 'apply' and
+                clear_command.get('scope') == 'Host' and
+                clear_command.get('hostUuid') == self._load_host_uuid() and
+                clear_command.get('resourceUuid') == clear_command.get('hostUuid') and
+                clear_command.get('policyMode', 'effective') == 'effective' and
+                clear_command.get('policy') == {'schemaVersion': 1, 'ksm': {}} and
+                self._valid_identifier(record.get('bootId')) and
+                record.get('policyHash') == self._policy_digest(prior_policy) and
+                set(prior_policy or {}) <= set(('schemaVersion', 'ksm')) and
+                isinstance(pending, dict) and pending.get('stage') == 'PREPARING' and
+                pending.get('bootId') == current_boot_id and
+                pending.get('requestHash') == self._operation_hash(clear_command) and
+                all(pending.get(key) == clear_command.get(key)
+                    for key in ('operationUuid', 'hostUuid', 'scope', 'resourceUuid',
+                                'action', 'policy', 'desiredRevision')) and
+                pending.get('policyHash') == self._policy_digest(clear_command['policy']) and
+                self._revision(revision) and
+                self._revision(clear_command.get('desiredRevision')) and
+                clear_command['desiredRevision'] > revision)
         journal_proves_ownership = bool(
             isinstance(record, dict) and record.get('operationUuid') == operation_uuid and
             record.get('hostUuid') == self._load_host_uuid() and
@@ -11093,7 +11193,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             record.get('action') in (None, 'apply') and
             record.get('stage') == 'APPLIED' and
             isinstance(current_boot_id, STRING_TYPES) and bool(current_boot_id.strip()) and
-            record.get('bootId') == current_boot_id and
+            (record.get('bootId') == current_boot_id or cross_boot_clear) and
             isinstance(record.get('requestHash'), STRING_TYPES) and
             re.match(r'^[0-9a-f]{64}\Z', record.get('requestHash')) is not None and
             isinstance(revision, INTEGER_TYPES) and not isinstance(revision, bool) and revision > 0 and
@@ -11126,6 +11226,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if current is None:
             raise RuntimeError('KSM_CLEAR_NATIVE_ACK_UNAVAILABLE')
         current_matches = current == prior_proof
+        if cross_boot_clear:
+            current_matches = (
+                self._ksm_proof_policy(current, revision) is not None and
+                all(current.get(key) == prior_proof.get(key)
+                    for key in ('configRevision', 'pages_to_scan', 'sleep_millisecs')))
         if (not current_matches and isinstance(prior_proof, dict) and
                 prior_proof.get('run') == '1' and current.get('run') == '0'):
             # Native ksmtuned may pause scanning temporarily under pressure.
@@ -11143,7 +11248,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if not current_matches:
             raise RuntimeError('KSM_CLEAR_PRIOR_PROOF_MISMATCH')
         normalized_proof = {key: prior_proof[key] for key in current}
-        if normalized_proof != current:
+        if not cross_boot_clear and normalized_proof != current:
             raise RuntimeError('KSM_CLEAR_PRIOR_PROOF_MISMATCH')
         existing = self._managed_ksm_config_identity()
         expected_config = {
@@ -11159,6 +11264,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         }
         if existing != expected_config:
             raise RuntimeError('KSM_CLEAR_CONFIG_ACK_MISMATCH')
+        if cross_boot_clear and (
+                self._current_boot_id() != current_boot_id or
+                self._load_host_uuid() != clear_command.get('hostUuid') or
+                self._get_active_control() != operation_uuid or
+                self._load_operation({'operationUuid': operation_uuid}) != record or
+                self._load_operation(clear_command) != pending):
+            raise RuntimeError('KSM_CLEAR_PRIOR_JOURNAL_INVALID')
         return current
 
     def _managed_ksm_config_identity(self):
