@@ -210,7 +210,7 @@ class ResourceControlManager(object):
                     raise ResourceControlError('Systemd unit[%s] does not exist' % self._value(handle, 'value'))
                 results.append(None)
                 continue
-            if properties.get('ActiveState') != 'active':
+            if not properties.get('ControlGroup'):
                 if desired is None or backend.cpu_set_property is not None:
                     results.append(True)
                 else:
@@ -504,11 +504,9 @@ class ResourceControlManager(object):
             if optional:
                 return None
             raise ResourceControlError('Systemd unit[%s] does not exist' % unit)
-        if properties.get('ActiveState') != 'active':
-            return None
         control_group = properties.get('ControlGroup')
         if not control_group:
-            raise ResourceControlError('Systemd unit[%s] did not report a control group' % unit)
+            return None
         target = backend.target(control_group)
         if target == root:
             raise ResourceControlError('Systemd unit[%s] reported the root control group' % unit)
@@ -528,13 +526,9 @@ class ResourceControlManager(object):
             if optional:
                 return None
             raise ResourceControlError('Systemd unit[%s] does not exist' % unit)
-        if properties.get('ActiveState') != 'active':
-            if optional:
-                return None
-            raise ResourceControlError('Systemd unit[%s] is not active' % unit)
         control_group = properties.get('ControlGroup')
         if not control_group:
-            raise ResourceControlError('Systemd unit[%s] did not report a control group' % unit)
+            return None
         target = backend.target(control_group)
         if target == root:
             raise ResourceControlError('Systemd unit[%s] reported the root control group' % unit)

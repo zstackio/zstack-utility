@@ -816,8 +816,8 @@ def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(
     monkeypatch.setattr(manager.backend_factory.memory(), "contains", lambda *_args: True)
     monkeypatch.setattr(manager.systemd, "properties", lambda unit: {
         "LoadState": "loaded",
-        "ActiveState": "inactive" if unit == "collectd.service" else "active",
-        "ControlGroup": "/zstack-compute.slice/" + unit,
+        "ActiveState": "inactive",
+        "ControlGroup": "" if unit == "collectd.service" else "/zstack-compute.slice/" + unit,
     })
     monkeypatch.setattr(manager, "_prepare_active_slice_memory", lambda *_args: None)
     monkeypatch.setattr(manager, "validate_cpu_set", lambda value: value)
@@ -827,7 +827,7 @@ def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(
     assert [call.args for call in apply_cpu.call_args_list] == [
         (os.path.join(root, "zstack-compute.slice", service["value"]), "1-2")
         for service in (services[0], services[2])
-    ], "Inactive services must not block CPU assignment to following active services"
+    ], "Existing cgroups must receive CPU limits regardless of the service ActiveState"
     apply_memory.assert_called_once_with("/memory/zstack-compute.slice", 2 * 1024 ** 3)
     assert resource_utils.read(manager.systemd._drop_in_path("collectd.service")) == \
         "[Service]\nSlice=zstack-compute.slice\n"
@@ -835,6 +835,17 @@ def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(
         "[Slice]\nMemoryLimit=2147483648\n"
     systemctl.assert_called_once_with(["daemon-reload"], 30)
     assert result["synced"] == cpu_synced, "CPU mismatch must not stop later CPU or role memory assignment"
+
+    release_cpu = Mock()
+    monkeypatch.setattr(manager.backend_factory.cpu(), "release_cpu_set", release_cpu)
+    monkeypatch.setattr(manager.backend_factory, "find_memory", lambda: None)
+    monkeypatch.setattr(manager, "_active_slice_target", lambda *_args: None)
+    assert manager.release("COMPUTE", [services[1], services[0], services[2]], "zstack-compute.slice")["synced"]
+    assert [call.args[0] for call in release_cpu.call_args_list] == [
+        os.path.join(root, "zstack-compute.slice", service["value"]) for service in (services[0], services[2])
+    ], "An inactive required service must not prevent releasing following services"
+    assert not os.path.exists(manager.systemd._drop_in_path("zstack-compute.slice"))
+    assert manager.systemd.configured_slice("collectd.service") == "zstack-compute.slice"
 
 
 def test_restart_fully_stops_units_before_start_so_new_slice_is_applied(monkeypatch):
