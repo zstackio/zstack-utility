@@ -1024,14 +1024,35 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         state = result.get('state') if isinstance(result, dict) else None
         proof = state.get('recoveryRejectionProof') if isinstance(state, dict) else None
         recovery = command.get('recovery') or {}
+        reconcile_existing = command.get('action') == 'reconcile'
+        if reconcile_existing:
+            request_hash = prior.get('requestHash') if isinstance(prior, dict) else None
+            request_matches = (isinstance(prior, dict) and
+                               isinstance(request_hash, STRING_TYPES) and
+                               re.match(r'^[0-9a-f]{64}$', request_hash) is not None and
+                               command.get('hostUuid') == self._load_host_uuid() and
+                               command.get('policy') == {} and
+                               prior.get('scope') == command.get('scope') == 'Host' and
+                               prior.get('resourceUuid') == command.get('resourceUuid') ==
+                               self._load_host_uuid() and
+                               recovery.get('confirmed') is True and
+                               recovery.get('expectedHostBootId') == self._current_boot_id() and
+                               prior.get('expectedControlOperationUuid') ==
+                               command.get('expectedControlOperationUuid') and
+                               prior.get('desiredRevision') == command.get('desiredRevision'))
+        else:
+            request_matches = prior.get('requestHash') == self._operation_hash(command)
         return (isinstance(prior, dict) and prior.get('action') == 'recoverUncertain' and
                 prior.get('stage') == 'REJECTED' and
                 prior.get('hostUuid') == self._load_host_uuid() and
                 prior.get('bootId') == self._current_boot_id() and
-                prior.get('requestHash') == self._operation_hash(command) and
-                'recoveryIntent' not in prior and isinstance(result, dict) and
+                request_matches and
+                all(key not in prior for key in ('recoveryIntent', 'recoveryAttempt',
+                                                 'recoveryReceipt', 'recoveryResult')) and
+                isinstance(result, dict) and
                 isinstance(state, dict) and
                 result.get('success') is False and result.get('status') == 'Failed' and
+                result.get('appliedRevision') is None and
                 result.get('operationUuid') == command.get('operationUuid') and
                 result.get('bootId') == self._current_boot_id() and
                 state.get('phase') == 'RECOVERY_NOT_ISSUED' and
@@ -1349,6 +1370,67 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 return prior['readback']
             return self._recovery_failure(command, 'RECOVERY_REJECTION_PROOF_UNQUALIFIED')
         intent = prior.get('recoveryIntent')
+        if intent is None:
+            recovery = command.get('recovery')
+            evidence = prior.get('readback')
+            evidence_state = evidence.get('state') if isinstance(evidence, dict) else None
+            reason_code = evidence.get('reasonCode') if isinstance(evidence, dict) else None
+            request_hash = prior.get('requestHash')
+            exact_unissued_candidate = (
+                command.get('action') == 'reconcile' and command.get('policy') == {} and
+                isinstance(recovery, dict) and recovery.get('confirmed') is True and
+                set(prior) == {'action', 'bootId', 'desiredRevision',
+                               'expectedControlOperationUuid', 'hostUuid', 'operationUuid',
+                               'policy', 'policyHash', 'readback', 'requestHash',
+                               'resourceUuid', 'scope', 'stage', 'updatedAt'} and
+                prior.get('action') == 'recoverUncertain' and prior.get('stage') == 'UNKNOWN' and
+                prior.get('operationUuid') == command.get('operationUuid') and
+                prior.get('scope') == command.get('scope') == 'Host' and
+                prior.get('resourceUuid') == command.get('resourceUuid') == self._load_host_uuid() and
+                prior.get('hostUuid') == command.get('hostUuid') == self._load_host_uuid() and
+                prior.get('bootId') == self._current_boot_id() and
+                prior.get('desiredRevision') == command.get('desiredRevision') and
+                isinstance(prior.get('desiredRevision'), INTEGER_TYPES) and
+                not isinstance(prior.get('desiredRevision'), bool) and
+                prior.get('expectedControlOperationUuid') ==
+                command.get('expectedControlOperationUuid') and
+                prior.get('policy') == {} and
+                prior.get('policyHash') == self._policy_digest({}) and
+                isinstance(command.get('recoveryRequestHash'), STRING_TYPES) and
+                re.match(r'^[0-9a-f]{64}$', command.get('recoveryRequestHash', '')) is not None and
+                recovery.get('expectedHostBootId') == self._current_boot_id() and
+                recovery.get('expectedPoolGeneration') and
+                isinstance(request_hash, STRING_TYPES) and
+                re.match(r'^[0-9a-f]{64}$', request_hash) is not None and
+                all(key not in prior for key in ('recoveryIntent', 'recoveryAttempt',
+                                                 'recoveryReceipt', 'recoveryResult')) and
+                isinstance(evidence, dict) and evidence.get('success') is False and
+                set(evidence) == {'success', 'status', 'appliedRevision', 'reasonCode',
+                                  'operationUuid', 'state'} and
+                evidence.get('appliedRevision') is None and
+                evidence.get('status') == 'Unknown' and
+                evidence.get('operationUuid') == prior.get('operationUuid') and
+                isinstance(evidence_state, dict) and set(evidence_state) == {'phase'} and
+                evidence_state.get('phase') == 'UNKNOWN' and
+                reason_code == 'RECOVERY_PARTIAL_APPLY_NOT_PROVEN')
+            if not exact_unissued_candidate:
+                return self._recovery_failure(command, 'RECOVERY_INTENT_UNQUALIFIED')
+            try:
+                lock = self._acquire_host_control_lock()
+            except (IOError, OSError):
+                return self._recovery_failure(command, 'OPERATION_CONCURRENT')
+            try:
+                latest_state, latest = self._operation_file_state(command.get('operationUuid'))
+                if (latest_state != 'present' or not isinstance(latest, dict) or
+                        self._operation_hash(latest) != self._operation_hash(prior) or
+                        latest.get('requestHash') != request_hash or
+                        latest.get('stage') != 'UNKNOWN' or
+                        any(key in latest for key in ('recoveryIntent', 'recoveryAttempt',
+                                                      'recoveryReceipt', 'recoveryResult'))):
+                    return self._recovery_failure(command, 'RECOVERY_INTENT_UNQUALIFIED')
+                return self._recover_uncertain_partial_service_policy(command, prior=latest)
+            finally:
+                self._release_operation(lock)
         if (prior.get('action') != 'recoverUncertain' or
                 prior.get('hostUuid') != self._load_host_uuid() or
                 prior.get('bootId') != self._current_boot_id() or
@@ -1602,7 +1684,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if (not isinstance(evidence, dict) or not isinstance(old_readback, dict) or
                     not self._strict_service_match(evidence, old_readback) or
                     evidence.get('success') is not False or evidence.get('status') != 'Unknown' or
-                    evidence.get('reasonCode') != 'SERVICE_APPLY_FAILED' or
+                    evidence.get('reasonCode') not in ('SERVICE_APPLY_FAILED', 'MEMORY_RESULT_UNKNOWN') or
                     evidence.get('reason') != 'SERVICE_APPLY_FAILED:TUNING_REQUIRES_QUIESCENT_EXECUTOR' or
                     state.get('lastStep') != 'tuning_apply_and_vm_scope_commit' or
                     state.get('sequence') != ['cpu_guard_written', 'cpu_guard_verified_off'] or
@@ -1818,6 +1900,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     type(cq.get('Q')) is not int or cq.get('Q') != 0 or
                     'pending_operations' not in live or live.get('pending_operations') not in (None, [])):
                 return unknown('RECOVERY_NATIVE_STATE_NOT_QUIESCENT')
+
+            if not dispatched and command.get('action') == 'reconcile':
+                result = self._recovery_not_issued(
+                    command, 'RECOVERY_NOT_ISSUED')
+                if not self._update_operation_record(recovery_uuid, 'REJECTED', result):
+                    return unknown('OPERATION_JOURNAL_UNAVAILABLE')
+                return result
 
             if not dispatched:
                 intent = {'kind': 'partialServiceApply', 'hostUuid': self._load_host_uuid(),
