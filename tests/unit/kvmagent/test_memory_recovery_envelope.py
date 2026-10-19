@@ -497,6 +497,329 @@ def _drain_from_final_cpu_recovery(fixture):
             'desiredRevision': recovery['desiredRevision'], 'policy': {}}
 
 
+@pytest.fixture
+def partial_service_apply_recovery(tmp_path, monkeypatch):
+    """Real-shaped C5 partial apply: KSM and CPU-hold are durable, tuning got
+    a typed pre-write quiet-executor rejection, and CPU finalization is absent.
+    """
+    host = '1' * 32
+    # The shared test conftest supplies a MagicMock linux module.  Recovery
+    # persists an absolute monotonic deadline, so use the real clock here.
+    monkeypatch.setattr('kvmagent.plugins.memory_optimization.linux.monotime', time.monotonic)
+    anchor_uuid, original_uuid, recovery_uuid = '3' * 32, '2' * 32, '4' * 32
+    plugin = MemoryOptimizationPlugin()
+    plugin.configure({'hostUuid': host, 'operationDir': str(tmp_path)})
+    boot = plugin._current_boot_id()
+    generation = 'a' * 64
+    cpu_before = {'_http_status': 200, 'revision': 27, 'efficiency_enabled': True,
+                  'idle_cpu_threshold_percent': 5, 'idle_duration_seconds': 60}
+    cpu_guard = {'_http_status': 200, 'revision': 28, 'efficiency_enabled': False,
+                 'idle_cpu_threshold_percent': 5, 'idle_duration_seconds': 60,
+                 'request_id': original_uuid + '-cpu-hold'}
+    anchor_cpu_before = dict(cpu_before, revision=25)
+    tuning_settings = {'writeback': {'enabled': True},
+                       'vm_management': {'mode': 'all_running', 'vm_uuids': []}}
+    tuning_before = {'_http_status': 200, 'revision': 13, 'settings': tuning_settings}
+    anchor_policy = {'schemaVersion': 1, 'ksm': {'enabled': False, 'zeroPagesEnabled': False},
+                     'writeback': {'enabled': True, 'backendResourceUuid': '5' * 32,
+                                   'backendCapacityBytes': 4 << 30}}
+    anchor_ksm = {'configRevision': '33', 'pages_to_scan': '2000',
+                  'run': '0', 'sleep_millisecs': '20', 'use_zero_pages': '0'}
+    anchor_sections = {
+        'cpuBefore': anchor_cpu_before,
+        'cpuGuard': {'_http_status': 200, 'revision': 26, 'efficiency_enabled': False,
+                     'idle_cpu_threshold_percent': 5, 'idle_duration_seconds': 60,
+                     'request_id': anchor_uuid + '-cpu-hold'},
+        'cpuGuardReadback': {'_http_status': 200, 'revision': 26,
+                             'efficiency_enabled': False,
+                             'idle_cpu_threshold_percent': 5, 'idle_duration_seconds': 60},
+        'tuning': dict(tuning_before, agent_request_id=anchor_uuid + '-tuning'),
+        'tuningReadback': tuning_before,
+        'cpu': {'_http_status': 200, 'request_id': anchor_uuid + '-cpu', 'revision': 27,
+                'efficiency_enabled': True, 'idle_cpu_threshold_percent': 5,
+                'idle_duration_seconds': 60, 'agent_expected_revision': 26,
+                'agent_desired_enabled': True, 'agent_desired_threshold_percent': 5,
+                'agent_desired_duration_seconds': 60},
+        'cpuReadback': dict(anchor_cpu_before, revision=27),
+    }
+    anchor_readback = {
+        'success': True, 'status': 'Succeeded', 'operationUuid': anchor_uuid,
+        'appliedRevision': 33, 'ksmReadback': anchor_ksm,
+        'state': {'phase': 'READBACK',
+                  'sectionComplete': {'cpu': True, 'tuning': True},
+                  'sequence': ['cpu_guard_written', 'cpu_guard_verified_off',
+                               'tuning_apply_returned', 'tuning_target_verified',
+                               'cpu_target_verified'],
+                  'sections': anchor_sections}}
+    anchor = {'hostUuid': host, 'resourceUuid': host, 'scope': 'Host',
+              'action': 'apply', 'policyMode': 'delta', 'operationUuid': anchor_uuid,
+              'desiredRevision': 33, 'policy': anchor_policy}
+    assert plugin._record_operation(anchor, 'APPLIED', anchor_readback)
+    plugin._set_active_control(anchor_uuid)
+
+    policy = {'schemaVersion': 1, 'ksm': {'enabled': True, 'zeroPagesEnabled': True},
+              'writeback': {'enabled': False}}
+    original = {'hostUuid': host, 'resourceUuid': host, 'scope': 'Host', 'action': 'apply',
+                'policyMode': 'delta', 'operationUuid': original_uuid,
+                'desiredRevision': 34, 'policy': policy}
+    original_ksm = {'configRevision': '34', 'pages_to_scan': '2000',
+                    'run': '1', 'sleep_millisecs': '20', 'use_zero_pages': '1'}
+    unknown = {'success': False, 'status': 'Unknown', 'operationUuid': original_uuid,
+               'appliedRevision': None, 'reasonCode': 'SERVICE_APPLY_FAILED',
+               'reason': 'SERVICE_APPLY_FAILED:TUNING_REQUIRES_QUIESCENT_EXECUTOR',
+               'ksmReadback': original_ksm,
+               'state': {'phase': 'UNKNOWN',
+                         'lastStep': 'tuning_apply_and_vm_scope_commit',
+                         'sequence': ['cpu_guard_written', 'cpu_guard_verified_off'],
+                         'notAttempted': ['remainingPolicyWrites', 'finalCpuGate'],
+                         'sections': {'cpuBefore': cpu_before,
+                                      'cpuGuard': cpu_guard,
+                                      'cpuGuardReadback': dict(cpu_guard)}}}
+    assert plugin._record_operation(original, 'UNKNOWN', unknown)
+    recovery = {'hostUuid': host, 'resourceUuid': host, 'scope': 'Host',
+                'action': 'recoverUncertain', 'operationUuid': recovery_uuid,
+                'expectedControlOperationUuid': original_uuid, 'desiredRevision': 34,
+                'policy': {}, 'recovery': {'expectedHostBootId': boot,
+                    'expectedPoolGeneration': generation, 'confirmed': True}}
+
+    cpu_current = dict(cpu_guard)
+    tuning_current = dict(tuning_before)
+    calls = []
+    current_ksm = dict(original_ksm)
+
+    def service(action, payload):
+        calls.append((action, dict(payload)))
+        if action == 'host-cpu-state':
+            return dict(cpu_current)
+        if action == 'tuning-state':
+            return dict(tuning_current)
+        if action == 'monitor-state':
+            return {'_http_status': 200, 'pending_operations': [],
+                    'lifecycle': {'paused': False, 'migrationHold': {}},
+                    'host_zram': {'pool_generation': generation}}
+        if action == 'operations':
+            return {'_http_status': 200, 'cq': {'C': 0, 'Q': 0}, 'entries': []}
+        if action == 'apply':
+            assert payload['request_id'] == original_uuid + '-tuning'
+            assert payload['expected_revision'] == 13
+            assert payload['settings']['writeback']['enabled'] is False
+            tuning_current.update(revision=14,
+                                  settings={'writeback': {'enabled': False},
+                                            'vm_management': {'mode': 'all_running',
+                                                              'vm_uuids': []}})
+            return dict(tuning_current)
+        if action == 'host-cpu':
+            assert payload['request_id'] == original_uuid + '-cpu'
+            assert payload['expected_revision'] == 28
+            cpu_current.update(revision=29, efficiency_enabled=True)
+            return dict(cpu_current, request_id=payload['request_id'])
+        raise AssertionError('Unexpected service action: %s' % action)
+
+    plugin.service_call = service
+    plugin._read_ksm_ack = lambda: dict(current_ksm)
+    return {'plugin': plugin, 'anchor': anchor, 'original': original,
+            'recovery': recovery, 'calls': calls, 'cpu': cpu_current,
+            'tuning': tuning_current, 'ksm': current_ksm}
+
+
+def test_partial_service_apply_recovery_finishes_only_tuning_and_final_cpu(partial_service_apply_recovery,
+                                                                             monkeypatch):
+    fixture = partial_service_apply_recovery
+    plugin = fixture['plugin']
+    original_uuid = fixture['original']['operationUuid']
+    original_path = plugin._operation_path(original_uuid)
+    with open(original_path, 'rb') as stream:
+        original_bytes = stream.read()
+    ksm_writes = []
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs',
+                        lambda key, value: ksm_writes.append((key, value)))
+    monkeypatch.setattr('kvmagent.plugins.memory_optimization.subprocess.check_call',
+                        lambda args: ksm_writes.append(tuple(args)))
+
+    result = plugin.apply(fixture['recovery'])
+
+    assert result['status'] == 'Succeeded', result
+    assert result['state']['phase'] == 'POLICY_RECOVERED'
+    proof = result['state']['recoveryProof']
+    assert proof['kind'] == 'partialServiceApply'
+    assert proof['originalKsmReadback'] == fixture['ksm']
+    assert fixture['tuning']['settings']['writeback']['enabled'] is False
+    assert fixture['cpu']['efficiency_enabled'] is True
+    assert proof['cpuGuard']['efficiency_enabled'] is False
+    assert proof['tuningCommand'] == {
+        'request_id': original_uuid + '-tuning',
+        'expected_revision': 13,
+        'settings': fixture['tuning']['settings']}
+    assert proof['cpuExpectedRevision'] == 28
+    recovery_record = plugin._load_operation(fixture['recovery'])
+    plugin._validate_final_cpu_no_ksm_control(
+        {'expectedControlOperationUuid': fixture['recovery']['operationUuid']},
+        recovery_record, fixture['recovery']['operationUuid'])
+    with pytest.raises(ValueError):
+        plugin._validate_final_cpu_no_ksm_control(
+            {'expectedControlOperationUuid': fixture['anchor']['operationUuid']},
+            recovery_record, fixture['recovery']['operationUuid'])
+    assert not ksm_writes
+    assert [action for action, _ in fixture['calls']].count('apply') == 1
+    assert [action for action, _ in fixture['calls']].count('host-cpu') == 1
+    with open(original_path, 'rb') as stream:
+        assert stream.read() == original_bytes
+    completed_call_count = len(fixture['calls'])
+    completed_writes = [action for action, _ in fixture['calls']
+                        if action in ('apply', 'host-cpu')]
+    repeated = plugin.apply(fixture['recovery'])
+    assert repeated['status'] == 'Succeeded', repeated
+    assert repeated['state']['recoveryProof'] == proof
+    assert [action for action, _ in fixture['calls']
+            if action in ('apply', 'host-cpu')] == completed_writes
+    assert [action for action, _ in fixture['calls'][completed_call_count:]] == [
+        'tuning-state', 'host-cpu-state', 'monitor-state']
+    fixture['tuning']['revision'] += 1
+    drifted_call_count = len(fixture['calls'])
+    drifted = plugin.apply(fixture['recovery'])
+    assert drifted['status'] == 'Unknown', drifted
+    assert [action for action, _ in fixture['calls'][drifted_call_count:]] == [
+        'tuning-state', 'host-cpu-state', 'monitor-state']
+    assert [action for action, _ in fixture['calls']
+            if action in ('apply', 'host-cpu')] == completed_writes
+
+
+def test_partial_service_apply_recovery_rejects_current_ksm_drift(partial_service_apply_recovery,
+                                                                  monkeypatch):
+    fixture = partial_service_apply_recovery
+    plugin = fixture['plugin']
+    original_uuid = fixture['original']['operationUuid']
+    original_path = plugin._operation_path(original_uuid)
+    with open(original_path, 'rb') as stream:
+        original_bytes = stream.read()
+    drifted = dict(fixture['ksm'], run='0')
+    plugin._read_ksm_ack = lambda: drifted
+    ksm_writes = []
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs',
+                        lambda key, value: ksm_writes.append((key, value)))
+    monkeypatch.setattr('kvmagent.plugins.memory_optimization.subprocess.check_call',
+                        lambda args: ksm_writes.append(tuple(args)))
+
+    result = plugin.apply(fixture['recovery'])
+
+    assert result['status'] == 'Unknown', result
+    assert result['reasonCode'] == 'RECOVERY_ORIGINAL_KSM_ACK_UNKNOWN'
+    assert not any(action in ('apply', 'host-cpu') for action, _ in fixture['calls'])
+    assert not ksm_writes
+    with open(original_path, 'rb') as stream:
+        assert stream.read() == original_bytes
+
+
+@pytest.mark.parametrize('tamper', ['host', 'boot', 'pool', 'active-anchor',
+                                    'wrong-control', 'journal'])
+def test_partial_service_apply_recovery_rejects_identity_and_journal_drift(
+        partial_service_apply_recovery, tamper):
+    fixture = partial_service_apply_recovery
+    plugin = fixture['plugin']
+    command = fixture['recovery']
+    if tamper == 'host':
+        command['hostUuid'] = '9' * 32
+        command['resourceUuid'] = '9' * 32
+    elif tamper == 'boot':
+        command['recovery']['expectedHostBootId'] = '22222222-2222-4222-8222-222222222222'
+    elif tamper == 'pool':
+        command['recovery']['expectedPoolGeneration'] = 'b' * 64
+    elif tamper == 'active-anchor':
+        plugin._set_active_control('8' * 32)
+    elif tamper == 'wrong-control':
+        command['expectedControlOperationUuid'] = '9' * 32
+    else:
+        original = plugin._load_operation(fixture['original'])
+        original['applyEvidence']['reason'] = 'SERVICE_APPLY_FAILED:OTHER'
+        original['readback'] = dict(original['applyEvidence'])
+        assert plugin._write_operation_record(original)
+
+    original_path = plugin._operation_path(fixture['original']['operationUuid'])
+    with open(original_path, 'rb') as stream:
+        original_bytes = stream.read()
+    result = plugin.apply(command)
+
+    if tamper == 'wrong-control':
+        assert result['status'] == 'Failed', result
+        assert result['reasonCode'] == 'RECOVERY_OLD_POLICY_UNQUALIFIED'
+    else:
+        assert result['status'] == 'Unknown', result
+        if tamper == 'active-anchor':
+            assert result['reasonCode'] == 'RECOVERY_CONTROL_FENCE_MISMATCH'
+    assert not any(action in ('apply', 'host-cpu') for action, _ in fixture['calls'])
+    with open(original_path, 'rb') as stream:
+        assert stream.read() == original_bytes
+
+
+def test_partial_service_apply_recovery_refuses_vm_shard_replay(partial_service_apply_recovery):
+    fixture = partial_service_apply_recovery
+    plugin = fixture['plugin']
+    anchor = plugin._load_operation(fixture['anchor'])
+    settings = {'writeback': {'enabled': True},
+                'vm_management': {'mode': 'list', 'vm_uuids': ['6' * 32]}}
+    for result_key in ('readback', 'applyEvidence'):
+        anchor[result_key]['state']['sections']['tuning']['settings'] = settings
+        anchor[result_key]['state']['sections']['tuningReadback']['settings'] = settings
+    assert plugin._write_operation_record(anchor)
+    fixture['tuning'].update(revision=13, settings=settings)
+    original_path = plugin._operation_path(fixture['original']['operationUuid'])
+    with open(original_path, 'rb') as stream:
+        original_bytes = stream.read()
+
+    result = plugin.apply(fixture['recovery'])
+
+    assert result['status'] == 'Unknown', result
+    assert result['reasonCode'] == 'RECOVERY_VM_SHARD_REPLAY_UNSAFE'
+    assert not any(action in ('apply', 'host-cpu') for action, _ in fixture['calls'])
+    with open(original_path, 'rb') as stream:
+        assert stream.read() == original_bytes
+
+
+def test_partial_service_apply_recovery_does_not_retry_lost_tuning_receipt(
+        partial_service_apply_recovery, monkeypatch):
+    fixture = partial_service_apply_recovery
+    plugin = fixture['plugin']
+    original_uuid = fixture['original']['operationUuid']
+    original_path = plugin._operation_path(original_uuid)
+    with open(original_path, 'rb') as stream:
+        original_bytes = stream.read()
+    service = plugin.service_call
+    apply_calls = []
+
+    def lose_tuning_reply(action, payload):
+        if action == 'apply':
+            apply_calls.append(dict(payload))
+            raise IOError('simulated lost response')
+        return service(action, payload)
+
+    plugin.service_call = lose_tuning_reply
+    ksm_writes = []
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs',
+                        lambda key, value: ksm_writes.append((key, value)))
+    monkeypatch.setattr('kvmagent.plugins.memory_optimization.subprocess.check_call',
+                        lambda args: ksm_writes.append(tuple(args)))
+
+    first = plugin.apply(fixture['recovery'])
+    recovery_record = plugin._load_operation(fixture['recovery'])
+    recovery_record['recoveryIntent'].pop('tuningOutcomeUnknown', None)
+    assert plugin._write_operation_record(recovery_record)
+    prior = plugin._load_operation(fixture['recovery'])
+    before_reconcile_writes = [action for action, _ in fixture['calls']
+                               if action in ('apply', 'host-cpu')]
+    second = plugin._reconcile_uncertain_recovery(fixture['recovery'], prior)
+
+    assert first['status'] == 'Unknown', first
+    assert second['status'] == 'Unknown', second
+    assert [action for action, _ in fixture['calls']
+            if action in ('apply', 'host-cpu')] == before_reconcile_writes
+    assert len(apply_calls) == 1
+    assert apply_calls[0]['request_id'] == original_uuid + '-tuning'
+    assert not any(action == 'host-cpu' for action, _ in fixture['calls'])
+    assert not ksm_writes
+    with open(original_path, 'rb') as stream:
+        assert stream.read() == original_bytes
+
+
 def test_successful_final_cpu_gate_recovery_allows_normal_pause_and_drain(final_cpu_gate_recovery, monkeypatch):
     fixture = final_cpu_gate_recovery
     plugin = fixture['plugin']

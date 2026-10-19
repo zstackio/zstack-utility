@@ -1234,6 +1234,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         record['stage'] = 'RECOVERING'
         record['recoveryIntent'] = intent
         reason = ('POLICY_CPU_RESTORE_PENDING' if intent.get('kind') == 'finalCpuGate'
+                  else 'PARTIAL_SERVICE_APPLY_PENDING'
+                  if intent.get('kind') == 'partialServiceApply'
                   else 'ACTIVATION_RETIREMENT_PENDING')
         record['readback'] = self._recovery_failure(command, reason, 'RECOVERING')
         record['updatedAt'] = int(time.time() * 1000)
@@ -1360,6 +1362,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         try:
             if intent.get('kind') == 'finalCpuGate':
                 return self._recover_uncertain_cpu_policy(command, prior=prior)
+            if intent.get('kind') == 'partialServiceApply':
+                return self._recover_uncertain_partial_service_policy(command, prior=prior)
             try:
                 receipt = self._service_request('lifecycle-activation-retirement-state', intent)
             except Exception:
@@ -1385,7 +1389,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         intent = record.get('recoveryIntent')
         recovery_proof = state.get('recoveryProof') if isinstance(state, dict) else None
         retirement_receipt = state.get('retirementReceipt') if isinstance(state, dict) else None
-        if isinstance(intent, dict) and intent.get('kind') == 'finalCpuGate':
+        if isinstance(intent, dict) and intent.get('kind') in ('finalCpuGate', 'partialServiceApply'):
             if (isinstance(state, dict) and isinstance(recovery_proof, dict) and
                     result.get('success') is True and result.get('status') == 'Succeeded' and
                     state.get('phase') == 'POLICY_RECOVERED' and
@@ -1396,7 +1400,24 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     recovery_proof.get('unresolvedOperationUuid') == intent.get('unresolvedOperationUuid') and
                     recovery_proof.get('originalRequestHash') == intent.get('originalRequestHash') and
                     state.get('cpuReceipt') == intent.get('cpuReceipt') and
-                    isinstance(intent.get('cpuReceipt'), dict)):
+                    isinstance(intent.get('cpuReceipt'), dict) and
+                    (intent.get('kind') != 'partialServiceApply' or
+                     (recovery_proof.get('kind') == 'partialServiceApply' and
+                      recovery_proof.get('anchorJournalHash') == intent.get('anchorJournalHash') and
+                      recovery_proof.get('tuningCommand') == self._service_payload(
+                          'apply', intent.get('tuningCommand') or {}) and
+                      recovery_proof.get('tuningPayloadSha256') == intent.get('tuningPayloadSha256') and
+                      recovery_proof.get('tuningReceipt') == intent.get('tuningReceipt') and
+                      recovery_proof.get('tuningReadback') == intent.get('tuningReadback') and
+                      recovery_proof.get('originalKsmReadback') == intent.get('originalKsmReadback')))):
+                if intent.get('kind') == 'partialServiceApply':
+                    try:
+                        validation_command = dict(command)
+                        validation_command['expectedControlOperationUuid'] = command.get('operationUuid')
+                        self._validate_final_cpu_no_ksm_control(
+                            validation_command, record, command.get('operationUuid'))
+                    except Exception:
+                        return None
                 return result
             return None
         if (not isinstance(state, dict) or not isinstance(intent, dict) or
@@ -1518,6 +1539,506 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         finally:
             self._release_operation(lock)
 
+    def _recover_uncertain_partial_service_policy(self, command, prior=None, issue=False):
+        """Finish the one proven KSM+CPU partial apply without replaying KSM.
+
+        The original apply receipt remains immutable.  Its typed tuning
+        pre-write rejection, same-boot active anchor, current KSM ACK, CPU
+        guard and prepared-pool generation must all agree before a durable
+        recovery intent can authorize the original tuning request ID.
+        """
+        recovery = command.get('recovery') or {}
+        intent = prior.get('recoveryIntent') if isinstance(prior, dict) else None
+        dispatched = isinstance(intent, dict)
+        may_issue = issue and not dispatched
+        old_uuid = (intent.get('unresolvedOperationUuid') if dispatched
+                    else command.get('expectedControlOperationUuid'))
+        boot = intent.get('expectedBootId') if dispatched else recovery.get('expectedHostBootId')
+        generation = (intent.get('expectedPoolGeneration') if dispatched
+                      else recovery.get('expectedPoolGeneration'))
+        recovery_uuid = command.get('operationUuid')
+
+        def unknown(reason):
+            result = self._recovery_failure(command, reason,
+                                            'RECOVERING' if dispatched else 'UNKNOWN')
+            if not dispatched:
+                self._update_operation_record(recovery_uuid, 'UNKNOWN', result)
+            else:
+                self._update_operation_record(recovery_uuid, 'RECOVERING', result)
+            return result
+
+        try:
+            old_state, old = self._operation_file_state(old_uuid)
+            if (old_state != 'present' or not isinstance(old, dict) or
+                    old.get('operationUuid') != old_uuid or old.get('stage') != 'UNKNOWN' or
+                    old.get('action') != 'apply' or old.get('scope') != 'Host' or
+                    old.get('hostUuid') != self._load_host_uuid() or old.get('bootId') != boot or
+                    boot != self._current_boot_id() or old.get('policyMode') != 'delta' or
+                    command.get('desiredRevision') != old.get('desiredRevision') or
+                    any(key in old for key in ('firstZramUse', 'activationIntent', 'maintenanceIntent',
+                                               'maintenanceProof', 'mixedClearEvidence'))):
+                return unknown('RECOVERY_OLD_POLICY_UNQUALIFIED')
+            policy = old.get('policy')
+            if (not isinstance(policy, dict) or
+                    set(policy) - {'schemaVersion', 'ksm', 'writeback'} or
+                    type(policy.get('schemaVersion')) is not int or policy.get('schemaVersion') != 1 or
+                    not isinstance(policy.get('ksm'), dict) or
+                    set(policy.get('ksm', {})) != {'enabled', 'zeroPagesEnabled'} or
+                    policy['ksm'].get('enabled') is not True or
+                    policy['ksm'].get('zeroPagesEnabled') is not True or
+                    not isinstance(policy.get('writeback'), dict) or
+                    set(policy.get('writeback', {})) != {'enabled'} or
+                    policy['writeback'].get('enabled') is not False or
+                    old.get('policyHash') != self._policy_digest(policy) or
+                    not isinstance(old.get('requestHash'), STRING_TYPES) or
+                    re.match(r'^[0-9a-f]{64}$', old.get('requestHash', '')) is None):
+                return unknown('RECOVERY_OLD_POLICY_UNQUALIFIED')
+            old_hash = self._operation_hash(old)
+            evidence = old.get('applyEvidence')
+            old_readback = old.get('readback')
+            state = evidence.get('state') if isinstance(evidence, dict) else None
+            sections = state.get('sections') if isinstance(state, dict) else None
+            ksm_ack = evidence.get('ksmReadback') if isinstance(evidence, dict) else None
+            if (not isinstance(evidence, dict) or not isinstance(old_readback, dict) or
+                    not self._strict_service_match(evidence, old_readback) or
+                    evidence.get('success') is not False or evidence.get('status') != 'Unknown' or
+                    evidence.get('reasonCode') != 'SERVICE_APPLY_FAILED' or
+                    evidence.get('reason') != 'SERVICE_APPLY_FAILED:TUNING_REQUIRES_QUIESCENT_EXECUTOR' or
+                    state.get('lastStep') != 'tuning_apply_and_vm_scope_commit' or
+                    state.get('sequence') != ['cpu_guard_written', 'cpu_guard_verified_off'] or
+                    state.get('notAttempted') != ['remainingPolicyWrites', 'finalCpuGate'] or
+                    not isinstance(sections, dict) or
+                    set(sections) != {'cpuBefore', 'cpuGuard', 'cpuGuardReadback'} or
+                    not isinstance(ksm_ack, dict) or
+                    old_readback.get('ksmReadback') != ksm_ack):
+                return unknown('RECOVERY_PARTIAL_APPLY_NOT_PROVEN')
+            ksm_ack_policy = self._ksm_proof_policy(ksm_ack, old.get('desiredRevision'))
+            if (ksm_ack_policy is None or
+                    not self._ksm_proof_matches(ksm_ack, old.get('desiredRevision')) or
+                    any(key not in ksm_ack_policy or
+                        not self._strict_service_match(ksm_ack_policy[key], value)
+                        for key, value in policy['ksm'].items())):
+                return unknown('RECOVERY_ORIGINAL_KSM_ACK_UNKNOWN')
+            original_cpu_before = self._strict_service_success(
+                'host-cpu-state', sections.get('cpuBefore'))
+            original_guard = self._strict_service_success('host-cpu', sections.get('cpuGuard'))
+            original_guard_read = self._strict_service_success(
+                'host-cpu-state', sections.get('cpuGuardReadback'))
+            cpu_fields = ('efficiency_enabled', 'idle_cpu_threshold_percent',
+                          'idle_duration_seconds')
+            cpu_target = {key: original_cpu_before[key] for key in cpu_fields}
+            held = dict(cpu_target, efficiency_enabled=False,
+                        revision=original_cpu_before['revision'] + 1)
+            if (original_cpu_before.get('efficiency_enabled') is not True or
+                    original_guard.get('request_id') != self._derived_service_request_id(old_uuid, 'cpu-hold') or
+                    original_guard.get('revision') != original_cpu_before.get('revision') + 1 or
+                    not self._strict_service_match(original_guard, held) or
+                    not self._strict_service_match(original_guard_read, held)):
+                return unknown('RECOVERY_ORIGINAL_CPU_GUARD_UNQUALIFIED')
+
+            observed_active_uuid = self._get_active_control()
+            active_uuid = (intent.get('priorActiveControl') if dispatched else
+                           observed_active_uuid)
+            if (not self._valid_identifier(active_uuid) or active_uuid in (old_uuid, recovery_uuid) or
+                    command.get('expectedControlOperationUuid') != old_uuid or
+                    recovery.get('expectedHostBootId') != boot or
+                    recovery.get('expectedPoolGeneration') != generation or
+                    (not dispatched and observed_active_uuid != active_uuid) or
+                    (dispatched and observed_active_uuid not in (active_uuid, recovery_uuid))):
+                return unknown('RECOVERY_CONTROL_FENCE_MISMATCH')
+            anchor_path = self._operation_path(active_uuid)
+            if os.path.islink(anchor_path) or os.path.realpath(anchor_path) != anchor_path:
+                return unknown('RECOVERY_CONTROL_FENCE_MISMATCH')
+            anchor_state, anchor = self._operation_file_state(active_uuid)
+            if (anchor_state != 'present' or not isinstance(anchor, dict) or
+                    anchor.get('operationUuid') != active_uuid or anchor.get('stage') != 'APPLIED' or
+                    anchor.get('action') != 'apply' or anchor.get('scope') != 'Host' or
+                    anchor.get('hostUuid') != self._load_host_uuid() or anchor.get('bootId') != boot or
+                    type(anchor.get('desiredRevision')) is not int or
+                    anchor.get('desiredRevision') >= old.get('desiredRevision') or
+                    anchor.get('policyHash') != self._policy_digest(anchor.get('policy') or {}) or
+                    not isinstance(anchor.get('requestHash'), STRING_TYPES) or
+                    re.match(r'^[0-9a-f]{64}$', anchor.get('requestHash', '')) is None):
+                return unknown('RECOVERY_CONTROL_FENCE_MISMATCH')
+            anchor_readback = anchor.get('readback')
+            anchor_evidence = anchor.get('applyEvidence')
+            anchor_state_value = (anchor_readback or {}).get('state') if isinstance(anchor_readback, dict) else None
+            anchor_sections = anchor_state_value.get('sections') if isinstance(anchor_state_value, dict) else None
+            if (not isinstance(anchor_readback, dict) or
+                    not self._strict_service_match(anchor_readback, anchor_evidence) or
+                    anchor_readback.get('success') is not True or anchor_readback.get('status') != 'Succeeded' or
+                    anchor_readback.get('operationUuid') != active_uuid or
+                    anchor_readback.get('appliedRevision') != anchor.get('desiredRevision') or
+                    not isinstance(anchor_state_value, dict) or anchor_state_value.get('phase') != 'READBACK' or
+                    anchor_state_value.get('sectionComplete') != {'cpu': True, 'tuning': True} or
+                    not isinstance(anchor_sections, dict) or
+                    set(anchor_sections) != {'cpu', 'cpuBefore', 'cpuGuard', 'cpuGuardReadback',
+                                             'cpuReadback', 'tuning', 'tuningReadback'}):
+                return unknown('RECOVERY_ANCHOR_RECEIPT_UNQUALIFIED')
+            anchor_policy = anchor.get('policy')
+            anchor_wb = anchor_policy.get('writeback') if isinstance(anchor_policy, dict) else None
+            if (not isinstance(anchor_wb, dict) or anchor_wb.get('enabled') is not True or
+                    not self._valid_identifier(anchor_wb.get('backendResourceUuid')) or
+                    type(anchor_wb.get('backendCapacityBytes')) is not int or
+                    anchor_wb.get('backendCapacityBytes') <= 0):
+                return unknown('RECOVERY_ANCHOR_BACKEND_MISMATCH')
+            anchor_tuning = self._strict_service_success('apply', anchor_sections.get('tuning'))
+            anchor_tuning_read = self._strict_service_success(
+                'tuning-state', anchor_sections.get('tuningReadback'))
+            if (anchor_tuning.get('agent_request_id') != self._derived_service_request_id(active_uuid, 'tuning') or
+                    type(anchor_tuning.get('revision')) is not int or
+                    anchor_tuning.get('revision') != anchor_tuning_read.get('revision') or
+                    not self._strict_service_match(anchor_tuning.get('settings'),
+                                                   anchor_tuning_read.get('settings')) or
+                    not self._strict_service_match(anchor_tuning_read.get('settings'),
+                                                   anchor_tuning.get('settings')) or
+                    (anchor_tuning.get('settings', {}).get('writeback') or {}).get('enabled') is not True):
+                return unknown('RECOVERY_ANCHOR_TUNING_UNQUALIFIED')
+            anchor_cpu_before = self._strict_service_success(
+                'host-cpu-state', anchor_sections.get('cpuBefore'))
+            anchor_cpu_guard = self._strict_service_success('host-cpu', anchor_sections.get('cpuGuard'))
+            anchor_cpu_guard_read = self._strict_service_success(
+                'host-cpu-state', anchor_sections.get('cpuGuardReadback'))
+            anchor_cpu = self._strict_service_success('host-cpu', anchor_sections.get('cpu'))
+            anchor_cpu_read = self._strict_service_success(
+                'host-cpu-state', anchor_sections.get('cpuReadback'))
+            anchor_cpu_fields = ('efficiency_enabled', 'idle_cpu_threshold_percent',
+                                 'idle_duration_seconds')
+            anchor_guard_target = {key: anchor_cpu_before[key] for key in anchor_cpu_fields}
+            anchor_guard_target['efficiency_enabled'] = False
+            anchor_guard_target['revision'] = anchor_cpu_before['revision'] + 1
+            anchor_cpu_target = {key: anchor_cpu_before[key] for key in anchor_cpu_fields}
+            anchor_cpu_target['revision'] = anchor_cpu_before['revision'] + 2
+            if (anchor_cpu_before.get('efficiency_enabled') is not True or
+                    anchor_cpu_guard.get('request_id') != self._derived_service_request_id(active_uuid, 'cpu-hold') or
+                    anchor_cpu_guard.get('revision') != anchor_cpu_before.get('revision') + 1 or
+                    anchor_cpu_guard.get('efficiency_enabled') is not False or
+                    not self._strict_service_match(anchor_cpu_guard, anchor_guard_target) or
+                    not self._strict_service_match(anchor_cpu_guard_read, anchor_guard_target) or
+                    anchor_cpu.get('request_id') != self._derived_service_request_id(active_uuid, 'cpu') or
+                    anchor_cpu.get('agent_expected_revision') != anchor_cpu_guard.get('revision') or
+                    anchor_cpu.get('revision') != anchor_cpu_guard.get('revision') + 1 or
+                    anchor_cpu.get('efficiency_enabled') is not True or
+                    not self._strict_service_match(anchor_cpu, anchor_cpu_target) or
+                    not self._strict_service_match(anchor_cpu_read, anchor_cpu_target) or
+                    anchor_cpu_read.get('revision') != original_cpu_before.get('revision') or
+                    not self._strict_service_match(anchor_cpu_read, original_cpu_before)):
+                return unknown('RECOVERY_ANCHOR_CPU_UNQUALIFIED')
+
+            if dispatched:
+                if (intent.get('kind') != 'partialServiceApply' or
+                        intent.get('hostUuid') != self._load_host_uuid() or
+                        intent.get('expectedBootId') != boot or
+                        intent.get('unresolvedOperationUuid') != old_uuid or
+                        intent.get('recoveryOperationUuid') != recovery_uuid or
+                        intent.get('originalJournalHash') != old_hash or
+                        intent.get('originalRequestHash') != old.get('requestHash') or
+                        intent.get('priorActiveControl') != active_uuid or
+                        intent.get('anchorJournalHash') != self._operation_hash(anchor)):
+                    return unknown('RECOVERY_INTENT_UNQUALIFIED')
+                before_tuning = intent.get('tuningBefore')
+                tuning_command = intent.get('tuningCommand')
+            else:
+                before_tuning = dict(anchor_tuning_read)
+                tuning_command = {'operationUuid': self._derived_service_request_id(old_uuid, 'tuning'),
+                                  'expectedRevision': before_tuning.get('revision'), 'policy': policy}
+                self._merge_tuning_settings(tuning_command, before_tuning)
+            before_tuning = self._strict_service_success('tuning-state', before_tuning)
+            target_tuning = tuning_command.get('nativeSettings')
+            body = self._service_payload('apply', tuning_command)
+            expected_tuning_command = {'policy': policy}
+            self._merge_tuning_settings(expected_tuning_command, before_tuning)
+            body_hash = hashlib.sha256(json.dumps(
+                body, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()
+            if (tuning_command.get('operationUuid') != self._derived_service_request_id(old_uuid, 'tuning') or
+                    tuning_command.get('expectedRevision') != before_tuning.get('revision') or
+                    not self._strict_service_match(before_tuning.get('settings'), anchor_tuning_read.get('settings')) or
+                    not self._strict_service_match(target_tuning,
+                                                   expected_tuning_command.get('nativeSettings')) or
+                    (dispatched and (intent.get('tuningPayloadSha256') != body_hash or
+                                     intent.get('tuningCommand') != tuning_command))):
+                return unknown('RECOVERY_TUNING_INTENT_MISMATCH')
+            vm_management = target_tuning.get('vm_management') if isinstance(target_tuning, dict) else None
+            if (not isinstance(vm_management, dict) or
+                    vm_management.get('mode') != 'all_running' or
+                    vm_management.get('vm_uuids') != []):
+                return unknown('RECOVERY_VM_SHARD_REPLAY_UNSAFE')
+
+            transport = command.get('communication') or {}
+            if not isinstance(transport, dict):
+                return unknown('RECOVERY_COMMUNICATION_BUDGET_INVALID')
+            communication_seconds = transport.get(
+                'communicationSeconds', self.communication_seconds)
+            if (isinstance(communication_seconds, bool) or
+                    not isinstance(communication_seconds, (int, float)) or communication_seconds <= 0):
+                return unknown('RECOVERY_COMMUNICATION_BUDGET_INVALID')
+            if dispatched:
+                deadline = intent.get('tuningDeadlineMonotime')
+                if (isinstance(deadline, bool) or
+                        not isinstance(deadline, (int, float)) or deadline <= 0):
+                    return unknown('RECOVERY_TUNING_DEADLINE_UNKNOWN')
+            else:
+                deadline = linux.monotime() + communication_seconds
+
+            tuning_receipt = intent.get('tuningReceipt') if dispatched else None
+            tuning_receipt_readback = intent.get('tuningReadback') if dispatched else None
+            if tuning_receipt is not None:
+                if (not isinstance(tuning_receipt, dict) or
+                        not isinstance(tuning_receipt_readback, dict) or
+                        tuning_receipt.get('agent_request_id') != tuning_command.get('operationUuid') or
+                        tuning_receipt.get('agent_expected_revision') != tuning_command.get('expectedRevision') or
+                        tuning_receipt.get('revision') != before_tuning.get('revision') + 1 or
+                        not self._strict_service_match(tuning_receipt.get('settings'), target_tuning) or
+                        tuning_receipt_readback.get('revision') != tuning_receipt.get('revision') or
+                        not self._strict_service_match(tuning_receipt_readback.get('settings'), target_tuning)):
+                    return unknown('RECOVERY_TUNING_RECEIPT_UNCONFIRMED')
+            current_ack = self._read_ksm_ack()
+            current_cpu = self._strict_service_success(
+                'host-cpu-state', self._service_request('host-cpu-state', {}))
+            current_tuning = self._strict_service_success(
+                'tuning-state', self._service_request('tuning-state', {}))
+            live = self._service_request('monitor-state', {})
+            expected_tuning = (tuning_receipt.get('settings') if tuning_receipt is not None
+                               else before_tuning.get('settings'))
+            expected_tuning_revision = (tuning_receipt.get('revision') if tuning_receipt is not None
+                                        else before_tuning.get('revision'))
+            cpu_receipt = intent.get('cpuReceipt') if dispatched else None
+            expected_cpu = (cpu_target if isinstance(cpu_receipt, dict) else held)
+            if (current_ack != ksm_ack or not self._strict_service_match(current_cpu, expected_cpu) or
+                    current_tuning.get('revision') != expected_tuning_revision or
+                    not self._strict_service_match(current_tuning.get('settings'), expected_tuning) or
+                    (live.get('host_zram') or {}).get('pool_generation') != generation or
+                    (live.get('lifecycle') or {}).get('paused') is not False or
+                    (live.get('lifecycle') or {}).get('migrationHold') not in (None, {})):
+                return unknown('RECOVERY_PARTIAL_STATE_CHANGED')
+            operations = self._readonly_query('operations', {
+                'hostUuid': self._load_host_uuid(), 'limit': 1})
+            cq = operations.get('cq') or {}
+            if (type(cq.get('C')) is not int or cq.get('C') != 0 or
+                    type(cq.get('Q')) is not int or cq.get('Q') != 0 or
+                    'pending_operations' not in live or live.get('pending_operations') not in (None, [])):
+                return unknown('RECOVERY_NATIVE_STATE_NOT_QUIESCENT')
+
+            if not dispatched:
+                intent = {'kind': 'partialServiceApply', 'hostUuid': self._load_host_uuid(),
+                          'expectedBootId': boot, 'expectedPoolGeneration': generation,
+                          'recoveryOperationUuid': recovery_uuid, 'unresolvedOperationUuid': old_uuid,
+                          'priorActiveControl': active_uuid, 'originalJournalHash': old_hash,
+                          'originalRequestHash': old.get('requestHash'),
+                          'originalPolicyHash': old.get('policyHash'),
+                          'desiredRevision': old.get('desiredRevision'),
+                          'anchorOperationUuid': active_uuid,
+                          'anchorJournalHash': self._operation_hash(anchor),
+                          'anchorRequestHash': anchor.get('requestHash'),
+                          'anchorPolicyHash': anchor.get('policyHash'),
+                          'anchorDesiredRevision': anchor.get('desiredRevision'),
+                          'originalKsmReadback': dict(ksm_ack),
+                          'cpuBefore': dict(original_cpu_before),
+                          'cpuGuard': dict(original_guard),
+                          'cpuGuardReadback': dict(original_guard_read),
+                          'tuningBefore': dict(before_tuning),
+                          'tuningCommand': tuning_command,
+                          'tuningPayloadSha256': body_hash,
+                          'tuningDeadlineMonotime': deadline,
+                          'tuningAttempted': False,
+                          'cpuAttempted': False}
+                if not self._persist_recovery_intent(command, intent):
+                    return unknown('OPERATION_JOURNAL_UNAVAILABLE')
+                dispatched = True
+            receipt = intent.get('tuningReceipt')
+            if not isinstance(receipt, dict):
+                if not may_issue or intent.get('tuningAttempted'):
+                    return unknown('RECOVERY_TUNING_RESULT_UNKNOWN')
+                intent['tuningAttempted'] = True
+                recorded = self._load_operation(command)
+                recorded['recoveryIntent'] = intent
+                if not self._write_operation_record(recorded):
+                    return unknown('OPERATION_JOURNAL_UNAVAILABLE')
+                while True:
+                    remaining = deadline - linux.monotime()
+                    if remaining <= 0:
+                        return unknown('RECOVERY_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                    attempt_receipts = []
+                    attempt_transport = dict(transport)
+                    attempt_transport['communicationSeconds'] = remaining
+                    try:
+                        receipt = self._strict_service_success(
+                            'apply', self._service_request(
+                                'apply', tuning_command, receipt_sink=attempt_receipts.append,
+                                communication=attempt_transport))
+                        break
+                    except Exception:
+                        rejection = attempt_receipts[-1] if attempt_receipts else None
+                        if (not isinstance(rejection, dict) or
+                                type(rejection.get('_http_status')) is not int or
+                                rejection.get('_http_status') != 409 or
+                                rejection.get('error') != 'TUNING_REQUIRES_QUIESCENT_EXECUTOR' or
+                                ('success' in rejection and rejection.get('success') is not False)):
+                            intent['tuningOutcomeUnknown'] = True
+                            recorded = self._load_operation(command)
+                            recorded['recoveryIntent'] = intent
+                            self._write_operation_record(recorded)
+                            return unknown('RECOVERY_TUNING_RESULT_UNKNOWN')
+                        vm_management = body.get('settings', {}).get('vm_management', {})
+                        vm_uuids = vm_management.get('vm_uuids') if isinstance(vm_management, dict) else None
+                        if isinstance(vm_uuids, list) and vm_uuids:
+                            return unknown('RECOVERY_VM_SHARD_REPLAY_UNSAFE')
+                        while True:
+                            remaining = deadline - linux.monotime()
+                            if remaining <= 0:
+                                return unknown('RECOVERY_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                            poll_transport = dict(transport)
+                            poll_transport['communicationSeconds'] = remaining
+                            try:
+                                operations = self._readonly_query('operations', {
+                                    'hostUuid': self._load_host_uuid(), 'limit': 1,
+                                    'communication': poll_transport})
+                            except Exception:
+                                return unknown('RECOVERY_TUNING_QUEUE_STATE_UNKNOWN')
+                            cq = operations.get('cq') if isinstance(operations, dict) else None
+                            if (not isinstance(cq, dict) or type(cq.get('C')) is not int or
+                                    type(cq.get('Q')) is not int):
+                                return unknown('RECOVERY_TUNING_QUEUE_STATE_UNKNOWN')
+                            remaining = deadline - linux.monotime()
+                            if remaining <= 0:
+                                return unknown('RECOVERY_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                            poll_transport = dict(transport)
+                            poll_transport['communicationSeconds'] = remaining
+                            try:
+                                monitor = self._service_request('monitor-state', {},
+                                                                communication=poll_transport)
+                            except Exception:
+                                return unknown('RECOVERY_TUNING_PENDING_STATE_UNKNOWN')
+                            if ('pending_operations' not in monitor or
+                                    (monitor.get('pending_operations') not in (None, []) and
+                                     not isinstance(monitor.get('pending_operations'), list))):
+                                return unknown('RECOVERY_TUNING_PENDING_STATE_UNKNOWN')
+                            pending = monitor.get('pending_operations') not in (None, [])
+                            if cq['C'] == 0 and cq['Q'] == 0 and not pending:
+                                break
+                            remaining = deadline - linux.monotime()
+                            if remaining <= 0:
+                                return unknown('RECOVERY_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                            time.sleep(min(0.1, remaining))
+                receipt = dict(receipt, agent_request_id=tuning_command['operationUuid'],
+                               agent_expected_revision=tuning_command['expectedRevision'])
+                if (receipt.get('revision') != before_tuning.get('revision') + 1 or
+                        not self._strict_service_match(receipt.get('settings'), target_tuning)):
+                    intent['tuningOutcomeUnknown'] = True
+                    recorded = self._load_operation(command)
+                    recorded['recoveryIntent'] = intent
+                    self._write_operation_record(recorded)
+                    return unknown('RECOVERY_TUNING_RECEIPT_UNCONFIRMED')
+                intent['tuningReceipt'] = receipt
+                recorded = self._load_operation(command)
+                recorded['recoveryIntent'] = intent
+                if not self._write_operation_record(recorded):
+                    return unknown('OPERATION_JOURNAL_UNAVAILABLE')
+            elif (receipt.get('agent_request_id') != tuning_command.get('operationUuid') or
+                  receipt.get('agent_expected_revision') != tuning_command.get('expectedRevision') or
+                  receipt.get('revision') != before_tuning.get('revision') + 1 or
+                  not self._strict_service_match(receipt.get('settings'), target_tuning)):
+                return unknown('RECOVERY_TUNING_RECEIPT_UNCONFIRMED')
+            tuning_read = self._strict_service_success(
+                'tuning-state', self._service_request('tuning-state', {}))
+            if (tuning_read.get('revision') != receipt.get('revision') or
+                    not self._strict_service_match(tuning_read.get('settings'), target_tuning) or
+                    not self._strict_service_match(receipt.get('settings'), tuning_read.get('settings'))):
+                return unknown('RECOVERY_TUNING_READBACK_UNCONFIRMED')
+            intent['tuningReadback'] = tuning_read
+            recorded = self._load_operation(command)
+            recorded['recoveryIntent'] = intent
+            if not self._write_operation_record(recorded):
+                return unknown('OPERATION_JOURNAL_UNAVAILABLE')
+
+            cpu_receipt = intent.get('cpuReceipt')
+            if not isinstance(cpu_receipt, dict):
+                if not may_issue or intent.get('cpuAttempted'):
+                    return unknown('RECOVERY_CPU_RESULT_UNKNOWN')
+                intent['cpuAttempted'] = True
+                recorded = self._load_operation(command)
+                recorded['recoveryIntent'] = intent
+                if not self._write_operation_record(recorded):
+                    return unknown('OPERATION_JOURNAL_UNAVAILABLE')
+                cpu_command = {'operationUuid': self._derived_service_request_id(old_uuid, 'cpu'),
+                               'cpuExpectedRevision': current_cpu['revision'],
+                               'nativeCpuState': current_cpu,
+                               'policy': {'zram': {'enabled': cpu_target['efficiency_enabled'],
+                                   'cpuThresholdPercent': cpu_target['idle_cpu_threshold_percent'],
+                                   'cpuHoldSeconds': cpu_target['idle_duration_seconds']}}}
+                try:
+                    cpu_receipt = self._strict_service_success(
+                        'host-cpu', self._service_request('host-cpu', cpu_command))
+                except Exception:
+                    return unknown('RECOVERY_CPU_RESULT_UNKNOWN')
+                cpu_receipt = dict(cpu_receipt,
+                                   agent_expected_revision=current_cpu['revision'],
+                                   agent_desired_enabled=cpu_target['efficiency_enabled'],
+                                   agent_desired_threshold_percent=cpu_target['idle_cpu_threshold_percent'],
+                                   agent_desired_duration_seconds=cpu_target['idle_duration_seconds'])
+                if (cpu_receipt.get('request_id') != cpu_command['operationUuid'] or
+                        cpu_receipt.get('revision') != current_cpu['revision'] + 1 or
+                        not self._strict_service_match(cpu_receipt, cpu_target)):
+                    return unknown('RECOVERY_CPU_RECEIPT_UNCONFIRMED')
+                intent['cpuReceipt'] = cpu_receipt
+                recorded = self._load_operation(command)
+                recorded['recoveryIntent'] = intent
+                if not self._write_operation_record(recorded):
+                    return unknown('OPERATION_JOURNAL_UNAVAILABLE')
+            else:
+                cpu_receipt = self._strict_service_success('host-cpu', cpu_receipt)
+                if (cpu_receipt.get('request_id') != self._derived_service_request_id(old_uuid, 'cpu') or
+                        cpu_receipt.get('revision') != cpu_receipt.get('agent_expected_revision', -1) + 1 or
+                        not self._strict_service_match(cpu_receipt, cpu_target)):
+                    return unknown('RECOVERY_CPU_RECEIPT_UNCONFIRMED')
+            final_cpu = self._strict_service_success(
+                'host-cpu-state', self._service_request('host-cpu-state', {}))
+            if (final_cpu.get('revision') != cpu_receipt.get('revision') or
+                    not self._strict_service_match(final_cpu, cpu_target) or
+                    self._current_boot_id() != boot or
+                    self._get_active_control() not in (active_uuid, recovery_uuid) or
+                    self._operation_hash(self._load_operation({'operationUuid': old_uuid})) != old_hash):
+                return unknown('RECOVERY_FINAL_CPU_READBACK_UNCONFIRMED')
+            proof = {'schemaVersion': 1, 'kind': 'partialServiceApply',
+                     'hostUuid': self._load_host_uuid(), 'bootId': boot,
+                     'recoveryOperationUuid': recovery_uuid, 'unresolvedOperationUuid': old_uuid,
+                     'expectedPoolGeneration': generation, 'originalRequestHash': old.get('requestHash'),
+                     'originalJournalHash': old_hash,
+                     'originalPolicyHash': old.get('policyHash'), 'originalDesiredRevision': old.get('desiredRevision'),
+                     'originalKsmReadback': dict(ksm_ack),
+                     'anchorOperationUuid': active_uuid,
+                     'anchorJournalHash': self._operation_hash(anchor),
+                     'anchorRequestHash': anchor.get('requestHash'),
+                     'anchorPolicyHash': anchor.get('policyHash'),
+                     'anchorDesiredRevision': anchor.get('desiredRevision'),
+                     'tuningBefore': before_tuning, 'tuningCommand': body,
+                     'tuningRequestId': tuning_command.get('operationUuid'),
+                     'tuningExpectedRevision': tuning_command.get('expectedRevision'),
+                     'tuningRevision': receipt.get('revision'),
+                     'tuningPayloadSha256': body_hash, 'tuningReceipt': receipt,
+                     'tuningReadback': tuning_read,
+                     'cpuGuard': original_guard, 'cpuGuardReadback': original_guard_read,
+                     'cpuExpectedRevision': original_guard.get('revision'),
+                     'finalCpuRestored': True, 'originalOutcome': 'Unknown'}
+            result = {'success': True, 'status': 'Succeeded', 'operationUuid': recovery_uuid,
+                      'bootId': boot, 'sampleTime': int(time.time() * 1000),
+                      'appliedRevision': old.get('desiredRevision'), 'state': {
+                          'phase': 'POLICY_RECOVERED', 'bootId': boot,
+                          'lastConfirmedOperationUuid': recovery_uuid,
+                          'lastConfirmedAppliedRevision': old.get('desiredRevision'),
+                          'recoveryProof': proof, 'cpuBefore': original_cpu_before,
+                          'cpuReceipt': cpu_receipt, 'cpuReadback': final_cpu}}
+            if (not self._valid_identifier(active_uuid) or
+                    self._get_active_control() not in (active_uuid, recovery_uuid) or
+                    self._operation_hash(self._load_operation({'operationUuid': old_uuid})) != old_hash):
+                return unknown('RECOVERY_CONTROL_FENCE_MISMATCH')
+            self._set_active_control(recovery_uuid)
+            if not self._update_operation_record(recovery_uuid, 'APPLIED', result):
+                return unknown('OPERATION_JOURNAL_UNAVAILABLE')
+            return result
+        except Exception:
+            return unknown('RECOVERY_PARTIAL_PROOF_UNKNOWN')
+
     def _recover_uncertain_cpu_policy(self, command, prior=None, issue=False):
         """Finish only a proven tuning-only apply's missing final CPU gate.
 
@@ -1535,6 +2056,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             generation = (intent.get('expectedPoolGeneration') if dispatched
                           else recovery.get('expectedPoolGeneration'))
             old_state, old = self._operation_file_state(old_uuid)
+            old_policy = old.get('policy') if isinstance(old, dict) else None
+            if isinstance(old_policy, dict) and old_policy.get('ksm'):
+                return self._recover_uncertain_partial_service_policy(
+                    command, prior=prior, issue=issue)
             if (old_state != 'present' or not isinstance(old, dict) or
                     old.get('operationUuid') != old_uuid or old.get('action') != 'apply' or
                     old.get('scope') != 'Host' or old.get('stage') != 'UNKNOWN' or
@@ -4844,7 +5369,92 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             tuning_command['expectedRevision'] = tuning_before['revision']
             self._merge_tuning_settings(tuning_command, tuning_before)
             last_step = 'tuning_apply_and_vm_scope_commit'
-            tuning_receipt = self._service_request('apply', tuning_command)
+            tuning_payload = self._service_payload('apply', tuning_command)
+            try:
+                transport = command.get('communication') or {}
+            except AttributeError:
+                transport = {}
+            if not isinstance(transport, dict):
+                raise ValueError('invalid per-request communication budget')
+            communication_seconds = transport.get(
+                'communicationSeconds', self.communication_seconds)
+            if (isinstance(communication_seconds, bool) or
+                    not isinstance(communication_seconds, (int, float)) or
+                    communication_seconds <= 0):
+                raise ValueError('invalid per-request communication budget')
+            deadline = linux.monotime() + communication_seconds
+            while True:
+                remaining = deadline - linux.monotime()
+                if remaining <= 0:
+                    raise RuntimeError('SERVICE_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                attempt_receipts = []
+                try:
+                    attempt_transport = dict(transport)
+                    attempt_transport['communicationSeconds'] = remaining
+                    tuning_receipt = self._service_request(
+                        'apply', tuning_command, receipt_sink=attempt_receipts.append,
+                        communication=attempt_transport)
+                    break
+                except Exception:
+                    rejection = attempt_receipts[-1] if attempt_receipts else None
+                    if (not isinstance(rejection, dict) or
+                            type(rejection.get('_http_status')) is not int or
+                            rejection.get('_http_status') != 409 or
+                            rejection.get('error') != 'TUNING_REQUIRES_QUIESCENT_EXECUTOR' or
+                            ('success' in rejection and rejection.get('success') is not False)):
+                        raise
+                    vm_management = tuning_payload.get('settings', {}).get('vm_management', {})
+                    vm_uuids = vm_management.get('vm_uuids') if isinstance(vm_management, dict) else None
+                    if isinstance(vm_uuids, list) and vm_uuids:
+                        # The local apply transport stages/commits VM shards
+                        # before the tuning PUT.  A retry could replay that
+                        # side effect, so leave this operation Unknown unless
+                        # the shard protocol has its own completed proof.
+                        raise
+                    # The typed 409 proves this exact PUT did not write.  Wait
+                    # for the existing executor queues to drain, but retain the
+                    # Go PUT as the authoritative quiet/CAS gate.  Unknown query
+                    # results cannot authorize another write.
+                    while True:
+                        remaining = deadline - linux.monotime()
+                        if remaining <= 0:
+                            raise RuntimeError(
+                                'SERVICE_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                        attempt_transport = dict(transport)
+                        attempt_transport['communicationSeconds'] = remaining
+                        operations = self._readonly_query('operations', {
+                            'hostUuid': command['hostUuid'], 'limit': 1,
+                            'communication': attempt_transport})
+                        cq = operations.get('cq')
+                        if (not isinstance(cq, dict) or
+                                type(cq.get('C')) is not int or
+                                type(cq.get('Q')) is not int):
+                            raise RuntimeError('SERVICE_TUNING_QUEUE_STATE_UNKNOWN')
+                        remaining = deadline - linux.monotime()
+                        if remaining <= 0:
+                            raise RuntimeError(
+                                'SERVICE_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                        attempt_transport = dict(transport)
+                        attempt_transport['communicationSeconds'] = remaining
+                        monitor = self._service_request('monitor-state', {
+                            }, communication=attempt_transport)
+                        if ('pending_operations' not in monitor or
+                                monitor.get('pending_operations') not in (None, []) and
+                                not isinstance(monitor.get('pending_operations'), list)):
+                            raise RuntimeError('SERVICE_TUNING_PENDING_STATE_UNKNOWN')
+                        pending = monitor.get('pending_operations') not in (None, [])
+                        if cq['C'] == 0 and cq['Q'] == 0 and not pending:
+                            remaining = deadline - linux.monotime()
+                            if remaining <= 0:
+                                raise RuntimeError(
+                                    'SERVICE_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                            time.sleep(min(0.1, remaining))
+                            break
+                        remaining = deadline - linux.monotime()
+                        if remaining <= 0:
+                            raise RuntimeError(
+                                'SERVICE_TUNING_QUIESCENCE_DEADLINE_EXCEEDED')
+                        time.sleep(min(0.1, remaining))
             if isinstance(tuning_receipt, dict):
                 tuning_receipt = dict(tuning_receipt)
                 # This synchronous endpoint does not echo request_id. Persist
@@ -5076,8 +5686,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         return status in ('DRAINING', 'PENDING', 'RECONCILING') or \
             str(phase or '').upper() in ('DRAINING', 'PENDING', 'RECONCILING')
 
-    def _service_request(self, action, command, receipt_sink=None):
+    def _service_request(self, action, command, receipt_sink=None, communication=None):
         payload = self._service_payload(action, command)
+        if communication is not None:
+            if not isinstance(communication, dict):
+                raise ValueError('invalid per-request communication budget')
+            payload['communication'] = dict(communication)
         if action == 'apply' and command.get('targetSnapshotGeneration'):
             payload['_target_snapshot_generation'] = command['targetSnapshotGeneration']
         result = self.service_call(action, payload)
@@ -7522,6 +8136,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     def _validate_final_cpu_no_ksm_control(self, command, recovery, active_uuid):
         """Allow ordinary maintenance after only a fully proven no-KSM CPU recovery."""
+        intent = recovery.get('recoveryIntent') if isinstance(recovery, dict) else None
+        if isinstance(intent, dict) and intent.get('kind') == 'partialServiceApply':
+            self._validate_partial_service_control(command, recovery, active_uuid)
+            return
         unknown = 'FINAL_CPU_RECOVERY_CONTROL_UNKNOWN'
         try:
             intent = recovery.get('recoveryIntent')
@@ -7637,6 +8255,203 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if (cpu_readback['revision'] != receipt.get('revision') or
                     not self._strict_service_match(cpu_readback, target) or
                     not self._strict_service_match(receipt, target)):
+                raise ValueError(unknown)
+        except Exception:
+            raise ValueError(unknown)
+
+    def _validate_partial_service_control(self, command, recovery, active_uuid):
+        """Keep a completed partial KSM recovery fenced to its original receipts."""
+        unknown = 'PARTIAL_SERVICE_RECOVERY_CONTROL_UNKNOWN'
+        try:
+            intent = recovery.get('recoveryIntent')
+            result = recovery.get('readback')
+            state = result.get('state') if isinstance(result, dict) else None
+            proof = state.get('recoveryProof') if isinstance(state, dict) else None
+            host = self._load_host_uuid()
+            boot = self._current_boot_id()
+            old_uuid = intent.get('unresolvedOperationUuid') if isinstance(intent, dict) else None
+            anchor_uuid = intent.get('anchorOperationUuid') if isinstance(intent, dict) else None
+            if (not isinstance(intent, dict) or not isinstance(result, dict) or
+                    not isinstance(state, dict) or not isinstance(proof, dict) or
+                    recovery.get('operationUuid') != active_uuid or
+                    recovery.get('action') != 'recoverUncertain' or recovery.get('stage') != 'APPLIED' or
+                    recovery.get('scope') != 'Host' or recovery.get('hostUuid') != host or
+                    recovery.get('bootId') != boot or recovery.get('policy') != {} or
+                    recovery.get('policyHash') != self._policy_digest({}) or
+                    command.get('expectedControlOperationUuid') != active_uuid or
+                    intent.get('kind') != 'partialServiceApply' or intent.get('hostUuid') != host or
+                    intent.get('expectedBootId') != boot or intent.get('recoveryOperationUuid') != active_uuid or
+                    intent.get('priorActiveControl') != anchor_uuid or
+                    not self._valid_identifier(old_uuid) or not self._valid_identifier(anchor_uuid) or
+                    state.get('phase') != 'POLICY_RECOVERED' or state.get('bootId') != boot or
+                    state.get('lastConfirmedOperationUuid') != active_uuid or
+                    result.get('success') is not True or result.get('status') != 'Succeeded' or
+                    result.get('operationUuid') != active_uuid or result.get('bootId') != boot or
+                    type(proof.get('schemaVersion')) is not int or proof.get('schemaVersion') != 1 or
+                    proof.get('kind') != 'partialServiceApply' or proof.get('hostUuid') != host or
+                    proof.get('bootId') != boot or proof.get('recoveryOperationUuid') != active_uuid or
+                    proof.get('unresolvedOperationUuid') != old_uuid or
+                    proof.get('anchorOperationUuid') != anchor_uuid or
+                    proof.get('originalOutcome') != 'Unknown' or proof.get('finalCpuRestored') is not True or
+                    proof.get('originalJournalHash') != intent.get('originalJournalHash') or
+                    proof.get('originalRequestHash') != intent.get('originalRequestHash') or
+                    proof.get('originalPolicyHash') != intent.get('originalPolicyHash') or
+                    proof.get('originalKsmReadback') != intent.get('originalKsmReadback') or
+                    proof.get('anchorJournalHash') != intent.get('anchorJournalHash') or
+                    proof.get('tuningPayloadSha256') != intent.get('tuningPayloadSha256') or
+                    proof.get('tuningCommand') != self._service_payload(
+                        'apply', intent.get('tuningCommand') or {}) or
+                    proof.get('tuningBefore') != intent.get('tuningBefore') or
+                    proof.get('tuningRequestId') != (intent.get('tuningCommand') or {}).get('operationUuid') or
+                    proof.get('tuningExpectedRevision') != (intent.get('tuningCommand') or {}).get('expectedRevision') or
+                    proof.get('tuningRevision') != (intent.get('tuningReceipt') or {}).get('revision') or
+                    proof.get('tuningReceipt') != intent.get('tuningReceipt') or
+                    proof.get('tuningReadback') != intent.get('tuningReadback') or
+                    proof.get('cpuGuard') != intent.get('cpuGuard') or
+                    proof.get('cpuGuardReadback') != intent.get('cpuGuardReadback') or
+                    proof.get('cpuExpectedRevision') != (intent.get('cpuGuard') or {}).get('revision') or
+                    state.get('cpuReceipt') != intent.get('cpuReceipt') or
+                    not isinstance(intent.get('cpuReceipt'), dict)):
+                raise ValueError(unknown)
+            original_path = self._operation_path(old_uuid)
+            anchor_path = self._operation_path(anchor_uuid)
+            recovery_path = self._operation_path(active_uuid)
+            if any(os.path.islink(path) or os.path.realpath(path) != path
+                   for path in (original_path, anchor_path, recovery_path)):
+                raise ValueError(unknown)
+            recovery_kind, stored_recovery = self._operation_file_state(active_uuid)
+            original_kind, original = self._operation_file_state(old_uuid)
+            anchor_kind, anchor = self._operation_file_state(anchor_uuid)
+            if (recovery_kind != 'present' or stored_recovery != recovery or
+                    original_kind != 'present' or anchor_kind != 'present' or
+                    not isinstance(original, dict) or not isinstance(anchor, dict) or
+                    self._operation_hash(original) != intent.get('originalJournalHash') or
+                    self._operation_hash(anchor) != intent.get('anchorJournalHash') or
+                    original.get('operationUuid') != old_uuid or original.get('stage') != 'UNKNOWN' or
+                    original.get('action') != 'apply' or original.get('scope') != 'Host' or
+                    original.get('hostUuid') != host or original.get('bootId') != boot or
+                    original.get('requestHash') != intent.get('originalRequestHash') or
+                    original.get('policyHash') != intent.get('originalPolicyHash') or
+                    original.get('desiredRevision') != intent.get('desiredRevision') or
+                    original.get('policyHash') != self._policy_digest(original.get('policy') or {}) or
+                    proof.get('originalPolicyHash') != original.get('policyHash') or
+                    proof.get('originalDesiredRevision') != original.get('desiredRevision') or
+                    anchor.get('operationUuid') != anchor_uuid or anchor.get('stage') != 'APPLIED' or
+                    anchor.get('action') != 'apply' or anchor.get('scope') != 'Host' or
+                    anchor.get('hostUuid') != host or anchor.get('bootId') != boot or
+                    anchor.get('requestHash') != intent.get('anchorRequestHash') or
+                    anchor.get('policyHash') != intent.get('anchorPolicyHash') or
+                    anchor.get('desiredRevision') != intent.get('anchorDesiredRevision') or
+                    anchor.get('policyHash') != self._policy_digest(anchor.get('policy') or {})):
+                raise ValueError(unknown)
+            original_policy = original.get('policy') or {}
+            original_ksm = original_policy.get('ksm')
+            original_writeback = original_policy.get('writeback')
+            original_evidence = original.get('applyEvidence')
+            original_readback = original.get('readback')
+            original_state = (original_evidence.get('state')
+                              if isinstance(original_evidence, dict) else None)
+            original_sections = (original_state.get('sections')
+                                 if isinstance(original_state, dict) else None)
+            if (not isinstance(original_evidence, dict) or not isinstance(original_readback, dict) or
+                    set(original_policy) != {'schemaVersion', 'ksm', 'writeback'} or
+                    type(original_policy.get('schemaVersion')) is not int or
+                    original_policy.get('schemaVersion') != 1 or
+                    not isinstance(original_ksm, dict) or
+                    set(original_ksm) != {'enabled', 'zeroPagesEnabled'} or
+                    original_ksm.get('enabled') is not True or
+                    original_ksm.get('zeroPagesEnabled') is not True or
+                    not isinstance(original_writeback, dict) or
+                    original_writeback != {'enabled': False} or
+                    not self._strict_service_match(original_evidence, original_readback) or
+                    original_evidence.get('success') is not False or
+                    original_evidence.get('status') != 'Unknown' or
+                    original_evidence.get('reason') != 'SERVICE_APPLY_FAILED:TUNING_REQUIRES_QUIESCENT_EXECUTOR' or
+                    original_state.get('lastStep') != 'tuning_apply_and_vm_scope_commit' or
+                    original_state.get('sequence') != ['cpu_guard_written', 'cpu_guard_verified_off'] or
+                    original_state.get('notAttempted') != ['remainingPolicyWrites', 'finalCpuGate'] or
+                    not isinstance(original_sections, dict) or
+                    set(original_sections) != {'cpuBefore', 'cpuGuard', 'cpuGuardReadback'} or
+                    original_evidence.get('ksmReadback') != intent.get('originalKsmReadback') or
+                    original_sections.get('cpuBefore') != intent.get('cpuBefore') or
+                    original_sections.get('cpuGuard') != intent.get('cpuGuard') or
+                    original_sections.get('cpuGuardReadback') != intent.get('cpuGuardReadback')):
+                raise ValueError(unknown)
+            anchor_policy = anchor.get('policy') or {}
+            anchor_ksm = anchor_policy.get('ksm') or {}
+            anchor_wb = anchor_policy.get('writeback') or {}
+            if (type(original.get('desiredRevision')) is not int or
+                    type(anchor.get('desiredRevision')) is not int or
+                    anchor.get('desiredRevision') >= original.get('desiredRevision') or
+                    anchor_ksm.get('enabled') is not False or
+                    anchor_ksm.get('zeroPagesEnabled') is not False or
+                    anchor_wb.get('enabled') is not True or
+                    not self._valid_identifier(anchor_wb.get('backendResourceUuid')) or
+                    type(anchor_wb.get('backendCapacityBytes')) is not int or
+                    anchor_wb.get('backendCapacityBytes') <= 0):
+                raise ValueError(unknown)
+            ksm_ack = intent.get('originalKsmReadback')
+            ack_policy = self._ksm_proof_policy(ksm_ack, original.get('desiredRevision'))
+            if (not isinstance(original_ksm, dict) or not isinstance(ack_policy, dict) or
+                    any(key not in ack_policy or
+                        not self._strict_service_match(ack_policy[key], value)
+                        for key, value in original_ksm.items()) or
+                    not self._ksm_proof_matches(ksm_ack, original.get('desiredRevision'))):
+                raise ValueError(unknown)
+            tuning_command = intent.get('tuningCommand')
+            tuning_receipt = intent.get('tuningReceipt')
+            tuning_readback = intent.get('tuningReadback')
+            tuning_before = intent.get('tuningBefore')
+            if (not isinstance(tuning_command, dict) or not isinstance(tuning_receipt, dict) or
+                    not isinstance(tuning_readback, dict) or not isinstance(tuning_before, dict) or
+                    tuning_command.get('operationUuid') != self._derived_service_request_id(old_uuid, 'tuning') or
+                    tuning_command.get('expectedRevision') != tuning_before.get('revision') or
+                    tuning_receipt.get('agent_request_id') != tuning_command.get('operationUuid') or
+                    tuning_receipt.get('agent_expected_revision') != tuning_command.get('expectedRevision') or
+                    tuning_receipt.get('_http_status') != 200 or
+                    tuning_receipt.get('revision') != tuning_readback.get('revision') or
+                    tuning_receipt.get('revision') != tuning_command.get('expectedRevision') + 1 or
+                    not self._strict_service_match(tuning_receipt.get('settings'),
+                                                   tuning_readback.get('settings')) or
+                    not self._strict_service_match(tuning_command.get('nativeSettings'),
+                                                   tuning_receipt.get('settings'))):
+                raise ValueError(unknown)
+            tuning_wire = self._service_payload('apply', tuning_command)
+            if (proof.get('tuningPayloadSha256') != hashlib.sha256(json.dumps(
+                    tuning_wire, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest() or
+                    proof.get('tuningCommand') != tuning_wire):
+                raise ValueError(unknown)
+            current_tuning = self._strict_service_success(
+                'tuning-state', self._service_request('tuning-state', {}))
+            current_cpu = self._strict_service_success(
+                'host-cpu-state', self._service_request('host-cpu-state', {}))
+            live = self._service_request('monitor-state', {})
+            cpu_receipt = self._strict_service_success('host-cpu', intent.get('cpuReceipt'))
+            cpu_target = {'efficiency_enabled': cpu_receipt.get('agent_desired_enabled'),
+                          'idle_cpu_threshold_percent': cpu_receipt.get('agent_desired_threshold_percent'),
+                          'idle_duration_seconds': cpu_receipt.get('agent_desired_duration_seconds')}
+            cpu_before = intent.get('cpuBefore')
+            cpu_guard = intent.get('cpuGuard')
+            if (current_tuning.get('revision') != tuning_receipt.get('revision') or
+                    not self._strict_service_match(current_tuning.get('settings'),
+                                                   tuning_receipt.get('settings')) or
+                    not isinstance(cpu_before, dict) or not isinstance(cpu_guard, dict) or
+                    cpu_receipt.get('request_id') != self._derived_service_request_id(old_uuid, 'cpu') or
+                    cpu_receipt.get('agent_expected_revision') != cpu_guard.get('revision') or
+                    cpu_receipt.get('revision') != cpu_guard.get('revision') + 1 or
+                    cpu_target.get('efficiency_enabled') is not cpu_before.get('efficiency_enabled') or
+                    cpu_target.get('idle_cpu_threshold_percent') != cpu_before.get('idle_cpu_threshold_percent') or
+                    cpu_target.get('idle_duration_seconds') != cpu_before.get('idle_duration_seconds') or
+                    current_cpu.get('revision') != cpu_receipt.get('revision') or
+                    not self._strict_service_match(current_cpu, cpu_target) or
+                    (state.get('cpuReadback') or {}).get('revision') != cpu_receipt.get('revision') or
+                    not self._strict_service_match(state.get('cpuReadback'), cpu_target) or
+                    (live.get('host_zram') or {}).get('pool_generation') != intent.get('expectedPoolGeneration') or
+                    (live.get('lifecycle') or {}).get('paused') is not False or
+                    (live.get('lifecycle') or {}).get('migrationHold') not in (None, {}) or
+                    ('pending_operations' not in live or live.get('pending_operations') not in (None, [])) or
+                    self._get_active_control() != active_uuid or
+                    self._current_boot_id() != boot):
                 raise ValueError(unknown)
         except Exception:
             raise ValueError(unknown)
