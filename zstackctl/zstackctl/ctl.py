@@ -3598,7 +3598,7 @@ class InstallDbCmd(Command):
             state: present
 
         - name: install GreatDB server with --nodeps
-          shell: rpm -ivh --nodeps /opt/zstack-dvd/aarch64/{{ os_version }}/Extra/zstack-experimental/greatdb-server-1.0.0.6118032-GA1.116bc251.1.el8.aarch64.rpm
+          shell: rpm -ivh --nodeps /opt/zstack-dvd/aarch64/{{ os_version }}/Extra/zstack-experimental/greatdb-server-1.0.0.6118032-GA1.37c10216.2.el8.aarch64.rpm
           args:
             creates: /usr/sbin/greatdbd
           register: install_server_result
