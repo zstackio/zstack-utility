@@ -261,6 +261,10 @@ def test_release_keeps_service_slice_membership(monkeypatch):
     release_cpu = Mock()
     release_memory = Mock(return_value=0)
     systemctl = Mock()
+    calls = Mock()
+    calls.attach_mock(release_cpu, "cpu")
+    calls.attach_mock(remove_drop_in, "remove")
+    calls.attach_mock(systemctl, "reload")
     monkeypatch.setattr(
         manager.backend_factory, "cpu", Mock(return_value=CgroupV2ResourceControlBackend("/sys/fs/cgroup")))
     monkeypatch.setattr(
@@ -274,6 +278,8 @@ def test_release_keeps_service_slice_membership(monkeypatch):
     result = manager.release("COMPUTE", [handle("zstack-kvmagent.service")], "zstack-compute.slice")
 
     assert result["synced"]
+    assert [call[0] for call in calls.mock_calls] == ["cpu", "remove", "reload"], \
+        "Restore thread CPU affinity before systemd can disable the last cpuset controller"
     remove_drop_in.assert_called_once_with(manager.systemd._drop_in_path("zstack-compute.slice"))
     release_cpu.assert_called_once_with("/sys/fs/cgroup/zstack-compute.slice")
     release_memory.assert_called_once_with("/sys/fs/cgroup/zstack-compute.slice", 0)
@@ -451,6 +457,8 @@ def test_inactive_slice_apply_requires_owned_persisted_configuration(tmp_path, m
 
 def test_release_reports_role_memory_failure_after_reloading_removed_configuration(monkeypatch):
     manager = ResourceControlManager()
+    cpu_backend = CgroupV1ResourceControlBackend("/cpuset")
+    monkeypatch.setattr(cpu_backend, "release_cpu_set", Mock())
     memory_backend = CgroupV1ResourceControlBackend("/memory")
     monkeypatch.setattr(manager.systemd, "_remove_drop_in", lambda *_args: True)
     monkeypatch.setattr(manager, "_active_slice_target", lambda *_args: "/memory/zstack-compute.slice")
@@ -460,7 +468,7 @@ def test_release_reports_role_memory_failure_after_reloading_removed_configurati
 
     with pytest.raises(ResourceControlError, match="Memory release failed"):
         manager._release_systemd_slice(
-            CgroupV1ResourceControlBackend("/cpuset"), "COMPUTE", "zstack-compute.slice",
+            cpu_backend, "COMPUTE", "zstack-compute.slice",
             [handle("node_exporter.service")], memory_backend)
 
     systemctl.assert_called_once_with(["daemon-reload"], 30)
