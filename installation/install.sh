@@ -233,6 +233,8 @@ check_zstack_release(){
         rpm -q zstack-release >/dev/null 2>&1
         if [ $? -eq 0 ];then
             ZSTACK_RELEASE=`rpm -qi zstack-release |awk -F ':' '/Version/{print $2}' |sed 's/ //g'`
+            mkdir -p /etc/yum/vars
+            printf '%s\n' "$ZSTACK_RELEASE" > /etc/yum/vars/YUM0
             source /etc/profile >/dev/null 2>&1
             [ ! -f /etc/zstack-release ] && yum reinstall -y zstack-release > /dev/null 2>&1
         else
