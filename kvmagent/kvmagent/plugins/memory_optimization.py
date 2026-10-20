@@ -5177,7 +5177,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             native = command.get('nativeCpuState') or {}
             return {'request_id': command['operationUuid'],
                     'expected_revision': command.get('cpuExpectedRevision', command.get('expectedRevision', 0)),
-                    'efficiency_enabled': bool(zram.get('enabled', native.get('efficiency_enabled', False)) or wb.get('enabled', False)),
+                    'efficiency_enabled': bool(zram.get('enabled', native.get('efficiency_enabled', False)) or wb.get(
+                        'enabled', (command.get('nativeSettings') or {}).get('writeback', {}).get('enabled', False))),
                     'idle_cpu_threshold_percent': zram.get('cpuThresholdPercent', native.get('idle_cpu_threshold_percent', 5)),
                     'idle_duration_seconds': zram.get('cpuHoldSeconds', native.get('idle_duration_seconds', 60))}
         policy = command.get('policy') or {}
@@ -5314,6 +5315,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 attempts[key] = 'ACKNOWLEDGED'
             return result
 
+        tuning_command = dict(command)
+        tuning_command['operationUuid'] = '%s-tuning' % command['operationUuid']
+        tuning_state = read_state('tuning-state')
+        tuning_command['expectedRevision'] = tuning_state['revision']
+        self._merge_tuning_settings(tuning_command, tuning_state)
         if 'logicalCapacityBytes' in zram or 'ramLimitBytes' in zram:
             cap_command = dict(command)
             cap_command['operationUuid'] = '%s-capacity' % command['operationUuid']
@@ -5329,12 +5335,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 raise RuntimeError('SERVICE_CPU_SETTINGS_UNKNOWN')
             cpu_command['cpuExpectedRevision'] = native_cpu['revision']
             cpu_command['nativeCpuState'] = native_cpu
+            cpu_command['nativeSettings'] = tuning_command['nativeSettings']
             readback['cpu'] = write_service('host-cpu', cpu_command, 'host-cpu')
-        tuning_command = dict(command)
-        tuning_command['operationUuid'] = '%s-tuning' % command['operationUuid']
-        tuning_state = read_state('tuning-state')
-        tuning_command['expectedRevision'] = tuning_state['revision']
-        self._merge_tuning_settings(tuning_command, tuning_state)
         readback['tuning'] = write_service('apply', tuning_command, 'apply')
         # A 202/Draining response means the local service accepted work but
         # has not proved the requested configuration.  Do not turn it into a
@@ -5604,7 +5606,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
             desired_cpu_enabled = bool(
                 zram.get('enabled', cpu_before.get('efficiency_enabled', False)) or
-                wb.get('enabled', False))
+                tuning_command['nativeSettings'].get('writeback', {}).get('enabled', False))
             desired_cpu_threshold = zram.get(
                 'cpuThresholdPercent', native_cpu.get('idle_cpu_threshold_percent'))
             desired_cpu_duration = zram.get(
@@ -9176,7 +9178,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 zram = policy.get('zram') or {}
                 expected_cpu = {
                     'efficiency_enabled': bool(zram.get('enabled', before_cpu['efficiency_enabled']) or
-                                               (policy.get('writeback') or {}).get('enabled', False)),
+                                               ((evidence_sections.get('tuning') or {}).get('settings') or {}).get(
+                                                   'writeback', {}).get('enabled', False)),
                     'idle_cpu_threshold_percent': zram.get(
                         'cpuThresholdPercent', before_cpu['idle_cpu_threshold_percent']),
                     'idle_duration_seconds': zram.get(
@@ -9957,7 +9960,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                  if isinstance(cpu_receipt, dict) else None)
         expected_cpu_request_id = self._derived_service_request_id(operation_uuid, 'cpu')
         zram_enabled = zram.get('enabled', cpu_before.get('efficiency_enabled'))
-        writeback_enabled = (policy.get('writeback') or {}).get('enabled', False)
+        writeback_enabled = ((original_section_map.get('tuning') or {}).get('settings') or {}).get(
+            'writeback', {}).get('enabled', False)
         expected_cpu_enabled = bool(zram_enabled or writeback_enabled)
         expected_cpu_threshold = zram.get(
             'cpuThresholdPercent', cpu_before.get('idle_cpu_threshold_percent'))
@@ -10082,6 +10086,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             state['sections']['capacity'] = capacity
             state['sectionComplete']['capacity'] = ok
             complete = complete and ok
+        tuning = self._service_request('tuning-state', command)
         # Every service-backed delta may quiesce CPU dispatch, including a
         # backend-only or tuning-only update with no explicit CPU fields.
         # Always read the real state needed by the final CAS/restore.
@@ -10093,6 +10098,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                     ('cpuHoldSeconds', 'idle_duration_seconds')):
                 if product in zram:
                     expected[native] = zram[product]
+            if 'enabled' in zram:
+                expected['efficiency_enabled'] = bool(
+                    zram['enabled'] or (policy.get('writeback') or {}).get(
+                        'enabled', (tuning.get('settings', tuning).get('writeback') or {}).get(
+                            'enabled', False)))
+            elif (policy.get('writeback') or {}).get('enabled') is True:
+                expected['efficiency_enabled'] = True
             state['sections']['cpu'] = cpu
             cpu_ok = (isinstance(cpu, dict) and cpu.get('_http_status') == 200 and
                       isinstance(cpu.get('efficiency_enabled'), bool) and
@@ -10101,7 +10113,6 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             complete = complete and cpu_ok
         # Tuning is written for every service-backed policy.  Compare the
         # explicit fields only; service defaults are not product evidence.
-        tuning = self._service_request('tuning-state', command)
         tuning_expected = {}
         for product_key, native_key in (
                 ('requiredAvailableBytes', 'required_available_bytes'),
@@ -10250,12 +10261,19 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _mixed_clear_context(self, command, context_holder=None):
         """Preflight a current mixed journal before any native clear write."""
         policy = command.get('policy') or {}
-        if (self._policy_mode(command) != 'effective' or
-                (policy.get('ksm') not in (None, {}))):
+        if self._policy_mode(command) != 'effective':
             return None
         operation_uuid = self._get_active_control()
         prior = self._load_operation({'operationUuid': operation_uuid}) if operation_uuid else None
         prior_policy = prior.get('policy') if isinstance(prior, dict) else None
+        retained_ksm_service_clear = (
+            policy.get('ksm') not in (None, {}) and isinstance(prior_policy, dict) and
+            any(isinstance(prior_policy.get(section), dict) and
+                isinstance(prior_policy[section].get('enabled'), bool) and
+                'enabled' not in (policy.get(section) or {})
+                for section in ('zram', 'writeback')))
+        if policy.get('ksm') not in (None, {}) and not retained_ksm_service_clear:
+            return None
         prior_state = ((prior.get('readback') or {}).get('state')
                        if isinstance(prior, dict) and isinstance(prior.get('readback'), dict)
                        else None)
@@ -10320,6 +10338,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 not isinstance(prior_sections, dict) or
                 not any(key in prior_sections for key in ('capacity', 'cpu', 'tuning')) or
                 not any(prior_policy.get(key) for key in ('zram', 'writeback'))):
+            if retained_ksm_service_clear:
+                raise RuntimeError('MIXED_CLEAR_PRIOR_SERVICE_JOURNAL_INVALID')
             return None
 
         # This is KSM ownership proof only; it deliberately does not promote
@@ -10469,7 +10489,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             expected_cpu = {}
             if 'enabled' in prior_zram:
                 expected_cpu['efficiency_enabled'] = bool(
-                    prior_zram['enabled'] or prior_writeback.get('enabled', False))
+                    prior_zram['enabled'] or (tuning_receipt.get('settings') or {}).get(
+                        'writeback', {}).get('enabled', False))
             elif prior_writeback.get('enabled') is True:
                 expected_cpu['efficiency_enabled'] = True
             for product, native in (('cpuThresholdPercent', 'idle_cpu_threshold_percent'),
@@ -10562,7 +10583,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         wb = policy.get('writeback') or {}
         expected_cpu = {}
         if 'enabled' in zram:
-            expected_cpu['efficiency_enabled'] = bool(zram['enabled'] or wb.get('enabled', False))
+            expected_cpu['efficiency_enabled'] = bool(zram['enabled'] or wb.get(
+                'enabled', context['preflight']['tuning']['settings'].get(
+                    'writeback', {}).get('enabled', False)))
         elif wb.get('enabled') is True:
             expected_cpu['efficiency_enabled'] = True
         else:
