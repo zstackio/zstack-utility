@@ -5,6 +5,7 @@ import os
 import re
 import subprocess
 import time
+from pathlib import Path
 
 import pytest
 from zstacklib.utils import linux
@@ -464,6 +465,306 @@ def test_typed_quiescence_retry_preserves_disabled_history_receipt(tmp_path, mon
     assert len([payload for action, payload in calls if action == 'apply']) == 2
     record = _journal(plugin)
     assert plugin._first_use_terminal_service_disable(record)
+
+
+def _ksm_only_blocked_capacity_fixture(tmp_path, monkeypatch):
+    plugin, service_state, calls, _, _ = _capacity_apply_fixture(
+        tmp_path, zram={'enabled': False}, capacity_requested=False)
+    plugin.KSM_CONF = str(tmp_path / 'ksmtuned.conf')
+    plugin.KSM_LOCK = str(tmp_path / 'ksmtuned.lock')
+    plugin.socket_path = str(tmp_path / 'memory-service.sock')
+    Path(plugin.socket_path).touch()
+    profile = {}
+    for name in ('ksmtuned', 'ksmctl', 'ksm.service', 'ksmtuned.service'):
+        profile_path = tmp_path / name
+        profile_path.write_text('test-native-profile-' + name)
+        profile[str(profile_path)] = hashlib.sha256(profile_path.read_bytes()).hexdigest()
+    plugin.NATIVE_KSM_PROFILE_VARIANTS = (profile,)
+    native = {'run': '1', 'pages_to_scan': '2000', 'sleep_millisecs': '20',
+              'use_zero_pages': '0'}
+    Path(plugin.KSM_CONF).write_text(memory_optimization_module.render_config(
+        '', 11, 2000, plugin._native_sleep_for_policy(20)))
+    native_commands = []
+
+    def read_native_ack():
+        config = plugin._read_native_ksm_config() or {}
+        observed = dict(native)
+        observed['configRevision'] = str(config.get('CONFIG_REVISION', ''))
+        return observed
+
+    monkeypatch.setattr(plugin, '_read_ksm_ack', read_native_ack)
+    monkeypatch.setattr(plugin, '_native_service_state',
+                        lambda unit, operation: 'active' if operation == 'active' else 'enabled')
+    monkeypatch.setattr(plugin, '_read_ksm_zero_pages', lambda: native['use_zero_pages'])
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs',
+                        lambda field, value: native.__setitem__(field, value))
+    monkeypatch.setattr(plugin, '_read_ksm_sysfs', lambda field: native[field])
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'ksmZeroPages': True,
+        'zram': False, 'writeback': False})
+    monkeypatch.setattr(memory_optimization_module.subprocess, 'check_call',
+                        lambda argv: native_commands.append(tuple(argv)))
+    prior_command = {'hostUuid': HOST, 'scope': 'Host', 'resourceUuid': HOST,
+                     'action': 'apply', 'operationUuid': 'a' * 32,
+                     'expectedRevision': 11, 'desiredRevision': 12,
+                     'policyMode': 'effective',
+                     'policy': {'schemaVersion': 1,
+                                'ksm': {'pagesToScan': 2000, 'sleepMillis': 20},
+                                'zram': {'enabled': False},
+                                'writeback': {'enabled': False}}}
+    prior_result = plugin.apply(prior_command)
+    assert prior_result['status'] == 'Succeeded', prior_result
+    prior = plugin._load_operation(prior_command)
+    prior_state = prior['readback']['state']
+    prior_sections = prior_state.get('sections', prior_state)
+    assert prior['stage'] == 'APPLIED'
+    assert prior['requestHash'] == plugin._operation_hash(prior_command)
+    assert prior['policyHash'] == plugin._policy_digest(prior_command['policy'])
+    assert 'enabled' not in prior['policy']['ksm']
+    assert 'zeroPagesEnabled' not in prior['policy']['ksm']
+    assert 'capacity' not in prior_sections
+    assert isinstance(prior_sections.get('cpu'), dict)
+    assert isinstance(prior_sections.get('tuning'), dict)
+    ack = prior['readback']['ksmReadback']
+    assert ack == {'run': '1', 'configRevision': '12', 'pages_to_scan': '2000',
+                   'sleep_millisecs': '20', 'use_zero_pages': '0'}
+    assert plugin._get_active_control() == prior_command['operationUuid']
+    service_state['capacity'].update({
+        '_http_status': 200,
+        'desired': {'configured': {
+            'logical_capacity': {'percent_of_host': 50},
+            'physical_memory_limit': {'percent_of_logical': 50}},
+            'basis_host_memory_bytes': 540129357824,
+            'logical_resolved_bytes': 270064676864,
+            'physical_resolved_bytes': 135032336384},
+        'effective_logical_bytes': None,
+        'effective_physical_limit_bytes': None,
+        'apply_state': 'BLOCKED', 'reason': 'NATIVE_POOL_UNQUALIFIED'})
+    command = {'hostUuid': HOST, 'scope': 'Host', 'action': 'apply',
+               'resourceUuid': HOST, 'operationUuid': 'b' * 32,
+               'expectedRevision': prior_command['desiredRevision'],
+               'desiredRevision': prior_command['desiredRevision'] + 1,
+               'policyMode': 'effective',
+               'licensePermit': {'managed': True, 'operationUuid': 'ksm-only-permit',
+                                 'expiresAt': int(time.time() * 1000) + 35000,
+                                 'validForSeconds': 30},
+               'policy': {'schemaVersion': 1, 'ksm': {}}}
+
+    def record_legacy_unknown():
+        prior_record = plugin._load_operation(prior_command)
+        state = prior_record['readback']['state']
+        sections = state.get('sections', state)
+        prior_sections = {key: sections[key] for key in ('capacity', 'cpu', 'tuning')
+                          if key in sections}
+        preflight = {}
+        for action, section in (('capacity-state', 'capacity'),
+                                ('host-cpu-state', 'cpu'),
+                                ('tuning-state', 'tuning')):
+            response = plugin.service_call(action, {})
+            assert response.get('_http_status') == 200
+            assert isinstance(response.get('revision'), int)
+            assert not isinstance(response.get('revision'), bool)
+            preflight[section] = dict(response)
+        assert preflight['capacity']['reason'] == 'NATIVE_POOL_UNQUALIFIED'
+        assert preflight['capacity']['desired']
+        assert preflight['capacity']['effective_logical_bytes'] is None
+        assert preflight['capacity']['effective_physical_limit_bytes'] is None
+        assert preflight['cpu']['efficiency_enabled'] is False
+        assert preflight['tuning']['settings']['writeback']['enabled'] is False
+        mixed = {'operationUuid': command['operationUuid'],
+                 'priorOperationUuid': prior_command['operationUuid'],
+                 'priorPolicy': dict(prior_record['policy']),
+                 'priorState': prior_sections,
+                 'preflight': preflight, 'writes': {}, 'writeAttempts': {},
+                 'postflight': {}, 'ksmReadback': None,
+                 'priorKsmAck': dict(prior_record['readback']['ksmReadback'])}
+        evidence = {'success': False, 'status': 'Unknown', 'reason':
+                    'MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN',
+                    'reasonCode': 'MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN',
+                    'operationUuid': command['operationUuid'],
+                    'state': {'phase': 'UNKNOWN', 'mixedClearEvidence': mixed}}
+        assert evidence['state']['mixedClearEvidence']['priorState'] == prior_sections
+        assert not any(key in command for key in ('firstZramUse', 'activationIntent',
+                                                   'maintenanceProof'))
+        submitted = int(time.time() * 1000) - 10
+        assert plugin._record_operation(command, 'UNKNOWN', evidence)
+        failed = plugin._load_operation(command)
+        assert failed['applyEvidence'] == failed['readback'] == evidence
+        assert failed['stage'] == 'UNKNOWN'
+        assert 'appliedRevision' not in failed['readback']
+        assert plugin._get_active_control() == prior_command['operationUuid']
+        return failed, submitted
+
+    return (plugin, service_state, calls, prior_command, ack, native,
+            native_commands, command, record_legacy_unknown)
+
+
+def test_ksm_only_clear_ignores_unqualified_capacity_without_writes(tmp_path, monkeypatch):
+    """A KSM-only clear is independent of an unrelated capacity block."""
+    plugin, _, calls, _, ack, native, native_commands, command, _ = \
+        _ksm_only_blocked_capacity_fixture(
+        tmp_path, monkeypatch)
+    before_calls = len(calls)
+    before_native = dict(native)
+    before_native_commands = list(native_commands)
+    prior_control = plugin._get_active_control()
+    result = plugin.apply(command)
+    # Desired contract: a schema-1 KSM-only clear is independent of an
+    # unrelated blocked capacity state and must not enter Go service writes.
+    assert result['status'] == 'Succeeded', result
+    writes = [action for action, _ in calls[before_calls:]
+              if action in ('capacity', 'host-cpu', 'apply')]
+    assert writes == []
+    record = plugin._load_operation(command)
+    assert record['stage'] == 'APPLIED'
+    assert record['desiredRevision'] == command['desiredRevision']
+    assert record['readback']['ksmReadback']['configRevision'] == '13'
+    for field in ('run', 'pages_to_scan', 'sleep_millisecs', 'use_zero_pages'):
+        assert record['readback']['ksmReadback'][field] == ack[field]
+    assert plugin._get_active_control() == command['operationUuid']
+    assert native['run'] == before_native['run']
+    assert native['pages_to_scan'] == before_native['pages_to_scan']
+    assert native['sleep_millisecs'] == before_native['sleep_millisecs']
+    assert native['use_zero_pages'] == before_native['use_zero_pages']
+    assert plugin._read_ksm_ack()['configRevision'] == '13'
+    assert plugin._get_active_control() != prior_control
+    assert native_commands[len(before_native_commands):] == [
+        ('systemctl', 'restart', plugin.KSM_TUNED_UNIT)]
+
+
+def test_mixed_capacity_unknown_reconcile_seals_prewrite_without_losing_evidence(
+        tmp_path, monkeypatch):
+    """A pre-write mixed-clear rejection must be safely sealed as NOT_ISSUED."""
+    plugin, _, calls, prior_command, ack, native, native_commands, command, \
+        record_legacy_unknown = \
+        _ksm_only_blocked_capacity_fixture(tmp_path, monkeypatch)
+    operation = command['operationUuid']
+    boot_id = plugin._current_boot_id()
+    failed, submitted = record_legacy_unknown()
+    readback = json.loads(json.dumps(failed['readback']))
+    mixed = readback['state']['mixedClearEvidence']
+    assert mixed['operationUuid'] == operation
+    assert mixed['priorOperationUuid'] == prior_command['operationUuid']
+    assert mixed['priorKsmAck'] == ack
+    assert mixed['writes'] == mixed['writeAttempts'] == mixed['postflight'] == {}
+    assert mixed['ksmReadback'] is None
+    before_native = dict(native)
+    before_native_commands = list(native_commands)
+    before_calls = len(calls)
+    prior_record = plugin._load_operation(prior_command)
+    prior_path = plugin._operation_path(prior_command['operationUuid'])
+    with open(prior_path, 'rb') as stream:
+        prior_bytes = stream.read()
+    expected_apply_evidence = json.loads(json.dumps(failed['applyEvidence']))
+    expected_policy_hash = failed['policyHash']
+    expected_request_hash = failed['requestHash']
+    with open(plugin._operation_path(operation), 'rb') as stream:
+        original_bytes = stream.read()
+    query = {'action': 'reconcile', 'scope': 'Host', 'hostUuid': HOST,
+             'resourceUuid': HOST, 'operationUuid': operation,
+             'desiredRevision': command['desiredRevision'], 'bootId': boot_id,
+             'policy': {}, 'taskSubmittedAt': submitted,
+             'expectedControlOperationUuid': operation,
+             'reconcileAction': 'seal-if-never-issued'}
+    sealed = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+    assert sealed['status'] == 'Failed', sealed
+    assert sealed['reasonCode'] == 'KSM_CLEAR_NOT_ISSUED', sealed
+    assert sealed['state']['policyWritesIssued'] is False
+    stored = plugin._load_operation(command)
+    assert stored['stage'] == 'NOT_ISSUED'
+    assert stored['applyEvidence'] == failed['applyEvidence']
+    assert stored['readback'] == sealed
+    assert plugin._get_active_control() == prior_command['operationUuid']
+    assert stored['policyHash'] == expected_policy_hash
+    assert stored['requestHash'] == expected_request_hash
+    assert stored['applyEvidence'] == expected_apply_evidence
+    assert native == before_native
+    assert native_commands == before_native_commands
+    assert not any(action in ('capacity', 'host-cpu', 'apply')
+                   for action, _ in calls[before_calls:])
+    assert plugin._load_operation(prior_command) == prior_record
+    assert json.loads(plugin.reconcile({'body': json.dumps(query)})) == sealed
+    with open(prior_path, 'rb') as stream:
+        assert stream.read() == prior_bytes
+    with open(plugin._operation_path(operation), 'rb') as stream:
+        assert stream.read() != original_bytes
+
+
+@pytest.mark.parametrize('tamper', [
+    'missing_proof', 'write_evidence', 'write_attempts', 'postflight',
+    'ksm_readback', 'prior_ack', 'wrong_boot', 'wrong_revision',
+    'wrong_control', 'active_control', 'prior_policy', 'prior_revision',
+    'cpu_drift', 'tuning_drift',
+])
+def test_mixed_capacity_unknown_reconcile_rejects_unproven_checkpoint(
+        tmp_path, monkeypatch, tamper):
+    """Mixed-clear NOT_ISSUED requires the complete original read-only proof."""
+    plugin, service_state, calls, prior_command, _, native, native_commands, command, record_legacy_unknown = \
+        _ksm_only_blocked_capacity_fixture(tmp_path, monkeypatch)
+    failed, submitted = record_legacy_unknown()
+    drifted = json.loads(json.dumps(failed['readback']))
+    mixed = drifted['state']['mixedClearEvidence']
+    prior_record = plugin._load_operation(prior_command)
+    if tamper == 'missing_proof':
+        drifted['state'].pop('mixedClearEvidence')
+    elif tamper == 'write_evidence':
+        mixed['writes'] = {'capacity': {'attempted': True}}
+    elif tamper == 'write_attempts':
+        mixed['writeAttempts'] = {'apply': {'started': True}}
+    elif tamper == 'postflight':
+        mixed['postflight'] = {'capacity': {'_http_status': 200}}
+    elif tamper == 'ksm_readback':
+        mixed['ksmReadback'] = dict(mixed['priorKsmAck'])
+    elif tamper == 'prior_ack':
+        mixed['priorKsmAck']['configRevision'] = '11'
+    elif tamper == 'wrong_boot':
+        failed['bootId'] = '0' * 36
+    elif tamper == 'wrong_revision':
+        failed['desiredRevision'] += 1
+    elif tamper == 'wrong_control':
+        pass
+    elif tamper == 'active_control':
+        plugin._set_active_control('c' * 32)
+    elif tamper == 'prior_policy':
+        prior_record['policy']['ksm']['pagesToScan'] = 1000
+        assert plugin._write_operation_record(prior_record)
+    elif tamper == 'prior_revision':
+        prior_record['desiredRevision'] += 1
+        assert plugin._write_operation_record(prior_record)
+    elif tamper == 'cpu_drift':
+        service_state['cpu']['efficiency_enabled'] = True
+    elif tamper == 'tuning_drift':
+        service_state['tuning']['settings']['writeback']['enabled'] = True
+    if drifted != failed['readback']:
+        failed['readback'] = drifted
+        failed['applyEvidence'] = drifted
+    if tamper in ('missing_proof', 'write_evidence', 'write_attempts', 'postflight',
+                  'ksm_readback', 'prior_ack', 'wrong_boot', 'wrong_revision'):
+        assert plugin._write_operation_record(failed)
+    target_path = plugin._operation_path(command['operationUuid'])
+    with open(target_path, 'rb') as stream:
+        target_bytes = stream.read()
+    before_native = dict(native)
+    before_native_commands = list(native_commands)
+    before_calls = len(calls)
+    query = {'action': 'reconcile', 'scope': 'Host', 'hostUuid': HOST,
+             'resourceUuid': HOST, 'operationUuid': command['operationUuid'],
+             'desiredRevision': command['desiredRevision'],
+             'bootId': plugin._current_boot_id(), 'policy': {},
+             'taskSubmittedAt': submitted,
+             'expectedControlOperationUuid': ('c' * 32 if tamper == 'wrong_control'
+                                              else command['operationUuid']),
+             'reconcileAction': 'seal-if-never-issued'}
+    observed = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+    assert observed['status'] == 'Unknown', observed
+    assert plugin._load_operation(command)['stage'] == 'UNKNOWN'
+    assert plugin._load_operation(command)['readback'] == failed['readback']
+    with open(target_path, 'rb') as stream:
+        assert stream.read() == target_bytes
+    assert native == before_native
+    assert native_commands == before_native_commands
+    assert not any(action in ('capacity', 'host-cpu', 'apply')
+                   for action, _ in calls[before_calls:])
 
 
 @pytest.mark.parametrize('scenario', ['quiet_retry', 'deadline', 'nonbusy_409', 'transport_loss'])
