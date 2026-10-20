@@ -26,7 +26,7 @@ except ImportError:
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http, lvm, ceph, pci, gpu, linux, cpu_frequency
+from zstacklib.utils import http, lvm, ceph, pci, gpu, hccn, linux, cpu_frequency
 from zstacklib.utils import qemu
 from zstacklib.utils import iptables
 from zstacklib.utils import iproute
@@ -726,6 +726,12 @@ class GetPciDevicesResponse(kvmagent.AgentResponse):
         self.pciDevicesInfo = []
         self.hostIommuStatus = False
         self.mdevDeviceInfos = {}
+
+
+class GetHccnDevicesResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetHccnDevicesResponse, self).__init__()
+        self.devices = []
 
 
 class GetMttyDevicesCmd(kvmagent.AgentCommand):
@@ -1590,6 +1596,7 @@ class HostPlugin(kvmagent.KvmAgent):
     HOST_SHUTDOWN = "/host/shutdown"
     HOST_REBOOT = "/host/reboot"
     GET_PCI_DEVICES = "/pcidevice/get"
+    GET_HCCN_DEVICES = "/pcidevice/hccn/get"
     CREATE_PCI_DEVICE_ROM_FILE = "/pcidevice/createrom"
     GENERATE_SRIOV_PCI_DEVICES = "/pcidevice/generate"
     UNGENERATE_SRIOV_PCI_DEVICES = "/pcidevice/ungenerate"
@@ -3915,6 +3922,12 @@ done
 
     # moved from vm_plugin to host_plugin
     @kvmagent.replyerror
+    def get_hccn_devices(self, req):
+        rsp = GetHccnDevicesResponse()
+        rsp.devices = hccn.collect_devices()
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def get_pci_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetPciDevicesResponse()
@@ -5198,6 +5211,7 @@ done
         http_server.register_async_uri(self.HOST_SHUTDOWN, self.shutdown_host)
         http_server.register_async_uri(self.HOST_REBOOT, self.reboot_host)
         http_server.register_async_uri(self.GET_PCI_DEVICES, self.get_pci_info)
+        http_server.register_async_uri(self.GET_HCCN_DEVICES, self.get_hccn_devices)
         http_server.register_async_uri(
             self.CREATE_PCI_DEVICE_ROM_FILE, self.create_pci_device_rom_file)
         http_server.register_async_uri(
