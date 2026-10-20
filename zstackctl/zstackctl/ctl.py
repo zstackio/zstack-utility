@@ -7156,6 +7156,8 @@ class DumpMysqlCmd(Command):
         parser.add_argument('--append-sql-file',
                             help="specify a append sql to operate zstack database",
                             required=False)
+        parser.add_argument('--skip-table-data', action='append', default=[], metavar='DATABASE.TABLE',
+                            help="Skip data but keep the table definition. Repeat for multiple tables.")
         parser.add_argument('--remote-keep-amount', type=int,
                             help="The amount of files you want to keep on remote host, older files will be deleted, default number is 60",
                             required=False)
@@ -7244,7 +7246,22 @@ class DumpMysqlCmd(Command):
     def get_morph_db_user_info(self):
         return "morph", "morph123"
 
+    def _skip_table_data(self, dump_command, databases, skip_data_tables):
+        skip_data_tables = {table for table in skip_data_tables if table.split('.')[0] in databases}
+        if not skip_data_tables:
+            return dump_command
+
+        schema_command = dump_command + ' -d'
+        filtered_command = dump_command
+        for table in sorted(skip_data_tables):
+            filtered_command += ' --ignore-table=%s' % shell_quote(table)
+        return '%s && %s' % (schema_command, filtered_command)
+
     def run(self, args):
+        for table in args.skip_table_data:
+            if table.count('.') != 1 or not all(part.strip() for part in table.split('.')):
+                error('Invalid table name %r: expected database.table' % table)
+        skip_data_tables = set(args.skip_table_data)
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
         (ui_db_hostname, ui_db_port, ui_db_user, ui_db_password) = ctl.get_live_mysql_portal(ui=True)
         file_name = args.file_name
@@ -7271,16 +7288,20 @@ class DumpMysqlCmd(Command):
             error("Please specify remote host info with '--host' before you want to delete remote host expired files")
 
         mysqldump_options = "--single-transaction --quick"
+        main_db_skip_options = mysqldump_skip_tables
+        for table in sorted(skip_data_tables):
+            if table.split('.')[0] in ['zstack', 'zstack_rest']:
+                main_db_skip_options += ' --ignore-table=%s' % shell_quote(table)
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
             command_1 = "mysqldump --databases -u %s --password='%s' -P %s %s -d zstack zstack_rest" \
                         % (db_user, db_password, db_port, mysqldump_options)
             command_2 = "mysqldump --databases -u %s --password='%s' -P %s %s zstack zstack_rest %s" \
-                        % (db_user, db_password, db_port, mysqldump_options, mysqldump_skip_tables)
+                        % (db_user, db_password, db_port, mysqldump_options, main_db_skip_options)
         else:
             command_1 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -d zstack zstack_rest" \
                         % (db_user, db_password, db_hostname, db_port, mysqldump_options)
             command_2 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s zstack zstack_rest %s" \
-                        % (db_user, db_password, db_hostname, db_port, mysqldump_options, mysqldump_skip_tables)
+                        % (db_user, db_password, db_hostname, db_port, mysqldump_options, main_db_skip_options)
 
         if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1":
             command_3 = "mysqldump --databases -u %s --password='%s' -P %s %s -f zstack_ui zstack_mini" \
@@ -7301,6 +7322,15 @@ class DumpMysqlCmd(Command):
         keycloak_cmd = build_mysqldump_cmd(keycloak_db_user, keycloak_db_pwd, db_hostname, db_port, "keycloak")
         morph_cmd = build_mysqldump_cmd(morph_db_user, morph_db_pwd, db_hostname, db_port, "morph")
 
+        if any(table.split('.')[0] in ['zstack_ui', 'zstack_mini'] for table in skip_data_tables):
+            ui_commands = []
+            for database in ['zstack_ui', 'zstack_mini']:
+                dump_command = build_mysqldump_cmd(ui_db_user, ui_db_password, ui_db_hostname, ui_db_port, database)
+                ui_commands.append(self._skip_table_data(dump_command, [database], skip_data_tables))
+            command_3 = '; '.join(ui_commands)
+        keycloak_cmd = self._skip_table_data(keycloak_cmd, ['keycloak'], skip_data_tables)
+        morph_cmd = self._skip_table_data(morph_cmd, ['morph'], skip_data_tables)
+
         if args.append_sql_file:
             append_sql_command = "echo 'USE `zstack`;\n'; cat %s;" % args.append_sql_file
         else:
@@ -7319,6 +7349,7 @@ class DumpMysqlCmd(Command):
                 zstone_backup_cmd = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -f zstone %s" \
                         % (zstone_db_user, zstone_db_pwd, db_hostname, db_port, mysqldump_options, zstone_db_dump_skip_tables)
 
+            zstone_backup_cmd = self._skip_table_data(zstone_backup_cmd, ['zstone'], skip_data_tables)
             cmd = ShellCmd("(%s) | gzip > %s" % (zstone_backup_cmd, zstone_backup_file_path))
             cmd(True)
             info("Successfully backed up zstone database. You can check the file at %s" % zstone_backup_file_path)
