@@ -9025,7 +9025,19 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if (isinstance(evidence, dict) and
                 evidence.get('reason') == 'KSM_CLEAR_PRIOR_JOURNAL_INVALID' and
                 prior.get('policy') == {'schemaVersion': 1, 'ksm': {}}):
-            sealed = self._mark_not_issued(command)
+            sealed = self._mark_not_issued(command, expected_prior=prior)
+            return self._reply(sealed or {
+                'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                'operationUuid': operation_uuid})
+        mixed_clear_candidate = (
+            isinstance(prior, dict) and
+            prior.get('policy') == {'schemaVersion': 1, 'ksm': {}} and
+            any(isinstance(item, dict) and
+                item.get('reason') == 'MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN'
+                for item in (evidence, readback)))
+        if mixed_clear_candidate:
+            sealed = self._mark_not_issued(command, expected_prior=prior)
             return self._reply(sealed or {
                 'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
                 'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
@@ -9365,7 +9377,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return None
         return None
 
-    def _mark_not_issued(self, command):
+    def _mark_not_issued(self, command, expected_prior=None):
         """Persist a manager-proven NOT_SENT result, never a successful apply."""
         if (not self._valid_identifier(command.get('operationUuid')) or
                 str(command.get('reconcileAction', '')).lower() != 'seal-if-never-issued' or
@@ -9412,6 +9424,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if journal_state == 'present' and not isinstance(prior, dict):
                 return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
                         'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE',
+                        'operationUuid': operation_uuid}
+            if (expected_prior is not None and
+                    (not isinstance(expected_prior, dict) or
+                     not isinstance(prior, dict) or
+                     self._operation_hash(prior) != self._operation_hash(expected_prior))):
+                return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                        'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
                         'operationUuid': operation_uuid}
             if os.path.exists(os.path.join(self.operation_dir,
                                            '%s.drain-intent.json' % operation_uuid)):
@@ -9471,6 +9490,239 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         return result
                     return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
                             'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE',
+                            'operationUuid': operation_uuid}
+                mixed_evidence = (prior.get('applyEvidence')
+                                  if isinstance(prior, dict) else None)
+                mixed_readback = prior.get('readback') if isinstance(prior, dict) else None
+                if (isinstance(mixed_evidence, dict) and
+                        mixed_evidence.get('reason') == 'MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN' and
+                        prior.get('policy') == {'schemaVersion': 1, 'ksm': {}}):
+                    if prior.get('stage') == 'NOT_ISSUED':
+                        expected_result = {
+                            'success': False, 'status': 'Failed',
+                            'reasonCode': 'KSM_CLEAR_NOT_ISSUED',
+                            'operationUuid': operation_uuid,
+                            'state': {'phase': 'NOT_ISSUED', 'bootId': current_boot,
+                                      'requestHash': prior.get('requestHash'),
+                                      'policyWritesIssued': False}}
+                        if (command.get('action') == 'reconcile' and
+                                command.get('policy') == {} and
+                                command.get('scope') == prior.get('scope') == 'Host' and
+                                command.get('resourceUuid') == prior.get('resourceUuid') == host_uuid and
+                                command.get('expectedControlOperationUuid') == operation_uuid and
+                                command.get('desiredRevision') == prior.get('desiredRevision') and
+                                prior.get('hostUuid') == host_uuid and
+                                prior.get('bootId') == current_boot and
+                                isinstance(prior.get('requestHash'), STRING_TYPES) and
+                                re.match(r'^[0-9a-f]{64}\Z', prior.get('requestHash')) is not None and
+                                mixed_readback == expected_result):
+                            return mixed_readback
+                        return {'success': False, 'status': 'Unknown',
+                                'state': {'phase': 'UNKNOWN'},
+                                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                                'operationUuid': operation_uuid}
+                    if prior.get('stage') != 'UNKNOWN' or not isinstance(mixed_readback, dict):
+                        return {'success': False, 'status': 'Unknown',
+                                'state': {'phase': 'UNKNOWN'},
+                                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                                'operationUuid': operation_uuid}
+                    mixed = ((mixed_evidence.get('state') or {}).get('mixedClearEvidence')
+                             if isinstance(mixed_evidence.get('state'), dict) else None)
+                    current_control = self._get_active_control()
+                    active_state, active = self._operation_file_state(current_control) \
+                        if self._valid_identifier(current_control) else ('missing', None)
+                    required_record_keys = {
+                        'action', 'applyEvidence', 'bootId', 'desiredRevision', 'hostUuid',
+                        'operationUuid', 'policy', 'policyHash', 'policyMode', 'readback',
+                        'requestHash', 'resourceUuid', 'scope', 'stage', 'updatedAt'}
+                    allowed_record_keys = required_record_keys | {'expectedControlOperationUuid'}
+                    required_response_keys = {
+                        'success', 'status', 'state', 'operationUuid', 'reason', 'reasonCode'}
+                    valid = (
+                        command.get('action') == 'reconcile' and command.get('policy') == {} and
+                        command.get('scope') == prior.get('scope') == 'Host' and
+                        command.get('resourceUuid') == prior.get('resourceUuid') == host_uuid and
+                        command.get('expectedControlOperationUuid') == operation_uuid and
+                        prior.get('operationUuid') == operation_uuid and
+                        prior.get('hostUuid') == host_uuid and prior.get('bootId') == current_boot and
+                        prior.get('action') == 'apply' and prior.get('policyMode') == 'effective' and
+                        prior.get('policy') == {'schemaVersion': 1, 'ksm': {}} and
+                        prior.get('policyHash') == self._policy_digest(prior['policy']) and
+                        self._revision(prior.get('desiredRevision')) and
+                        not isinstance(prior.get('desiredRevision'), bool) and
+                        command.get('desiredRevision') == prior.get('desiredRevision') and
+                        set(prior) >= required_record_keys and set(prior) <= allowed_record_keys and
+                        isinstance(prior.get('requestHash'), STRING_TYPES) and
+                        re.match(r'^[0-9a-f]{64}\Z', prior.get('requestHash')) is not None and
+                        isinstance(prior.get('updatedAt'), INTEGER_TYPES) and
+                        not isinstance(prior.get('updatedAt'), bool) and
+                        submitted <= prior.get('updatedAt') and
+                        current_control == (mixed.get('priorOperationUuid')
+                                            if isinstance(mixed, dict) else None) and
+                        active_state == 'present' and isinstance(active, dict) and
+                        not any(key in prior for key in (
+                            'activationIntent', 'firstZramUse', 'maintenanceProof',
+                            'maintenanceProgress', 'maintenanceIntentPath',
+                            'poolMaintenanceIntentPath', 'backendPreparation',
+                            'poolPreparation', 'recoveryIntent', 'recoveryAttempt',
+                            'recoveryReceipt', 'recoveryResult')) and
+                        set(mixed_evidence) == required_response_keys and
+                        isinstance(mixed_evidence.get('state'), dict) and
+                        set(mixed_evidence['state']) == {'phase', 'mixedClearEvidence'} and
+                        mixed_evidence.get('success') is False and
+                        mixed_evidence.get('status') == 'Unknown' and
+                        mixed_evidence.get('operationUuid') == operation_uuid and
+                        mixed_evidence.get('reason') == 'MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN' and
+                        mixed_evidence.get('reasonCode') == 'MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN' and
+                        mixed_evidence['state'].get('phase') == 'UNKNOWN' and
+                        mixed_evidence['state'].get('mixedClearEvidence') == mixed and
+                        mixed_readback == mixed_evidence and
+                        isinstance(mixed, dict) and set(mixed) == {
+                            'operationUuid', 'priorOperationUuid', 'priorPolicy', 'priorState',
+                            'preflight', 'writes', 'writeAttempts', 'postflight',
+                            'ksmReadback', 'priorKsmAck'} and
+                        mixed.get('operationUuid') == operation_uuid and
+                        mixed.get('priorOperationUuid') == current_control and
+                        isinstance(mixed.get('priorPolicy'), dict) and
+                        isinstance(mixed.get('priorState'), dict) and
+                        isinstance(mixed.get('preflight'), dict) and
+                        set(mixed['preflight']) == {'capacity', 'cpu', 'tuning'} and
+                        mixed.get('writes') == {} and mixed.get('writeAttempts') == {} and
+                        mixed.get('postflight') == {} and mixed.get('ksmReadback') is None and
+                        isinstance(mixed.get('priorKsmAck'), dict) and
+                        isinstance(active.get('policy'), dict) and
+                        mixed.get('priorPolicy') == active.get('policy') and
+                        active.get('operationUuid') == current_control and
+                        active.get('stage') == 'APPLIED' and
+                        active.get('action') == 'apply' and
+                        active.get('scope') == 'Host' and active.get('hostUuid') == host_uuid and
+                        active.get('resourceUuid') == host_uuid and
+                        active.get('bootId') == current_boot and
+                        active.get('policyHash') == self._policy_digest(active.get('policy')) and
+                        isinstance(active.get('requestHash'), STRING_TYPES) and
+                        re.match(r'^[0-9a-f]{64}\Z', active.get('requestHash')) is not None and
+                        isinstance(active.get('readback'), dict) and
+                        active['readback'].get('status') == 'Succeeded' and
+                        active['readback'].get('success') is True and
+                        mixed.get('priorKsmAck') ==
+                        active['readback'].get('ksmReadback') and
+                        self._ksm_proof_policy(mixed.get('priorKsmAck'),
+                                               active.get('desiredRevision')) is not None)
+                    if not valid:
+                        return {'success': False, 'status': 'Unknown',
+                                'state': {'phase': 'UNKNOWN'},
+                                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                                'operationUuid': operation_uuid}
+                    if valid:
+                        active_state = active['readback'].get('state')
+                        sections = active_state.get('sections') if isinstance(active_state, dict) else None
+                        if not isinstance(sections, dict):
+                            sections = active_state if isinstance(active_state, dict) else {}
+                        active_sections = {key: sections[key] for key in
+                                           ('capacity', 'cpu', 'tuning') if key in sections}
+                        valid = (mixed.get('priorState') == active_sections and
+                                 'capacity' not in active_sections)
+                    if not valid:
+                        return {'success': False, 'status': 'Unknown',
+                                'state': {'phase': 'UNKNOWN'},
+                                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                                'operationUuid': operation_uuid}
+                    if valid:
+                        for section, action in (('capacity', 'capacity-state'),
+                                                ('cpu', 'host-cpu-state'),
+                                                ('tuning', 'tuning-state')):
+                            saved = mixed['preflight'].get(section)
+                            try:
+                                self._strict_service_success(action, saved)
+                            except (TypeError, ValueError, RuntimeError):
+                                valid = False
+                                break
+                        if valid:
+                            saved_capacity = mixed['preflight']['capacity']
+                            saved_cpu = mixed['preflight']['cpu']
+                            saved_tuning = mixed['preflight']['tuning']
+                            prior_cpu = active_sections.get('cpu')
+                            prior_tuning = active_sections.get('tuning')
+                            saved_capacity_desired = saved_capacity.get('desired')
+                            saved_configured = (saved_capacity_desired.get('configured')
+                                                if isinstance(saved_capacity_desired, dict) else None)
+                            valid = (
+                                saved_capacity.get('apply_state') == 'BLOCKED' and
+                                saved_capacity.get('reason') == 'NATIVE_POOL_UNQUALIFIED' and
+                                isinstance(saved_configured, dict) and bool(saved_configured) and
+                                'effective_logical_bytes' in saved_capacity and
+                                saved_capacity.get('effective_logical_bytes') is None and
+                                'effective_physical_limit_bytes' in saved_capacity and
+                                saved_capacity.get('effective_physical_limit_bytes') is None and
+                                saved_cpu.get('efficiency_enabled') is False and
+                                isinstance(prior_cpu, dict) and
+                                saved_cpu.get('revision') == prior_cpu.get('revision') and
+                                isinstance(prior_tuning, dict) and
+                                prior_tuning.get('_http_status') == 200 and
+                                prior_tuning.get('agent_request_id',
+                                                  prior_tuning.get('request_id')) ==
+                                self._derived_service_request_id(current_control, 'tuning') and
+                                isinstance(prior_tuning.get('revision'), INTEGER_TYPES) and
+                                not isinstance(prior_tuning.get('revision'), bool) and
+                                saved_tuning.get('revision') == prior_tuning.get('revision') and
+                                self._strict_service_match(saved_tuning.get('settings'),
+                                                           prior_tuning.get('settings')) and
+                                isinstance(saved_tuning.get('settings'), dict) and
+                                isinstance(saved_tuning['settings'].get('writeback'), dict) and
+                                saved_tuning['settings']['writeback'].get('enabled') is False)
+                    if not valid:
+                        return {'success': False, 'status': 'Unknown',
+                                'state': {'phase': 'UNKNOWN'},
+                                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                                'operationUuid': operation_uuid}
+                    if valid:
+                        target_command = {
+                            'action': 'apply', 'operationUuid': operation_uuid,
+                            'hostUuid': host_uuid, 'scope': 'Host',
+                            'resourceUuid': host_uuid, 'policyMode': 'effective',
+                            'desiredRevision': prior.get('desiredRevision'),
+                            'policy': prior.get('policy')}
+                        if 'expectedControlOperationUuid' in prior:
+                            target_command['expectedControlOperationUuid'] = prior.get(
+                                'expectedControlOperationUuid')
+                        context_holder = {}
+                        try:
+                            context = self._mixed_clear_context(target_command, context_holder)
+                        except Exception:
+                            valid = False
+                        current_preflight = context_holder.get('context', {}).get('preflight')
+                        valid = (valid and context is None and
+                                 context_holder.get('preparedKsmClear') == {
+                                     'priorKsmAck': mixed.get('priorKsmAck')} and
+                                 isinstance(current_preflight, dict) and
+                                 all(self._strict_service_match(
+                                     current_preflight.get(section), mixed['preflight'][section])
+                                     for section in ('capacity', 'cpu', 'tuning')))
+                    if not valid:
+                        return {'success': False, 'status': 'Unknown',
+                                'state': {'phase': 'UNKNOWN'},
+                                'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
+                                'operationUuid': operation_uuid}
+                    if valid:
+                        result = {'success': False, 'status': 'Failed',
+                                  'reasonCode': 'KSM_CLEAR_NOT_ISSUED',
+                                  'operationUuid': operation_uuid,
+                                  'state': {'phase': 'NOT_ISSUED', 'bootId': current_boot,
+                                            'requestHash': prior.get('requestHash'),
+                                            'policyWritesIssued': False}}
+                        if prior.get('stage') == 'NOT_ISSUED':
+                            return prior.get('readback')
+                        updated = dict(prior, stage='NOT_ISSUED', readback=result,
+                                       updatedAt=int(time.time() * 1000))
+                        if self._write_operation_record(updated):
+                            return result
+                        return {'success': False, 'status': 'Unknown',
+                                'state': {'phase': 'UNKNOWN'},
+                                'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE',
+                                'operationUuid': operation_uuid}
+                    return {'success': False, 'status': 'Unknown',
+                            'state': {'phase': 'UNKNOWN'},
+                            'reasonCode': 'KSM_CLEAR_RECONCILE_IDENTITY_UNKNOWN',
                             'operationUuid': operation_uuid}
                 if prior.get('stage') in ('NOT_ISSUED', 'APPLIED') and isinstance(prior.get('readback'), dict):
                     return prior['readback']
@@ -10017,6 +10269,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         prior_writeback = (prior_policy.get('writeback')
                            if isinstance(prior_policy, dict) else None)
         target_writeback = policy.get('writeback')
+        target_ksm_only_clear = (
+            command.get('action') == 'apply' and command.get('scope') == 'Host' and
+            command.get('hostUuid') == self._load_host_uuid() and
+            command.get('resourceUuid') == command.get('hostUuid') and
+            policy == {'schemaVersion': 1, 'ksm': {}})
         if (isinstance(prior, dict) and isinstance(prior_state, dict) and
                 prior_state.get('ksmOnly') is True and
                 isinstance(prior_policy, dict) and
@@ -10120,6 +10377,39 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._strict_service_success(action, value)
 
         preflight_capacity = context['preflight']['capacity']
+        capacity_desired = preflight_capacity.get('desired')
+        capacity_configured = (capacity_desired.get('configured')
+                               if isinstance(capacity_desired, dict) else None)
+        prepared_disabled_prior = (
+            target_ksm_only_clear and isinstance(prior, dict) and
+            prior.get('stage') == 'APPLIED' and prior.get('action') == 'apply' and
+            prior.get('policyMode', 'effective') == 'effective' and
+            prior.get('hostUuid') == self._load_host_uuid() and
+            prior.get('bootId') == self._current_boot_id() and
+            isinstance(prior.get('readback'), dict) and
+            prior['readback'].get('success') is True and
+            prior['readback'].get('status') == 'Succeeded' and
+            prior['readback'].get('appliedRevision') == prior.get('desiredRevision') and
+            self._strict_service_match(prior.get('applyEvidence'), prior.get('readback')) and
+            self._strict_service_match(prior.get('readback'), prior.get('applyEvidence')) and
+            isinstance(prior_policy, dict) and
+            type(prior_policy.get('schemaVersion')) in INTEGER_TYPES and
+            prior_policy.get('schemaVersion') == 1 and
+            prior.get('policyHash') == self._policy_digest(prior_policy) and
+            isinstance(prior_policy.get('zram'), dict) and
+            prior_policy['zram'].get('enabled') is False and
+            not any(key in prior_policy['zram']
+                    for key in ('logicalCapacityBytes', 'ramLimitBytes')) and
+            prior_policy.get('writeback') == {'enabled': False} and
+            isinstance(prior_sections, dict) and
+            'capacity' not in prior_sections and
+            isinstance(capacity_configured, dict) and bool(capacity_configured) and
+            preflight_capacity.get('apply_state') == 'BLOCKED' and
+            preflight_capacity.get('reason') == 'NATIVE_POOL_UNQUALIFIED' and
+            'effective_logical_bytes' in preflight_capacity and
+            preflight_capacity.get('effective_logical_bytes') is None and
+            'effective_physical_limit_bytes' in preflight_capacity and
+            preflight_capacity.get('effective_physical_limit_bytes') is None)
         if preflight_capacity.get('apply_state') == 'APPLIED':
             for field in ('effective_logical_bytes', 'effective_physical_limit_bytes'):
                 value = preflight_capacity.get(field)
@@ -10127,7 +10417,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         not isinstance(value, INTEGER_TYPES) or isinstance(value, bool) or
                         value < 0):
                     raise RuntimeError('MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN')
-        elif not self._is_unconfigured_capacity_state(preflight_capacity):
+        elif (not self._is_unconfigured_capacity_state(preflight_capacity) and
+              not prepared_disabled_prior):
             raise RuntimeError('MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN')
 
         receipts = context['priorState']
@@ -10201,11 +10492,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                                tuning_receipt['settings'])):
             raise RuntimeError('MIXED_CLEAR_PRIOR_TUNING_MISMATCH')
         if (context['preflight']['capacity'].get('apply_state') != 'APPLIED' and
-                not self._mixed_clear_unconfigured_capacity_allowed(command, context)):
+                not self._mixed_clear_unconfigured_capacity_allowed(command, context) and
+                not prepared_disabled_prior):
             # A BLOCKED/unconfigured capacity is acceptable only for a truly
-            # disabled, unmanaged policy. Fail closed here, before native KSM
-            # or any Go policy write can occur.
+            # disabled, unmanaged policy. The narrowly identified KSM-only
+            # clear above is also safe without a pool: it validates the full
+            # prior/current CPU and tuning receipts and carries only the
+            # already verified native KSM acknowledgment forward.
             raise RuntimeError('MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN')
+        if prepared_disabled_prior:
+            if context_holder is not None:
+                context_holder['preparedKsmClear'] = {'priorKsmAck': prior_ksm}
+            return None
         return context
 
     @staticmethod
