@@ -3803,20 +3803,14 @@ class Vm(object):
                         'falling back to original xml: %s' % str(ex))
 
     def _patch_cpu_xml_from_saved_image(self, path):
-        """Patch CPU XML for host-model VMs restoring from memory snapshot.
-
-        When a VM uses host-model CPU mode, libvirt internally expands it to
-        mode='custom' with a concrete CPU model and check='full' in the saved
-        image. If we pass a freshly built XML with mode='host-model', libvirt's
-        restoreFlags rejects it because the CPU mode/check don't match.
-
-        Fix: extract the CPU element from the saved image XML and replace the
-        agent-built one so that source and target are identical.
-        """
+        """Use the saved CPU ABI for host-model and custom memory restores."""
         try:
             current_tree = etree.fromstring(self.domain_xml)
             current_cpu = current_tree.find('cpu')
-            if current_cpu is None or current_cpu.get('mode') != 'host-model':
+            if current_cpu is None:
+                return
+            current_mode = current_cpu.get('mode') or 'custom'
+            if current_mode not in ('host-model', 'custom'):
                 return
 
             @LibvirtAutoReconnect
@@ -3830,7 +3824,11 @@ class Vm(object):
             if saved_cpu is None:
                 return
 
-            logger.debug('patching CPU xml for host-model memory snapshot restore, '
+            if current_mode == 'custom' and (
+                    (saved_cpu.get('mode') or 'custom') != 'custom' or saved_cpu.get('check') != 'full'):
+                return
+
+            logger.debug('patching CPU xml for memory snapshot restore, '
                          'saved cpu mode=%s, agent cpu mode=%s'
                          % (saved_cpu.get('mode'), current_cpu.get('mode')))
 
@@ -3848,7 +3846,7 @@ class Vm(object):
             root.insert(cpu_index, saved_cpu)
             self.domain_xml = etree.tostring(root, encoding='unicode')
 
-            logger.debug('patched CPU xml from saved image for host-model restore')
+            logger.debug('patched CPU xml from saved image for memory snapshot restore')
         except Exception as ex:
             logger.warn('failed to patch CPU xml from saved image, '
                         'falling back to original xml: %s' % str(ex))
