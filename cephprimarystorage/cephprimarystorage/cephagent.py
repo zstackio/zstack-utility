@@ -875,6 +875,30 @@ class CephAgent(plugin.TaskManager):
             return cmd_string + " --image-shared"
         return cmd_string
 
+    @staticmethod
+    def _copy_concurrency_option(cmd):
+        concurrency = cmd.rbdConcurrentManagementOps
+        if concurrency is None:
+            return ''
+        if type(concurrency) is not int:
+            logger.warn('ignore invalid rbdConcurrentManagementOps: %s' % concurrency)
+            return ''
+        if concurrency < 1:
+            return ''
+
+        try:
+            probe = shell.ShellCmd('timeout -s KILL 30s rbd --show-config')
+            probe(False)
+            supported = probe.return_code == 0 and any(
+                line.partition('=')[0].strip() == 'rbd_concurrent_management_ops'
+                for line in probe.stdout.splitlines())
+            if supported:
+                return ' --rbd_concurrent_management_ops=%s' % concurrency
+            logger.warn('skip rbd concurrency option: unsupported or probe failed, return code %s' % probe.return_code)
+        except Exception as e:
+            logger.warn('skip rbd concurrency option: probe failed: %s' % e)
+        return ''
+
     @replyerror
     def cp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -913,8 +937,9 @@ class CephAgent(plugin.TaskManager):
             return "deep cp" if shell.run("rbd help deep cp > /dev/null") == 0 else "cp"
 
         t_shell = traceable_shell.get_shell(cmd)
+        concurrency_option = self._copy_concurrency_option(cmd)
         _, _, err = t_shell.bash_progress_1(
-            self._wrap_shareable_cmd(cmd, 'rbd %s %s %s 2> %s' % (_get_cp_cmd(), src_path, dst_path, PFILE)),
+            self._wrap_shareable_cmd(cmd, 'rbd %s%s %s %s 2> %s' % (_get_cp_cmd(), concurrency_option, src_path, dst_path, PFILE)),
             _get_progress)
 
         if os.path.exists(PFILE):
