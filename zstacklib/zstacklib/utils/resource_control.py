@@ -148,14 +148,12 @@ class ResourceControlManager(object):
             self, backend, role_type, slice_name, handles,
             desired, desired_memory, memory_backend,
             isolation_mode='SHARED'):
-        if desired_memory and memory_backend is not None:
-            self._prepare_active_slice_memory(slice_name, desired_memory, memory_backend)
         units = [self._value(handle, 'value') for handle in handles or []
                  if self._value(handle, 'handleType') == 'SYSTEMD_UNIT']
         changed = self.systemd.prune_services(slice_name, units)
-        changed = self.systemd.configure_slice(
-            slice_name, backend.cpu_set_property, desired,
-            memory_backend.memory_limit_property if memory_backend is not None else None, desired_memory) or changed
+        if desired is not None:
+            changed = self.systemd.configure_slice(
+                slice_name, backend.cpu_set_property, desired, None, desired_memory) or changed
         for handle in handles or []:
             if self._value(handle, 'handleType') != 'SYSTEMD_UNIT':
                 continue
@@ -183,14 +181,19 @@ class ResourceControlManager(object):
         if slice_target is not None and desired is not None:
             actual = (backend.apply_exclusive_cpu_set(slice_target, desired) if isolation_mode == 'EXCLUSIVE'
                       else backend.apply_cpu_set(slice_target, desired))
+        if changed:
+            self.systemd.reload()
         if desired_memory is not None and memory_backend is not None:
+            if desired_memory > 0:
+                self._prepare_active_slice_memory(slice_name, desired_memory, memory_backend)
             memory_slice_target = self._active_slice_target(memory_backend, slice_name)
             if memory_slice_target is not None:
                 if desired_memory > 0:
                     memory_backend.require_subtree_memory_limit(memory_slice_target)
                 actual_memory = memory_backend.apply_memory(memory_slice_target, desired_memory)
-        if changed:
-            self.systemd.reload()
+            if self.systemd.configure_slice(slice_name, backend.cpu_set_property, desired,
+                                           memory_backend.memory_limit_property, desired_memory):
+                self.systemd.reload()
 
         results = []
         for index, handle in enumerate(handles or []):

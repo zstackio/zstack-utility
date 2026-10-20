@@ -412,7 +412,9 @@ def test_apply_persists_inactive_rejects_required_missing(
                 setting = "MemoryLimit" if memory_version == CGROUP_VERSION_V1 else "MemoryMax"
                 expected += "%s=%s\n" % (setting, memory)
             assert resource_utils.read(manager.systemd._drop_in_path(slice_name)) == expected
-            systemctl.assert_called_once_with(["daemon-reload"], 30)
+            assert [call.args for call in systemctl.call_args_list] == [
+                (["daemon-reload"], 30)] * (1 if memory is None else 2), \
+                "Only the initial apply reloads CPU/service settings and the independent memory setting"
         else:
             assert not os.path.exists(manager.systemd.SYSTEMD_UNIT_ROOT)
             systemctl.assert_not_called()
@@ -650,6 +652,53 @@ def test_active_v2_slice_initializes_memory_controller_before_usage_validation(t
     assert control.read_text() == "+memory", "Active slices need controller activation before reading usage"
 
 
+@pytest.mark.parametrize("previous_memory", [None, 4 * 1024 ** 3])
+@pytest.mark.parametrize("cpu_set", [None, "1-2"])
+def test_memory_rejection_preserves_cpu_assignment_and_previous_memory_limit(
+        tmp_path, monkeypatch, previous_memory, cpu_set):
+    manager = ResourceControlManager()
+    manager.systemd.SYSTEMD_UNIT_ROOT = str(tmp_path / "units")
+    target = tmp_path / "role.slice"
+    (target / "agent.service").mkdir(parents=True)
+    (tmp_path / "cgroup.controllers").write_text("cpuset memory")
+    (tmp_path / "cgroup.subtree_control").write_text("cpuset memory")
+    (target / "cpuset.cpus").write_text("0-3")
+    (target / "memory.current").write_text("2149494784")
+    previous_limit = "max" if previous_memory is None else str(previous_memory)
+    (target / "memory.max").write_text(previous_limit)
+    backend = CgroupV2ResourceControlBackend(str(tmp_path))
+    monkeypatch.setattr(manager.backend_factory, "cpu", lambda: backend)
+    monkeypatch.setattr(manager.backend_factory, "memory", lambda: backend)
+    monkeypatch.setattr(manager, "validate_cpu_set", lambda value: value)
+    monkeypatch.setattr(manager.systemd, "properties", lambda unit: {
+        "LoadState": "loaded", "ActiveState": "active",
+        "ControlGroup": "/role.slice" if unit == "role.slice" else "/role.slice/agent.service",
+    })
+    systemctl = Mock(return_value="")
+    monkeypatch.setattr(manager.systemd, "_systemctl", systemctl)
+    manager.systemd.configure_slice("role.slice", "AllowedCPUs", "0-3", "MemoryMax", previous_memory)
+    desired_memory = 2 * 1024 ** 3
+
+    with pytest.raises(ResourceControlError, match="is below current usage"):
+        manager.apply("IMAGE_STORE", cpu_set, [handle("agent.service")], desired_memory, "role.slice")
+
+    expected_cpus = cpu_set or "0-3"
+    assert (target / "cpuset.cpus").read_text() == expected_cpus, \
+        "Rejecting memory must not block requested CPUs or change unrequested CPUs"
+    assert (target / "memory.max").read_text() == previous_limit
+    with open(manager.systemd._drop_in_path("role.slice")) as stream:
+        memory_setting = "" if previous_memory is None else "\nMemoryMax=%s" % previous_memory
+        assert stream.read() == "[Slice]\nAllowedCPUs=%s%s\n" % (expected_cpus, memory_setting), \
+            "Persist CPU while preserving the previous memory setting, not the rejected limit"
+    systemctl.assert_called_once_with(["daemon-reload"], 30)
+
+    (target / "memory.current").write_text(str(1024 ** 3))
+    assert manager.apply("IMAGE_STORE", cpu_set, [handle("agent.service")], desired_memory, "role.slice")["synced"]
+    assert (target / "memory.max").read_text() == str(desired_memory)
+    with open(manager.systemd._drop_in_path("role.slice")) as stream:
+        assert "MemoryMax=%s" % desired_memory in stream.read()
+
+
 def test_active_v2_slice_rejects_unavailable_memory_controller(tmp_path, monkeypatch):
     manager = ResourceControlManager()
     (tmp_path / "role.slice").mkdir()
@@ -752,7 +801,8 @@ def test_apply_stages_service_slice_without_restarting_running_service(tmp_path,
     services = [handle("collectd.service"), handle("node_exporter.service")]
     result = manager.apply("COMPUTE", "0-3", services, 2 * 1024 ** 3, "zstack-compute.slice")
 
-    assert commands == [["daemon-reload"]]
+    assert commands == [["daemon-reload"], ["daemon-reload"]], \
+        "CPU configuration must load independently before validating and persisting the memory limit"
     assert manager.systemd.configured_slice("collectd.service") == "zstack-compute.slice"
     assert result["synced"] == active_in_slice, "Persisted inactive services must not hide active pending membership"
 
@@ -841,7 +891,8 @@ def test_cgroup_v1_systemd_slice_uses_managed_cpuset_and_role_memory_boundary(
         "[Service]\nSlice=zstack-compute.slice\n"
     assert resource_utils.read(manager.systemd._drop_in_path("zstack-compute.slice")) == \
         "[Slice]\nMemoryLimit=2147483648\n"
-    systemctl.assert_called_once_with(["daemon-reload"], 30)
+    assert [call.args for call in systemctl.call_args_list] == [
+        (["daemon-reload"], 30), (["daemon-reload"], 30)]
     assert result["synced"] == cpu_synced, "CPU mismatch must not stop later CPU or role memory assignment"
 
     release_cpu = Mock()
