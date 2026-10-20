@@ -58,5 +58,16 @@
                 <include name="**/*" />
             </fileset>
         </copy>
+
+        <copy todir="${tools.dir}/resource-control" overwrite="true">
+            <fileset dir="${zstacklib.source}/zstacklib/utils">
+                <include name="resource_control.py" />
+                <include name="resource_control_utils.py" />
+                <include name="systemd_resource_control_utils.py" />
+                <include name="cgroup*resource_control_backend*.py" />
+            </fileset>
+        </copy>
+        <copy file="${imagestorebackupstorage.source}/ansible/resource_control_cli.py"
+              todir="${tools.dir}/resource-control" overwrite="true" />
     </target>
 </project>
