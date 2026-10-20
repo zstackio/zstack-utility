@@ -352,7 +352,7 @@ def _configured(logical, physical):
 
 def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=False,
                             capacity_requested=True, include_zram=True,
-                            typed_quiescence_rejection=False, monkeypatch=None):
+                            typed_quiescence_rejection=False, monkeypatch=None, native_writeback_enabled=False):
     """Use the real Agent apply/reconcile methods with a typed service boundary."""
     shared = {'revision': 4}
     configured = _configured(OLD_LOGICAL_BYTES, OLD_PHYSICAL_BYTES)
@@ -370,7 +370,7 @@ def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=Fal
         'tuning': {'_http_status': 200, 'revision': 9,
                    'settings': {'host_floor_bytes': 0, 'metadata_reserve_bytes': 0,
                                 'transient_reserve_bytes': 0,
-                                'writeback': {'enabled': False, 'batch_bytes': 8388608,
+                                'writeback': {'enabled': native_writeback_enabled, 'batch_bytes': 8388608,
                                               'idle_observation_seconds': 10,
                                               'operation_interval_seconds': 5}}},
     }
@@ -427,7 +427,7 @@ def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=Fal
                 return {'_http_status': 409,
                         'error': 'TUNING_REQUIRES_QUIESCENT_EXECUTOR'}
             service_state['tuning'] = {
-                '_http_status': 200, 'revision': payload['expected_revision'],
+                '_http_status': 200, 'revision': payload['expected_revision'] + 1,
                 'request_id': payload['request_id'], 'settings': payload['settings']}
             return dict(service_state['tuning'])
         raise AssertionError('unexpected service action: %s' % action)
@@ -599,22 +599,59 @@ def _ksm_only_blocked_capacity_fixture(tmp_path, monkeypatch):
             native_commands, command, record_legacy_unknown)
 
 
-def test_ksm_only_clear_ignores_unqualified_capacity_without_writes(tmp_path, monkeypatch):
+@pytest.mark.parametrize('target', ['pure_ksm_clear', 'retained_ksm_blocked', 'retained_ksm_qualified', 'retained_ksm_missing_sections',
+                                    'retained_ksm_missing_state', 'retained_ksm_empty_sections'])
+def test_ksm_only_clear_ignores_unqualified_capacity_without_writes(tmp_path, monkeypatch, target):
     """A KSM-only clear is independent of an unrelated capacity block."""
-    plugin, _, calls, _, ack, native, native_commands, command, _ = \
+    plugin, service_state, calls, _, ack, native, native_commands, command, _ = \
         _ksm_only_blocked_capacity_fixture(
         tmp_path, monkeypatch)
+    if target != 'pure_ksm_clear':
+        command['policy']['ksm'] = {'pagesToScan': 2000, 'sleepMillis': 20}
+    if target == 'retained_ksm_qualified':
+        service_state['capacity'].update(
+            apply_state='APPLIED', reason='NATIVE_CONFIGURATION_VERIFIED',
+            effective_logical_bytes=OLD_LOGICAL_BYTES,
+            effective_physical_limit_bytes=OLD_PHYSICAL_BYTES)
     before_calls = len(calls)
     before_native = dict(native)
     before_native_commands = list(native_commands)
     prior_control = plugin._get_active_control()
+    if target in ('retained_ksm_missing_sections', 'retained_ksm_missing_state',
+                  'retained_ksm_empty_sections'):
+        prior = plugin._load_operation({'operationUuid': prior_control})
+        if target == 'retained_ksm_missing_state':
+            prior['readback'].pop('state')
+        elif target == 'retained_ksm_empty_sections':
+            prior['readback']['state']['sections'] = {}
+        else:
+            prior['readback']['state'].pop('sections')
+        prior['applyEvidence'] = json.loads(json.dumps(prior['readback']))
+        with open(plugin._operation_path(prior_control), 'w') as stream:
+            json.dump(prior, stream, sort_keys=True)
     result = plugin.apply(command)
+    if target in ('retained_ksm_blocked', 'retained_ksm_missing_sections',
+                  'retained_ksm_missing_state', 'retained_ksm_empty_sections'):
+        assert result['status'] == 'Unknown', result
+        assert result['reasonCode'] == ('MIXED_CLEAR_PRIOR_CAPACITY_UNKNOWN'
+                                        if target == 'retained_ksm_blocked' else
+                                        'MIXED_CLEAR_PRIOR_SERVICE_JOURNAL_INVALID')
+        assert plugin._get_active_control() == prior_control
+        assert native == before_native
+        assert native_commands == before_native_commands
+        assert not [action for action, _ in calls[before_calls:]
+                    if action in ('capacity', 'host-cpu', 'apply')]
+        return
     # Desired contract: a schema-1 KSM-only clear is independent of an
     # unrelated blocked capacity state and must not enter Go service writes.
     assert result['status'] == 'Succeeded', result
     writes = [action for action, _ in calls[before_calls:]
               if action in ('capacity', 'host-cpu', 'apply')]
-    assert writes == []
+    if target == 'pure_ksm_clear':
+        assert writes == []
+    else:
+        assert result['state'].get('ksmOnly') is not True
+        assert result['state']['mixedClearEvidence']['complete'] is True
     record = plugin._load_operation(command)
     assert record['stage'] == 'APPLIED'
     assert record['desiredRevision'] == command['desiredRevision']
@@ -767,7 +804,7 @@ def test_mixed_capacity_unknown_reconcile_rejects_unproven_checkpoint(
                    for action, _ in calls[before_calls:])
 
 
-@pytest.mark.parametrize('scenario', ['quiet_retry', 'deadline', 'nonbusy_409', 'transport_loss'])
+@pytest.mark.parametrize('scenario', ['quiet_retry', 'unmanaged_writeback', 'mixed_unmanaged_writeback', 'deadline', 'nonbusy_409', 'transport_loss'])
 def test_tuning_quiescence_retries_exact_prewrite_rejection_before_cpu_restore(
         tmp_path, monkeypatch, scenario):
     """Only the exact typed pre-write rejection may retry, within a bounded quiet window."""
@@ -812,7 +849,7 @@ def test_tuning_quiescence_retries_exact_prewrite_rejection_before_cpu_restore(
                 raise IOError('transport lost after request')
             if scenario == 'nonbusy_409':
                 return {'_http_status': 409, 'error': 'REVISION_CONFLICT'}
-            if scenario == 'deadline' or len(apply_calls) == 1:
+            if scenario == 'deadline' or (len(apply_calls) == 1 and scenario != 'mixed_unmanaged_writeback'):
                 return {'_http_status': 409,
                         'error': 'TUNING_REQUIRES_QUIESCENT_EXECUTOR'}
             tuning.update(revision=tuning['revision'] + 1,
@@ -829,19 +866,31 @@ def test_tuning_quiescence_retries_exact_prewrite_rejection_before_cpu_restore(
                'policy': {'ksm': {'enabled': True, 'zeroPagesEnabled': True},
                           'zram': {'enabled': True},
                           'writeback': {'enabled': False}}}
+    if scenario in ('unmanaged_writeback', 'mixed_unmanaged_writeback'):
+        command['policy']['zram']['enabled'] = False
+        command['policy'].pop('writeback')
     monkeypatch.setattr(memory_optimization_module.linux, 'monotime',
                         lambda: clock[0])
     monkeypatch.setattr(memory_optimization_module.time, 'sleep',
                         lambda seconds: clock.__setitem__(0, clock[0] + seconds))
 
-    result = plugin._apply_service_policy_fail_closed(command)
+    result = (plugin._apply_service_policy(command, receipt_sink={})
+              if scenario == 'mixed_unmanaged_writeback' else
+              plugin._apply_service_policy_fail_closed(command))
+    if scenario == 'mixed_unmanaged_writeback':
+        assert result['status'] == 'Succeeded', result
+        assert len(apply_calls) == 1
+        assert apply_calls[0]['settings']['writeback']['enabled'] is True
+        assert [item['efficiency_enabled'] for item in cpu_writes] == [True]
+        assert cpu['efficiency_enabled'] is True
+        return
 
-    if scenario == 'quiet_retry':
+    if scenario in ('quiet_retry', 'unmanaged_writeback'):
         assert result['status'] == 'Succeeded', result
         assert len(apply_calls) == 2
         assert apply_calls[0]['request_id'] == apply_calls[1]['request_id']
         assert apply_calls[0]['settings'] == apply_calls[1]['settings']
-        assert apply_calls[0]['settings']['writeback']['enabled'] is False
+        assert apply_calls[0]['settings']['writeback']['enabled'] is (scenario == 'unmanaged_writeback')
         assert [item['efficiency_enabled'] for item in cpu_writes] == [False, True]
         assert cpu['efficiency_enabled'] is True
         assert poll_count[0] >= 2
@@ -2917,18 +2966,23 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
     assert restarts == [True]
 
 
-@pytest.mark.parametrize('zram,writeback,cpu_enabled', [
-    ({'enabled': False}, None, False),
-    ({'cpuThresholdPercent': 5}, None, False),
-    ({}, {'enabled': False}, False),
-    ({'enabled': True}, None, False),
-    ({}, None, True),
+@pytest.mark.parametrize('zram,writeback,cpu_enabled,native_writeback_enabled', [
+    ({'enabled': False}, None, False, False),
+    ({'cpuThresholdPercent': 5}, None, False, False),
+    ({}, {'enabled': False}, False, False),
+    ({'enabled': True}, None, False, False),
+    ({}, None, True, False),
+    ({'enabled': False}, None, True, True),
 ])
 def test_explicit_cpu_policy_or_guard_requires_its_real_cpu_receipt(
-        tmp_path, zram, writeback, cpu_enabled):
-    plugin, _, calls, _, applied = _capacity_apply_fixture(
-        tmp_path, zram=zram, writeback=writeback, cpu_enabled=cpu_enabled)
+        tmp_path, zram, writeback, cpu_enabled, native_writeback_enabled):
+    plugin, state, calls, _, applied = _capacity_apply_fixture(
+        tmp_path, zram=zram, writeback=writeback, cpu_enabled=cpu_enabled,
+        native_writeback_enabled=native_writeback_enabled)
     assert [payload for action, payload in calls if action == 'host-cpu']
+    if native_writeback_enabled:
+        assert state['tuning']['settings']['writeback']['enabled'] is True
+        assert state['cpu']['efficiency_enabled'] is True
     record = _journal(plugin)
     sections = record['applyEvidence']['state']['sections']
     assert 'cpu' in sections
@@ -2936,7 +2990,7 @@ def test_explicit_cpu_policy_or_guard_requires_its_real_cpu_receipt(
         assert 'cpuGuard' in sections
     result = _reconcile(plugin)
     # Valid CPU evidence remains subject to the same strict capacity proof.
-    assert result['status'] == 'Blocked'
+    assert result['status'] == 'Blocked', result
 
     sections.pop('cpu')
     _write_journal(plugin, record)
