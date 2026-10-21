@@ -11123,11 +11123,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         zram = policy.get('zram') or {}
         writeback = policy.get('writeback') or {}
         missing = []
+        driver = capabilities.get('zramDriver')
+        accounting_unavailable = (
+            isinstance(driver, dict) and driver.get('applicable') is True and
+            driver.get('accountingSupported') is not True)
         if ksm.get('enabled') and not capabilities.get('ksm'):
             missing.append('ksm')
         if ksm.get('zeroPagesEnabled') and not capabilities.get('ksmZeroPages'):
             missing.append('ksmZeroPages')
-        if zram.get('enabled') and not capabilities.get('zram'):
+        if zram.get('enabled') and (
+                not capabilities.get('zram') or accounting_unavailable):
             missing.append('zram')
         if writeback.get('enabled') and not capabilities.get('writeback'):
             missing.append('writeback')
@@ -12376,7 +12381,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'rebootRequired': reboot_required,
             'installedCandidateKernel': installed_candidate,
             'reclaimQualification': qualification,
-            'writeback': bool(zram and interfaces.get('zram_writeback')),
+            'writeback': bool(zram and interfaces.get('zram_writeback') and
+                              (driver is None or driver.get('writebackSupported') is True)),
             'service': service_ready,
             'interfaces': interfaces,
         }
