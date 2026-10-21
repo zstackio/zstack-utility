@@ -1208,6 +1208,9 @@ def test_inspect_reports_restart_required_until_service_enters_role_slice(tmp_pa
         os.makedirs(target)
         with open(os.path.join(target, "cpuset.cpus.effective"), "w") as stream:
             stream.write("1-4")
+    for target, value in ((root, "max"), (role, str(4 * 1024 ** 3)), (old_target, "max"), (ready_target, "max")):
+        with open(os.path.join(target, "memory.max"), "w") as stream:
+            stream.write(value)
     drop_in = str(tmp_path / "units" / "node_exporter.service.d" / manager.systemd.SYSTEMD_DROP_IN)
     os.makedirs(os.path.dirname(drop_in))
     with open(drop_in, "w") as stream:
@@ -1215,9 +1218,8 @@ def test_inspect_reports_restart_required_until_service_enters_role_slice(tmp_pa
     current = {"group": "/system.slice/node_exporter.service"}
     monkeypatch.setattr(manager.backend_factory, "cpu", Mock(return_value=CgroupV2ResourceControlBackend(root)))
     monkeypatch.setattr(manager.backend_factory, "v2_roots", lambda: [root])
-    monkeypatch.setattr(
-        manager.backend_factory, "memory",
-        lambda: (_ for _ in ()).throw(ResourceControlError("No available memory controller was found")))
+    memory_backend = CgroupV2ResourceControlBackend(root)
+    monkeypatch.setattr(manager.backend_factory, "find_memory", lambda: memory_backend)
     monkeypatch.setattr(manager.systemd, "_drop_in_path", lambda _unit: drop_in)
     monkeypatch.setattr(manager.systemd, "properties", lambda unit: {
         "LoadState": "loaded",
@@ -1235,6 +1237,18 @@ def test_inspect_reports_restart_required_until_service_enters_role_slice(tmp_pa
     assert ready["restartRequired"] is False, (
         "Services in the configured role slice must clear the restart hint: "
         "expected=False actual=%s" % ready.get("restartRequired"))
+
+    legacy_group = "zstack-role-COMPUTE-unit-node_exporter.service"
+    legacy_target = tmp_path / "cgroup2" / legacy_group
+    legacy_target.mkdir()
+    (legacy_target / "cpuset.cpus.effective").write_text("1-4")
+    current["group"] = "/" + legacy_group
+    assert manager.inspect("COMPUTE", [handle("node_exporter.service")])[0]["restartRequired"], \
+        "A legacy CPU group outside the finite memory Slice must still require restart"
+    with open(os.path.join(role, "memory.max"), "w") as stream:
+        stream.write("max")
+    assert not manager.inspect("COMPUTE", [handle("node_exporter.service")])[0]["restartRequired"], \
+        "An unlimited Slice must preserve the managed CPU group's readiness"
 
 
 def test_inspect_reports_cpu_inherited_from_role_slice(tmp_path, monkeypatch):
@@ -1307,6 +1321,61 @@ def test_cgroup_v1_inspect_uses_main_pid_without_reporting_root_cpu_time(tmp_pat
         "memory": 96 * 1024 ** 2,
         "memoryLimit": 2 * 1024 ** 3,
     }
+
+
+@pytest.mark.parametrize("cpu_version,memory_version", [
+    (CGROUP_VERSION_V1, CGROUP_VERSION_V1), (CGROUP_VERSION_V1, CGROUP_VERSION_V2),
+    (CGROUP_VERSION_V2, CGROUP_VERSION_V1)])
+def test_inspect_checks_memory_role_after_cpu_is_ready(tmp_path, monkeypatch, cpu_version, memory_version):
+    manager = ResourceControlManager()
+    cpu_root = tmp_path / "cpuset"
+    memory_root = tmp_path / "memory"
+    unit = "zstack-kvmagent.service"
+    role = "zstack-compute.slice"
+    role_group = "/zstack.slice/" + role
+    old_group = "/system.slice/" + unit
+    ready_group = role_group + "/" + unit
+    cpu_target = cpu_root / ("zstack-role-COMPUTE-unit-" + unit)
+    memory_role = memory_root / role_group.lstrip("/")
+    limit_file = "memory.limit_in_bytes" if memory_version == CGROUP_VERSION_V1 else "memory.max"
+    usage_file = "memory.usage_in_bytes" if memory_version == CGROUP_VERSION_V1 else "memory.current"
+    unlimited = "9223372036854771712" if memory_version == CGROUP_VERSION_V1 else "max"
+    limit = 4 * 1024 ** 3
+    for path, value in (
+            (cpu_target / "cpuset.cpus", "1-3"), (cpu_target / "cgroup.procs", "1234\n"),
+            (memory_root / limit_file, unlimited), (memory_role / limit_file, str(limit)),
+            (memory_root / old_group.lstrip("/") / limit_file, unlimited),
+            (memory_root / old_group.lstrip("/") / usage_file, "1048576"),
+            (memory_root / ready_group.lstrip("/") / limit_file, unlimited),
+            (memory_root / ready_group.lstrip("/") / usage_file, "1048576")):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(value)
+    manager.systemd.SYSTEMD_UNIT_ROOT = str(tmp_path / "units")
+    manager.systemd.configure_service(unit, role)
+    current = {"group": old_group, "state": "active"}
+    monkeypatch.setattr(manager.systemd, "properties", lambda name: {
+        "LoadState": "loaded", "ActiveState": "active" if name == role else current["state"],
+        "ControlGroup": role_group if name == role else current["group"]})
+    monkeypatch.setattr(manager.backend_factory, "cpu", lambda: backend_for_version(cpu_version, str(cpu_root)))
+    memory_backend = backend_for_version(memory_version, str(memory_root))
+    monkeypatch.setattr(manager.backend_factory, "find_memory", lambda: memory_backend)
+    monkeypatch.setattr(manager.backend_factory, "cpu_accounting", lambda: [])
+    monkeypatch.setattr(manager.backend_factory, "legacy_cpu_accounting", lambda: [])
+
+    pending = manager.inspect("COMPUTE", [handle(unit)], role)[0]
+    assert pending["cpuSet"] == "1-3" and pending["memoryLimit"] == 0
+    assert pending["restartRequired"], "CPU readiness must not hide pending memory role placement"
+    assert not pending["restartable"], "A restart hint must not grant permission to restart core services"
+    current["group"] = ready_group
+    ready = manager.inspect("COMPUTE", [handle(unit)], role)[0]
+    assert ready["memoryLimit"] == limit and not ready["restartRequired"]
+    current["group"] = old_group
+    current["state"] = "inactive"
+    assert not manager.inspect("COMPUTE", [handle(unit)], role)[0]["restartRequired"]
+    current["state"] = "active"
+    (memory_role / limit_file).write_text(unlimited)
+    assert not manager.inspect("COMPUTE", [handle(unit)], role)[0]["restartRequired"], \
+        "An unlimited memory role must not require restart when CPU is already ready"
 
 
 def test_hybrid_inspect_reads_each_controller_from_its_own_hierarchy(tmp_path, monkeypatch):
