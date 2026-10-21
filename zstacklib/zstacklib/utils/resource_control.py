@@ -387,16 +387,21 @@ class ResourceControlManager(object):
         slice_name = self.systemd.configured_slice(self._value(handle, 'value'))
         if slice_name is None:
             return False
-        managed = self._managed_unit_group(backend.root, role_type, self._value(handle, 'value'))
-        if current == managed or backend.has_processes(managed):
-            return False
         if slice_name not in slice_targets:
             properties = self.systemd.properties(slice_name)
             target = backend.find_target(properties.get('ControlGroup')) \
                 if properties.get('ActiveState') == 'active' else None
             slice_targets[slice_name] = target
         target = slice_targets[slice_name]
-        return target is None or not backend.is_descendant(current, target)
+        in_slice = target is not None and backend.is_descendant(current, target)
+        managed = self._managed_unit_group(backend.root, role_type, self._value(handle, 'value'))
+        cpu_restart_required = not in_slice and current != managed and not backend.has_processes(managed)
+        memory_backend = self.backend_factory.find_memory()
+        memory_target = self._active_slice_target(memory_backend, slice_name) if memory_backend is not None else None
+        memory_limit = memory_backend.read_memory_limit(memory_target) if memory_target is not None else None
+        memory_restart_required = (memory_limit or 0) > 0 and not memory_backend.contains(
+            self.systemd.properties(self._value(handle, 'value')).get('ControlGroup'), memory_target)
+        return cpu_restart_required or memory_restart_required
 
     def _inspect_target(self, backend, role_type, handle):
         handle_type = self._value(handle, 'handleType')
