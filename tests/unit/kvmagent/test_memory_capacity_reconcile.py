@@ -4802,3 +4802,78 @@ def test_drained_backend_holder_is_eligible_only_from_same_control_owner_proof(
         assert prepared['reasons'] == sorted(
             ['ACTIVE_BLOCK_HOLDERS'] +
             (['SERIAL_IDENTITY_MISSING'] if tamper == 'other_candidate_reason' else []))
+
+
+def test_zram_budget_operations_require_known_accounting_capability():
+    command = {'policy': {'zram': {'enabled': True}}}
+
+    with pytest.raises(ValueError, match='UNSUPPORTED_HOST_CAPABILITY:zram'):
+        MemoryOptimizationPlugin._validate_requested_capabilities(command, {
+            'zram': True,
+            'zramDriver': {'applicable': True, 'accountingSupported': False},
+        })
+
+
+def test_ksm_remains_available_when_zram_accounting_schema_is_unknown():
+    command = {'policy': {'ksm': {'enabled': True}}}
+
+    MemoryOptimizationPlugin._validate_requested_capabilities(command, {
+        'ksm': True, 'zram': True,
+        'zramDriver': {'applicable': True, 'accountingSupported': False},
+    })
+
+
+def test_agent_keeps_base_zram_and_ksm_capabilities_when_optional_abi_is_missing(
+        monkeypatch):
+    plugin = MemoryOptimizationPlugin()
+    plugin.socket_path = '/run/zram-efficiency-admission/control.sock'
+    kernel = '6.6.104-006.1.pro.ali6000.alnx4.x86_64'
+    monkeypatch.setattr(memory_optimization_module.platform, 'machine',
+                        lambda: 'x86_64')
+    monkeypatch.setattr(memory_optimization_module.platform, 'release',
+                        lambda: kernel)
+    monkeypatch.setattr(memory_optimization_module.os, 'sysconf',
+                        lambda name: 4096)
+    real_open = open
+
+    def read_os_release(path, *args, **kwargs):
+        if path == '/etc/os-release':
+            import io
+            return io.StringIO('ID=alinux\nVERSION_ID="4.0"\n')
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr('builtins.open', read_os_release)
+    available = {
+        '/run/zram-efficiency-admission/control.sock',
+        '/sys/kernel/mm/ksm/run',
+        '/sys/kernel/mm/ksm/pages_to_scan',
+        '/sys/kernel/mm/ksm/sleep_millisecs',
+        '/sys/block/zram0/mm_stat',
+        '/sys/fs/cgroup/cgroup.controllers',
+        '/sys/fs/cgroup/memory.reclaim',
+    }
+    monkeypatch.setattr(memory_optimization_module.os.path, 'exists',
+                        lambda path: path in available)
+    monkeypatch.setattr(plugin, 'service_call', lambda action, payload: {
+        'abiProfile': 'zram-service-v1', 'schemaVersion': 1,
+        'reclaim_qualification': {
+            'kernel': kernel, 'architecture': 'amd64', 'page_size_bytes': 4096,
+            'supported': True,
+        },
+    })
+    monkeypatch.setattr(plugin, 'installed_reclaim_candidate',
+                        lambda release, running_kernel: None)
+    monkeypatch.setattr(memory_optimization_module.zram_driver, 'inspect',
+                        lambda **kwargs: {
+                            'supported': True, 'reasonCode': 'SUPPORTED',
+                            'accountingSupported': False,
+                            'writebackSupported': False,
+                        })
+
+    capabilities = plugin.discover_capabilities()
+
+    assert capabilities['supported'] is True
+    assert capabilities['ksm'] is True
+    assert capabilities['zram'] is True
+    assert capabilities['zramDriver']['accountingSupported'] is False
+    assert capabilities['writeback'] is False
