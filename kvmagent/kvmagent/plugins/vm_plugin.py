@@ -1608,6 +1608,10 @@ def get_machineType(machine_type):
         return "virt"
     return machine_type if machine_type else "pc"
 
+
+def is_i440fx_machine_type(machine_type):
+    return machine_type == 'pc' or (machine_type and machine_type.startswith('pc-i440fx'))
+
 def get_sgio_value():
     device_name = [x for x in os.listdir("/sys/block") if not x.startswith("loop")][0]
     return "unfiltered" if os.path.isfile("/sys/block/{}/queue/unpriv_sgio".format(device_name)) else "filtered"
@@ -2861,12 +2865,54 @@ class Vm(object):
         self.start(cmd.timeout)
 
     def restore(self, path):
+        self._remove_legacy_virtio_blk_discard_if_absent_in_saved_image(path)
+
         @LibvirtAutoReconnect
         def restore_from_file(conn):
             return conn.restoreFlags(path, self.domain_xml)
 
         logger.debug('restoring vm:\n%s' % self.domain_xml)
         restore_from_file()
+
+    def _remove_legacy_virtio_blk_discard_if_absent_in_saved_image(self, path):
+        qemu_namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
+        root = etree.fromstring(self.domain_xml)
+        os_type = root.find('./os/type')
+        if os_type is None or not is_i440fx_machine_type(os_type.get('machine')):
+            return
+
+        commandline = root.find('%scommandline' % qemu_namespace)
+        if commandline is None:
+            return
+
+        args = commandline.findall('%sarg' % qemu_namespace)
+        if not any(arg.get('value') == 'virtio-blk-pci.discard=on' for arg in args):
+            return
+
+        @LibvirtAutoReconnect
+        def get_saved_xml(conn):
+            return conn.saveImageGetXMLDesc(path, 0)
+
+        saved_root = etree.fromstring(get_saved_xml())
+        saved_commandline = saved_root.find('%scommandline' % qemu_namespace)
+        saved_args = saved_commandline.findall('%sarg' % qemu_namespace) if saved_commandline is not None else []
+        if any(arg.get('value') == 'virtio-blk-pci.discard=on' for arg in saved_args):
+            return
+
+        for arg in reversed(args):
+            if arg.get('value') != 'virtio-blk-pci.discard=on':
+                continue
+
+            index = list(commandline).index(arg)
+            commandline.remove(arg)
+            if index > 0:
+                previous = list(commandline)[index - 1]
+                if previous.tag == '%sarg' % qemu_namespace and previous.get('value') == '-global':
+                    commandline.remove(previous)
+
+        if not list(commandline):
+            root.remove(commandline)
+        self.domain_xml = etree.tostring(root)
 
     def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
@@ -3262,6 +3308,7 @@ class Vm(object):
             def blk():
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(volume.installPath), 'cache': 'none', 'io': 'native'}
+                driver_elements['discard'] = 'unmap'
                 if volume.useVirtio and volume.hasattr("multiQueues") and volume.multiQueues:
                     driver_elements["queues"] = volume.multiQueues
                 if (not volume.useVirtioSCSI) and volume.useVirtio and volume.hasattr("ioThreadId") and volume.ioThreadId:
@@ -5800,6 +5847,12 @@ class Vm(object):
                 e(qcmd, "qemu:arg", attrib={"value": '-monitor'})
                 e(qcmd, "qemu:arg", attrib={"value": 'tcp:%s:%s,server,nowait' % (secondary_vm_host_ip, secondary_monitor_port)})
 
+        def make_legacy_virtio_blk_discard_commandline():
+            root = elements['root']
+            qcmd = e(root, 'qemu:commandline')
+            e(qcmd, 'qemu:arg', attrib={'value': '-global'})
+            e(qcmd, 'qemu:arg', attrib={'value': 'virtio-blk-pci.discard=on'})
+
         def make_devices():
             root = elements['root']
             devices = e(root, 'devices')
@@ -6178,6 +6231,7 @@ class Vm(object):
             def block_volume(_dev_letter, _v):
                 disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
                 driver_elements = {'name': 'qemu', 'type': linux.get_img_fmt(_v.installPath), 'cache': 'none', 'io': 'native'}
+                driver_elements['discard'] = 'unmap'
                 if _v.useVirtio and _v.hasattr("multiQueues") and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
                 if (not _v.useVirtioSCSI) and _v.useVirtio and _v.hasattr("ioThreadId") and _v.ioThreadId:
@@ -6901,6 +6955,9 @@ class Vm(object):
 
         if cmd.additionalQmp:
             make_qemu_commandline()
+
+        if HOST_ARCH == 'x86_64' and cmd.bootMode == 'Legacy' and is_i440fx_machine_type(machine_type):
+            make_legacy_virtio_blk_discard_commandline()
 
         if cmd.useHugePage or cmd.MemAccess in "shared" or cmd.noSharePages:
             make_memory_backing()
@@ -8812,8 +8869,9 @@ class VmPlugin(kvmagent.KvmAgent):
 
         def block_volume(_v):
             disk = etree.Element('disk', {'type': 'block', 'device': 'disk', 'snapshot': 'external'})
-            e(disk, 'driver', None,
-              {'name': 'qemu', 'type': driver_type, 'cache': 'none', 'io': 'native'})
+            driver_elements = {'name': 'qemu', 'type': driver_type, 'cache': 'none', 'io': 'native'}
+            driver_elements['discard'] = 'unmap'
+            e(disk, 'driver', None, driver_elements)
             e(disk, 'source', None, {'dev': _v.installPath})
             return disk
 
