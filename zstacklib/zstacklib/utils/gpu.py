@@ -4,11 +4,28 @@ from zstacklib.utils import thread
 from zstacklib.utils.bash import *
 from enum import Enum
 import json
+import re
 
 from zstacklib.utils.pci import VendorEnum
 from zstacklib.utils.qga import VmQga
 
 logger = log.get_logger(__name__)
+
+_PCI_BDF_PATTERN = re.compile(
+    r'(?:0x)?[0-9a-fA-F]{1,8}:(?:0x)?[0-9a-fA-F]{1,2}:'
+    r'(?:0x)?[0-9a-fA-F]{1,2}\.(?:0x)?[0-9a-fA-F]+')
+
+
+def extract_pci_bdf(value):
+    """Return the first valid PCI BDF found in *value*.
+
+    hy-smi on Hygon K100 may append serial text to the PCI Bus field,
+    e.g. "0000:06:00.0 --> SN: TRCW390010030401".
+    """
+    if not value:
+        return value
+    match = _PCI_BDF_PATTERN.search(value)
+    return match.group(0) if match else value
 
 
 class VmGpuStatus(Enum):
@@ -119,7 +136,7 @@ def parse_hy_gpu_output(output):
         gpu_info_json = json.loads(output)
         for card_name, card_data in gpu_info_json.items():
             gpuinfo = {}
-            pci_device_address = card_data['PCI Bus'].lower()
+            pci_device_address = extract_pci_bdf(card_data['PCI Bus']).lower()
             if len(pci_device_address.split(':')[0]) == 8:
                 pci_device_address = pci_device_address[4:].lower()
 
