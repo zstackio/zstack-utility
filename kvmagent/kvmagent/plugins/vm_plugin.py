@@ -8433,6 +8433,7 @@ class Vm(object):
             device_attr = {'type': iftype}
         elif nic.type == "MACVLAN":
             iftype = 'direct'
+            device_attr = {'type': iftype}
         elif nic.type == 'TFVNIC':
             iftype = 'ethernet'
             device_attr = {'type': iftype}
