@@ -2823,15 +2823,23 @@ class StartCmd(Command):
         if args.host:
             self._start_remote(args)
             return
-        # clean the error log before booting
-        boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
-        linux.rm_file_force(boot_error_log)
+        if os.getuid() != 0:
+            raise CtlError('please use sudo or root user')
+
+        if self._start_local(args) and not args.daemon:
+            shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception=False)
+
+    @lock.file_lock('/run/zstack-management-node-start.lock')
+    def _start_local(self, args):
         pid = get_management_node_pid()
         if pid:
             info('the management node[pid:%s] is already running' % pid)
             return
         else:
             linux.rm_file_force(os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
+
+        boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
+        linux.rm_file_force(boot_error_log)
 
         def check_mn_port():
             mn_port = get_mn_port()
@@ -3099,11 +3107,10 @@ class StartCmd(Command):
 
             raise e
 
-        if not args.daemon:
-            shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception = False)
         info_and_debug('successfully started management node')
 
         ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
+        return True
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
