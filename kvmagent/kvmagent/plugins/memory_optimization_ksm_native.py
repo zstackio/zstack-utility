@@ -65,27 +65,6 @@ def _managed_expected_values(pages_to_scan, native_sleep):
     }
 
 
-def _custom_native_assignments(text):
-    """Read native keys without evaluating shell syntax or changing user bytes."""
-    managed_keys = set(_managed_expected_values(1, 1))
-    result = {}
-    for number, line in enumerate((text or '').splitlines(), 1):
-        stripped = line.strip()
-        if not stripped or stripped.startswith('#'):
-            continue
-        match = re.match(r'^([A-Z_][A-Z0-9_]*)=(.*)$', stripped)
-        if not match or match.group(1) not in managed_keys:
-            continue
-        key, raw_value = match.groups()
-        value_match = re.match(r'^([0-9]+)\s*(?:#.*)?$', raw_value)
-        if not value_match:
-            raise NativeKsmConfigError('KSM_CONFIG_CUSTOM_VALUE_UNKNOWN:%s:%d' %
-                                       (key, number))
-        value = int(value_match.group(1))
-        result[key] = value
-    return result
-
-
 def render_config(existing_text, revision, pages_to_scan, native_sleep):
     """Append one managed block, preserving all customer content outside it.
 
@@ -103,22 +82,8 @@ def render_config(existing_text, revision, pages_to_scan, native_sleep):
     lines = text.splitlines()
     if sum(1 for line in lines if line == MANAGED_BEGIN) > 1:
         raise NativeKsmConfigError('KSM_CONFIG_MULTIPLE_MANAGED_BLOCKS')
-    outside_managed = []
-    in_existing_managed = False
-    for line in lines:
-        if line == MANAGED_BEGIN:
-            in_existing_managed = True
-            continue
-        if line == MANAGED_END:
-            in_existing_managed = False
-            continue
-        if not in_existing_managed:
-            outside_managed.append(line)
-    custom_values = _custom_native_assignments('\n'.join(outside_managed))
-    expected_values = _managed_expected_values(pages_to_scan, native_sleep)
-    for key, value in custom_values.items():
-        if key in expected_values and value != expected_values[key]:
-            raise NativeKsmConfigError('KSM_CONFIG_CUSTOM_VALUE_CONFLICT:%s' % key)
+    # ksmtuned sources this file as shell: the appended managed block wins over
+    # earlier customer assignments without rewriting them.
     output = []
     in_managed = False
     for line in lines:

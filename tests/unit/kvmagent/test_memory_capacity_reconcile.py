@@ -474,12 +474,12 @@ def _ksm_only_blocked_capacity_fixture(tmp_path, monkeypatch):
     plugin.KSM_LOCK = str(tmp_path / 'ksmtuned.lock')
     plugin.socket_path = str(tmp_path / 'memory-service.sock')
     Path(plugin.socket_path).touch()
-    profile = {}
+    native_files = []
     for name in ('ksmtuned', 'ksmctl', 'ksm.service', 'ksmtuned.service'):
         profile_path = tmp_path / name
         profile_path.write_text('test-native-profile-' + name)
-        profile[str(profile_path)] = hashlib.sha256(profile_path.read_bytes()).hexdigest()
-    plugin.NATIVE_KSM_PROFILE_VARIANTS = (profile,)
+        native_files.append(str(profile_path))
+    plugin.NATIVE_KSM_FILES = tuple(native_files)
     native = {'run': '1', 'pages_to_scan': '2000', 'sleep_millisecs': '20',
               'use_zero_pages': '0'}
     Path(plugin.KSM_CONF).write_text(memory_optimization_module.render_config(

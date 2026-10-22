@@ -703,10 +703,6 @@ def copy_tools():
     # create pushgateway persistence data directory
     command = 'mkdir -p %s' % os.path.join(zstack_lib_dir, 'prometheus', 'host_pushgateway')
     run_remote_command(command, host_post_info)
-    # node_exporter reads *.prom files from this stable, root-readable path.
-    # mkdir is idempotent and does not alter any existing sample files.
-    run_remote_command('mkdir -p /var/lib/node_exporter/textfile_collector', host_post_info)
-
 
 def copy_kvm_files():
     """copy kvmagent files and packages"""
@@ -1147,25 +1143,10 @@ def do_ksm_config():
         return
 
     oprator = "1" if isEnableKsm == 'true' else "0"
-    # Keep the existing one-shot connect setting for hosts not yet managed by
-    # the standard Agent policy. Once that policy has written its durable
-    # native config block, only the Agent operation path may change run; do not
-    # let a reconnect race or overwrite the acknowledged policy.
-    command = (
-        'if [ -e /etc/ksmtuned.conf ] || [ -L /etc/ksmtuned.conf ]; then '
-        'if [ ! -f /etc/ksmtuned.conf ] || [ ! -r /etc/ksmtuned.conf ]; then '
-        'echo ZSTACK_KSM_CONFIG_CHECK_FAILED; exit 0; fi; '
-        "grep -Eq '^# (BEGIN|END) ZSTACK MEMORY OPTIMIZATION$' /etc/ksmtuned.conf; "
-        'grep_status=$?; if [ "$grep_status" -eq 0 ]; then exit 0; fi; '
-        'if [ "$grep_status" -ne 1 ]; then '
-        'echo ZSTACK_KSM_CONFIG_CHECK_FAILED; exit 0; fi; fi; '
-        'echo %s > /sys/kernel/mm/ksm/run') % oprator
+    command = "echo %s > /sys/kernel/mm/ksm/run" % oprator
     host_post_info.post_label = "ansible.shell.host-ksm"
     host_post_info.post_label_param = None
-    _, output = run_remote_command(command, host_post_info, return_output=True)
-    if 'ZSTACK_KSM_CONFIG_CHECK_FAILED' in (output or ''):
-        handle_ansible_info('ksmtuned configuration could not be verified; KSM state was not changed',
-                            host_post_info, 'WARNING')
+    run_remote_command(command, host_post_info)
 
 
 def _memory_supported_host():
@@ -1174,10 +1155,7 @@ def _memory_supported_host():
     facts = ' '.join(getattr(host_info, 'ansible_distribution', '').lower().split())
     return host_info.host_arch == 'x86_64' and facts in (
         'helix green obsidian 8.4r', 'helix green obsidian 8.4',
-        'alibaba cloud linux pro edition 4', 'alibaba openanolis edition 4',
-        'kylin_tercel tercel 10', 'kylin_sword sword 10',
-        'kylin_zstack zstack 10', 'kylin_lance lance 10',
-        'kylin_halberd halberd 10')
+        'alibaba cloud linux pro edition 4', 'alibaba openanolis edition 4')
 
 
 def _memory_optimization_rpm_input():
@@ -1446,153 +1424,6 @@ def install_memory_optimization_materials():
             host_post_info, 'WARNING')
 
 
-def check_alinux_zram_driver():
-    """Install the repo kmod that owns the running kernel's exact module path.
-
-    This is an optional-feature check, not permission to disconnect a Host or
-    replace a loaded module. Agent discovery rechecks the same running facts.
-    """
-    if releasever != 'alinux4' or not _memory_supported_host():
-        return
-    python = shlex.quote(os.path.join(virtenv_path, 'bin', 'python'))
-    command = python + ' -m zstacklib.utils.zram_driver'
-    status, output = run_remote_command('uname -r', host_post_info,
-                                        return_status=True, return_output=True)
-    if isinstance(output, bytes):
-        output = output.decode('utf-8', 'replace')
-    kernel = output.strip() if status and isinstance(output, str) else ''
-    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+-]{0,254}', kernel):
-        handle_ansible_info('ZRAM driver cannot identify the running kernel',
-                            host_post_info, 'WARNING')
-        return
-    repo_options = ''
-    if zstack_repo and zstack_repo != 'false':
-        selected_repo = zstack_repo.strip('"')
-        if not selected_repo or re.search(r'[\r\n]', selected_repo):
-            handle_ansible_info('ZRAM driver repository configuration is invalid',
-                                host_post_info, 'WARNING')
-            return
-        repo_options = '--disablerepo="*" --enablerepo=%s ' % shlex.quote(selected_repo)
-    module_path = '/lib/modules/%s/updates/zstack-zram/zram.ko' % kernel
-    query = ('yum -q %srepoquery --available --arch=x86_64 --file %s --qf %s' %
-             (repo_options, shlex.quote(module_path),
-              shlex.quote('%{name}\\t%{epoch}\\t%{version}\\t%{release}\\t%{arch}')))
-    query_status, query_output = run_remote_command(
-        query, host_post_info, return_status=True, return_output=True)
-    if isinstance(query_output, bytes):
-        query_output = query_output.decode('utf-8', 'replace')
-    try:
-        if not query_status:
-            raise ValueError('ZRAM_DRIVER_REPOQUERY_FAILED')
-        candidates = set()
-        for line in query_output.splitlines():
-            if not line.strip():
-                continue
-            fields = line.split('\t')
-            if len(fields) != 5:
-                raise ValueError('ZRAM_DRIVER_REPOQUERY_OUTPUT_INVALID')
-            name, epoch, version, package_release, arch = fields
-            if name != 'kmod-zstack-zram' or arch != 'x86_64':
-                continue
-            epoch = '0' if epoch in ('', '(none)') else epoch
-            if (not epoch.isdigit() or
-                    not re.fullmatch(r'[A-Za-z0-9._+~^%-]+', version) or
-                    not re.fullmatch(r'[A-Za-z0-9._+~^%-]+', package_release)):
-                raise ValueError('ZRAM_DRIVER_REPOQUERY_OUTPUT_INVALID')
-            candidates.add('%s-%s:%s-%s.%s' %
-                           (name, epoch, version, package_release, arch))
-        if not candidates:
-            raise ValueError('ZRAM_DRIVER_PACKAGE_NOT_FOUND')
-        if len(candidates) != 1:
-            raise ValueError('ZRAM_DRIVER_PACKAGE_AMBIGUOUS')
-        package = next(iter(candidates))
-        if not re.fullmatch(r'kmod-zstack-zram-[0-9]+:[A-Za-z0-9._+~^%-]+-[A-Za-z0-9._+~^%-]+\.x86_64', package):
-            raise ValueError('ZRAM_DRIVER_PACKAGE_IDENTITY_INVALID')
-        requires_command = ('yum -q %srepoquery --requires %s' %
-                            (repo_options, shlex.quote(package)))
-        requires_status, requires_output = run_remote_command(
-            requires_command, host_post_info, return_status=True, return_output=True)
-        if isinstance(requires_output, bytes):
-            requires_output = requires_output.decode('utf-8', 'replace')
-        if not requires_status or not isinstance(requires_output, str):
-            raise ValueError('ZRAM_DRIVER_REQUIREMENTS_UNAVAILABLE')
-        kernel_requirements = re.findall(
-            r'^kernel\(x86-64\)\s*=\s*([^\s]+)\s*$',
-            requires_output, re.MULTILINE)
-        if len(kernel_requirements) != 1:
-            raise ValueError('ZRAM_DRIVER_KERNEL_REQUIREMENT_MISSING_OR_AMBIGUOUS')
-        boot_image = shlex.quote('/boot/vmlinuz-%s' % kernel)
-        owner_query = '%{EPOCH}\\t%{VERSION}-%{RELEASE}\\t%{ARCH}'
-        owner_command = ('rpm -qf --qf %s -- %s' %
-                         (shlex.quote(owner_query), boot_image))
-        owner_status, owner_output = run_remote_command(
-            owner_command, host_post_info, return_status=True, return_output=True)
-        if isinstance(owner_output, bytes):
-            owner_output = owner_output.decode('utf-8', 'replace')
-        if not owner_status or not isinstance(owner_output, str):
-            raise ValueError('ZRAM_DRIVER_KERNEL_OWNER_UNAVAILABLE')
-        owner_fields = owner_output.strip().split('\t')
-        if len(owner_fields) != 3:
-            raise ValueError('ZRAM_DRIVER_KERNEL_OWNER_UNAVAILABLE')
-        owner_epoch, owner_version_release, owner_arch = owner_fields
-        owner_epoch = '0' if owner_epoch in ('', '(none)') else owner_epoch
-        if (not owner_epoch.isdigit() or owner_arch != 'x86_64' or
-                not re.fullmatch(r'[A-Za-z0-9._+~^%-]+', owner_version_release)):
-            raise ValueError('ZRAM_DRIVER_KERNEL_OWNER_UNAVAILABLE')
-        owner_evr = ('%s:%s' % (owner_epoch, owner_version_release)
-                     if owner_epoch != '0' else owner_version_release)
-        required_evr = kernel_requirements[0]
-        if required_evr.startswith('0:'):
-            required_evr = required_evr[2:]
-        if owner_evr != required_evr:
-            raise ValueError('ZRAM_DRIVER_KERNEL_REQUIREMENT_MISMATCH')
-        provider_command = 'rpm -q --whatprovides %s --provides' % shlex.quote(
-            'kernel(x86-64)')
-        provider_status, provider_output = run_remote_command(
-            provider_command, host_post_info, return_status=True, return_output=True)
-        if isinstance(provider_output, bytes):
-            provider_output = provider_output.decode('utf-8', 'replace')
-        if (not provider_status or not isinstance(provider_output, str) or
-                not provider_output.strip()):
-            raise ValueError('ZRAM_DRIVER_KERNEL_PROVIDER_UNAVAILABLE')
-        provider_versions = re.findall(
-            r'^kernel\(x86-64\)\s*=\s*([^\s]+)\s*$',
-            provider_output, re.MULTILINE)
-        provider_versions = [value[2:] if value.startswith('0:') else value
-                             for value in provider_versions]
-        if required_evr not in provider_versions:
-            raise ValueError('ZRAM_DRIVER_KERNEL_PROVIDER_MISMATCH')
-        install = ('yum -y %s--exclude="kernel*" --setopt=install_weak_deps=False install %s' %
-                   (repo_options, shlex.quote(package)))
-    except ValueError as exc:
-        handle_ansible_info('ZRAM driver package is unavailable for the running kernel: %s' % exc,
-                            host_post_info, 'WARNING')
-        return
-    try:
-        if not run_remote_command(install, host_post_info, return_status=True):
-            handle_ansible_info('ZRAM driver exact package unavailable; KSM remains independent',
-                                host_post_info, 'WARNING')
-    except Exception:
-        handle_ansible_info('ZRAM driver installation failed; KSM remains independent',
-                            host_post_info, 'WARNING')
-    status, output = run_remote_command(command, host_post_info,
-                                        return_status=True, return_output=True)
-    try:
-        if isinstance(output, bytes):
-            output = output.decode('utf-8', 'replace')
-        report = json.loads(output) if status else {}
-        if report.get('supported') is not True:
-            # Only controlled reason/version fields, never arbitrary output.
-            reason = report.get('reasonCode', 'ZRAM_DRIVER_OBSERVATION_FAILED')
-            if not isinstance(reason, str) or not re.fullmatch(r'[A-Z_]+', reason):
-                reason = 'ZRAM_DRIVER_OBSERVATION_FAILED'
-            handle_ansible_info('ZRAM driver is not active/qualified: %s; no module was unloaded' % reason,
-                                host_post_info, 'WARNING')
-    except (ValueError, TypeError, AttributeError):
-        handle_ansible_info('ZRAM driver observation failed; capability remains unavailable',
-                            host_post_info, 'WARNING')
-
-
 def do_auditd_config():
     """add audit rules for signals"""
     AUDIT_CONF_FILE = '/etc/audit/auditd.conf'
@@ -1723,7 +1554,6 @@ do_systemd_config()
 # Service RPM adoption may restart the previous controller and invoke its
 # module-loading hook. Prepare the exact-ABI disk package before that hook;
 # this check itself never replaces a module already loaded in memory.
-check_alinux_zram_driver()
 install_memory_optimization_materials()
 do_ksm_config()
 modprobe_usb_module()
