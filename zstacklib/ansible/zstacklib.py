@@ -755,7 +755,13 @@ def install_agent_venv_pip(install_arg, host_post_info):
     command = build_agent_venv_pip_command(
         install_arg.virtenv_path, install_arg.trusted_host,
         install_arg.pip_url)
-    return run_remote_command(command, host_post_info)
+    # The pin only protects against legacy egg metadata; its failure must not
+    # fail an otherwise working Agent deployment.
+    if not run_remote_command(command, host_post_info, return_status=True):
+        handle_ansible_info("WARNING: unable to pin the Agent venv pip to %s; keeping the existing pip"
+                            % AGENT_VENV_PIP_VERSION, host_post_info, "WARNING")
+        return False
+    return True
 
 
 def yum_enable_repo(name, disablerepo, enablerepo, host_post_info):

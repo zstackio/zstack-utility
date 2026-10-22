@@ -610,22 +610,13 @@ def _install_locked(root, inventory_path, rpm_path, runner=subprocess.check_outp
         _verify_runtime_binaries(root, inventory, expected, 'RPM', runner)
         if _active_state(runner):
             raise InstallError('RPM_INSTALLER_IMPLICITLY_ACTIVATED_SERVICE')
-        # Only the untouched vendor template may start the safe observer.
-        observe_bootstrap = (not previous_controller and _factory_observe_config(root))
+        # A fresh install stays inactive; the Agent enables the service when
+        # ZRAM is first enabled. An upgrade restarts only a running service.
         if previous_controller:
             _run(['systemctl', 'start', 'zram-memory.service'], runner)
             _verify_active(root, inventory, runner)
-        elif observe_bootstrap:
-            # Start only the exact package-owned factory configuration. The
-            # runtime remains observe-only and cannot reclaim until a normal
-            # management apply explicitly authorizes resource use.
-            _run(['systemctl', 'enable', 'zram-memory.service'], runner)
-            _run(['systemctl', 'start', 'zram-memory.service'], runner)
-            _verify_active(root, inventory, runner)
         _clear_recovery(root)
-        return {'status': ('UPGRADED_ACTIVE' if previous_controller else
-                           'INSTALLED_OBSERVING' if observe_bootstrap else
-                           'INSTALLED_INACTIVE'),
+        return {'status': 'UPGRADED_ACTIVE' if previous_controller else 'INSTALLED_INACTIVE',
                 'package': package['version'] + '-' + package['release'],
                 'previousController': previous_controller}
     except Exception as failure:

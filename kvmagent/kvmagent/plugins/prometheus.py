@@ -56,39 +56,6 @@ nvme_serial_numbers_record = None
 MEMORY_ACCOUNTING_SOCKET = '/run/zram-efficiency-admission/control.sock'
 MEMORY_ACCOUNTING_TIMEOUT_SECONDS = 2
 MEMORY_ACCOUNTING_RESPONSE_BYTES = 16 * 1024 * 1024
-MEMORY_TEXTFILE_DIRECTORY = '/var/lib/node_exporter/textfile_collector'
-_memory_textfile_directory = MEMORY_TEXTFILE_DIRECTORY
-MEMORY_TEXTFILE = 'zstack_memory_optimization.prom'
-MEMORY_TEXTFILE_PUBLISH_INTERVAL_SECONDS = 2
-_memory_textfile_thread_lock = threading.Lock()
-_memory_textfile_thread = None
-
-
-def _node_exporter_textfile_arguments(arguments):
-    """Keep node_exporter's configured textfile collector and directory."""
-    global _memory_textfile_directory
-    arguments = arguments or ''
-    try:
-        parsed_arguments = shlex.split(arguments)
-    except ValueError:
-        _memory_textfile_directory = None
-        return arguments
-    if '--no-collector.textfile' in parsed_arguments:
-        _memory_textfile_directory = None
-        return arguments
-
-    for index, argument in enumerate(parsed_arguments):
-        if argument == '--collector.textfile.directory' and index + 1 < len(parsed_arguments):
-            _memory_textfile_directory = parsed_arguments[index + 1]
-            return arguments
-        if argument.startswith('--collector.textfile.directory='):
-            _memory_textfile_directory = argument.split('=', 1)[1]
-            return arguments
-
-    _memory_textfile_directory = MEMORY_TEXTFILE_DIRECTORY
-    if arguments:
-        arguments += ' '
-    return arguments + '--collector.textfile.directory=%s' % MEMORY_TEXTFILE_DIRECTORY
 
 
 class _MemoryServiceUnixHTTPConnection(stdlib_http.HTTPConnection):
@@ -2088,102 +2055,6 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
     return families
 
 
-def _memory_textfile_payload(families):
-    """Render Agent-collected metrics in node_exporter textfile format."""
-    for family in families:
-        for sample in family.samples:
-            sample.labels['memory_source'] = 'node_exporter'
-
-    class StaticCollector(object):
-        def collect(self):
-            return families
-
-    registry = CollectorRegistry()
-    registry.register(StaticCollector())
-    return generate_latest(registry)
-
-
-def _atomic_write_memory_textfile(directory, filename, payload):
-    """Atomically replace one textfile; readers never observe partial output."""
-    if not os.path.isdir(directory):
-        os.makedirs(directory, 0o755)
-    fd, temporary = tempfile.mkstemp(prefix='.%s-' % filename, dir=directory)
-    try:
-        os.fchmod(fd, 0o644)
-        with os.fdopen(fd, 'wb') as stream:
-            fd = None
-            stream.write(payload)
-        os.rename(temporary, os.path.join(directory, filename))
-    finally:
-        if fd is not None:
-            os.close(fd)
-        if os.path.exists(temporary):
-            os.unlink(temporary)
-
-
-def _memory_vm_textfile_lines(payload):
-    """Keep only per-VM metric families from a prior unified snapshot."""
-    result = []
-    for line in payload.splitlines(True):
-        if line.startswith(b'# HELP host_zram_vm_') or line.startswith(b'# TYPE host_zram_vm_'):
-            result.append(line)
-        elif line.startswith(b'host_zram_vm_'):
-            result.append(line)
-    return b''.join(result)
-
-
-def publish_memory_optimization_textfiles(directory=None):
-    """Publish host and per-VM snapshots without renewing source timestamps.
-
-    A failed VM-accounting read is represented by an ``unknown`` schema in the
-    Host file. In that case its previous VM file is left untouched: its
-    observation timestamp remains the service timestamp and PromQL/BFF TTL
-    checks will age it out. A valid unsupported/partial report replaces the VM
-    file with the exact currently attributable rows (possibly none).
-    """
-    if directory is None:
-        directory = _memory_textfile_directory
-    if directory is None:
-        return
-
-    families = collect_memory_optimization_statistics()
-    vm_families = [family for family in families
-                   if family.name.startswith('host_zram_vm_')]
-    host_families = [family for family in families
-                     if not family.name.startswith('host_zram_vm_')]
-    host_info = next((family for family in families
-                      if family.name == 'host_zram_accounting_sample_info'), None)
-    accounting_unavailable = any(
-        sample.labels.get('schema_version') == 'unknown'
-        for sample in getattr(host_info, 'samples', ()))
-
-    filename = MEMORY_TEXTFILE
-    path = os.path.join(directory, filename)
-    host_payload = _memory_textfile_payload(host_families)
-    if accounting_unavailable:
-        try:
-            with open(path, 'rb') as stream:
-                prior_vm_payload = _memory_vm_textfile_lines(stream.read())
-        except IOError:
-            prior_vm_payload = b''
-        vm_payload = prior_vm_payload
-    else:
-        vm_payload = _memory_textfile_payload(vm_families)
-    payload = host_payload.rstrip() + b'\n' + vm_payload
-    _atomic_write_memory_textfile(directory, filename, payload)
-
-
-def _publish_memory_optimization_textfile_loop():
-    while True:
-        try:
-            publish_memory_optimization_textfiles()
-        except Exception as exc:
-            # Keep the last atomic snapshot and, crucially, do not stamp it as
-            # fresh. Its embedded observation timestamp still controls TTL.
-            logger.warn('failed to publish memory optimization textfile: %s' % exc)
-        time.sleep(MEMORY_TEXTFILE_PUBLISH_INTERVAL_SECONDS)
-
-
 def collect_physical_network_interface_state():
     metrics = {
         'physical_network_interface': GaugeMetricFamily('physical_network_interface',
@@ -2904,6 +2775,7 @@ kvmagent.register_prometheus_collector(collect_host_conntrack_statistics)
 kvmagent.register_prometheus_collector(
     collect_physical_network_interface_state)
 kvmagent.register_prometheus_collector(collect_memory_overcommit_statistics)
+kvmagent.register_prometheus_collector(collect_memory_optimization_statistics)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
@@ -3170,8 +3042,6 @@ WantedBy=multi-user.target
             ARGUMENTS = cmd.startupArguments
             if not ARGUMENTS:
                 ARGUMENTS = ""
-            if 'node_exporter' in EXPORTER_PATH:
-                ARGUMENTS = _node_exporter_textfile_arguments(ARGUMENTS)
             os.chmod(EXPORTER_PATH, 0o755)
             run_in_systemd(EXPORTER_PATH, ARGUMENTS, LOG_FILE)
 
@@ -3505,7 +3375,6 @@ modules:
         return jsonobject.dumps(rsp)
 
     def start(self):
-        global _memory_textfile_thread
         http_server = kvmagent.get_http_server()
         http_server.register_async_uri(
             self.COLLECTD_PATH, self.start_prometheus_exporter)
@@ -3517,10 +3386,6 @@ modules:
         self.init_global_config()
         self.install_colletor()
         self.start_async_data_collectors()
-        with _memory_textfile_thread_lock:
-            if _memory_textfile_thread is None or not _memory_textfile_thread.is_alive():
-                _memory_textfile_thread = thread.ThreadFacade.run_in_thread(
-                    _publish_memory_optimization_textfile_loop, ())
         start_http_server(7069)
 
     def stop(self):

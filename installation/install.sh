@@ -1251,7 +1251,6 @@ cs_check_zstack_data_exist(){
             fi
         fi
     fi
-
 }
 
 #Do preinstallation checking for CentOS and Ubuntu and Database

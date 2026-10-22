@@ -113,13 +113,11 @@ def _product_vm_uuid(value):
 
 class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     STATE_PATH = '/memory/optimization/state'
-    PREVIEW_PATH = '/memory/optimization/preview'
     APPLY_PATH = '/memory/optimization/apply'
     RECONCILE_PATH = '/memory/optimization/reconcile'
     MIGRATION_HOLD_PATH = '/memory/optimization/migration-hold'
     VM_EFFICIENCY_PATH = '/memory/optimization/vm-efficiency'
     ACCOUNTING_PATH = '/memory/optimization/accounting'
-    OPERATIONS_PATH = '/memory/optimization/operations'
     WRITEBACK_BACKENDS_PATH = '/memory/optimization/writeback-backends'
 
     # The socket and endpoint are configuration values so the Agent does not
@@ -132,27 +130,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     DEFAULT_COMMUNICATION_SECONDS = 30
     KSM_UNIT = 'ksm.service'
     KSM_TUNED_UNIT = 'ksmtuned.service'
-    NATIVE_KSM_PROFILE_FILES = {
-        '/usr/sbin/ksmtuned': '6efe17914f1577420f412157ee077072775b3a6cf72b3a4c1ade15f087586a61',
-        '/usr/libexec/ksmctl': '64134cd3ba839acef125ef2879eff929b5b51e369136632dab1a196eb6c550e1',
-        '/usr/lib/systemd/system/ksm.service': '602963b0f1c8d6970eaa849d6a92a9feb08c1e76bce4f97700ea12a944cf9274',
-        '/usr/lib/systemd/system/ksmtuned.service': 'f67c4a64b4898e4786ab6b5882d846bce56f46958f35aedbab696f1fbaf58e03',
-    }
-    NATIVE_KSM_PROFILE_VARIANTS = (
-        NATIVE_KSM_PROFILE_FILES,
-        {
-            '/usr/sbin/ksmtuned': 'e62618200a34dc781e79704c028b3326e976b8ef94fe994caecd72857eb8cc9c',
-            '/usr/libexec/ksmctl': 'af1a00c09ac0fb1ec3aa7cd6bb0e32bfcd3918d88b193a2ea85dafd7f5ae4abf',
-            '/usr/lib/systemd/system/ksm.service': '602963b0f1c8d6970eaa849d6a92a9feb08c1e76bce4f97700ea12a944cf9274',
-            '/usr/lib/systemd/system/ksmtuned.service': 'f67c4a64b4898e4786ab6b5882d846bce56f46958f35aedbab696f1fbaf58e03',
-        },
-        {
-            '/usr/sbin/ksmtuned': '6efe17914f1577420f412157ee077072775b3a6cf72b3a4c1ade15f087586a61',
-            '/usr/libexec/ksmctl': 'dd1dba1f7a29bb9c6185159e266a41020cb595397504aeb4ed8294c0ab4d30ac',
-            '/usr/lib/systemd/system/ksm.service': '602963b0f1c8d6970eaa849d6a92a9feb08c1e76bce4f97700ea12a944cf9274',
-            '/usr/lib/systemd/system/ksmtuned.service': 'f67c4a64b4898e4786ab6b5882d846bce56f46958f35aedbab696f1fbaf58e03',
-        },
-    )
+    NATIVE_KSM_FILES = ('/usr/sbin/ksmtuned', '/usr/libexec/ksmctl',
+                        '/usr/lib/systemd/system/ksm.service',
+                        '/usr/lib/systemd/system/ksmtuned.service')
     MANAGED_ZRAM_UNIT = 'zram-memory.service'
     KSM_CONF = '/etc/ksmtuned.conf'
     KSM_LOCK = '/run/zstack/memory-optimization/ksm.writer.lock'
@@ -425,34 +405,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise
 
     def _verify_native_ksm_profile(self):
-        """Gate writes on an exact observed vendor ksmtuned package profile."""
-        profiles = getattr(self, 'NATIVE_KSM_PROFILE_VARIANTS',
-                           (self.NATIVE_KSM_PROFILE_FILES,))
-        observed = {}
-        unreadable = False
-        for profile in profiles:
-            matched = True
-            for path, expected in profile.items():
-                if path not in observed:
-                    try:
-                        if os.path.islink(path) or not os.path.isfile(path):
-                            observed[path] = None
-                        else:
-                            digest = hashlib.sha256()
-                            with open(path, 'rb') as stream:
-                                for chunk in iter(lambda: stream.read(65536), b''):
-                                    digest.update(chunk)
-                            observed[path] = digest.hexdigest()
-                    except (IOError, OSError):
-                        unreadable = True
-                        observed[path] = None
-                if observed[path] != expected:
-                    matched = False
-            if matched:
-                return
-        if unreadable:
-            raise ValueError('KSM_NATIVE_PROFILE_UNKNOWN')
-        raise ValueError('KSM_NATIVE_PROFILE_UNSUPPORTED')
+        """Gate writes on the vendor ksm/ksmtuned tooling being installed; any package version is accepted."""
+        if not all(os.path.isfile(path) for path in self.NATIVE_KSM_FILES):
+            raise ValueError('KSM_NATIVE_PROFILE_UNSUPPORTED')
 
     @staticmethod
     def _native_service_state(unit, operation):
@@ -5003,13 +4958,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         server = kvmagent.get_http_server()
         for path, handler in (
                 (self.STATE_PATH, self.state),
-                (self.PREVIEW_PATH, self.preview),
                 (self.APPLY_PATH, self.apply_request),
                 (self.RECONCILE_PATH, self.reconcile),
                 (self.MIGRATION_HOLD_PATH, self.migration_hold),
                 (self.VM_EFFICIENCY_PATH, self.vm_efficiency),
                 (self.ACCOUNTING_PATH, self.accounting),
-                (self.OPERATIONS_PATH, self.operations),
                 (self.WRITEBACK_BACKENDS_PATH, self.writeback_backends)):
             server.register_async_uri(path, handler)
 
@@ -5933,18 +5886,6 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         try:
             report = _accounting_wire_identity(self._readonly_query('accounting', command))
             result = {'success': True, 'status': 'Succeeded', 'state': report,
-                      'hostUuid': command.get('hostUuid')}
-        except Exception as exc:
-            result = {'success': False, 'status': 'Unknown', 'state': {},
-                      'reason': str(exc), 'hostUuid': command.get('hostUuid')}
-        return self._reply(result)
-
-    @kvmagent.replyerror
-    def operations(self, req):
-        command = self._request_body(req)
-        try:
-            result = {'success': True, 'status': 'Succeeded',
-                      'state': self._readonly_query('operations', command),
                       'hostUuid': command.get('hostUuid')}
         except Exception as exc:
             result = {'success': False, 'status': 'Unknown', 'state': {},
@@ -8047,43 +7988,6 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if state.get('efficiency_enabled') is not False:
             return False, 'HOST_MEMORY_OPTIMIZATION_NOT_DISABLED'
         return True, None
-
-    @kvmagent.replyerror
-    def preview(self, req):
-        command = self._request_body(req)
-        try:
-            self._operation_request(command)
-            host_uuid = self._load_host_uuid()
-            if not host_uuid or command.get('hostUuid') != host_uuid:
-                raise ValueError('HOST_IDENTITY_UNKNOWN')
-            self._validate_backend_resource(command)
-            capabilities = self.discover_capabilities()
-            if not capabilities.get('zram'):
-                raise ValueError('UNSUPPORTED_HOST_CAPABILITY:zram:%s' %
-                                 capabilities.get('zramReasonCode', 'CAPABILITY_UNKNOWN'))
-            # Preview is read-only.  Capacity defaults must come from the
-            # service's resolved status, never from an Agent-side formula.
-            tuning = self.service_call('tuning-state', {})
-            capacity = self._service_request('capacity-state', command)
-            desired = capacity.get('desired') if isinstance(capacity, dict) else None
-            logical = desired.get('logical_resolved_bytes') if isinstance(desired, dict) else None
-            physical = desired.get('physical_resolved_bytes') if isinstance(desired, dict) else None
-            if logical is None or physical is None:
-                raise ValueError('CAPACITY_DEFAULT_UNKNOWN')
-            result = {'success': True, 'status': 'Succeeded',
-                      'state': {'policyDefaults': {'zram': {
-                          'logicalCapacityBytes': logical,
-                          'ramLimitBytes': physical}},
-                          'tuning': tuning},
-                      'operationUuid': command.get('operationUuid')}
-            return self._reply(result)
-        except Exception as exc:
-            reason = str(exc)
-            reason_code = reason if re.match(r'^[A-Z][A-Z0-9_]+$', reason) else 'PREVIEW_READBACK_FAILED'
-            return self._reply({'success': False, 'status': 'Unknown',
-                                'state': {'phase': 'UNKNOWN'}, 'reason': reason,
-                                'reasonCode': reason_code,
-                                'operationUuid': command.get('operationUuid')})
 
     @kvmagent.replyerror
     def apply_request(self, req):
@@ -10866,6 +10770,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 self._maintenance_recovery_proof(command))
             if maintenance_apply and (command.get('policy') or {}).get('zram', {}).get('enabled') is not True:
                 raise ValueError('MAINTENANCE_APPLY_REQUIRES_ENABLED_ZRAM_POLICY')
+            # The service is installed inactive; the first ZRAM enable starts it.
+            if ((command.get('policy') or {}).get('zram') or {}).get('enabled') is True:
+                self._activate_managed_service()
             # Discover facts before any validation or side effect.  Legacy
             # KSM remains queryable/applicable on older hosts, while new
             # ZStack-managed optimisation is explicitly rejected unless the
@@ -11516,7 +11423,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._publish_ksm_config(content)
             if zero_value in ('0', '1') and ksm.get('zeroPagesEnabled') is not None:
                 self._write_ksm_sysfs('use_zero_pages', zero_value)
-            subprocess.check_call(['systemctl', 'enable', self.KSM_UNIT, self.KSM_TUNED_UNIT])
+            # Runtime start only; the vendor boot enablement stays as the administrator left it.
             subprocess.check_call(['systemctl', 'start', self.KSM_UNIT])
             # Vendor ksmtuned waits for its first monitor interval; apply the
             # requested values with the same locked writer before it manages KSM.
@@ -11530,7 +11437,6 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             subprocess.check_call(['systemctl', 'stop', self.KSM_TUNED_UNIT])
             subprocess.check_call(['systemctl', 'stop', self.KSM_UNIT])
             self._publish_ksm_config(content)
-            subprocess.check_call(['systemctl', 'disable', self.KSM_TUNED_UNIT, self.KSM_UNIT])
             # Native ksmtuned applies its file while running; keep both units
             # stopped and update independent scan parameters under the Agent lock.
             self._write_ksm_sysfs('run', '0')
@@ -11803,6 +11709,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         with self._ksm_writer_lock():
             fd, temp_path = tempfile.mkstemp(prefix='.ksmtuned-', dir=directory)
             try:
+                # Keep the vendor file mode; mkstemp creates 0600.
+                mode = stat.S_IMODE(os.stat(self.KSM_CONF).st_mode) if os.path.exists(self.KSM_CONF) else 0o644
+                os.fchmod(fd, mode)
                 os.write(fd, content.encode('utf-8'))
                 os.fsync(fd)
                 os.close(fd)
@@ -12361,14 +12270,63 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def installed_reclaim_candidate(release, running_kernel):
-        # This is evidence for a UI restart hint only, never a qualification
-        # grant. Actual capability continues to use the running kernel/ABI.
-        candidate = '4.18.0-553.162.1.memopt1.el8.x86_64'
-        if (release == 'h84r' and running_kernel != candidate
-                and os.path.isfile('/boot/vmlinuz-' + candidate)
-                and os.path.isdir('/lib/modules/' + candidate)):
-            return candidate
-        return None
+        # A UI restart hint only, never a qualification grant: cgroup v2 is on
+        # but the running kernel lacks memory.reclaim while another default
+        # boot kernel is installed.
+        if (release not in ('h84r', 'alinux4') or
+                not os.path.exists('/sys/fs/cgroup/cgroup.controllers') or
+                os.path.exists('/sys/fs/cgroup/memory.reclaim')):
+            return None
+        try:
+            output = subprocess.check_output(['grubby', '--default-kernel'], stderr=subprocess.STDOUT)
+        except (OSError, subprocess.CalledProcessError):
+            return None
+        if not isinstance(output, str):
+            output = output.decode('utf-8', 'replace')
+        candidate = os.path.basename(output.strip())
+        if candidate.startswith('vmlinuz-'):
+            candidate = candidate[len('vmlinuz-'):]
+        if not candidate or candidate == running_kernel or not os.path.isdir('/lib/modules/' + candidate):
+            return None
+        return candidate
+
+    def _managed_service_installed(self):
+        return os.path.isfile('/usr/lib/systemd/system/' + self.MANAGED_ZRAM_UNIT)
+
+    def _managed_service_never_used(self):
+        """An installed service that never ran has no state; cold maintenance flows keep theirs."""
+        if not self._managed_service_installed() or os.path.exists(self.socket_path):
+            return False
+        try:
+            with open(self.ZRAM_CONFIG, 'r') as stream:
+                state_dir = json.load(stream).get('state_dir')
+        except (IOError, OSError, ValueError):
+            return False
+        return isinstance(state_dir, STRING_TYPES) and (
+            not os.path.isdir(state_dir) or not os.listdir(state_dir))
+
+    def _activate_managed_service(self):
+        """Start and enable the installed, never used ZRAM service on first use."""
+        if not self._managed_service_never_used():
+            return
+        release = 'unknown'
+        try:
+            with open('/etc/os-release', 'r') as stream:
+                release = self.host_release_from_os_release(stream.read())
+        except (IOError, OSError):
+            pass
+        module = '/lib/modules/%s/updates/zstack-zram/zram.ko' % platform.release()
+        if release == 'alinux4' and not os.path.exists(module):
+            # Install the kmod that owns the running kernel's exact module path.
+            subprocess.check_call('export YUM0=%s; yum -y --disablerepo=* --enablerepo=zstack-mn '
+                                  '--exclude="kernel*" --setopt=install_weak_deps=False install %s'
+                                  % (kvmagent.get_host_yum_release(), shlex.quote(module)), shell=True)
+        subprocess.check_call(['systemctl', 'enable', '--now', self.MANAGED_ZRAM_UNIT])
+        deadline = time.time() + self.DEFAULT_COMMUNICATION_SECONDS
+        while not os.path.exists(self.socket_path):
+            if time.time() > deadline:
+                raise RuntimeError('MANAGED_MEMORY_SERVICE_START_TIMEOUT')
+            time.sleep(1)
 
     def discover_capabilities(self):
         release = 'unknown'
@@ -12421,10 +12379,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 pass
         zram = bool(interfaces.get('zram_mm_stat') and interfaces.get('cgroupv2') and
                      interfaces.get('memory_reclaim') and qualification.get('supported') is True)
-        if not interfaces.get('zram_mm_stat'):
+        # An installed but inactive service is started by the first ZRAM apply;
+        # its full qualification is checked again after activation.
+        activation_required = release in ('h84r', 'alinux4') and self._managed_service_never_used()
+        if activation_required and interfaces.get('cgroupv2') and interfaces.get('memory_reclaim'):
+            zram, reason = True, 'SERVICE_INACTIVE'
+        elif not interfaces.get('zram_mm_stat'):
             reason = 'ABI_INCOMPLETE'
         driver = None
-        if release == 'alinux4':
+        if release == 'alinux4' and not activation_required:
             # A matching kernel/service reply cannot identify the module
             # actually running in memory. Keep disk and loaded identities
             # separate; the shared observer performs no Host mutation.
@@ -12452,6 +12415,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'writeback': bool(zram and interfaces.get('zram_writeback') and
                               (driver is None or driver.get('writebackSupported') is True)),
             'service': service_ready,
+            'serviceActivationRequired': activation_required,
             'interfaces': interfaces,
         }
         if driver is not None:
