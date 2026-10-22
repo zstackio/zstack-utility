@@ -73,6 +73,13 @@ if stubbed_modules.get('cryptography.hazmat.primitives.serialization') or stubbe
 from zstackctl import ctl
 
 
+@pytest.fixture(autouse=True)
+def properties_integrity_report(monkeypatch):
+    report = MagicMock()
+    monkeypatch.setitem(ctl.ctl.commands, 'configure', SimpleNamespace(_report_property_updated=report))
+    return report
+
+
 def _family_switch_reject_message(old_ip, new_ip):
     return '%s. %s %s' % (
         ctl.ChangeIpCmd.ADDRESS_FAMILY_CHANGE_ERROR % (old_ip, new_ip),
@@ -1285,7 +1292,8 @@ def test_change_ip_rejects_family_switch_without_risk_confirmation(monkeypatch):
     ]
 
 
-def test_change_ip_allows_confirmed_family_switch_to_ipv6_and_cleans_old_ipv4(monkeypatch):
+def test_change_ip_allows_confirmed_family_switch_to_ipv6_and_cleans_old_ipv4(
+        monkeypatch, properties_integrity_report):
     writes = []
     deletes = []
     shell_calls = []
@@ -1322,6 +1330,8 @@ def test_change_ip_allows_confirmed_family_switch_to_ipv6_and_cleans_old_ipv4(mo
     monkeypatch.setattr(cmd, 'update_morph_config', lambda ip: shell_calls.append(('morph', ip)))
     monkeypatch.setattr(cmd, 'update_license_server_management_ip', lambda ip: shell_calls.append(('license', ip)))
 
+    reported_writes = []
+    properties_integrity_report.side_effect = lambda: reported_writes.append(list(writes))
     cmd.run(SimpleNamespace(
         ip=new_ip,
         cloudbus_server_ip=None,
@@ -1345,6 +1355,8 @@ def test_change_ip_allows_confirmed_family_switch_to_ipv6_and_cleans_old_ipv4(mo
     assert ('morph', new_ip) in shell_calls
     assert ('license', new_ip) in shell_calls
     assert firewall_calls == [(new_ip, new_ip, old_ip, {'3306'})]
+    properties_integrity_report.assert_called_once_with()
+    assert reported_writes == [writes]
 
 
 def test_change_ip_allows_confirmed_family_switch_to_ipv4_and_cleans_old_ipv6(monkeypatch):
@@ -1545,7 +1557,9 @@ def test_change_ip_dual_stack_updates_empty_console_proxy_to_primary(monkeypatch
     assert ('license', 'fd00:172:24:249::183') in shell_calls
 
 
-def test_change_ip6_on_dual_stack_preserves_ipv4_scoped_properties(monkeypatch):
+@pytest.mark.parametrize('report_fails', [False, True])
+def test_change_ip6_on_dual_stack_preserves_ipv4_scoped_properties(
+        monkeypatch, properties_integrity_report, report_fails):
     writes = []
     shell_calls = []
     firewall_calls = []
@@ -1577,14 +1591,27 @@ def test_change_ip6_on_dual_stack_preserves_ipv4_scoped_properties(monkeypatch):
     monkeypatch.setattr(cmd, 'update_morph_config', lambda ip: shell_calls.append(('morph', ip)))
     monkeypatch.setattr(cmd, 'update_license_server_management_ip', lambda ip: shell_calls.append(('license', ip)))
 
-    cmd.run(SimpleNamespace(
+    reported_writes = []
+
+    def report():
+        reported_writes.append(list(writes))
+        if report_fails:
+            raise ctl.CtlError('integrity cleanup failed')
+
+    properties_integrity_report.side_effect = report
+    args = SimpleNamespace(
         ip=None,
         ip4=None,
         ip6='fd00:172:24:249::182',
         cloudbus_server_ip=None,
         mysql_ip=None,
         root_password=None,
-    ))
+    )
+    if report_fails:
+        with pytest.raises(ctl.CtlError, match='integrity cleanup failed'):
+            cmd.run(args)
+    else:
+        cmd.run(args)
 
     assert ('management.server.ip6', 'fd00:172:24:249::182') in writes
     assert ('management.server.ip', '172.24.249.182') not in writes
@@ -1594,6 +1621,8 @@ def test_change_ip6_on_dual_stack_preserves_ipv4_scoped_properties(monkeypatch):
     assert ('morph', 'fd00:172:24:249::182') not in shell_calls
     assert ('license', 'fd00:172:24:249::182') not in shell_calls
     assert firewall_calls == [('fd00:172:24:249::182', None, 'fd00:172:24:249::181', {'3306'})]
+    properties_integrity_report.assert_called_once_with()
+    assert reported_writes == [writes]
 
 
 def test_change_ip_preserves_custom_same_family_chrony_server(monkeypatch):

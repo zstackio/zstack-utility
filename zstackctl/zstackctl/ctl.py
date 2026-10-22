@@ -3140,6 +3140,7 @@ class ConfigureCmd(Command):
         self.description = "configure zstack.properties"
         self.reportPath = "/progress/configure/properties"
         self.properties_algorithm = "sha256"
+        self.properties_integrity_node_type = "managementNode"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -3182,6 +3183,57 @@ EOF
 
         shell('cp -f %s %s' % (path, ctl.properties_file_path))
 
+    def _mysql_cmd(self, sql):
+        hostname_ports, db_user, db_password = ctl.get_database_portal()
+        ha_config_file = '/etc/zsha2.conf'
+        if os.path.isfile(ha_config_file):
+            with open(ha_config_file) as stream:
+                ha_vip = simplejson.load(stream).get('dbvip')
+            if (any(host == ha_vip and str(port) == '3306' for host, port in hostname_ports)
+                    and not any(host in ('127.0.0.1', 'localhost') and str(port) == '3306' for host, port in hostname_ports)):
+                hostname_ports = hostname_ports + [('127.0.0.1', 3306)]
+        env = os.environ.copy()
+        env['MYSQL_PWD'] = db_password or ''
+        last_error = CtlError('No database portal configured')
+        for db_hostname, db_port in hostname_ports:
+            try:
+                return subprocess.check_output(
+                    ['mysql', '--batch', '--skip-column-names', '--connect-timeout', '2',
+                     '--user', db_user, '--host', db_hostname, '--port', str(db_port), 'zstack', '-e', sql],
+                    env=env, stderr=subprocess.PIPE, timeout=10).decode()
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                last_error = error
+        raise last_error
+
+    def _delete_property_integrity_records(self):
+        state_file = '/var/lib/zstack/management-server-id.properties'
+        if not (ctl.read_property('DB.user') or ctl.read_property('DbFacadeDataSource.user')
+                or ctl.read_property('managementServerId') or os.path.isfile(state_file)):
+            return
+
+        if not self._mysql_cmd("SHOW TABLES LIKE 'FileIntegrityVerificationVO'").strip():
+            return
+
+        paths = {ctl.properties_file_path, os.path.realpath(ctl.properties_file_path)}
+        where = "WHERE nodeType='%s' AND hexType='%s' AND path IN (%s)" % (
+            self.properties_integrity_node_type, self.properties_algorithm,
+            ','.join('0x' + path.encode('utf-8').hex() for path in sorted(paths)))
+        if not self._mysql_cmd("SELECT nodeUuid FROM FileIntegrityVerificationVO " + where).strip():
+            return
+
+        node_uuid = ctl.read_property('managementServerId')
+        if os.path.isfile(state_file):
+            persisted_uuid = PropertyFile(state_file, use_zstack=False).read_property('managementServerId')
+            if node_uuid and persisted_uuid and node_uuid.lower() != persisted_uuid.lower():
+                raise CtlError('Cannot identify the local management node: configured and persisted '
+                               'managementServerId differ; properties integrity records were left unchanged')
+            node_uuid = node_uuid or persisted_uuid
+        if not node_uuid or not re.fullmatch(r'[0-9a-fA-F]{32}', node_uuid):
+            raise CtlError('Cannot identify the local management node; properties integrity records were left unchanged')
+
+        self._mysql_cmd("DELETE FROM FileIntegrityVerificationVO " + where + " AND nodeUuid='%s'" % node_uuid)
+        info("removed stale properties integrity records for management node %s" % node_uuid)
+
     def _report_property_updated(self):
         config_cmd = UpdatePropertyCmd()
         config_cmd.propertiesDigestValue = file_hex_digest(self.properties_algorithm, ctl.properties_file_path)
@@ -3191,13 +3243,16 @@ EOF
         mn_port = ctl.read_property('RESTFacade.port')
         if not mn_port:
             mn_port = 8080
-        ShellCmd(ctl.http_call_cmd % (
-            self.reportPath,
-            simplejson.dumps(config_cmd),
-            format_url_host(config_cmd.mnIp),
-            mn_port,
-        ))
-        logger.debug('report properties updated, propertiesDigestValue: %s, mnIp: %s' % (config_cmd.propertiesDigestValue, config_cmd.mnIp))
+        report_template = ctl.http_call_cmd.replace('--retry 5', '--retry 0 --connect-timeout 2 --max-time 10 --fail')
+        report_cmd = ShellCmd(report_template % (self.reportPath, simplejson.dumps(config_cmd._asdict()), format_url_host(config_cmd.mnIp), mn_port))
+        report_cmd(False)
+        if report_cmd.return_code == 0:
+            logger.debug('report properties updated, propertiesDigestValue: %s, mnIp: %s' % (config_cmd.propertiesDigestValue, config_cmd.mnIp))
+            return
+
+        warn('failed to report properties update to management node[%s:%s], remove local stale properties integrity records instead' %
+             (config_cmd.mnIp, mn_port))
+        self._delete_property_integrity_records()
 
     def console_proxy_property_for_ip(self, ip):
         ip_version = get_ip_version(ip)
@@ -3278,6 +3333,7 @@ EOF
     def run(self, args):
         if args.use_file:
             self._use_file(args)
+            self._report_property_updated()
             return
 
         if args.duplicate_to_remote:
@@ -9310,6 +9366,8 @@ class ChangeIpCmd(Command):
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
+
+        ctl.commands['configure']._report_property_updated()
 
         info("update iptables rules successfully")
         info("Change ip successfully")
