@@ -958,6 +958,175 @@ def _reconcile(plugin):
         'hostUuid': HOST, 'operationUuid': OPERATION})}))
 
 
+def _ksm_capacity_reconcile_fixture(tmp_path, monkeypatch, ksm_only=False,
+                                   include_policy_mode=True):
+    plugin = MemoryOptimizationPlugin()
+    operation_uuid = 'e' * 32
+    boot_id = MemoryOptimizationPlugin._current_boot_id()
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    monkeypatch.setattr(plugin, '_load_host_uuid', lambda: HOST)
+    ack = {'run': '1', 'configRevision': '159', 'pages_to_scan': '2000',
+           'sleep_millisecs': '20', 'use_zero_pages': '1'}
+    monkeypatch.setattr(plugin, '_read_ksm_ack', lambda: dict(ack))
+    policy = {'schemaVersion': 1,
+              'ksm': {'enabled': True, 'pagesToScan': 2000,
+                      'sleepMillis': 20, 'zeroPagesEnabled': True}}
+    if not ksm_only:
+        policy['zram'] = {'enabled': True}
+    command = {'hostUuid': HOST, 'scope': 'Host', 'resourceUuid': HOST,
+               'action': 'apply', 'operationUuid': operation_uuid,
+               'desiredRevision': 159, 'policy': policy}
+    if include_policy_mode:
+        command['policyMode'] = 'effective'
+    initial = {'success': False, 'status': 'Blocked',
+               'reasonCode': 'NATIVE_POOL_UNQUALIFIED',
+               'operationUuid': operation_uuid,
+               'state': {'phase': 'BLOCKED', 'knownBlocked': True},
+               'ksmReadback': dict(ack)}
+    assert plugin._record_operation(command, 'BLOCKED', initial)
+    latest = {'success': False, 'status': 'Blocked',
+              'reasonCode': 'NATIVE_POOL_UNQUALIFIED',
+              'operationUuid': operation_uuid,
+              'state': {'phase': 'BLOCKED', 'knownBlocked': True}}
+    assert plugin._update_operation_record(operation_uuid, 'BLOCKED', latest)
+    service_state = {'complete': False, 'phase': 'BLOCKED'}
+    monkeypatch.setattr(plugin, '_read_policy_state',
+                        lambda _command, _policy: dict(service_state))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('reconcile must not replay a policy write')
+
+    monkeypatch.setattr(plugin, '_apply_ksm_policy', forbidden)
+    monkeypatch.setattr(plugin, '_apply_service_policy', forbidden)
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs', forbidden)
+    return plugin, command, ack, service_state, boot_id
+
+
+def _ksm_reconcile_request(command, boot_id, **kwargs):
+    request = {'action': 'reconcile', 'scope': 'Host', 'hostUuid': HOST,
+               'resourceUuid': HOST, 'operationUuid': command['operationUuid'],
+               'desiredRevision': command['desiredRevision'], 'bootId': boot_id,
+               'policy': {}}
+    request.update(kwargs)
+    return {'body': json.dumps(request)}
+
+
+def test_capacity_unknown_reconcile_reuses_original_ksm_proof_without_replay(
+        tmp_path, monkeypatch):
+    plugin, command, ack, service_state, boot_id = _ksm_capacity_reconcile_fixture(
+        tmp_path, monkeypatch)
+    original_evidence = plugin._load_operation(command)['applyEvidence']
+
+    first = json.loads(plugin.reconcile(_ksm_reconcile_request(command, boot_id)))
+
+    assert first['status'] == 'Unknown', first
+    assert first['reasonCode'] in ('RECONCILE_TARGET_NOT_VERIFIED',
+                                   'RECONCILE_READBACK_FAILED')
+    assert first.get('ksmReadback') == ack, first
+    record = plugin._load_operation(command)
+    assert record['stage'] == 'UNKNOWN'
+    assert record['applyEvidence'] == original_evidence
+    assert record['readback']['ksmReadback'] == ack
+
+    service_state.update(complete=True, phase='POOL_READY',
+                         nativeReadback={'logical_capacity_bytes': LOGICAL_BYTES})
+    second = json.loads(plugin.reconcile(_ksm_reconcile_request(command, boot_id)))
+    assert second['status'] == 'Succeeded', second
+    assert second['ksmReadback'] == ack
+    assert plugin._load_operation(command)['readback']['ksmReadback'] == ack
+
+    repeated = json.loads(plugin.reconcile(_ksm_reconcile_request(command, boot_id)))
+    assert repeated == second
+    completed = json.loads(plugin.reconcile(_ksm_reconcile_request(
+        command, boot_id, expectedControlOperationUuid=command['operationUuid'],
+        reconcileAction='verify-completed')))
+    assert completed['status'] == 'Succeeded', completed
+    assert completed['ksmReadback'] == ack
+    assert plugin._load_operation(command)['applyEvidence'] == original_evidence
+
+
+@pytest.mark.parametrize('tamper', [
+    'missing_original', 'malformed_original', 'stale_original', 'native_drift',
+    'malformed_latest', 'conflicting_latest',
+])
+def test_capacity_unknown_reconcile_rejects_unproven_ksm_ack_without_writes(
+        tmp_path, monkeypatch, tamper):
+    plugin, command, ack, _, boot_id = _ksm_capacity_reconcile_fixture(tmp_path, monkeypatch)
+    record = plugin._load_operation(command)
+    if tamper == 'missing_original':
+        record['applyEvidence'].pop('ksmReadback')
+    elif tamper == 'malformed_original':
+        record['applyEvidence']['ksmReadback'].pop('pages_to_scan')
+    elif tamper == 'stale_original':
+        record['applyEvidence']['ksmReadback']['configRevision'] = '158'
+    elif tamper == 'native_drift':
+        monkeypatch.setattr(plugin, '_read_ksm_ack', lambda: dict(ack, run='0'))
+    elif tamper == 'malformed_latest':
+        record['readback']['ksmReadback'] = {'configRevision': '159'}
+    elif tamper == 'conflicting_latest':
+        record['readback']['ksmReadback'] = dict(ack, pages_to_scan='2001')
+    assert plugin._write_operation_record(record)
+
+    result = json.loads(plugin.reconcile(_ksm_reconcile_request(command, boot_id)))
+
+    assert result['status'] == 'Unknown', result
+    assert result.get('reason') == 'RECONCILE_KSM_NOT_VERIFIED' or \
+        result['reasonCode'] == 'RECONCILE_KSM_NOT_VERIFIED'
+    assert plugin._load_operation(command)['stage'] == 'UNKNOWN'
+
+
+@pytest.mark.parametrize(('ksm_only', 'include_policy_mode'), [
+    (True, True), (False, False),
+])
+def test_ksm_proof_fallback_supports_ksm_only_and_legacy_journals(
+        tmp_path, monkeypatch, ksm_only, include_policy_mode):
+    plugin, command, ack, service_state, boot_id = _ksm_capacity_reconcile_fixture(
+        tmp_path, monkeypatch, ksm_only=ksm_only,
+        include_policy_mode=include_policy_mode)
+    record = plugin._load_operation(command)
+    if not include_policy_mode:
+        # Older valid journal records can predate the persisted policyMode field.
+        record.pop('policyMode', None)
+        assert plugin._write_operation_record(record)
+    original_evidence = plugin._load_operation(command)['applyEvidence']
+    if ksm_only:
+        def unexpected_service_read(*args, **kwargs):
+            raise AssertionError('KSM-only reconcile must not require the ZRAM service')
+        monkeypatch.setattr(plugin, '_read_policy_state', unexpected_service_read)
+    else:
+        service_state.update(complete=True, phase='READBACK')
+
+    first = json.loads(plugin.reconcile(_ksm_reconcile_request(command, boot_id)))
+    assert first['status'] == 'Succeeded', first
+    assert first['ksmReadback'] == ack
+    assert plugin._load_operation(command)['applyEvidence'] == original_evidence
+
+    repeated = json.loads(plugin.reconcile(_ksm_reconcile_request(command, boot_id)))
+    assert repeated == first
+
+    reloaded = MemoryOptimizationPlugin()
+    reloaded.configure({'hostUuid': HOST,
+                        'operationDir': str(tmp_path / 'operations')})
+    monkeypatch.setattr(reloaded, '_load_host_uuid', lambda: HOST)
+    monkeypatch.setattr(reloaded, '_read_ksm_ack', lambda: dict(ack))
+    def forbidden_replay(*args, **kwargs):
+        raise AssertionError('reconcile must not replay a KSM or service policy write')
+    monkeypatch.setattr(reloaded, '_apply_ksm_policy', forbidden_replay)
+    monkeypatch.setattr(reloaded, '_write_ksm_sysfs', forbidden_replay)
+    monkeypatch.setattr(reloaded, '_apply_service_policy', forbidden_replay)
+    if ksm_only:
+        monkeypatch.setattr(reloaded, '_read_policy_state', unexpected_service_read)
+    else:
+        monkeypatch.setattr(reloaded, '_read_policy_state',
+                            lambda _command, _policy: dict(service_state))
+    after_reload = json.loads(reloaded.reconcile(
+        _ksm_reconcile_request(command, boot_id)))
+    assert after_reload == first
+    stored = reloaded._load_operation(command)
+    assert stored['applyEvidence'] == original_evidence
+    assert stored['readback']['ksmReadback'] == ack
+
+
 def _journal(plugin):
     with open(plugin._operation_path(OPERATION), 'r') as stream:
         return json.load(stream)

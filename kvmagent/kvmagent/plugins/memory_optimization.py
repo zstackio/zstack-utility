@@ -531,6 +531,46 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         }
         return current == expected
 
+    def _reconcile_ksm_proof(self, record, policy, operation_uuid):
+        """Select only this apply's verified KSM receipt for read-only reconcile."""
+        if (not isinstance(record, dict) or record.get('action') != 'apply' or
+                record.get('operationUuid') != operation_uuid or
+                record.get('hostUuid') != self._load_host_uuid() or
+                record.get('bootId') != self._current_boot_id() or
+                not isinstance(record.get('requestHash'), STRING_TYPES) or
+                re.match(r'^[0-9a-f]{64}\Z', record.get('requestHash', '')) is None or
+                record.get('policyHash') != self._policy_digest(record.get('policy')) or
+                (record.get('policy') or {}).get('ksm') != policy):
+            return None
+
+        def valid_proof(proof):
+            revision = record.get('desiredRevision')
+            return (self._ksm_proof_policy(proof, revision) is not None and
+                    self._ksm_proof_matches(proof, revision) and
+                    self._ksm_readback_matches(policy, revision, proof))
+
+        readback = record.get('readback')
+        if not isinstance(readback, dict):
+            return None
+        if 'ksmReadback' in readback:
+            # A present but malformed/contradictory latest receipt is not a
+            # missing receipt and must never be hidden by older evidence.
+            latest = readback.get('ksmReadback')
+            if not valid_proof(latest):
+                return None
+            evidence = record.get('applyEvidence')
+            original = evidence.get('ksmReadback') if isinstance(evidence, dict) else None
+            if original is not None and original != latest:
+                return None
+            return latest
+
+        evidence = record.get('applyEvidence')
+        if (not isinstance(evidence, dict) or
+                evidence.get('operationUuid') != operation_uuid):
+            return None
+        original = evidence.get('ksmReadback')
+        return original if valid_proof(original) else None
+
     def _ksm_readback_matches(self, policy, revision=None, previous_ack=None):
         """Read-only proof for a KSM-only journal reconciliation."""
         values = self._read_ksm_ack()
@@ -9081,7 +9121,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if (prior.get('action') == 'apply' and prior.get('stage') == 'APPLIED' and
                 isinstance(prior.get('readback'), dict) and
                 (prior.get('readback', {}).get('state') or {}).get('phase') == 'POOL_READY'):
-            return self._reply(prior['readback'])
+            receipt = prior['readback']
+            policy = prior.get('policy') or {}
+            if policy.get('ksm'):
+                ksm_ack = self._reconcile_ksm_proof(prior, policy['ksm'], operation_uuid)
+                if ksm_ack is None:
+                    return self._reply({'success': False, 'status': 'Unknown',
+                                        'state': {'phase': 'UNKNOWN'},
+                                        'reasonCode': 'RECONCILE_KSM_NOT_VERIFIED',
+                                        'operationUuid': operation_uuid})
+                if 'ksmReadback' not in receipt:
+                    receipt = dict(receipt, ksmReadback=ksm_ack)
+            return self._reply(receipt)
         if (prior.get('action') == 'apply' and
                 (prior.get('stage') == 'ACTIVATING' or
                  isinstance(prior.get('activationIntent'), dict))):
@@ -9104,6 +9155,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             result = self._reconcile_stock_drain(command, prior)
             return self._reply(result)
         policy = prior.get('policy') or {}
+        prior_ksm_ack = None
         try:
             if prior.get('hostUuid') != self._load_host_uuid():
                 raise ValueError('HOST_IDENTITY_UNKNOWN')
@@ -9138,13 +9190,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 self._update_operation_record(operation_uuid, 'APPLIED', result)
                 return self._reply(result)
             if policy.get('ksm'):
-                prior_readback = prior.get('readback')
-                prior_ksm_ack = (prior_readback.get('ksmReadback')
-                                 if isinstance(prior_readback, dict) else None)
-                if (('zeroPagesEnabled' in policy['ksm'] and
-                     not isinstance(prior_ksm_ack, dict)) or
-                        not self._ksm_readback_matches(
-                            policy['ksm'], prior.get('desiredRevision'), prior_ksm_ack)):
+                prior_ksm_ack = self._reconcile_ksm_proof(
+                    prior, policy['ksm'], operation_uuid)
+                if prior_ksm_ack is None:
                     raise ValueError('RECONCILE_KSM_NOT_VERIFIED')
             if not policy.get('zram') and not policy.get('writeback'):
                 if not policy.get('ksm'):
@@ -9153,6 +9201,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                           'state': {'phase': 'KSM_READBACK', 'complete': True},
                           'appliedRevision': prior.get('desiredRevision'),
                           'operationUuid': operation_uuid}
+                if prior_ksm_ack is not None:
+                    result['ksmReadback'] = prior_ksm_ack
                 self._set_active_control(operation_uuid)
                 self._update_operation_record(operation_uuid, 'APPLIED', result)
                 return self._reply(result)
@@ -9202,12 +9252,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 blocked = self._known_capacity_blocker(readback, capacity_proof)
                 if blocked is not None:
                     blocked['operationUuid'] = operation_uuid
+                    if prior_ksm_ack is not None:
+                        blocked['ksmReadback'] = prior_ksm_ack
                     self._update_operation_record(operation_uuid, 'BLOCKED', blocked)
                     return self._reply(blocked)
                 result = {'success': False, 'status': 'Unknown',
                           'state': readback,
                           'reasonCode': 'RECONCILE_TARGET_NOT_VERIFIED',
                           'operationUuid': operation_uuid}
+                if prior_ksm_ack is not None:
+                    result['ksmReadback'] = prior_ksm_ack
                 self._update_operation_record(operation_uuid, 'UNKNOWN', result)
                 return self._reply(result)
             if zram_capacity_requested and capacity_proof is None:
@@ -9219,11 +9273,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                         reasonCode='CAPACITY_APPLY_RECEIPT_UNVERIFIED'),
                           'reasonCode': 'CAPACITY_APPLY_RECEIPT_UNVERIFIED',
                           'operationUuid': operation_uuid}
+                if prior_ksm_ack is not None:
+                    result['ksmReadback'] = prior_ksm_ack
                 self._update_operation_record(operation_uuid, 'UNKNOWN', result)
                 return self._reply(result)
             result = {'success': True, 'status': 'Succeeded',
                       'state': readback, 'appliedRevision': prior.get('desiredRevision'),
                       'operationUuid': operation_uuid}
+            if prior_ksm_ack is not None:
+                result['ksmReadback'] = prior_ksm_ack
             self._set_active_control(operation_uuid)
             self._update_operation_record(operation_uuid, 'APPLIED', result)
         except Exception as exc:
@@ -9231,6 +9289,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                       'state': {'phase': 'UNKNOWN'}, 'reason': str(exc),
                       'reasonCode': 'RECONCILE_READBACK_FAILED',
                       'operationUuid': operation_uuid}
+            if prior_ksm_ack is not None:
+                result['ksmReadback'] = prior_ksm_ack
             self._update_operation_record(operation_uuid, 'UNKNOWN', result)
         return self._reply(result)
 
@@ -9301,6 +9361,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                   not isinstance(receipt.get('appliedRevision'), INTEGER_TYPES))) or
                 not isinstance(receipt.get('state'), dict)):
             return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
+        verified_ksm_ack = None
         if prior.get('action') == 'apply':
             policy = prior.get('policy')
             state = receipt['state']
@@ -9325,6 +9386,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
             else:
                 return unknown('VERIFY_COMPLETED_RECEIPT_UNPROVEN')
+            if policy.get('ksm'):
+                verified_ksm_ack = self._reconcile_ksm_proof(
+                    prior, policy['ksm'], operation_uuid)
+                if verified_ksm_ack is None:
+                    return unknown('VERIFY_COMPLETED_KSM_RECEIPT_UNPROVEN')
         else:
             evidence = self._completed_backend_preparation_evidence(
                 operation_uuid, prior, host_uuid, boot_id)
@@ -9366,6 +9432,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         # identity/revision values proven by the journal and current host.
         result = dict(receipt)
         result['state'] = dict(receipt['state'])
+        if verified_ksm_ack is not None and 'ksmReadback' not in result:
+            result['ksmReadback'] = verified_ksm_ack
         result.update({'hostUuid': host_uuid, 'bootId': boot_id,
                        'appliedRevision': revision})
         return result
