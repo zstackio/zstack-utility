@@ -2773,7 +2773,6 @@ class HaPlugin(kvmagent.KvmAgent):
             ha_fencer = AbstractHaFencer(cmd.interval, cmd.maxAttempts, cmd.vgUuid, fencer_list)
             update_fencer = True
             try:
-                conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer, cmd.fsId)
                 logger.debug("config file: %s, pool name: %s" % (conf_path, pool_name))
                 additional_conf_dict = {}
                 fencer_init = {}
@@ -2815,6 +2814,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         started_workers = 0
         try:
+            conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(cmd.uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer, cmd.fsId)
             for pool_name in pool_names:
                 heartbeat_on_ceph(cmd.uuid, pool_name)
                 started_workers += 1
