@@ -912,11 +912,22 @@ def check_nvme_disk_insert_and_remove(nvme_serial_numbers):
     nvme_serial_numbers_record = nvme_serial_numbers
 
 
+HARDWARE_COLLECTION_TIMEOUT = 30
+
+
+def _collect_hardware_command(command, deadline):
+    remaining = deadline - linux.monotime()
+    if remaining <= 0:
+        return 124, ''
+    return bash_ro("timeout -k 5s %.3fs %s" % (max(0.001, remaining), command), pipe_fail=True)
+
+
 collect_equipment_state_last_time = None
 collect_equipment_state_last_result = None
 
 
 def collect_ipmi_state():
+    deadline = linux.monotime() + HARDWARE_COLLECTION_TIMEOUT
     metrics = {
         'power_supply': GaugeMetricFamily('power_supply',
                                           'power supply', None, ['ps_id']),
@@ -940,11 +951,11 @@ def collect_ipmi_state():
         return collect_equipment_state_last_result
 
     # get ipmi status
-    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
+    metrics['ipmi_status'].add_metric([], _collect_hardware_command("ipmitool mc info", deadline)[0])
 
     # get cpu info
     if not is_hygon:
-        r, cpu_temps = bash_ro("sensors")
+        r, cpu_temps = _collect_hardware_command("sensors", deadline)
         if r == 0:
             count = 0
             for info in cpu_temps.splitlines():
@@ -963,7 +974,7 @@ def collect_ipmi_state():
                         count = count + 1
 
     # get cpu status
-    r, cpu_infos = bash_ro("hd_ctl -c cpu")
+    r, cpu_infos = _collect_hardware_command("hd_ctl -c cpu", deadline)
     if r == 0:
         infos = jsonobject.loads(cpu_infos)
         for info in infos:
@@ -981,7 +992,7 @@ def collect_ipmi_state():
                 send_cpu_status_alarm_to_mn(cpu_id, info.Status)
 
     # get physical memory info
-    r, memory_infos = bash_ro("hd_ctl -c memory")
+    r, memory_infos = _collect_hardware_command("hd_ctl -c memory", deadline)
     if r == 0:
         memory_locator_list = collect_memory_locator()
         infos = jsonobject.loads(memory_infos)
@@ -1008,7 +1019,7 @@ def collect_ipmi_state():
 
     # get fan info
     origin_fan_flag = False
-    r, fan_infos = bash_ro("hd_ctl -c fan")
+    r, fan_infos = _collect_hardware_command("hd_ctl -c fan", deadline)
     if r == 0:
         infos = jsonobject.loads(fan_infos)
         for info in infos.fan_list:
@@ -1038,7 +1049,7 @@ def collect_ipmi_state():
         origin_fan_flag = True
 
     # get power info
-    r, sdr_data = bash_ro("ipmitool sdr elist")
+    r, sdr_data = _collect_hardware_command("ipmitool sdr elist", deadline)
     if r == 0:
         power_list = []
         for line in sdr_data.splitlines():
@@ -1125,15 +1136,17 @@ def check_equipment_state_from_ipmitool(metrics):
 
 
 def collect_equipment_state_from_ipmi():
+    deadline = linux.monotime() + HARDWARE_COLLECTION_TIMEOUT
     metrics = {
         "ipmi_status": GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
         "cpu_temperature": GaugeMetricFamily('cpu_temperature', 'cpu temperature', None, ['cpu']),
         "cpu_status": GaugeMetricFamily('cpu_status', 'cpu status', None, ['cpu']),
         "ipmi_memory_status": GaugeMetricFamily('ipmi_memory_status', 'ipmi memory status', None, ['name', 'type']),
     }
-    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
+    metrics['ipmi_status'].add_metric([], _collect_hardware_command("ipmitool mc info", deadline)[0])
 
-    r, cpu_info = bash_ro("ipmitool sdr elist | grep -i cpu")  # type: (int, str)
+    r, cpu_info = _collect_hardware_command(
+        "ipmitool sdr elist | grep -i cpu", deadline)  # type: (int, str)
     if r != 0:
         return metrics.values()
 
@@ -1192,13 +1205,14 @@ def collect_equipment_state_from_ipmi():
 
 
 def collect_equipment_state():
+    deadline = linux.monotime() + HARDWARE_COLLECTION_TIMEOUT
     metrics = {
         'power_supply': GaugeMetricFamily('power_supply',
                                           'power supply', None, ['ps_id']),
         'ipmi_status': GaugeMetricFamily('ipmi_status', 'ipmi status', None, []),
     }
 
-    r, ps_info = bash_ro("ipmitool sdr type 'power supply'")  # type: (int, str)
+    r, ps_info = _collect_hardware_command("ipmitool sdr type 'power supply'", deadline)  # type: (int, str)
     if r == 0:
         for info in ps_info.splitlines():
             info = info.strip()
@@ -1206,7 +1220,7 @@ def collect_equipment_state():
             health = 10 if "fail" in info.lower() or "lost" in info.lower() else 0
             metrics['power_supply'].add_metric([ps_id], health)
 
-    metrics['ipmi_status'].add_metric([], bash_r("ipmitool mc info"))
+    metrics['ipmi_status'].add_metric([], _collect_hardware_command("ipmitool mc info", deadline)[0])
     return metrics.values()
 
 
