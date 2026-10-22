@@ -3,6 +3,9 @@
 import sys, os, time, atexit
 import traceback
 import locale
+import errno
+import fcntl
+from contextlib import contextmanager
 from signal import SIGTERM,SIGKILL
 from zstacklib.utils import linux
 from zstacklib.utils import log
@@ -95,12 +98,45 @@ class Daemon(object):
         pid = os.getpid()
         logger.info("writing pidfile (pid=%d)" % pid)
         try:
-            open(self.pidfile,'w').write("%d\n" % pid)
+            with self._pidfile_lock():
+                with open(self.pidfile, 'w') as stream:
+                    stream.write("%d\n" % pid)
         except IOError as e:
             logger.error(str(e))
 
+    @contextmanager
+    def _pidfile_lock(self):
+        # Use a separate stable inode: the pidfile itself is replaced/removed.
+        with open(self.pidfile + '.lock', 'a') as stream:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
     def delpid(self):
-        linux.rm_file_force(self.pidfile)
+        # A retiring daemon must not remove its successor's pidfile.
+        with self._pidfile_lock():
+            try:
+                with open(self.pidfile) as stream:
+                    owner = int(stream.read().strip())
+            except (IOError, ValueError):
+                return
+            if owner == os.getpid():
+                linux.rm_file_force(self.pidfile)
+
+    @staticmethod
+    def _process_start_time(pid):
+        try:
+            with open('/proc/%s/stat' % pid) as stream:
+                stat = stream.read()
+            # comm may contain spaces and parentheses; starttime is field 22.
+            fields = stat[stat.rfind(')') + 2:].split()
+            if fields[0] == 'Z':
+                return None
+            return int(fields[19])
+        except (IOError, ValueError, IndexError):
+            return None
 
     def start(self):
         """
@@ -148,6 +184,9 @@ class Daemon(object):
         """
         Stop the daemon
         """
+        # Bound this stop request to processes that existed before it started.
+        # A delayed name lookup must never select a concurrent new start.
+        cutoff = self._process_start_time(os.getpid())
         Daemon._log_and_dump_message("Stop Daemon...")
 
         #wait 2s for gracefully shutdown, then will force kill
@@ -161,7 +200,7 @@ class Daemon(object):
             pid = None
 
         if pid and linux.process_exists(pid):
-            self.stop_agent_by_pid(pid, wait_stop)
+            self._stop_existing_agent(pid, wait_stop, cutoff)
         else:
             message = "pidfile %s does not exist. Daemon not running?\n" % self.pidfile
             Daemon._log_and_dump_message(message)
@@ -176,7 +215,7 @@ class Daemon(object):
             for pid in pids.split('\n'):
                 if pid and int(pid) != os.getpid():
                     pid = int(pid)
-                    self.stop_agent_by_pid(pid, wait_stop)
+                    self._stop_existing_agent(pid, wait_stop, cutoff)
 
     def restart(self):
         """
@@ -203,19 +242,32 @@ class Daemon(object):
                     Daemon._log_and_dump_message(message)
                     sys.exit(0)
 
-    def stop_agent_by_pid(self, pid, wait_stop):
-        # Try killing the daemon process
+    def _stop_existing_agent(self, pid, wait_stop, cutoff):
+        identity = self._process_start_time(pid)
+        if identity is None or cutoff is None or identity >= cutoff:
+            Daemon._log_and_dump_message("Skip new or unidentifiable process %s\n" % pid)
+            return
+        self.stop_agent_by_pid(pid, wait_stop, identity)
+
+    def stop_agent_by_pid(self, pid, wait_stop, expected_start_time=None):
+        # Recheck process identity before every signal, including SIGKILL.
+        identity = expected_start_time
+        if identity is None:
+            identity = self._process_start_time(pid)
+        if identity is None:
+            return
         start_time = time.time()
-        while 1:
-            if linux.process_exists(pid):
-                curr_time = time.time()
-                if (curr_time - start_time) > wait_stop:
+        while self._process_start_time(pid) == identity:
+            try:
+                if time.time() - start_time > wait_stop:
                     os.kill(pid, SIGKILL)
                 else:
                     os.kill(pid, SIGTERM)
-                time.sleep(0.3)
-            else:
-                break
+            except OSError as error:
+                if error.errno == errno.ESRCH:
+                    break
+                raise
+            time.sleep(0.3)
 
         print("Stop Daemon Successfully")
 
