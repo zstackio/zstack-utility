@@ -26,7 +26,7 @@ from zstacklib.utils.compat import subprocess
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http, lvm, ceph, pci, gpu
+from zstacklib.utils import http, lvm, ceph, pci, gpu, linux, cpu_frequency
 from zstacklib.utils import qemu
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
@@ -1892,9 +1892,10 @@ class HostPlugin(kvmagent.KvmAgent):
             host_cpu_model_name = host_cpu_info[0]
             rsp.hostCpuModelName = host_cpu_model_name
 
-            transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
-            static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
-            rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
+            processor_frequencies = shell.call(
+                "dmidecode -s processor-frequency", exception=False)
+            rsp.cpuGHz = cpu_frequency.get_static_cpu_ghz(
+                host_cpu_model_name, processor_frequencies)
 
             cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
             # On openeuler, lscpu otuputs 'per cluster' instead of 'per socket'
