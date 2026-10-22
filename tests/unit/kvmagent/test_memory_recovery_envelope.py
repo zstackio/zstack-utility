@@ -1147,3 +1147,23 @@ def test_unqualified_final_cpu_recovery_is_rejected_before_pause_or_native_write
                            (recovery_path, recovery_bytes)):
         with open(path, 'rb') as stream:
             assert stream.read() == expected
+
+
+@pytest.mark.parametrize('installed,state_dir_exists,expected', [
+    (True, False, True),    # installed, never started: no StateDir, no maintenance marker
+    (False, False, False),  # config without the managed unit is not first-use proof
+    (True, True, True),     # empty StateDir is still trustworthy
+])
+def test_cold_ksm_fence_accepts_never_used_service(tmp_path, monkeypatch, installed, state_dir_exists, expected):
+    state_dir = tmp_path / 'zram-state'
+    if state_dir_exists:
+        state_dir.mkdir()
+    config = tmp_path / 'config.json'
+    config.write_text(json.dumps({'state_dir': str(state_dir), 'device': '/dev/zram0'}))
+    plugin = MemoryOptimizationPlugin(service_call=Mock())
+    plugin.configure({'hostUuid': '1' * 32, 'operationDir': str(tmp_path / 'ops'),
+                      'drainConfig': str(config), 'socketPath': str(tmp_path / 'missing.sock')})
+    os.makedirs(plugin.operation_dir)
+    monkeypatch.setattr(plugin, 'ZRAM_CONFIG', str(config))
+    monkeypatch.setattr(plugin, '_managed_service_installed', lambda: installed)
+    assert plugin._cold_ksm_local_fence_clear() is expected

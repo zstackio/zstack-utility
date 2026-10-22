@@ -2675,7 +2675,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             # configured StateDir (outside operation_dir). When that config
             # exists, require it to be trustworthy and reject any current
             # maintenance marker rather than inferring from a missing socket.
-            if os.path.lexists(self.drain_config):
+            # An installed service that never ran has no StateDir and no marker.
+            if os.path.lexists(self.drain_config) and not self._managed_service_never_used():
                 if os.path.islink(self.drain_config):
                     return False
                 try:
