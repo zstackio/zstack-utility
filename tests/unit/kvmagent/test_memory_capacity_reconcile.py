@@ -4992,8 +4992,9 @@ def test_ksm_remains_available_when_zram_accounting_schema_is_unknown():
     })
 
 
+@pytest.mark.parametrize('psi', [True, False])
 def test_agent_keeps_base_zram_and_ksm_capabilities_when_optional_abi_is_missing(
-        monkeypatch):
+        monkeypatch, psi):
     plugin = MemoryOptimizationPlugin()
     plugin.socket_path = '/run/zram-efficiency-admission/control.sock'
     kernel = '6.6.104-006.1.pro.ali6000.alnx4.x86_64'
@@ -5021,6 +5022,8 @@ def test_agent_keeps_base_zram_and_ksm_capabilities_when_optional_abi_is_missing
         '/sys/fs/cgroup/cgroup.controllers',
         '/sys/fs/cgroup/memory.reclaim',
     }
+    if psi:
+        available.update(('/proc/pressure/memory', '/proc/pressure/io'))
     monkeypatch.setattr(memory_optimization_module.os.path, 'exists',
                         lambda path: path in available)
     monkeypatch.setattr(plugin, 'service_call', lambda action, payload: {
@@ -5043,7 +5046,8 @@ def test_agent_keeps_base_zram_and_ksm_capabilities_when_optional_abi_is_missing
 
     assert capabilities['supported'] is True
     assert capabilities['ksm'] is True
-    assert capabilities['zram'] is True
+    assert capabilities['zram'] is psi
+    assert capabilities['zramReasonCode'] == ('SUPPORTED' if psi else 'HOST_PSI_UNAVAILABLE')
     assert capabilities['zramDriver']['accountingSupported'] is False
     assert capabilities['writeback'] is False
 
