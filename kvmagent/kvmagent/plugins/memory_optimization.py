@@ -11116,10 +11116,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise ValueError('UNSUPPORTED_HOST_CAPABILITY:%s' % ','.join(missing))
 
     def _fill_resolved_capacity_defaults(self, command):
-        """Fill omitted global ZRAM capacity from the service's real default."""
+        """Fill omitted global ZRAM capacity from the service's current target."""
         policy = command.get('policy') or {}
         zram = policy.get('zram') or {}
-        if str(command.get('scope', '')).lower() == 'vm' or not zram.get('enabled'):
+        # The native capacity write needs both sides, so a single-side update
+        # keeps the other side's current target.
+        if str(command.get('scope', '')).lower() == 'vm' or not (
+                zram.get('enabled') or 'logicalCapacityBytes' in zram or 'ramLimitBytes' in zram):
             return
         if 'logicalCapacityBytes' in zram and 'ramLimitBytes' in zram:
             return
