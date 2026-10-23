@@ -12366,6 +12366,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'zram_writeback': os.path.exists('/sys/block/zram0/writeback'),
             'cgroupv2': os.path.exists('/sys/fs/cgroup/cgroup.controllers'),
             'memory_reclaim': os.path.exists('/sys/fs/cgroup/memory.reclaim'),
+            'psi': (os.path.exists('/proc/pressure/memory') and
+                    os.path.exists('/proc/pressure/io')),
         }
         arch = platform.machine()
         if arch != 'x86_64':
@@ -12415,6 +12417,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if driver.get('supported') is not True:
                 zram = False
                 reason = driver.get('reasonCode') or 'ZRAM_DRIVER_UNKNOWN'
+        if not interfaces.get('psi'):
+            # The managed reclaim host guards cannot qualify without PSI.
+            zram, reason = False, 'HOST_PSI_UNAVAILABLE'
         installed_candidate = self.installed_reclaim_candidate(release, kernel)
         reboot_required = not zram and installed_candidate is not None
         if reboot_required:
