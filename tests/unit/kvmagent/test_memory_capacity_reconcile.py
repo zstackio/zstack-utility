@@ -5063,3 +5063,20 @@ def test_single_side_capacity_update_keeps_current_other_side(monkeypatch):
         'logicalCapacityBytes': LOGICAL_BYTES, 'ramLimitBytes': OLD_PHYSICAL_BYTES}
     assert physical_only['policy']['zram'] == {
         'logicalCapacityBytes': OLD_LOGICAL_BYTES, 'ramLimitBytes': PHYSICAL_BYTES}
+
+
+@pytest.mark.parametrize(('policy', 'reason', 'clear'), [
+    ({'ksm': {'enabled': True, 'sleepMillis': 25}}, 'KSM_SLEEP_UNREPRESENTABLE', True),
+    ({'schemaVersion': 1, 'ksm': {'zeroPagesEnabled': True}}, 'KSM_ZERO_PAGES_UNSUPPORTED', True),
+    ({'ksm': {'enabled': True}}, 'KSM_NATIVE_SERVICE_STATE_UNKNOWN', False),
+    ({'ksm': {'enabled': True}, 'zram': {'enabled': True}}, 'KSM_SLEEP_UNREPRESENTABLE', False),
+])
+def test_first_use_accepts_only_prewrite_ksm_rejection_history(tmp_path, policy, reason, clear):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    rejected = {'hostUuid': HOST, 'scope': 'Host', 'action': 'apply',
+                'operationUuid': OPERATION, 'desiredRevision': 3, 'policy': policy}
+    assert plugin._record_operation(rejected, 'REJECTED', {'reason': reason})
+
+    assert plugin._first_use_local_history_clear(
+        {'hostUuid': HOST, 'operationUuid': '1' * 32}) is clear

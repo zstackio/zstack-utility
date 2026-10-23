@@ -2818,6 +2818,21 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 return False
         return True
 
+    KSM_PREWRITE_REJECTIONS = frozenset((
+        'invalid KSM policy revision', 'KSM_POLICY_VALUE_INVALID', 'KSM_ZERO_PAGES_POLICY_INVALID',
+        'KSM_ZERO_PAGES_UNSUPPORTED', 'KSM_ENABLED_POLICY_INVALID', 'KSM_MEMTOTAL_UNKNOWN',
+        'KSM_SLEEP_UNREPRESENTABLE', 'KSM_CONFIG_VALUE_INVALID'))
+
+    def _first_use_ksm_prewrite_rejection(self, record):
+        """A KSM-only apply rejected by value validation wrote nothing."""
+        policy = record.get('policy') if isinstance(record, dict) else None
+        return (isinstance(policy, dict) and isinstance(policy.get('ksm'), dict) and
+                bool(policy['ksm']) and not set(policy) - set(('ksm', 'schemaVersion')) and
+                record.get('stage') == 'REJECTED' and record.get('action') in (None, 'apply') and
+                record.get('hostUuid') == self._load_host_uuid() and
+                isinstance(record.get('readback'), dict) and set(record['readback']) == {'reason'} and
+                record['readback']['reason'] in self.KSM_PREWRITE_REJECTIONS)
+
     def _first_use_backend_bound_ksm_record(self, record, preparations,
                                            expected_boot=None,
                                            expected_operation=None,
@@ -4017,7 +4032,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                             record, completed_preparations) or
                         self._first_use_terminal_service_disable(record) or
                         self._first_use_terminal_vm_binding(record) or
-                        self._first_use_admission_not_issued(record)):
+                        self._first_use_admission_not_issued(record) or
+                        self._first_use_ksm_prewrite_rejection(record)):
                     return False
             if active:
                 active_record = self._load_operation({'operationUuid': active})
