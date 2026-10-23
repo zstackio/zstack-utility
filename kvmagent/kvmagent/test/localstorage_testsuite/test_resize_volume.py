@@ -12,6 +12,9 @@ __ENV_SETUP__ = {
     'self': {}
 }
 
+TEMPLATE_PATH = "/root/.zguest/min-vm.qcow2"
+LOCAL_PS_PATH = "/local_ps"
+
 
 ## describe: case will manage by ztest
 class TestLocalStoragePlugin(TestCase):
@@ -19,27 +22,34 @@ class TestLocalStoragePlugin(TestCase):
     @classmethod
     def setUpClass(cls):
         return
+
+    def tearDown(self):
+        # Always clean up localstorage path to avoid polluting subsequent runs
+        bash.bash_ro("rm -rf %s" % LOCAL_PS_PATH)
+
     @pytest_utils.ztest_decorater
     def test_resize_volume(self):
-        rsp = localstorage_utils.localstorage_init(
-            "/local_ps"
-        )
+        if not os.path.exists(TEMPLATE_PATH):
+            self.skipTest("Template %s not found on this node, skip" % TEMPLATE_PATH)
+
+        rsp = localstorage_utils.localstorage_init(LOCAL_PS_PATH)
         self.assertGreater(rsp.totalCapacity, 0, rsp.error)
         self.assertGreater(rsp.availableCapacity, 0, rsp.error)
 
+        install_url = os.path.join(LOCAL_PS_PATH, "test/test.qcow2")
+
         rsp = localstorage_utils.create_root_volume_from_template(
-            templatePathInCache = "/root/.zguest/min-vm.qcow2",
-            installUrl = "/local_ps/test/test.qcow2",
-            storagePath = "/local_ps"
+            templatePathInCache=TEMPLATE_PATH,
+            installUrl=install_url,
+            storagePath=LOCAL_PS_PATH
         )
 
-        self.assertEqual(True, os.path.exists("/local_ps/test/test.qcow2"), "[check] cannot find rootvolume in host")
+        self.assertTrue(os.path.exists(install_url), "[check] cannot find rootvolume in host")
 
         rsp = localstorage_utils.resize_volume(
-            installPath="/local_ps/test/test.qcow2",
+            installPath=install_url,
             size=5242880,
             force=True
         )
 
-        self.assertEqual(5242880, rsp.size , "[check] cannot resize_volume in host")
-        bash.bash_ro("rm -rf /local_ps")
+        self.assertEqual(5242880, rsp.size, "[check] cannot resize_volume in host")

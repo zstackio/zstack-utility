@@ -29,6 +29,16 @@ class TestVolumeWithIoThreadPin(TestCase, vm_utils.VmPluginTestStub):
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
+    def tearDown(self):
+        # Clean up VM resources to avoid polluting subsequent test runs
+        if self.vm_uuid:
+            try:
+                pid = linux.find_vm_pid_by_uuid(self.vm_uuid)
+                if pid:
+                    vm_utils.destroy_vm(self.vm_uuid)
+            except Exception as e:
+                logger.warning("tearDown cleanup failed for vm[%s]: %s", self.vm_uuid, str(e))
+
     @pytest.mark.run(order=1)
     @pytest_utils.ztest_decorater
     def test_virtio_volum(self):
@@ -181,29 +191,27 @@ class TestVolumeWithIoThreadPin(TestCase, vm_utils.VmPluginTestStub):
         virtio_scsi_vol_iothread_pin = "1"
         virtio_scsi_vol_uuid, virtio_scsi_vol_path = volume_utils.create_empty_volume()
 
-        vm_uuid, vm = self._create_vm()
+        self.vm_uuid, vm = self._create_vm()
 
-
-
-        _, virtio_vol = vm_utils.attach_iothreadpin_volume_to_vm(vm_uuid,
+        _, virtio_vol = vm_utils.attach_iothreadpin_volume_to_vm(self.vm_uuid,
                                                                  virtio_vol_uuid,
                                                                  virtio_vol_path,
                                                                  virtio_vol_iothread_id,
                                                                  virtio_vol_iothread_pin)
-        _, virtio_scsi_vol = vm_utils.attach_virtio_scsi_iothread_volume_to_vm(vm_uuid,
+        _, virtio_scsi_vol = vm_utils.attach_virtio_scsi_iothread_volume_to_vm(self.vm_uuid,
                                                                                virtio_scsi_vol_uuid,
                                                                                virtio_scsi_vol_path,
                                                                                virtio_scsi_vol_iothread_id,
                                                                                virtio_scsi_vol_iothread_pin)
 
-        rsp = vm_utils.check_volume(vm_uuid, [virtio_vol, virtio_scsi_vol])
+        rsp = vm_utils.check_volume(self.vm_uuid, [virtio_vol, virtio_scsi_vol])
         self.assertTrue(rsp.success)
-        self.check_volume_iothread_pin(vm_uuid, virtio_vol_path, virtio_vol_iothread_id)
-        self.check_virtio_scsi_volume_config(vm_uuid, virtio_scsi_vol_path, virtio_scsi_vol_iothread_id)
+        self.check_volume_iothread_pin(self.vm_uuid, virtio_vol_path, virtio_vol_iothread_id)
+        self.check_virtio_scsi_volume_config(self.vm_uuid, virtio_scsi_vol_path, virtio_scsi_vol_iothread_id)
 
-        vm_utils.stop_vm(vm_uuid)
-        pid = linux.find_vm_pid_by_uuid(vm_uuid)
-        self.assertTrue(not pid, 'vm[%s] vm still running' % vm_uuid)
+        vm_utils.stop_vm(self.vm_uuid)
+        pid = linux.find_vm_pid_by_uuid(self.vm_uuid)
+        self.assertTrue(not pid, 'vm[%s] vm still running' % self.vm_uuid)
 
         controller_index = "2"
         virtio_vol_body, virtio_pin = vm_utils.build_virtio_vol_with_iothreadpin(virtio_vol_uuid, virtio_vol_path, virtio_vol_iothread_id, virtio_vol_iothread_pin)
@@ -212,34 +220,34 @@ class TestVolumeWithIoThreadPin(TestCase, vm_utils.VmPluginTestStub):
         vm = vm_utils.create_vm_with_vols([virtio_vol_body, virtio_scsi_vol_body], [virtio_pin, virtio_scsi_pin])
         vm_utils.create_vm(vm)
         self.vm_uuid = vm.vmInstanceUuid
-        pid = linux.find_vm_pid_by_uuid(vm_uuid)
-        self.assertFalse(not pid, 'cannot find pid of vm[%s]' % vm_uuid)
+        pid = linux.find_vm_pid_by_uuid(self.vm_uuid)
+        self.assertFalse(not pid, 'cannot find pid of vm[%s]' % self.vm_uuid)
 
-        rsp = vm_utils.check_volume(vm_uuid, [virtio_vol, virtio_scsi_vol])
+        rsp = vm_utils.check_volume(self.vm_uuid, [virtio_vol, virtio_scsi_vol])
         self.assertTrue(rsp.success)
-        self.check_volume_iothread_pin(vm_uuid, virtio_vol_path, virtio_vol_iothread_id)
-        self.check_virtio_scsi_volume_config(vm_uuid, virtio_scsi_vol_path, virtio_scsi_vol_iothread_id)
+        self.check_volume_iothread_pin(self.vm_uuid, virtio_vol_path, virtio_vol_iothread_id)
+        self.check_virtio_scsi_volume_config(self.vm_uuid, virtio_scsi_vol_path, virtio_scsi_vol_iothread_id)
 
-        rsp = vm_utils.detach_volume_from_vm(vm_uuid, virtio_vol)
+        rsp = vm_utils.detach_volume_from_vm(self.vm_uuid, virtio_vol)
         self.assertTrue(rsp.success)
-        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)
+        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(self.vm_uuid)
         vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, virtio_vol_path)
         self.assertIsNone(vol_xml)
 
-        rsp = vm_utils.detach_volume_from_vm(vm_uuid, virtio_scsi_vol)
+        rsp = vm_utils.detach_volume_from_vm(self.vm_uuid, virtio_scsi_vol)
         self.assertTrue(rsp.success)
-        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)
+        xml = vm_utils.get_vm_xmlobject_from_virsh_dump(self.vm_uuid)
         vol_xml = volume_utils.find_volume_in_vm_xml_by_path(xml, virtio_scsi_vol_path)
         self.assertIsNone(vol_xml)
 
-        vm_utils.del_vm_scsi_controller(vm_uuid, virtio_scsi_vol_iothread_id)
-        vm_utils.del_iothread_pin(vm_uuid, virtio_scsi_vol_iothread_id)
-        vm_utils.del_iothread_pin(vm_uuid, virtio_vol_iothread_id)
+        vm_utils.del_vm_scsi_controller(self.vm_uuid, virtio_scsi_vol_iothread_id)
+        vm_utils.del_iothread_pin(self.vm_uuid, virtio_scsi_vol_iothread_id)
+        vm_utils.del_iothread_pin(self.vm_uuid, virtio_vol_iothread_id)
 
-        rsp = vm_utils.check_volume(vm_uuid, [virtio_vol, virtio_scsi_vol])
+        rsp = vm_utils.check_volume(self.vm_uuid, [virtio_vol, virtio_scsi_vol])
         self.assertFalse(rsp.success)
 
-        vm_utils.destroy_vm(vm_uuid)
-        pid = linux.find_vm_pid_by_uuid(vm_uuid)
-        self.assertTrue(not pid, 'vm[%s] vm still running' % vm_uuid)
+        vm_utils.destroy_vm(self.vm_uuid)
+        pid = linux.find_vm_pid_by_uuid(self.vm_uuid)
+        self.assertTrue(not pid, 'vm[%s] vm still running' % self.vm_uuid)
 
