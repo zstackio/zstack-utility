@@ -1426,7 +1426,8 @@ def check_alinux_zram_driver():
             raise ValueError('ZRAM_DRIVER_REPOQUERY_FAILED')
         candidates = set()
         for line in query_output.splitlines():
-            if not line.strip():
+            # The remote yum wrapper echoes the release name before the query result.
+            if '\t' not in line:
                 continue
             fields = line.split('\t')
             if len(fields) != 5:
