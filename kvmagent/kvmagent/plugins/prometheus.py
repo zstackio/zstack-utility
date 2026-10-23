@@ -2052,6 +2052,10 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
     metrics['host_memory_optimization_sample_timestamp_seconds'].add_metric([], time.time())
     families = list(metrics.values())
     families.extend(collect_memory_optimization_vm_accounting(vm_accounting_report))
+    # zwatch selects memory series by this source label (the former textfile contract).
+    for family in families:
+        for sample in family.samples:
+            sample.labels['memory_source'] = 'node_exporter'
     return families
 
 
