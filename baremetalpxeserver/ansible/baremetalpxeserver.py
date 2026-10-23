@@ -227,12 +227,19 @@ copy_arg.dest = "/var/lib/zstack/baremetal/"
 copy_arg.args = "force=yes"
 copy(copy_arg, host_post_info)
 
-# name: copy zwatch-vm-agent
-zwatch_vm_agent_name = "zwatch-vm-agent{}".format('' if host_info.host_arch == 'x86_64' else '_' + host_info.host_arch)
-copy_arg = CopyArg()
-copy_arg.src = os.path.join(kvm_file_root, zwatch_vm_agent_name)
-copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, 'zwatch-vm-agent')
-copy(copy_arg, host_post_info)
+# name: copy zwatch-vm-agent packages for supported Linux baremetal architectures
+linux_agent_names = (
+    'zwatch-vm-agent',
+    'zwatch-vm-agent_aarch64',
+)
+for zwatch_vm_agent_name in linux_agent_names:
+    zwatch_vm_agent_path = os.path.join(kvm_file_root, zwatch_vm_agent_name)
+    if not os.path.isfile(zwatch_vm_agent_path):
+        continue
+    copy_arg = CopyArg()
+    copy_arg.src = zwatch_vm_agent_path
+    copy_arg.dest = os.path.join(VSFTPD_ROOT_PATH, zwatch_vm_agent_name)
+    copy(copy_arg, host_post_info)
 
 copy_arg = CopyArg()
 copy_arg.src = "%s/agent_version" % file_root

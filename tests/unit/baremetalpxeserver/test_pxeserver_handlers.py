@@ -438,18 +438,32 @@ class TestPxeCreateBmConfigs:
         assert "ftp://[2001:db8::20]/img-001" in written
         assert "http://[2001:db8::20]:7773/ks/aa-bb-cc-dd-ee-ff/" in written
 
+    @pytest.mark.parametrize("pxe_ip,url_host", [
+        ("192.168.1.10", "192.168.1.10"),
+        ("2001:db8::20", "[2001:db8::20]"),
+    ])
     @patch("builtins.open", new_callable=mock_open)
-    def test_create_scripts_use_bracketed_ipv6_url_host(self, mocked_open):
+    def test_create_scripts_use_pxe_url_host(self, mocked_open, pxe_ip, url_host):
         agent = _make_agent()
         cmd = _make_bm_config_cmd()
 
-        agent._create_pre_scripts(cmd, "2001:db8::20")
-        agent._create_post_scripts(cmd, "2001:db8::20")
+        agent._create_pre_scripts(cmd, pxe_ip)
+        agent._create_post_scripts(cmd, pxe_ip)
 
         written = "\n".join(args[0][0] for args in mocked_open().write.call_args_list)
-        assert "http://[2001:db8::20]:7771/zstack/asyncrest/sendcommand" in written
-        assert "ftp://[2001:db8::20]/zwatch-vm-agent" in written
-        assert "pushGatewayUrl:  http://[2001:db8::20]:9093" in written
+        assert "http://%s:7771/zstack/asyncrest/sendcommand" % url_host in written
+        assert "pushGatewayUrl:  http://%s:9093" % url_host in written
+        assert "arch=$(uname -m)" in written
+        assert (
+            'zwatch_vm_agent=zwatch-vm-agent\n'
+            'if [ "$arch" != "x86_64" ]; then\n'
+            '    zwatch_vm_agent=zwatch-vm-agent_$arch\n'
+            'fi\n'
+        ) in written
+        assert (
+            "wget -O /usr/bin/zwatch-vm-agent ftp://%s/$zwatch_vm_agent || "
+            "curl -o /usr/bin/zwatch-vm-agent ftp://%s/$zwatch_vm_agent"
+        ) % (url_host, url_host) in written
 
     def test_render_kickstart_template_uses_bracketed_ipv6_urls(self):
         agent = _make_agent()
