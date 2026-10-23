@@ -5046,3 +5046,20 @@ def test_agent_keeps_base_zram_and_ksm_capabilities_when_optional_abi_is_missing
     assert capabilities['zram'] is True
     assert capabilities['zramDriver']['accountingSupported'] is False
     assert capabilities['writeback'] is False
+
+
+def test_single_side_capacity_update_keeps_current_other_side(monkeypatch):
+    plugin = MemoryOptimizationPlugin()
+    monkeypatch.setattr(plugin, 'service_call', lambda action, body: {
+        'desired': {'logical_resolved_bytes': OLD_LOGICAL_BYTES,
+                    'physical_resolved_bytes': OLD_PHYSICAL_BYTES}})
+    logical_only = {'policy': {'zram': {'logicalCapacityBytes': LOGICAL_BYTES}}}
+    physical_only = {'policy': {'zram': {'ramLimitBytes': PHYSICAL_BYTES}}}
+
+    plugin._fill_resolved_capacity_defaults(logical_only)
+    plugin._fill_resolved_capacity_defaults(physical_only)
+
+    assert logical_only['policy']['zram'] == {
+        'logicalCapacityBytes': LOGICAL_BYTES, 'ramLimitBytes': OLD_PHYSICAL_BYTES}
+    assert physical_only['policy']['zram'] == {
+        'logicalCapacityBytes': OLD_LOGICAL_BYTES, 'ramLimitBytes': PHYSICAL_BYTES}
