@@ -198,3 +198,21 @@ def test_rejects_shell_metacharacter_kernel_before_query(installer):
     check()
     assert not any('repoquery' in command or ' install ' in command for command in calls)
     assert messages
+
+
+def test_ignores_release_lines_the_yum_wrapper_prints_before_repoquery(installer):
+    check, calls, messages = installer
+    original = check.__globals__['run_remote_command']
+
+    def run(command, *args, **kwargs):
+        if 'repoquery --available' in command:
+            response = (True, 'alinux4\nalinux4\n'
+                              'kmod-zstack-zram\t0\t1.0.0\t1.6.6.102.005.3.pro.ali6000.alnx4\tx86_64')
+            calls.append(command)
+            return response if kwargs.get('return_output') else response[0]
+        return original(command, *args, **kwargs)
+
+    check.__globals__['run_remote_command'] = run
+    check()
+    assert any(' install ' in command and 'kmod-zstack-zram' in command for command in calls)
+    assert not messages
