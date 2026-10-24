@@ -7072,10 +7072,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                  pool_receipt.get('pool_generation') != generation)
                 if pool_receipt.get('stage') not in ('NOT_STARTED',) and not earlier_cycle:
                     reasons.append('ZRAM_POOL_PREPARATION_ALREADY_REQUESTED')
-            # A prior drain must leave the native KSM scanner stopped too.
-            with open('/sys/kernel/mm/ksm/run', 'r') as stream:
-                if stream.read().strip() != '0':
-                    reasons.append('KSM_NOT_DISABLED')
+            # A prior drain must leave the native KSM scanner stopped too, when
+            # it controlled KSM; an unmanaged scanner is not the drain's to stop.
+            if self._drain_controlled_ksm(control_uuid):
+                with open('/sys/kernel/mm/ksm/run', 'r') as stream:
+                    if stream.read().strip() != '0':
+                        reasons.append('KSM_NOT_DISABLED')
             if not re.match(r'^/dev/zram[0-9]+$', device):
                 reasons.append('ZRAM_DEVICE_UNKNOWN')
         except (IOError, OSError, ValueError, TypeError, KeyError):
@@ -7100,6 +7102,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 native.get('maintenance_blocks_activation') is True and
                 not native.get('pending_operations') and
                 isinstance(pool, dict) and not pool.get('pool_generation'))
+
+    def _drain_controlled_ksm(self, drain_uuid):
+        """Drain stops KSM through the KSM section of the control it replaced."""
+        drain = self._load_operation({'operationUuid': drain_uuid}) if self._valid_identifier(drain_uuid) else None
+        prior_uuid = drain.get('expectedControlOperationUuid') if isinstance(drain, dict) else None
+        prior = self._load_operation({'operationUuid': prior_uuid}) if self._valid_identifier(prior_uuid) else None
+        return not isinstance(prior, dict) or bool((prior.get('policy') or {}).get('ksm'))
 
     def _decorate_zram_pool_preparation_inventory(self, inventory, command):
         if not isinstance(inventory, dict):

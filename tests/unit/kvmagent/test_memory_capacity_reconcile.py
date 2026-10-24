@@ -5457,3 +5457,40 @@ def test_concurrent_drain_poll_waits_for_the_one_holding_the_control_lock(tmp_pa
         plugin._release_operation(holder)
     assert result['status'] == 'Draining' and result['reasonCode'] == 'DRAIN_RECONCILE_LOCK_BUSY'
     assert checks == [] and plugin._load_operation(command)['stage'] == 'DRAINING'
+
+
+@pytest.mark.parametrize('prior_ksm,blocked', [({}, False), ({'enabled': True}, True)])
+def test_running_ksm_blocks_pool_preparation_only_when_the_drain_controlled_it(
+        tmp_path, monkeypatch, prior_ksm, blocked):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    ops = tmp_path / 'operations'
+    ops.mkdir()
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(ops)})
+    drain, prior = 'd' * 32, 'c' * 32
+    (ops / ('%s.json' % prior)).write_text(json.dumps({
+        'operationUuid': prior, 'hostUuid': HOST, 'action': 'apply', 'stage': 'APPLIED',
+        'policy': {'schemaVersion': 1, 'ksm': prior_ksm, 'zram': {'enabled': True}}}))
+    (ops / ('%s.json' % drain)).write_text(json.dumps({
+        'operationUuid': drain, 'hostUuid': HOST, 'action': 'drain', 'stage': 'APPLIED',
+        'expectedControlOperationUuid': prior, 'policy': {}}))
+    monkeypatch.setattr(plugin, '_get_active_control', lambda: drain)
+    monkeypatch.setattr(plugin, '_maintenance_service_state', lambda: 'inactive')
+    monkeypatch.setattr(plugin, '_drained_pool_generation', lambda host, control, native_check=True: 'e' * 64)
+    monkeypatch.setattr(plugin, '_read_zram_pool_preparation_receipt', lambda: ({'stage': 'NOT_STARTED'}, None))
+    monkeypatch.setattr(plugin, '_read_backend_maintenance_receipt', lambda: ({'stage': 'NOT_STARTED'}, None))
+    state = tmp_path / 'state'
+    (state / 'policies').mkdir(parents=True)
+    (state / 'policies' / 'policies.json').write_text(json.dumps({'host': {'efficiency_enabled': False}}))
+    monkeypatch.setattr(plugin, '_read_maintenance_config', lambda: (
+        {'initial_efficiency_enabled': False}, str(state), '/dev/zram0'))
+    real_open = open
+
+    def ksm_running(path, *args, **kwargs):
+        if path == '/sys/kernel/mm/ksm/run':
+            return io.StringIO('1\n')
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr('builtins.open', ksm_running)
+    reasons = plugin._zram_pool_preparation_eligibility(HOST)['zramPoolPreparationReasons']
+    assert 'ZRAM_POOL_PREPARATION_EVIDENCE_UNKNOWN' not in reasons
+    assert ('KSM_NOT_DISABLED' in reasons) is blocked
