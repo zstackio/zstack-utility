@@ -3278,12 +3278,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _first_use_active_service_disable_safe(self, record, command=None,
                                               failed_backend_record=None):
         """Bind an active disabled Host receipt to current or stop-bound state."""
-        if (not isinstance(record, dict) or record.get('bootId') != self._current_boot_id() or
-                not self._first_use_terminal_service_disable(record)):
+        if not isinstance(record, dict) or not self._first_use_terminal_service_disable(record):
             return False
         try:
             service_state = self._maintenance_service_state()
             if service_state == 'active':
+                # The live (or same-boot stop-bound) service state proves the
+                # receipt again, so one from before a reboot also qualifies.
                 cpu_state = self._service_request('host-cpu-state', {})
                 tuning_state = self._service_request('tuning-state', {})
             elif service_state == 'inactive' and isinstance(command, dict):
