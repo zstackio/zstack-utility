@@ -4730,7 +4730,7 @@ def test_stock_drain_reconcile_returns_only_exact_durable_owner_proof(
     prior = plugin._load_operation(command)
     monkeypatch.setattr(plugin, '_load_host_uuid', lambda: HOST)
     monkeypatch.setattr(memory_optimization_module.subprocess, 'check_output',
-                        lambda argv: json.dumps(receipt).encode('utf-8'))
+                        lambda argv, **kwargs: json.dumps(receipt).encode('utf-8'))
 
     result = plugin._reconcile_stock_drain(command, prior)
 
@@ -4786,7 +4786,7 @@ def test_stock_drain_reconcile_retries_proof_readback_from_durable_intent(
     monkeypatch.setattr(plugin, '_load_host_uuid', lambda: HOST)
     native_checks = []
 
-    def native_check(argv):
+    def native_check(argv, **kwargs):
         native_checks.append(argv)
         return json.dumps(receipt).encode('utf-8')
 
@@ -5276,6 +5276,7 @@ def test_running_drained_service_does_not_block_preparation_eligibility(tmp_path
 
 
 @pytest.mark.parametrize('reason,status', [('MAINTENANCE_ACTIVATION_POOL_STARTING', 'Draining'),
+                                           ('MAINTENANCE_ACTIVATION_HOST_SETTLING', 'Draining'),
                                            ('MAINTENANCE_ACTIVATION_POOL_NOT_READY', 'Unknown')])
 def test_activation_waiting_for_service_startup_stays_in_progress(tmp_path, monkeypatch, reason, status):
     plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
@@ -5350,3 +5351,105 @@ def test_activation_waits_for_a_safe_sample_from_a_restarted_service(tmp_path, m
     plugin.maintenance_activation_host_wait = 0
     samples[:] = [{'host': {'qualified': True, 'safe': False}}]
     assert plugin._await_safe_host_sample() is False
+
+
+def _drain_reconcile_fixture(tmp_path, monkeypatch):
+    with open('/proc/sys/kernel/random/boot_id') as stream:
+        boot_id = stream.read().strip()
+    operation_uuid, pool_generation, device = 'drain-concurrent-poll', 'b' * 64, '/dev/zram0'
+    plugin = MemoryOptimizationPlugin()
+    drain_dir, operation_dir = tmp_path / 'drain', tmp_path / 'operations'
+    config_path, binary_path = tmp_path / 'drain-config.json', tmp_path / 'zram-efficiency'
+    config_path.write_text('{}')
+    binary_path.write_text('fixture')
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(operation_dir),
+                      'drainDir': str(drain_dir), 'drainConfig': str(config_path),
+                      'drainBinary': str(binary_path)})
+    receipt_path = drain_dir / (operation_uuid + '.receipt.json')
+    receipt = {'pool_generation': pool_generation, 'device': device,
+               'state': 'WITHDRAWN_SWAP_INACTIVE_POOL_PRESERVED', 'active': False, 'reset_performed': False}
+    receipt_path.parent.mkdir()
+    receipt_path.write_text(json.dumps(receipt))
+    operation_dir.mkdir(exist_ok=True)
+    (operation_dir / (operation_uuid + '.drain-intent.json')).write_text(json.dumps({
+        'operationUuid': operation_uuid, 'bootId': boot_id, 'poolGeneration': pool_generation,
+        'device': device, 'unit': 'zstack-memory-drain-' + operation_uuid,
+        'receiptPath': str(receipt_path), 'configPath': plugin.drain_config}))
+    command = {'hostUuid': HOST, 'operationUuid': operation_uuid, 'action': 'drain'}
+    monkeypatch.setattr(plugin, '_load_host_uuid', lambda: HOST)
+    return plugin, command, receipt
+
+
+def _busy_drain_check(argv, **kwargs):
+    raise subprocess.CalledProcessError(
+        1, argv, output=b'{"error":"state directory already in use: resource temporarily unavailable"}')
+
+
+def test_drain_check_blocked_by_a_concurrent_poll_stays_in_progress(tmp_path, monkeypatch):
+    plugin, command, _ = _drain_reconcile_fixture(tmp_path, monkeypatch)
+    assert plugin._record_operation(command, 'DRAINING', {
+        'success': True, 'status': 'Draining', 'operationUuid': command['operationUuid']})
+    monkeypatch.setattr(memory_optimization_module.subprocess, 'check_output', _busy_drain_check)
+    result = plugin._reconcile_stock_drain(command, plugin._load_operation(command))
+    assert result['status'] == 'Draining' and result['success'] is True, result
+    assert plugin._load_operation(command)['stage'] == 'DRAINING'
+
+
+def test_failed_recheck_never_downgrades_a_confirmed_drain(tmp_path, monkeypatch):
+    plugin, command, receipt = _drain_reconcile_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(memory_optimization_module.subprocess, 'check_output',
+                        lambda argv, **kwargs: json.dumps(receipt).encode('utf-8'))
+    assert plugin._record_operation(command, 'DRAINING', {
+        'success': True, 'status': 'Draining', 'operationUuid': command['operationUuid']})
+    confirmed = plugin._reconcile_stock_drain(command, plugin._load_operation(command))
+    assert confirmed['status'] == 'Succeeded'
+    monkeypatch.setattr(memory_optimization_module.subprocess, 'check_output', _busy_drain_check)
+    again = plugin._reconcile_stock_drain(command, plugin._load_operation(command))
+    assert again['status'] == 'Succeeded', again
+    assert plugin._load_operation(command)['stage'] == 'APPLIED'
+
+
+@pytest.mark.parametrize('case,expected', [
+    ('starting', 'MAINTENANCE_ACTIVATION_POOL_STARTING'),
+    ('pool_ready_host_unsafe', 'MAINTENANCE_ACTIVATION_HOST_SETTLING'),
+    ('pool_ready_host_unqualified', 'MAINTENANCE_ACTIVATION_HOST_SETTLING'),
+    ('old_pool_host_unsafe', None),
+    ('pending_host_unsafe', None),
+    ('paused', None),
+])
+def test_activation_waits_only_for_transient_service_states(case, expected):
+    old, new = 'a' * 64, 'b' * 64
+    lifecycle = {'paused': False}
+    pool = {'pool_generation': new, 'quality': 'native_host_device', 'reason': None}
+    host = {'qualified': True, 'safe': False}
+    native = {'maintenance_blocks_activation': False}
+    pending = []
+    if case == 'starting':
+        pool = {'pool_generation': '', 'quality': 'unavailable',
+                'reason': MemoryOptimizationPlugin.POOL_STARTUP_OBSERVATION_REASON}
+    if case == 'pool_ready_host_unqualified':
+        host = {'qualified': False, 'safe': False}
+    if case == 'old_pool_host_unsafe':
+        pool['pool_generation'] = old
+    if case == 'pending_host_unsafe':
+        pending = [{'reason': 'FIXTURE'}]
+    if case == 'paused':
+        lifecycle = {'paused': True}
+    assert MemoryOptimizationPlugin._activation_settling_reason(
+        lifecycle, pool, host, native, pending, old) == expected
+
+
+def test_concurrent_drain_poll_waits_for_the_one_holding_the_control_lock(tmp_path, monkeypatch):
+    plugin, command, _ = _drain_reconcile_fixture(tmp_path, monkeypatch)
+    assert plugin._record_operation(command, 'DRAINING', {
+        'success': True, 'status': 'Draining', 'operationUuid': command['operationUuid']})
+    checks = []
+    monkeypatch.setattr(memory_optimization_module.subprocess, 'check_output',
+                        lambda argv, **kwargs: checks.append(argv) or b'{}')
+    holder = plugin._acquire_host_control_lock()
+    try:
+        result = plugin._reconcile_stock_drain(command, plugin._load_operation(command))
+    finally:
+        plugin._release_operation(holder)
+    assert result['status'] == 'Draining' and result['reasonCode'] == 'DRAIN_RECONCILE_LOCK_BUSY'
+    assert checks == [] and plugin._load_operation(command)['stage'] == 'DRAINING'
