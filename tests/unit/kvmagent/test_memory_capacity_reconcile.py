@@ -5084,3 +5084,269 @@ def test_first_use_accepts_only_prewrite_ksm_rejection_history(tmp_path, policy,
 
     assert plugin._first_use_local_history_clear(
         {'hostUuid': HOST, 'operationUuid': '1' * 32}) is clear
+
+
+def _drained_reboot_fixture(tmp_path, monkeypatch, record_boot, current_boot='boot-after-reboot'):
+    drain, generation = 'd' * 32, 'c' * 64
+    ops, state = tmp_path / 'operations', tmp_path / 'state'
+    ops.mkdir()
+    archive = state / 'drained-pool-archives' / generation
+    archive.mkdir(parents=True)
+    (archive / 'manifest.json').write_text(json.dumps({
+        'schema': 1, 'pool_generation': generation,
+        'files': ['stock-pool.json', 'zram-ownership.json', 'maintenance']}))
+    receipt = tmp_path / 'drain-receipt.json'
+    receipt.write_text(json.dumps({'pool_generation': generation, 'device': '/dev/zram0',
+                                   'state': 'WITHDRAWN_SWAP_INACTIVE_POOL_PRESERVED',
+                                   'active': False, 'reset_performed': False}))
+    (ops / ('%s.json' % drain)).write_text(json.dumps({
+        'operationUuid': drain, 'action': 'drain', 'stage': 'APPLIED',
+        'bootId': record_boot, 'hostUuid': HOST}))
+    (ops / ('%s.drain-intent.json' % drain)).write_text(json.dumps({
+        'operationUuid': drain, 'poolGeneration': generation, 'receiptPath': str(receipt),
+        'bootId': record_boot}))
+    (ops / 'active-control').write_text(drain)
+    config = tmp_path / 'zram-config.json'
+    config.write_text(json.dumps({'state_dir': str(state)}))
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(ops), 'drainConfig': str(config)})
+    monkeypatch.setattr(plugin, '_current_boot_id', lambda: current_boot)
+    real_open = open
+
+    def native_open(path, *args, **kwargs):
+        if path == '/proc/swaps':
+            return io.StringIO('Filename Type Size Used Priority\n')
+        if path == '/sys/block/zram0/mm_stat':
+            return io.StringIO('0 0 0 0 0 0 0 0 0\n')
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr('builtins.open', native_open)
+    proof = {'maintenanceReady': True, 'maintenanceArchived': True, 'activeOperations': 0,
+             'drainOperationUuid': drain, 'oldPoolGeneration': generation,
+             'readyForInitialization': True, 'originalDeviceInactive': True,
+             'oldPoolOwnershipAbsent': True, 'poolOwnedByService': False}
+    blank = {'pending_operations': None, 'host_zram': {
+        'pool_generation': '', 'device': '', 'quality': 'unavailable',
+        'reason': 'NO_QUALIFIED_MANAGED_POOL: VM_INVENTORY_UNQUALIFIED'}}
+    return plugin, proof, blank
+
+
+@pytest.mark.parametrize('record_boot', ['boot-after-reboot', 'boot-before-reboot'])
+def test_drained_blank_device_recovers_in_the_drain_boot_or_after_reboot(tmp_path, monkeypatch, record_boot):
+    plugin, proof, blank = _drained_reboot_fixture(tmp_path, monkeypatch, record_boot)
+    assert plugin._maintenance_recovery_proof({'maintenanceProof': proof}, live_state=blank) is True
+
+
+def test_drain_from_a_previous_boot_never_proves_a_live_replacement_pool(tmp_path, monkeypatch):
+    plugin, proof, _ = _drained_reboot_fixture(tmp_path, monkeypatch, 'boot-before-reboot')
+    replacement = 'e' * 64
+    proof.update({'newPoolGeneration': replacement, 'poolOwnedByService': True})
+    live = {'pending_operations': [], 'host_zram': {'pool_generation': replacement}}
+    assert plugin._maintenance_recovery_proof({'maintenanceProof': proof}, live_state=live) is False
+
+
+def test_activation_after_reboot_reads_the_service_receipt_of_a_previous_boot_drain(tmp_path, monkeypatch):
+    plugin, proof, _ = _drained_reboot_fixture(tmp_path, monkeypatch, 'boot-before-reboot')
+    drain, operation = 'd' * 32, 'a' * 32
+    request = {'request_id': 'f' * 32, 'expected_control_operation_uuid': drain,
+               'expected_host_boot_id': 'boot-after-reboot', 'expected_pool_generation': proof['oldPoolGeneration']}
+    intent = {'operationUuid': operation, 'hostUuid': HOST, 'bootId': 'boot-after-reboot',
+              'expectedControlOperationUuid': drain, 'proof': proof, 'request': request,
+              'proofFingerprint': hashlib.sha256(json.dumps(
+                  proof, sort_keys=True, separators=(',', ':')).encode('utf-8')).hexdigest()}
+    queried = []
+    monkeypatch.setattr(plugin, '_service_request', lambda action, payload: queried.append(action) or {})
+    _, reason, _ = plugin._maintenance_activation_observation({'operationUuid': operation}, intent)
+    assert reason != 'MAINTENANCE_ACTIVATION_DRAIN_HISTORY_UNQUALIFIED'
+    assert 'lifecycle-activation-state' in queried
+
+
+def test_records_of_a_previous_host_identity_do_not_fence_first_zram(tmp_path):
+    """A Host deleted and re-added in the cloud keeps the Agent journals of its old UUID."""
+    old_host, old_control = 'f' * 32, 'b' * 32
+    ops = tmp_path / 'memory-optimization' / 'operations'
+    ops.mkdir(parents=True)
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(ops)})
+    (ops / ('%s.json' % old_control)).write_text(json.dumps({
+        'operationUuid': old_control, 'hostUuid': old_host, 'action': 'apply', 'stage': 'APPLIED',
+        'policy': {'ksm': {'enabled': True}, 'zram': {'enabled': False}}}))
+    (ops / ('%s.drain-intent.json' % old_control)).write_text(json.dumps({'operationUuid': old_control}))
+    (ops / 'active-control').write_text(old_control)
+    command = {'hostUuid': HOST, 'operationUuid': '1' * 32}
+    assert plugin._first_use_local_history_clear(command) is False
+
+    plugin._archive_foreign_host_history()
+
+    assert sorted(os.listdir(str(ops))) == []
+    archived = list((tmp_path / 'memory-optimization' / 'foreign-host-operations').iterdir())
+    assert len(archived) == 1
+    assert sorted(os.listdir(str(archived[0]))) == sorted([
+        '%s.json' % old_control, '%s.drain-intent.json' % old_control, 'active-control'])
+    assert plugin._first_use_local_history_clear(command) is True
+
+
+def test_state_does_not_confirm_a_revision_of_a_previous_host_identity(tmp_path):
+    ops = tmp_path / 'operations'
+    ops.mkdir()
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(ops)})
+    old_control = 'b' * 32
+    record = {'operationUuid': old_control, 'hostUuid': 'f' * 32, 'action': 'apply', 'stage': 'APPLIED',
+              'bootId': plugin._current_boot_id(), 'desiredRevision': 1}
+    (ops / ('%s.json' % old_control)).write_text(json.dumps(record))
+    (ops / 'active-control').write_text(old_control)
+    result = plugin._enrich_state({'success': True, 'status': 'Succeeded', 'state': {}})
+    assert 'appliedRevision' not in result and 'lastConfirmedOperationUuid' not in result
+    record['hostUuid'] = HOST
+    (ops / ('%s.json' % old_control)).write_text(json.dumps(record))
+    result = plugin._enrich_state({'success': True, 'status': 'Succeeded', 'state': {}})
+    assert result['appliedRevision'] == 1 and result['lastConfirmedOperationUuid'] == old_control
+
+
+def test_current_host_records_stay_in_place(tmp_path):
+    ops = tmp_path / 'operations'
+    ops.mkdir()
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(ops)})
+    record = {'operationUuid': 'a' * 32, 'hostUuid': HOST, 'action': 'apply', 'stage': 'UNKNOWN'}
+    (ops / ('%s.json' % ('a' * 32))).write_text(json.dumps(record))
+    plugin._archive_foreign_host_history()
+    assert os.listdir(str(ops)) == ['%s.json' % ('a' * 32)]
+
+
+def _running_drained_preparation(tmp_path, monkeypatch, full_check_reasons):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    for name in ('drain_binary', 'drain_config'):
+        path = tmp_path / name
+        path.write_text('')
+        setattr(plugin, name, str(path))
+    running, commands = [True], []
+
+    def systemctl(command, timeout):
+        commands.append(command[:2])
+        running[0] = command[1] == 'start'
+        return ''
+
+    monkeypatch.setattr(plugin, '_service_unit_stopped', lambda: not running[0])
+    monkeypatch.setattr(plugin, '_bounded_command_output', systemctl)
+    monkeypatch.setattr(plugin, '_zram_pool_preparation_eligibility', lambda host, control=None: (
+        {'canPrepareZramPool': True} if running[0] else
+        {'canPrepareZramPool': False, 'zramPoolPreparationReasons': full_check_reasons}))
+    command = {'hostUuid': HOST, 'operationUuid': 'a' * 32, 'action': 'prepareZramPool', 'scope': 'Host',
+               'expectedControlOperationUuid': 'd' * 32,
+               'poolPreparation': {'expectedHostBootId': plugin._current_boot_id(),
+                                   'expectedPoolGeneration': 'c' * 64, 'resetConfirmed': True}}
+    return plugin, command, running, commands
+
+
+def test_preparation_stops_a_drained_service_and_restarts_it_if_it_cannot_reset(tmp_path, monkeypatch):
+    plugin, command, running, commands = _running_drained_preparation(
+        tmp_path, monkeypatch, ['DRAIN_PROOF_UNAVAILABLE'])
+    result = plugin._prepare_zram_pool(command)
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'DRAIN_PROOF_UNAVAILABLE', result
+    assert commands == [['systemctl', 'stop'], ['systemctl', 'start']]
+    assert running[0] is True
+
+
+def test_preparation_leaves_the_service_running_when_the_drain_is_not_proven(tmp_path, monkeypatch):
+    plugin, command, running, commands = _running_drained_preparation(tmp_path, monkeypatch, [])
+    monkeypatch.setattr(plugin, '_zram_pool_preparation_eligibility', lambda host, control=None: {
+        'canPrepareZramPool': False, 'zramPoolPreparationReasons': ['OPERATION_JOURNAL_UNRESOLVED']})
+    result = plugin._prepare_zram_pool(command)
+    assert result['reasonCode'] == 'OPERATION_JOURNAL_UNRESOLVED', result
+    assert commands == [] and running[0] is True
+
+
+@pytest.mark.parametrize('quiescent', [True, False])
+def test_running_drained_service_does_not_block_preparation_eligibility(tmp_path, monkeypatch, quiescent):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    native_checks = []
+    monkeypatch.setattr(plugin, '_get_active_control', lambda: 'd' * 32)
+    monkeypatch.setattr(plugin, '_maintenance_service_state', lambda: 'active')
+    monkeypatch.setattr(plugin, '_drained_service_quiescent', lambda: quiescent)
+    monkeypatch.setattr(plugin, '_drained_pool_generation', lambda host, control, native_check=True: (
+        native_checks.append(native_check) or 'c' * 64))
+    reasons = plugin._zram_pool_preparation_eligibility(HOST)['zramPoolPreparationReasons']
+    assert native_checks == [False]
+    assert 'DRAIN_PROOF_UNAVAILABLE' not in reasons
+    assert ('MEMORY_SERVICE_NOT_STOPPED' in reasons) is not quiescent
+
+
+@pytest.mark.parametrize('reason,status', [('MAINTENANCE_ACTIVATION_POOL_STARTING', 'Draining'),
+                                           ('MAINTENANCE_ACTIVATION_POOL_NOT_READY', 'Unknown')])
+def test_activation_waiting_for_service_startup_stays_in_progress(tmp_path, monkeypatch, reason, status):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    monkeypatch.setattr(plugin, '_maintenance_activation_observation', lambda command, intent: (False, reason, {}))
+    result = plugin._finish_maintenance_activation({'operationUuid': 'a' * 32}, {}, wait=False)
+    assert result['status'] == status and result['reasonCode'] == reason
+    assert result['success'] is (status == 'Draining'), 'MN treats only a successful Draining reply as in progress'
+    prior = {'action': 'apply', 'hostUuid': HOST, 'bootId': plugin._current_boot_id(), 'activationIntent': {}}
+    result = plugin._reconcile_maintenance_activation({'operationUuid': 'a' * 32}, prior)
+    assert result['status'] == status and result['reasonCode'] == reason
+
+
+@pytest.mark.parametrize('receipt_generation,blocked', [('e' * 64, False), ('c' * 64, True)])
+def test_preparation_receipt_of_an_earlier_drain_cycle_does_not_block(tmp_path, monkeypatch,
+                                                                      receipt_generation, blocked):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    monkeypatch.setattr(plugin, '_get_active_control', lambda: 'd' * 32)
+    monkeypatch.setattr(plugin, '_maintenance_service_state', lambda: 'inactive')
+    monkeypatch.setattr(plugin, '_drained_pool_generation', lambda host, control, native_check=True: 'c' * 64)
+    monkeypatch.setattr(plugin, '_read_zram_pool_preparation_receipt', lambda: (
+        {'stage': 'APPLIED', 'pool_generation': receipt_generation}, None))
+    state = tmp_path / 'state'
+    (state / 'policies').mkdir(parents=True)
+    (state / 'policies' / 'policies.json').write_text(json.dumps({'host': {'efficiency_enabled': False}}))
+    monkeypatch.setattr(plugin, '_read_maintenance_config', lambda: (
+        {'initial_efficiency_enabled': False}, str(state), '/dev/zram0'))
+    monkeypatch.setattr(plugin, '_read_backend_maintenance_receipt', lambda: ({'stage': 'NOT_STARTED'}, None))
+    reasons = plugin._zram_pool_preparation_eligibility(HOST)['zramPoolPreparationReasons']
+    assert 'ZRAM_POOL_PREPARATION_EVIDENCE_UNKNOWN' not in reasons
+    assert ('ZRAM_POOL_PREPARATION_ALREADY_REQUESTED' in reasons) is blocked
+
+
+@pytest.mark.parametrize('service_state,native_check', [('active', False), ('inactive', True)])
+def test_inventory_reports_the_drained_pool_while_the_service_runs(tmp_path, monkeypatch,
+                                                                    service_state, native_check):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    checks = []
+    monkeypatch.setattr(plugin, '_get_active_control', lambda: 'd' * 32)
+    monkeypatch.setattr(plugin, '_maintenance_service_state', lambda: service_state)
+    monkeypatch.setattr(plugin, '_read_backend_maintenance_receipt', lambda: ({'stage': 'NOT_STARTED'}, None))
+    monkeypatch.setattr(plugin, '_drained_pool_generation', lambda host, control, native_check=True: (
+        checks.append(native_check) or 'c' * 64))
+    inventory = plugin._decorate_backend_maintenance_inventory(
+        {'candidates': []}, {'host_zram': {'pool_generation': ''}}, {'hostUuid': HOST})
+    assert inventory['poolGeneration'] == 'c' * 64
+    assert checks and set(checks) == {native_check}
+
+
+def test_activation_waits_for_a_safe_sample_from_a_restarted_service(tmp_path, monkeypatch):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations')})
+    plugin.maintenance_activation_poll_interval = 0
+    samples = [{'host': {'qualified': False, 'safe': False}},
+               {'host': {'qualified': True, 'safe': False}},
+               {'host': {'qualified': True, 'safe': True}}]
+    seen = []
+
+    def state(action, payload):
+        seen.append(action)
+        return samples[min(len(seen), len(samples)) - 1]
+
+    monkeypatch.setattr(plugin, '_service_request', state)
+    ttls = []
+    monkeypatch.setattr(plugin, '_native_observation_is_fresh', lambda value, ttl, now=None: ttls.append(ttl) or True)
+    assert plugin._await_safe_host_sample() is True
+    assert ttls and max(ttls) <= 1, 'the sample must stay current until the service reads it'
+
+    assert seen == ['state', 'state', 'state']
+    plugin.maintenance_activation_host_wait = 0
+    samples[:] = [{'host': {'qualified': True, 'safe': False}}]
+    assert plugin._await_safe_host_sample() is False

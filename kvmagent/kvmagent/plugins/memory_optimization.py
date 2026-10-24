@@ -134,6 +134,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         '/usr/lib/systemd/system/ksm.service',
                         '/usr/lib/systemd/system/ksmtuned.service')
     MANAGED_ZRAM_UNIT = 'zram-memory.service'
+    POOL_STARTUP_OBSERVATION_REASON = 'NO_QUALIFIED_MANAGED_POOL: STARTUP_OBSERVATION_IN_PROGRESS'
     KSM_CONF = '/etc/ksmtuned.conf'
     KSM_LOCK = '/run/zstack/memory-optimization/ksm.writer.lock'
     OPERATION_DIR = '/var/lib/zstack/memory-optimization/operations'
@@ -738,8 +739,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 request.get('expected_pool_generation') != proof.get('oldPoolGeneration')):
             return False, 'MAINTENANCE_ACTIVATION_INTENT_INVALID', {}
         drain = self._load_operation({'operationUuid': drain_uuid})
+        # As in the recovery proof, only an empty-device activation may follow a
+        # drain from before a reboot.
         if (not isinstance(drain, dict) or drain.get('action') != 'drain' or
-                drain.get('stage') != 'APPLIED' or drain.get('bootId') != self._current_boot_id()):
+                drain.get('stage') != 'APPLIED' or
+                (drain.get('bootId') != self._current_boot_id() and proof.get('newPoolGeneration'))):
             return False, 'MAINTENANCE_ACTIVATION_DRAIN_HISTORY_UNQUALIFIED', {}
         if self._get_active_control() not in (drain_uuid, command.get('operationUuid')):
             return False, 'MAINTENANCE_ACTIVATION_CONTROL_FENCED', {}
@@ -795,6 +799,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 host.get('safe') is not True or
                 native.get('maintenance_blocks_activation') is True or
                 not isinstance(pending, list) or pending):
+            if (isinstance(lifecycle, dict) and lifecycle.get('paused') is False and isinstance(pool, dict) and
+                    pool.get('reason') == self.POOL_STARTUP_OBSERVATION_REASON):
+                # The service creates the pool after its bounded startup observation.
+                return False, 'MAINTENANCE_ACTIVATION_POOL_STARTING', {
+                    'activation': activation, 'service': native}
             return False, 'MAINTENANCE_ACTIVATION_POOL_NOT_READY', {
                 'activation': activation, 'service': native}
         ttl = (command.get('policy') or {}).get('zram', {}).get('hostSampleTtlSeconds', 3)
@@ -914,8 +923,27 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             state['capacityDesiredNotEffective'] = True
         return state
 
+    def _await_safe_host_sample(self):
+        """Bounded wait for the first fresh safe Host sample; the service still decides."""
+        timeout = getattr(self, 'maintenance_activation_host_wait', 8)
+        interval = getattr(self, 'maintenance_activation_poll_interval', 0.25)
+        clock = getattr(time, 'monotonic', time.time)
+        deadline = clock() + timeout
+        while True:
+            try:
+                host = self._service_request('state', {}).get('host') or {}
+            except Exception:
+                host = {}
+            # A young sample stays current until the activation request reaches the service.
+            if (host.get('qualified') is True and host.get('safe') is True and
+                    self._native_observation_is_fresh(host.get('observed_at'), 1)):
+                return True
+            if clock() >= deadline:
+                return False
+            time.sleep(interval)
+
     def _finish_maintenance_activation(self, command, intent, wait=True):
-        timeout = getattr(self, 'maintenance_activation_timeout', 20)
+        timeout = getattr(self, 'maintenance_activation_timeout', 12)
         interval = getattr(self, 'maintenance_activation_poll_interval', 0.25)
         clock = getattr(time, 'monotonic', time.time)
         deadline = clock() + (timeout if wait else 0)
@@ -938,11 +966,17 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                    'state': {'phase': 'UNKNOWN'}})
                 return result
             if not wait or clock() >= deadline:
-                return {'success': False, 'status': 'Unknown',
-                        'reasonCode': reason or 'MAINTENANCE_ACTIVATION_NOT_READY',
-                        'state': {'phase': 'ACTIVATING', 'readback': last},
-                        'operationUuid': command.get('operationUuid')}
+                return self._pending_maintenance_activation(command.get('operationUuid'), reason, last)
             time.sleep(interval)
+
+    @staticmethod
+    def _pending_maintenance_activation(operation_uuid, reason, readback):
+        # A starting pool stays in progress so MN keeps polling; anything else needs review.
+        starting = reason == 'MAINTENANCE_ACTIVATION_POOL_STARTING'
+        return {'success': starting, 'status': 'Draining' if starting else 'Unknown',
+                'reasonCode': reason or 'MAINTENANCE_ACTIVATION_NOT_READY',
+                'state': {'phase': 'ACTIVATING', 'readback': readback},
+                'operationUuid': operation_uuid}
 
     def _finish_rejected_maintenance_activation(self, command, reason, readback):
         """Commit only an identity-verified, durable pre-activation rejection."""
@@ -976,10 +1010,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if readback.get('activationRejected') is True:
                 return self._finish_rejected_maintenance_activation(command, reason, readback)
             if not ready:
-                return {'success': False, 'status': 'Unknown',
-                        'reasonCode': reason or 'MAINTENANCE_ACTIVATION_NOT_READY',
-                        'state': {'phase': 'ACTIVATING', 'readback': readback},
-                        'operationUuid': operation_uuid}
+                return self._pending_maintenance_activation(operation_uuid, reason, readback)
             self._set_active_control(operation_uuid)
             result = {'success': True, 'status': 'Succeeded',
                       'state': {'phase': 'POOL_READY', 'maintenanceActivation': readback},
@@ -2466,8 +2497,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return False
         record = self._load_operation({'operationUuid': drain_uuid})
         if (not isinstance(record, dict) or record.get('action') != 'drain' or
-                record.get('stage') != 'APPLIED' or
-                record.get('bootId') != self._current_boot_id()):
+                record.get('stage') != 'APPLIED'):
+            return False
+        # A reboot resets the drained device. Only the empty-device proof below
+        # may span it; a live replacement pool must belong to the drain's boot.
+        if record.get('bootId') != self._current_boot_id() and new_generation:
             return False
         if self._get_active_control() != (expected_active_control or drain_uuid):
             return False
@@ -3850,6 +3884,44 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     }}
         except (IOError, OSError, ValueError, TypeError, KeyError):
             raise RuntimeError('FIRST_ZRAM_BACKEND_PREPARATION_UNPROVEN')
+
+    def _archive_foreign_host_history(self):
+        """Move journals written under another Host UUID out of the fence directory.
+
+        A Host deleted and re-added in the cloud keeps its old Agent journals.
+        They are not evidence for the current identity, which is verified again
+        from live native state; keep them archived instead of fencing forever.
+        """
+        host = self._load_host_uuid()
+        directory = self.operation_dir
+        if not self._valid_identifier(host) or not os.path.isdir(directory) or os.path.islink(directory):
+            return
+        foreign = set()
+        for name in os.listdir(directory):
+            path = os.path.join(directory, name)
+            if not name.endswith('.json') or os.path.islink(path) or not os.path.isfile(path):
+                continue
+            try:
+                with open(path) as stream:
+                    record = json.load(stream)
+            except (IOError, OSError, ValueError):
+                continue
+            owner = record.get('hostUuid') if isinstance(record, dict) else None
+            if self._valid_identifier(owner) and owner != host and record.get('operationUuid') == name[:-5]:
+                foreign.add(name[:-5])
+        if not foreign:
+            return
+        archive = os.path.join(os.path.dirname(directory), 'foreign-host-operations',
+                               '%d-%s' % (int(time.time() * 1000), host))
+        try:
+            os.makedirs(archive)
+            for name in os.listdir(directory):
+                if name.split('.', 1)[0] in foreign:
+                    os.rename(os.path.join(directory, name), os.path.join(archive, name))
+            if self._get_active_control() in foreign:
+                os.rename(self.active_control_path, os.path.join(archive, 'active-control'))
+        except (IOError, OSError) as exc:
+            logger.warn('foreign host memory journals were not archived: %s', exc)
 
     def _first_use_local_history_clear(self, command, rejected_record=None,
                                        backend_preparation=None, failed_backend_record=None):
@@ -6063,6 +6135,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     def _prepare_zram_pool(self, command):
         operation_lock = None
+        service_stopped_here = False
+        executor_launched = False
         command = dict(command)
         try:
             self._operation_request(command)
@@ -6099,7 +6173,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 raise ValueError('OPERATION_UUID_REUSE' if journal_state == 'present' else
                                  'OPERATION_JOURNAL_UNAVAILABLE')
             if not self._service_unit_stopped():
-                raise ValueError('MEMORY_SERVICE_NOT_STOPPED')
+                preview = self._zram_pool_preparation_eligibility(
+                    host_uuid, command.get('expectedControlOperationUuid'))
+                if preview.get('canPrepareZramPool') is not True:
+                    reasons = preview.get('zramPoolPreparationReasons') or []
+                    raise ValueError(reasons[0] if reasons else 'MEMORY_SERVICE_NOT_STOPPED')
+                service_stopped_here = True
+                try:
+                    self._bounded_command_output(['systemctl', 'stop', self.drain_unit], 60)
+                except (IOError, OSError, RuntimeError, subprocess.CalledProcessError):
+                    pass
+                if not self._service_unit_stopped():
+                    raise ValueError('MEMORY_SERVICE_NOT_STOPPED')
             if not os.path.isfile(self.drain_binary) or not os.path.isfile(self.drain_config):
                 raise ValueError('ZRAM_POOL_PREPARATION_EXECUTOR_UNAVAILABLE')
             snapshot = self._zram_pool_preparation_eligibility(
@@ -6131,11 +6216,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 '--property=StandardOutput=file:%s' % paths['receiptPath'],
                 '--property=StandardError=file:%s' % paths['stderrPath'],
                 self.drain_binary, '--config', self.drain_config, '--prepare-zram-pool'])
+            executor_launched = True
             result = self._maintenance_result(command, 'Draining', 'EXECUTOR_RUNNING')
             self._update_operation_record(command['operationUuid'], 'DRAINING', result)
             return result
         except ValueError as exc:
             stop_failure = None
+            if service_stopped_here and not executor_launched:
+                # Nothing was reset; return the drained service to its paused state.
+                try:
+                    self._bounded_command_output(['systemctl', 'start', self.drain_unit], 30)
+                except (IOError, OSError, RuntimeError, subprocess.CalledProcessError):
+                    logger.warn('drained memory service was not restarted after a rejected preparation')
             if self._valid_identifier(command.get('operationUuid')):
                 state, prior = self._operation_file_state(command['operationUuid'])
                 if state == 'missing' or (state == 'present' and isinstance(prior, dict) and
@@ -6765,8 +6857,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 return True
         return False
 
-    def _drained_pool_generation(self, host_uuid, control_operation_uuid):
-        """Verify the existing drain journal/intent/receipt and native read-only check."""
+    def _drained_pool_generation(self, host_uuid, control_operation_uuid, native_check=True):
+        """Verify the existing drain journal/intent/receipt and native read-only check.
+
+        The native check takes the service state lock; while the service runs,
+        native_check=False verifies the journal and receipt only.
+        """
         if not self._valid_identifier(control_operation_uuid):
             return None
         record = self._load_operation({'operationUuid': control_operation_uuid})
@@ -6791,6 +6887,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     receipt.get('state') != 'WITHDRAWN_SWAP_INACTIVE_POOL_PRESERVED' or
                     receipt.get('active') is not False or receipt.get('reset_performed') is not False):
                 return None
+            if not native_check:
+                return intent.get('poolGeneration')
             native = json.loads(subprocess.check_output([
                 self.drain_binary, '--config', self.drain_config, '--drain-check']).decode('utf-8'))
             if (not isinstance(native, dict) or
@@ -6816,7 +6914,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         pool = ((service_state or {}).get('host_zram') or
                 (service_state or {}).get('pool') or {})
         generation = pool.get('pool_generation') if isinstance(pool, dict) else None
-        drained_generation = self._drained_pool_generation(host_uuid, control_uuid) if control_uuid else None
+        drained_generation = self._drained_pool_generation(
+            host_uuid, control_uuid,
+            native_check=self._maintenance_service_state() != 'active') if control_uuid else None
         if not (isinstance(generation, STRING_TYPES) and re.match(r'^[0-9a-fA-F]{64}$', generation)):
             generation = drained_generation
         elif drained_generation and generation != drained_generation:
@@ -6913,10 +7013,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             reasons.append('DRAIN_CONTROL_OPERATION_UNKNOWN')
         if expected_control_uuid is not None and expected_control_uuid != control_uuid:
             reasons.append('DRAIN_CONTROL_OPERATION_MISMATCH')
-        generation = self._drained_pool_generation(host_uuid, control_uuid) if control_uuid else None
+        service_state = self._maintenance_service_state()
+        running = service_state == 'active'
+        generation = (self._drained_pool_generation(host_uuid, control_uuid, native_check=not running)
+                      if control_uuid else None)
         if not generation:
             reasons.append('DRAIN_PROOF_UNAVAILABLE')
-        if self._maintenance_service_state() != 'inactive':
+        # Preparation stops a drained, quiescent service itself and repeats
+        # this check, including the native drain check, before any reset.
+        if service_state != 'inactive' and not (running and self._drained_service_quiescent()):
             reasons.append('MEMORY_SERVICE_NOT_STOPPED')
         if self._has_unresolved_operation_journal():
             reasons.append('OPERATION_JOURNAL_UNRESOLVED')
@@ -6946,7 +7051,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if receipt_error:
                 reasons.append('ZRAM_POOL_PREPARATION_STATUS_UNKNOWN')
             elif isinstance(pool_receipt, dict):
-                if pool_receipt.get('stage') not in ('NOT_STARTED',):
+                # The service archives a completed preparation of an earlier drain cycle.
+                earlier_cycle = (pool_receipt.get('stage') == 'APPLIED' and generation and
+                                 pool_receipt.get('pool_generation') != generation)
+                if pool_receipt.get('stage') not in ('NOT_STARTED',) and not earlier_cycle:
                     reasons.append('ZRAM_POOL_PREPARATION_ALREADY_REQUESTED')
             # A prior drain must leave the native KSM scanner stopped too.
             with open('/sys/kernel/mm/ksm/run', 'r') as stream:
@@ -6963,6 +7071,19 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 'zramPoolPreparationQuality': 'Fresh' if not reasons else
                     ('Unknown' if any('UNKNOWN' in item for item in reasons) else 'Ineligible'),
                 'zramPoolPreparationObservedAt': int(time.time() * 1000)}
+
+    def _drained_service_quiescent(self):
+        try:
+            native = self._service_request('state', {})
+        except Exception:
+            return False
+        lifecycle = native.get('lifecycle') if isinstance(native, dict) else None
+        pool = native.get('host_zram') if isinstance(native, dict) else None
+        return (isinstance(lifecycle, dict) and lifecycle.get('paused') is True and
+                lifecycle.get('migrationHold') is None and
+                native.get('maintenance_blocks_activation') is True and
+                not native.get('pending_operations') and
+                isinstance(pool, dict) and not pool.get('pool_generation'))
 
     def _decorate_zram_pool_preparation_inventory(self, inventory, command):
         if not isinstance(inventory, dict):
@@ -10783,7 +10904,6 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 isinstance(active_control_record, dict) and
                 active_control_record.get('action') == 'drain' and
                 active_control_record.get('stage') == 'APPLIED' and
-                active_control_record.get('bootId') == self._current_boot_id() and
                 self._maintenance_recovery_proof(command))
             if maintenance_apply and (command.get('policy') or {}).get('zram', {}).get('enabled') is not True:
                 raise ValueError('MAINTENANCE_APPLY_REQUIRES_ENABLED_ZRAM_POLICY')
@@ -10849,6 +10969,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     normalized['state'] = {'phase': 'UNKNOWN'}
                     normalized['reasonCode'] = 'OPERATION_JOURNAL_UNAVAILABLE'
                 return normalized
+            if ((command.get('policy') or {}).get('zram') or {}).get('enabled') is True:
+                self._archive_foreign_host_history()
             if not self._first_use_prior_fence_clear(command['operationUuid']):
                 raise RuntimeError('FIRST_ZRAM_PRIOR_OPERATION_UNRESOLVED')
             try:
@@ -10940,6 +11062,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                       'state': {'phase': 'FAILED', 'policyReadback': policy_readback},
                                       'operationUuid': command.get('operationUuid')}
                         else:
+                            # A pool preparation has just restarted the service.
+                            self._await_safe_host_sample()
                             activation_intent = self._persist_maintenance_activation_intent(
                                 command, command['maintenanceProof'])
                             if activation_intent is None:
@@ -12033,7 +12157,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             result['sampleTime'] = int(time.time() * 1000)
         # A native RuntimeSnapshot has section revisions, not the product
         # policy revision.  Recover only the last confirmed product revision
-        # for the current active-control operation and current boot.  Never
+        # for the current active-control operation, Host and boot.  Never
         # turn an old journal or a different boot into a fresh confirmation.
         active_operation = self._get_active_control()
         if active_operation:
@@ -12046,7 +12170,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 with open('/proc/sys/kernel/random/boot_id', 'r') as stream:
                     current_boot = stream.read().strip()
                 if (record.get('stage') == 'APPLIED' and current_boot and
-                        record.get('bootId') == current_boot):
+                        record.get('bootId') == current_boot and
+                        record.get('hostUuid') == self._load_host_uuid()):
                     confirmed = record.get('desiredRevision')
                     if isinstance(confirmed, INTEGER_TYPES):
                         result['appliedRevision'] = confirmed
