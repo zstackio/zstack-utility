@@ -799,12 +799,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 host.get('safe') is not True or
                 native.get('maintenance_blocks_activation') is True or
                 not isinstance(pending, list) or pending):
-            if (isinstance(lifecycle, dict) and lifecycle.get('paused') is False and isinstance(pool, dict) and
-                    pool.get('reason') == self.POOL_STARTUP_OBSERVATION_REASON):
-                # The service creates the pool after its bounded startup observation.
-                return False, 'MAINTENANCE_ACTIVATION_POOL_STARTING', {
-                    'activation': activation, 'service': native}
-            return False, 'MAINTENANCE_ACTIVATION_POOL_NOT_READY', {
+            settling = self._activation_settling_reason(
+                lifecycle, pool, host, native, pending, proof.get('oldPoolGeneration'))
+            return False, settling or 'MAINTENANCE_ACTIVATION_POOL_NOT_READY', {
                 'activation': activation, 'service': native}
         ttl = (command.get('policy') or {}).get('zram', {}).get('hostSampleTtlSeconds', 3)
         # The Agent envelope was just collected, but service qualification
@@ -969,10 +966,28 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 return self._pending_maintenance_activation(command.get('operationUuid'), reason, last)
             time.sleep(interval)
 
+    @classmethod
+    def _activation_settling_reason(cls, lifecycle, pool, host, native, pending, old_generation):
+        """Transient states of an accepted activation that MN should keep polling."""
+        if not isinstance(lifecycle, dict) or lifecycle.get('paused') is not False or not isinstance(pool, dict):
+            return None
+        if pool.get('reason') == cls.POOL_STARTUP_OBSERVATION_REASON:
+            # The service creates the pool after its bounded startup observation.
+            return 'MAINTENANCE_ACTIVATION_POOL_STARTING'
+        pool_ready = (pool.get('pool_generation') and pool.get('quality') == 'native_host_device' and
+                      not pool.get('reason') and pool.get('pool_generation') != old_generation and
+                      lifecycle.get('migrationHold') in (None, {}) and
+                      native.get('maintenance_blocks_activation') is not True and
+                      isinstance(pending, list) and not pending)
+        if pool_ready and isinstance(host, dict) and not (host.get('qualified') is True and host.get('safe') is True):
+            # The new pool exists; only a momentary Host sample is not yet safe.
+            return 'MAINTENANCE_ACTIVATION_HOST_SETTLING'
+        return None
+
     @staticmethod
     def _pending_maintenance_activation(operation_uuid, reason, readback):
-        # A starting pool stays in progress so MN keeps polling; anything else needs review.
-        starting = reason == 'MAINTENANCE_ACTIVATION_POOL_STARTING'
+        # A settling activation stays in progress so MN keeps polling; anything else needs review.
+        starting = reason in ('MAINTENANCE_ACTIVATION_POOL_STARTING', 'MAINTENANCE_ACTIVATION_HOST_SETTLING')
         return {'success': starting, 'status': 'Draining' if starting else 'Unknown',
                 'reasonCode': reason or 'MAINTENANCE_ACTIVATION_NOT_READY',
                 'state': {'phase': 'ACTIVATING', 'readback': readback},
@@ -9855,6 +9870,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._release_operation(lock)
 
     def _reconcile_stock_drain(self, command, prior):
+        # Concurrent polls of one drain must not overwrite each other's result.
+        try:
+            lock = self._acquire_host_control_lock()
+        except (IOError, OSError):
+            return {'success': True, 'status': 'Draining', 'state': {'phase': 'DRAINING', 'pending': True},
+                    'reasonCode': 'DRAIN_RECONCILE_LOCK_BUSY', 'operationUuid': command.get('operationUuid')}
+        try:
+            return self._reconcile_stock_drain_locked(command, prior)
+        finally:
+            self._release_operation(lock)
+
+    def _reconcile_stock_drain_locked(self, command, prior):
         operation_uuid = command.get('operationUuid')
         def unknown(reason, phase='UNKNOWN'):
             result = {'success': False, 'status': 'Unknown',
@@ -9913,16 +9940,28 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     value.get('pool_generation') == expected_pool and value.get('device') == device)
         if not withdrawn(receipt):
             return unknown('DRAIN_RECEIPT_UNVERIFIED')
+        latest = self._load_operation(command)
+        confirmed = (latest.get('readback') if isinstance(latest, dict) and latest.get('stage') == 'APPLIED'
+                     and (latest.get('readback') or {}).get('status') == 'Succeeded' else None)
         try:
             # Mandatory, fresh, read-only native check. Never trust a receipt
             # alone or silently skip verification when the binary is missing.
             check = subprocess.check_output(
-                [self.drain_binary, '--config', self.drain_config, '--drain-check'])
+                [self.drain_binary, '--config', self.drain_config, '--drain-check'],
+                stderr=subprocess.STDOUT)
             native = json.loads(check.decode('utf-8'))
             if not withdrawn(native):
                 return unknown('DRAIN_CHECK_UNVERIFIED')
-        except (IOError, OSError, ValueError, subprocess.CalledProcessError):
-            return unknown('DRAIN_CHECK_UNVERIFIED')
+        except subprocess.CalledProcessError as exc:
+            # The native check takes the service state lock; a concurrent poll
+            # holding it neither proves nor disproves the drain.
+            if b'state directory already in use' in (exc.output or b''):
+                return confirmed or {'success': True, 'status': 'Draining',
+                                     'state': {'phase': 'DRAINING', 'pending': True},
+                                     'reasonCode': 'DRAIN_CHECK_BUSY', 'operationUuid': operation_uuid}
+            return confirmed or unknown('DRAIN_CHECK_UNVERIFIED')
+        except (IOError, OSError, ValueError):
+            return confirmed or unknown('DRAIN_CHECK_UNVERIFIED')
         result = {'success': True, 'status': 'Succeeded',
                   'state': {'phase': native['state'], 'receipt': receipt, 'nativeReadback': native},
                   'appliedRevision': prior.get('desiredRevision'),
