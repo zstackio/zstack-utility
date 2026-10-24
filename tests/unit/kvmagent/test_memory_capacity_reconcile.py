@@ -3298,7 +3298,7 @@ def _probe_block_inventory(boot_id, holders=(), service_backend=None, service_co
                                     'cleared_ksm_schema_v1', 'cleared_ksm_schema_v2',
                                     'cleared_ksm_schema_bool', 'cleared_ksm_schema_float',
                                     'active_service_disable',
-                                    'active_service_disable_wrong_boot',
+                                    'active_service_disable_previous_boot',
                                     'active_service_disable_cpu_mismatch',
                                     'active_service_disable_tuning_mismatch',
                                     'ordinary_host', 'unknown', 'old_zram'])
@@ -3387,7 +3387,7 @@ def test_cold_backend_inventory_requires_complete_proof_for_active_ksm_control(
             capacity_requested=False, include_zram=False)
         assert disabled_result['status'] == 'Succeeded', disabled_result
         disabled_record = _journal(disabled_plugin)
-        if history == 'active_service_disable_wrong_boot':
+        if history == 'active_service_disable_previous_boot':
             disabled_record['bootId'] = 'fedcba98-7654-3210-fedc-ba9876543210'
         assert plugin._write_operation_record(disabled_record)
         plugin._set_active_control(disabled_record['operationUuid'])
@@ -3457,7 +3457,8 @@ def test_cold_backend_inventory_requires_complete_proof_for_active_ksm_control(
     assert before == {path.name: path.read_bytes() for path in operation_dir.iterdir()
                       if path.is_file()}
     if history in ('trusted_ksm', 'cleared_ksm', 'cleared_ksm_reboot',
-                    'cleared_ksm_schema_v1', 'active_service_disable'):
+                    'cleared_ksm_schema_v1', 'active_service_disable',
+                    'active_service_disable_previous_boot'):
         assert plugin._first_use_no_pool_verified() is True
         if history.startswith('active_service_disable'):
             assert inventory['controlOperationUuid'] == disabled_record['operationUuid']
@@ -3542,7 +3543,7 @@ def test_completed_backend_preparation_rejects_malformed_readback_without_except
                                     'active_writeback_disable_after_empty_ksm_prepare',
                                     'active_writeback_disable_cpu_drift',
                                     'active_writeback_disable_tuning_drift',
-                                    'active_writeback_disable_wrong_boot',
+                                    'active_writeback_disable_previous_boot',
                                     'active_writeback_disable_missing_proof',
                                     'cleared_ksm_reboot',
                                     'identity_changed', 'timeout', 'crash_after_stop',
@@ -3655,7 +3656,7 @@ def test_cold_backend_prepare_stops_verified_active_controller_before_worker(
             capacity_requested=False, include_zram=False)
         assert disabled_result['status'] == 'Succeeded', disabled_result
         disabled_record = disabled_plugin._load_operation(disabled_command)
-        if outcome == 'active_writeback_disable_wrong_boot':
+        if outcome == 'active_writeback_disable_previous_boot':
             disabled_record['bootId'] = 'fedcba98-7654-3210-fedc-ba9876543210'
         elif outcome == 'active_writeback_disable_missing_proof':
             disabled_record['readback']['state']['sections'].pop('tuningReadback')
@@ -4013,7 +4014,7 @@ def test_cold_backend_prepare_stops_verified_active_controller_before_worker(
             historical_control_uuid
             if outcome == 'active_writeback_disable_after_empty_ksm_prepare'
             else disabled_service_state['record']['operationUuid'])
-        if outcome == 'active_writeback_disable':
+        if outcome in ('active_writeback_disable', 'active_writeback_disable_previous_boot'):
             assert plugin._first_use_no_pool_verified(command) is True
     old_ksm_files = {}
     if outcome == 'cleared_ksm_reboot':
@@ -4078,7 +4079,7 @@ def test_cold_backend_prepare_stops_verified_active_controller_before_worker(
         assert post_stop_records[0]['maintenanceProgress']['controllerStop']['continuationReady'] is True
         assert (True, 'backend-state') in stopped_socket_queries
         return
-    if outcome == 'active_writeback_disable':
+    if outcome in ('active_writeback_disable', 'active_writeback_disable_previous_boot'):
         assert result['status'] == 'Draining', result
     elif (outcome.startswith('active_writeback_disable_') and
           outcome not in ('active_writeback_disable_after_completed_prepare',
@@ -4091,7 +4092,8 @@ def test_cold_backend_prepare_stops_verified_active_controller_before_worker(
         assert systemd_timeouts == []
         return
 
-    if outcome in ('stopped', 'active_writeback_disable', 'cleared_ksm_reboot') or worker_failed or outcome in (
+    if outcome in ('stopped', 'active_writeback_disable', 'active_writeback_disable_previous_boot',
+                   'cleared_ksm_reboot') or worker_failed or outcome in (
             'timeout', 'crash_after_stop', 'stale_before_signal',
             'candidate_changed_after_stop'):
         assert systemd_timeouts and systemd_timeouts[0] == 5
@@ -4103,7 +4105,8 @@ def test_cold_backend_prepare_stops_verified_active_controller_before_worker(
         assert len(systemd_timeouts) > 2
         assert all(value <= 1 for value in systemd_timeouts[1:])
 
-    if outcome in ('stopped', 'active_writeback_disable', 'cleared_ksm_reboot') or worker_failed:
+    if outcome in ('stopped', 'active_writeback_disable', 'active_writeback_disable_previous_boot',
+                   'cleared_ksm_reboot') or worker_failed:
         assert result['status'] == 'Draining', result
         assert signals == [(4242, 15)]
         assert len(launches) == 1 and launches[0][0] == 'systemd-run'
@@ -4208,7 +4211,8 @@ def test_cold_backend_prepare_stops_verified_active_controller_before_worker(
                 'initial_efficiency_enabled': False, 'backend': {'changed': True},
             }))
         result = plugin._reconcile_backend_maintenance(command, record)
-        if outcome in ('stopped', 'active_writeback_disable', 'cleared_ksm_reboot'):
+        if outcome in ('stopped', 'active_writeback_disable', 'active_writeback_disable_previous_boot',
+                       'cleared_ksm_reboot'):
             assert result['status'] == 'Succeeded', result
             assert receipt_holder[0]['stage'] == 'APPLIED'
             assert launches[-1] == ['systemctl', 'start', plugin.MANAGED_ZRAM_UNIT]
