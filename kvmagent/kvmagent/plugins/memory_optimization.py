@@ -8337,10 +8337,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 record.get('stage') != 'APPLIED' or
                 record.get('hostUuid') != self._load_host_uuid() or
                 record.get('bootId') != self._current_boot_id() or
-                record.get('action') not in (None, 'apply', 'recoverUncertain')):
+                record.get('action') not in (None, 'apply', 'recoverUncertain', 'resume')):
             raise ValueError('KSM_CONTROL_OPERATION_UNKNOWN')
         if record.get('action') == 'recoverUncertain':
             self._validate_final_cpu_no_ksm_control(command, record, active_uuid)
+        if record.get('action') == 'resume':
+            try:
+                self._ksm_owner_apply(record)
+            except RuntimeError as exc:
+                raise ValueError(str(exc))
 
     def _validate_final_cpu_no_ksm_control(self, command, recovery, active_uuid):
         """Allow ordinary maintenance after only a fully proven no-KSM CPU recovery."""
@@ -8664,6 +8669,41 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         except Exception:
             raise ValueError(unknown)
 
+    KSM_CONTROL_CHAIN_LIMIT = 64
+
+    def _ksm_owner_apply(self, control):
+        """Follow resume -> pause links back to the apply whose KSM the control restored.
+
+        Returns None when a pause on the way left KSM alone; a broken chain fails closed.
+        """
+        boot, host = self._current_boot_id(), self._load_host_uuid()
+        record = control
+        for _ in range(self.KSM_CONTROL_CHAIN_LIMIT):
+            if record.get('action') != 'resume':
+                return record
+            pause_uuid = record.get('expectedControlOperationUuid')
+            pause = (self._load_operation({'operationUuid': pause_uuid})
+                     if self._valid_identifier(pause_uuid) else None)
+            if (not isinstance(pause, dict) or pause.get('operationUuid') != pause_uuid or
+                    pause.get('action') != 'pause' or pause.get('stage') != 'APPLIED' or
+                    pause.get('hostUuid') != host or pause.get('bootId') != boot):
+                raise RuntimeError('KSM_CONTROL_OPERATION_UNKNOWN')
+            readback = pause.get('readback')
+            state = readback.get('state') if isinstance(readback, dict) else None
+            lifecycle = state.get('ksmLifecycle') if isinstance(state, dict) else None
+            if lifecycle is None:
+                return None
+            prior_uuid = pause.get('expectedControlOperationUuid')
+            prior = (self._load_operation({'operationUuid': prior_uuid})
+                     if self._valid_identifier(prior_uuid) else None)
+            if (not isinstance(lifecycle, dict) or lifecycle.get('controlOperationUuid') != prior_uuid or
+                    not isinstance(prior, dict) or prior.get('operationUuid') != prior_uuid or
+                    prior.get('stage') != 'APPLIED' or prior.get('action') not in (None, 'apply', 'resume') or
+                    prior.get('hostUuid') != host or prior.get('bootId') != boot):
+                raise RuntimeError('KSM_CONTROL_OPERATION_UNKNOWN')
+            record = prior
+        raise RuntimeError('KSM_CONTROL_OPERATION_UNKNOWN')
+
     def _control_managed_ksm(self, action, command):
         """Pause/resume only native units proven by the fenced operation journal."""
         if action in ('pause', 'drain'):
@@ -8681,13 +8721,19 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if record.get('action') == 'recoverUncertain':
                 self._validate_final_cpu_no_ksm_control(command, record, active_uuid)
                 return None
+            ksm_control_uuid = active_uuid
+            if record.get('action') == 'resume':
+                record = self._ksm_owner_apply(record)
+                if record is None:
+                    return None
+                ksm_control_uuid = record.get('operationUuid')
             if record.get('action') not in (None, 'apply'):
                 raise RuntimeError('KSM_CONTROL_OPERATION_UNKNOWN')
             policy = record.get('policy') or {}
             ksm = policy.get('ksm') if isinstance(policy, dict) else None
             if not isinstance(ksm, dict) or not ksm:
                 return None
-            ack = self._managed_ksm_clear_ack(require_ksm_only=False)
+            ack = self._managed_ksm_clear_ack(require_ksm_only=False, control_uuid=ksm_control_uuid)
             if ack is None:
                 return None
             self._verify_native_ksm_profile()
@@ -8722,12 +8768,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise RuntimeError('KSM_RESUME_CONTROL_IDENTITY_UNKNOWN')
         prior = self._load_operation({'operationUuid': prior_uuid})
         if (not isinstance(prior, dict) or prior.get('operationUuid') != prior_uuid or
-                prior.get('stage') != 'APPLIED' or prior.get('action') not in (None, 'apply') or
+                prior.get('stage') != 'APPLIED' or prior.get('action') not in (None, 'apply', 'resume') or
                 prior.get('hostUuid') != self._load_host_uuid() or
                 prior.get('bootId') != self._current_boot_id() or
                 pause_record.get('hostUuid') != prior.get('hostUuid') or
                 pause_record.get('bootId') != prior.get('bootId')):
             raise RuntimeError('KSM_RESUME_PRIOR_OPERATION_UNKNOWN')
+        if prior.get('action') == 'resume':
+            prior = self._ksm_owner_apply(prior)
+            if prior is None:
+                raise RuntimeError('KSM_RESUME_PRIOR_OPERATION_UNKNOWN')
         prior_policy = prior.get('policy') or {}
         prior_ksm = prior_policy.get('ksm') if isinstance(prior_policy, dict) else None
         prior_result = prior.get('readback')
@@ -11719,9 +11769,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             time.sleep(0.2)
 
     def _managed_ksm_clear_ack(self, require_ksm_only=True, prepared_backend=None,
-                               clear_command=None):
+                               clear_command=None, control_uuid=None):
         """Return the current full ack only when existing managed ownership is proven."""
-        operation_uuid = self._get_active_control()
+        operation_uuid = control_uuid or self._get_active_control()
         if not operation_uuid:
             return None
         file_state, record = self._operation_file_state(operation_uuid)
