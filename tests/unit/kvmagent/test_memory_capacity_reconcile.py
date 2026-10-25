@@ -5587,3 +5587,166 @@ def test_pause_and_drain_after_resume_use_the_resumed_apply(tmp_path, monkeypatc
         assert plugin._control_managed_ksm(action, command) is None
     assert cleared == ([apply_uuid, apply_uuid] if pause_controlled_ksm else [])
     assert plugin._ksm_owner_apply(records[-1]) == (records[0] if pause_controlled_ksm else None)
+
+
+def _control_journal_plugin(tmp_path, monkeypatch, records, active, boot='new-boot'):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    ops = tmp_path / 'operations'
+    ops.mkdir()
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(ops)})
+    monkeypatch.setattr(plugin, '_load_host_uuid', lambda: HOST)
+    monkeypatch.setattr(plugin, '_current_boot_id', lambda: boot)
+    for record in records:
+        (ops / ('%s.json' % record['operationUuid'])).write_text(json.dumps(record))
+    (ops / 'active-control').write_text(active)
+    plugin.active_control_path = str(ops / 'active-control')
+    return plugin
+
+
+def _reconcile_operation(plugin, operation_uuid, **extra):
+    command = dict({'hostUuid': HOST, 'operationUuid': operation_uuid, 'action': 'reconcile',
+                    'scope': 'Host', 'resourceUuid': HOST, 'policy': {}}, **extra)
+    return json.loads(plugin.reconcile({'body': json.dumps(command)}))
+
+
+@pytest.mark.parametrize('boot,active,status', [
+    ('old-boot', 'd' * 32, 'Failed'), ('new-boot', 'd' * 32, 'Failed'), ('new-boot', 'e' * 32, 'Unknown')])
+def test_drained_activation_without_intent_is_rejected_while_the_drain_holds_control(
+        tmp_path, monkeypatch, boot, active, status):
+    activation, drain = 'a' * 32, 'd' * 32
+    plugin = _control_journal_plugin(tmp_path, monkeypatch, [
+        {'operationUuid': activation, 'action': 'apply', 'stage': 'UNKNOWN', 'hostUuid': HOST,
+         'bootId': 'old-boot', 'expectedControlOperationUuid': drain,
+         'maintenanceProof': {'drainOperationUuid': drain, 'maintenanceReady': True},
+         'policy': {'schemaVersion': 1, 'zram': {'enabled': True}}}], active, boot)
+
+    result = _reconcile_operation(plugin, activation)
+
+    assert result['status'] == status, result
+    if status == 'Failed':
+        assert result['state']['activationRejected'] is True
+        assert plugin._load_operation({'operationUuid': activation})['stage'] == 'REJECTED'
+        assert _reconcile_operation(plugin, activation) == result
+    else:
+        assert result['reasonCode'] == 'MAINTENANCE_ACTIVATION_CONTROL_MISMATCH'
+    assert plugin._get_active_control() == active
+
+
+@pytest.mark.parametrize('stage,active,status,control_after', [
+    ('DRAINING', 'd' * 32, 'Failed', 'p' * 32),
+    ('PREPARING', 'p' * 32, 'Failed', 'p' * 32),
+    ('DRAINING', 'e' * 32, 'Unknown', 'e' * 32)])
+def test_drain_interrupted_by_reboot_returns_control_to_the_prior_apply(
+        tmp_path, monkeypatch, stage, active, status, control_after):
+    drain, prior = 'd' * 32, 'p' * 32
+    plugin = _control_journal_plugin(tmp_path, monkeypatch, [
+        {'operationUuid': drain, 'action': 'drain', 'stage': stage, 'hostUuid': HOST,
+         'bootId': 'old-boot', 'expectedControlOperationUuid': prior, 'policy': {}}], active)
+
+    result = _reconcile_operation(plugin, drain)
+
+    assert result['status'] == status, result
+    assert result['reasonCode'] == ('DRAIN_INTERRUPTED_BY_REBOOT' if status == 'Failed'
+                                    else 'DRAIN_CONTROL_MISMATCH')
+    assert plugin._get_active_control() == control_after
+    if status == 'Failed':
+        assert _reconcile_operation(plugin, drain) == result
+
+
+def test_drain_completed_before_reboot_keeps_its_receipt(tmp_path, monkeypatch):
+    drain = 'd' * 32
+    receipt = {'success': True, 'status': 'Succeeded', 'operationUuid': drain,
+               'state': {'phase': 'WITHDRAWN_SWAP_INACTIVE_POOL_PRESERVED'}}
+    plugin = _control_journal_plugin(tmp_path, monkeypatch, [
+        {'operationUuid': drain, 'action': 'drain', 'stage': 'APPLIED', 'hostUuid': HOST,
+         'bootId': 'old-boot', 'expectedControlOperationUuid': 'p' * 32, 'policy': {},
+         'readback': receipt}], drain)
+
+    assert _reconcile_operation(plugin, drain) == receipt
+    assert plugin._get_active_control() == drain
+
+
+def test_unrecorded_operation_from_before_the_reboot_is_sealed_as_never_issued(tmp_path, monkeypatch):
+    plugin = _control_journal_plugin(tmp_path, monkeypatch, [], 'p' * 32)
+    monkeypatch.setattr(plugin, '_boot_epoch_millis', lambda: 2000000)
+
+    result = _reconcile_operation(plugin, 'd' * 32, reconcileAction='seal-if-never-issued',
+                                  bootId='new-boot', taskSubmittedAt=1000000)
+
+    assert result['status'] == 'Failed', result
+    assert result['reasonCode'] == 'OPERATION_NEVER_ISSUED'
+
+
+@pytest.mark.parametrize('intent,active,status', [
+    (False, 'd' * 32, 'Failed'), (True, 'd' * 32, 'Unknown'), (False, 'e' * 32, 'Unknown')])
+def test_drained_apply_failing_before_activation_intent_is_rejected_at_once(
+        tmp_path, monkeypatch, intent, active, status):
+    activation, drain = 'a' * 32, 'd' * 32
+    record = {'operationUuid': activation, 'action': 'apply', 'stage': 'PREPARING', 'hostUuid': HOST,
+              'bootId': 'new-boot', 'expectedControlOperationUuid': drain}
+    if intent:
+        record['activationIntent'] = {'operationUuid': activation}
+    plugin = _control_journal_plugin(tmp_path, monkeypatch, [record], active)
+    unknown = {'success': False, 'status': 'Unknown', 'reasonCode': 'SERVICE_CAPACITY_TARGET_NOT_VERIFIED',
+               'state': {'phase': 'UNKNOWN'}, 'operationUuid': activation}
+
+    result = plugin._unissued_activation_rejection(
+        {'operationUuid': activation, 'expectedControlOperationUuid': drain}, unknown)
+
+    assert result['status'] == status
+    if status == 'Failed':
+        assert result['state']['activationRejected'] is True
+        assert result['reasonCode'] == 'SERVICE_CAPACITY_TARGET_NOT_VERIFIED'
+    else:
+        assert result is unknown
+
+
+def test_rebooted_drain_reconcile_finishes_a_control_return_cut_short(tmp_path, monkeypatch):
+    drain, prior = 'd' * 32, 'p' * 32
+    rejected = {'success': False, 'status': 'Failed', 'reasonCode': 'DRAIN_INTERRUPTED_BY_REBOOT',
+                'state': {'phase': 'FAILED'}, 'operationUuid': drain}
+    plugin = _control_journal_plugin(tmp_path, monkeypatch, [
+        {'operationUuid': drain, 'action': 'drain', 'stage': 'REJECTED', 'hostUuid': HOST,
+         'bootId': 'old-boot', 'expectedControlOperationUuid': prior, 'policy': {},
+         'readback': rejected}], drain)
+
+    assert _reconcile_operation(plugin, drain) == rejected
+    assert plugin._get_active_control() == prior
+
+
+@pytest.mark.parametrize('action', ['drain', 'apply'])
+def test_reboot_and_activation_reconcile_ignore_another_hosts_receipt(tmp_path, monkeypatch, action):
+    operation, drain = ('d' * 32 if action == 'drain' else 'a' * 32), 'd' * 32
+    receipt = {'success': False, 'status': 'Failed', 'reasonCode': 'FOREIGN', 'operationUuid': operation,
+               'state': {'phase': 'FAILED', 'activationRejected': True}}
+    record = {'operationUuid': operation, 'action': action, 'stage': 'REJECTED', 'hostUuid': 'other-host',
+              'bootId': 'old-boot', 'expectedControlOperationUuid': 'p' * 32 if action == 'drain' else drain,
+              'policy': {}, 'readback': receipt}
+    if action == 'apply':
+        record['maintenanceProof'] = {'drainOperationUuid': drain}
+    plugin = _control_journal_plugin(tmp_path, monkeypatch, [record], drain)
+
+    result = _reconcile_operation(plugin, operation)
+
+    assert result['status'] == 'Unknown', result
+    assert result != receipt
+
+
+@pytest.mark.parametrize('action', ['drain', 'apply'])
+def test_reboot_and_activation_reconcile_wait_for_the_host_control_lock(tmp_path, monkeypatch, action):
+    operation, drain = ('d' * 32 if action == 'drain' else 'a' * 32), 'd' * 32
+    record = {'operationUuid': operation, 'action': action, 'stage': 'PREPARING', 'hostUuid': HOST,
+              'bootId': 'old-boot', 'expectedControlOperationUuid': 'p' * 32 if action == 'drain' else drain,
+              'policy': {}}
+    if action == 'apply':
+        record['maintenanceProof'] = {'drainOperationUuid': drain}
+    plugin = _control_journal_plugin(tmp_path, monkeypatch, [record], 'p' * 32 if action == 'drain' else drain)
+    held = plugin._acquire_host_control_lock()
+    try:
+        result = _reconcile_operation(plugin, operation)
+    finally:
+        plugin._release_operation(held)
+
+    assert result['status'] == 'Draining', result
+    assert result['reasonCode'] == 'RECONCILE_LOCK_BUSY'
+    assert plugin._load_operation({'operationUuid': operation})['stage'] == 'PREPARING'
