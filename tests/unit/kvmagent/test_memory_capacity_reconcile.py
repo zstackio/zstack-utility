@@ -5540,3 +5540,50 @@ def test_default_capacity_sides_keep_the_request_hash_after_resolution():
     with pytest.raises(ValueError):
         plugin._restore_default_capacity_sides({'defaultCapacitySides': ['enabled'],
                                                 'policy': {'zram': {}}})
+
+
+@pytest.mark.parametrize('pause_controlled_ksm,chain_intact', [(True, True), (False, True), (True, False)])
+def test_pause_and_drain_after_resume_use_the_resumed_apply(tmp_path, monkeypatch,
+                                                            pause_controlled_ksm, chain_intact):
+    plugin = MemoryOptimizationPlugin(service_call=lambda action, payload: {})
+    ops = tmp_path / 'operations'
+    ops.mkdir()
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(ops)})
+    monkeypatch.setattr(plugin, '_load_host_uuid', lambda: HOST)
+    boot = MemoryOptimizationPlugin._current_boot_id()
+    apply_uuid = 'a' * 32
+    records = [{'operationUuid': apply_uuid, 'action': 'apply', 'stage': 'APPLIED', 'hostUuid': HOST,
+                'bootId': boot, 'policy': {'schemaVersion': 1, 'ksm': {'enabled': True}}}]
+    control = apply_uuid
+    # Two pause/resume rounds: the second pause is fenced on the first resume.
+    for pause_uuid, resume_uuid in (('b' * 32, 'c' * 32), ('d' * 32, 'e' * 32)):
+        pause_state = {'phase': 'PAUSED'}
+        if pause_controlled_ksm:
+            pause_state['ksmLifecycle'] = {'controlOperationUuid': control, 'runBeforePause': '1',
+                                           'ksmWasActive': True, 'ksmtunedWasActive': False}
+        records.append({'operationUuid': pause_uuid, 'action': 'pause', 'stage': 'APPLIED',
+                        'hostUuid': HOST, 'bootId': boot, 'expectedControlOperationUuid': control,
+                        'readback': {'status': 'Succeeded', 'state': pause_state}})
+        records.append({'operationUuid': resume_uuid, 'action': 'resume', 'stage': 'APPLIED',
+                        'hostUuid': HOST, 'bootId': boot, 'expectedControlOperationUuid': pause_uuid,
+                        'policy': {}})
+        control = resume_uuid
+    for record in records if chain_intact else records[1:]:
+        (ops / ('%s.json' % record['operationUuid'])).write_text(json.dumps(record))
+    monkeypatch.setattr(plugin, '_get_active_control', lambda: control)
+    cleared = []
+    monkeypatch.setattr(plugin, '_managed_ksm_clear_ack',
+                        lambda require_ksm_only=False, control_uuid=None: cleared.append(control_uuid))
+
+    command = {'expectedControlOperationUuid': control}
+    if not chain_intact:
+        with pytest.raises(ValueError, match='KSM_CONTROL_OPERATION_UNKNOWN'):
+            plugin._validate_maintenance_control_before_effects(command)
+        with pytest.raises(RuntimeError, match='KSM_CONTROL_OPERATION_UNKNOWN'):
+            plugin._control_managed_ksm('drain', command)
+        return
+    plugin._validate_maintenance_control_before_effects(command)
+    for action in ('pause', 'drain'):
+        assert plugin._control_managed_ksm(action, command) is None
+    assert cleared == ([apply_uuid, apply_uuid] if pause_controlled_ksm else [])
+    assert plugin._ksm_owner_apply(records[-1]) == (records[0] if pause_controlled_ksm else None)
