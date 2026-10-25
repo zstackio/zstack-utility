@@ -10071,13 +10071,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 isinstance(expected_capacity_revision, bool) or expected_capacity_revision < 0):
             return None
         desired = sections.get('desired')
-        configured = desired.get('configured') if isinstance(desired, dict) else None
-        logical = configured.get('logical_capacity') if isinstance(configured, dict) else None
-        physical = configured.get('physical_memory_limit') if isinstance(configured, dict) else None
-        if (not isinstance(logical, dict) or
-                not self._strict_service_match(logical.get('bytes'), expected_logical) or
-                not isinstance(physical, dict) or
-                not self._strict_service_match(physical.get('bytes'), expected_physical)):
+        if (not self._configured_capacity_matches(desired, 'logical_capacity', expected_logical) or
+                not self._configured_capacity_matches(desired, 'physical_memory_limit', expected_physical)):
             return None
         original_state = evidence.get('state')
         original_sections = original_state if isinstance(original_state, dict) else {}
@@ -10106,16 +10101,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 capacity_before_cpu.get('reason') != 'NATIVE_POOL_UNQUALIFIED'):
             return None
         before_cpu_desired = capacity_before_cpu.get('desired')
-        before_cpu_configured = (before_cpu_desired.get('configured')
-                                 if isinstance(before_cpu_desired, dict) else None)
-        before_cpu_logical = (before_cpu_configured.get('logical_capacity')
-                              if isinstance(before_cpu_configured, dict) else None)
-        before_cpu_physical = (before_cpu_configured.get('physical_memory_limit')
-                               if isinstance(before_cpu_configured, dict) else None)
-        if (not isinstance(before_cpu_logical, dict) or
-                not self._strict_service_match(before_cpu_logical.get('bytes'), expected_logical) or
-                not isinstance(before_cpu_physical, dict) or
-                not self._strict_service_match(before_cpu_physical.get('bytes'), expected_physical)):
+        if (not self._configured_capacity_matches(
+                before_cpu_desired, 'logical_capacity', expected_logical) or
+                not self._configured_capacity_matches(
+                    before_cpu_desired, 'physical_memory_limit', expected_physical)):
             return None
 
         # Capacity and CPU share the Host policy revision. Accept a newer
@@ -10188,16 +10177,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 readback.get('sectionComplete', {}).get('cpu') is not True):
             return None
         current_desired = current.get('desired')
-        current_configured = (current_desired.get('configured')
-                              if isinstance(current_desired, dict) else None)
-        current_logical = (current_configured.get('logical_capacity')
-                           if isinstance(current_configured, dict) else None)
-        current_physical = (current_configured.get('physical_memory_limit')
-                            if isinstance(current_configured, dict) else None)
-        if (not isinstance(current_logical, dict) or
-                not self._strict_service_match(current_logical.get('bytes'), expected_logical) or
-                not isinstance(current_physical, dict) or
-                not self._strict_service_match(current_physical.get('bytes'), expected_physical)):
+        if (not self._configured_capacity_matches(
+                current_desired, 'logical_capacity', expected_logical) or
+                not self._configured_capacity_matches(
+                    current_desired, 'physical_memory_limit', expected_physical)):
             return None
 
         # CPU and tuning were already accepted in the same request.  Their
@@ -10369,15 +10352,24 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _capacity_desired_matches(cls, response, zram):
         """Check persisted capacity intent without claiming native activation."""
         desired = response.get('desired') if isinstance(response, dict) else None
+        expected = [(native, zram[product]) for product, native in (
+            ('logicalCapacityBytes', 'logical_capacity'), ('ramLimitBytes', 'physical_memory_limit'))
+            if product in zram]
+        return bool(expected) and all(cls._configured_capacity_matches(desired, native, value)
+                                      for native, value in expected)
+
+    @classmethod
+    def _configured_capacity_matches(cls, desired, native, expected):
+        """Match a configured side's bytes, or what the service resolved for its default."""
         configured = desired.get('configured') if isinstance(desired, dict) else None
-        if not isinstance(configured, dict):
+        side = configured.get(native) if isinstance(configured, dict) else None
+        if not isinstance(side, dict):
             return False
-        expected = {}
-        for product, native in (('logicalCapacityBytes', 'logical_capacity'),
-                                ('ramLimitBytes', 'physical_memory_limit')):
-            if product in zram:
-                expected[native] = {'bytes': zram[product]}
-        return bool(expected) and cls._strict_service_match(configured, expected)
+        if 'bytes' in side:
+            return cls._strict_service_match(side['bytes'], expected)
+        resolved = desired.get('logical_resolved_bytes' if native == 'logical_capacity'
+                               else 'physical_resolved_bytes')
+        return cls._strict_service_match(resolved, expected)
 
     @staticmethod
     def _strict_service_success(action, response):
