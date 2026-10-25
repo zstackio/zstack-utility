@@ -1001,6 +1001,95 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 'state': {'phase': 'ACTIVATING', 'readback': readback},
                 'operationUuid': operation_uuid}
 
+    def _unissued_activation_rejection(self, command, result):
+        """A drained apply that failed before persisting activation intent never opened a pool."""
+        record = self._load_operation(command)
+        drain_uuid = command.get('expectedControlOperationUuid')
+        if (not isinstance(record, dict) or isinstance(record.get('activationIntent'), dict) or
+                not self._valid_identifier(drain_uuid) or self._get_active_control() != drain_uuid):
+            return result
+        reason = result.get('reasonCode') or 'MAINTENANCE_ACTIVATION_NOT_ISSUED'
+        return {'success': False, 'status': 'Failed', 'reasonCode': reason, 'reason': reason,
+                'state': {'phase': 'FAILED', 'activationRejected': True},
+                'operationUuid': command.get('operationUuid')}
+
+    def _reconcile_unissued_activation(self, command, prior):
+        return self._reconcile_under_host_lock(command, self._settle_unissued_activation)
+
+    def _reconcile_rebooted_drain(self, command, prior):
+        return self._reconcile_under_host_lock(command, self._settle_rebooted_drain)
+
+    def _reconcile_under_host_lock(self, command, settle):
+        """Settle against the journal as re-read under the writer lock the apply holds."""
+        try:
+            lock = self._acquire_host_control_lock()
+        except (IOError, OSError):
+            return {'success': True, 'status': 'Draining', 'state': {'phase': 'DRAINING', 'pending': True},
+                    'reasonCode': 'RECONCILE_LOCK_BUSY', 'operationUuid': command.get('operationUuid')}
+        try:
+            prior = self._load_operation(command) or {}
+            if (prior.get('operationUuid') != command.get('operationUuid') or
+                    prior.get('hostUuid') != self._load_host_uuid()):
+                return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                        'reasonCode': 'OPERATION_IDENTITY_UNKNOWN',
+                        'operationUuid': command.get('operationUuid')}
+            return settle(command, prior)
+        finally:
+            self._release_operation(lock)
+
+    def _settle_unissued_activation(self, command, prior):
+        """A drained apply without activation intent never asked Go to open a pool."""
+        operation_uuid = command.get('operationUuid')
+        if prior.get('stage') == 'REJECTED' and isinstance(prior.get('readback'), dict):
+            return prior['readback']
+        if (prior.get('action') != 'apply' or not prior.get('maintenanceProof') or
+                isinstance(prior.get('activationIntent'), dict) or prior.get('stage') == 'APPLIED'):
+            return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                    'reasonCode': 'OPERATION_RECONCILE_REQUIRED', 'operationUuid': operation_uuid}
+        drain_uuid = prior.get('expectedControlOperationUuid')
+        if not self._valid_identifier(drain_uuid) or self._get_active_control() != drain_uuid:
+            return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                    'reasonCode': 'MAINTENANCE_ACTIVATION_CONTROL_MISMATCH',
+                    'operationUuid': operation_uuid}
+        result = {'success': False, 'status': 'Failed',
+                  'reasonCode': 'MAINTENANCE_ACTIVATION_NOT_ISSUED',
+                  'reason': 'MAINTENANCE_ACTIVATION_NOT_ISSUED',
+                  'state': {'phase': 'FAILED', 'activationRejected': True},
+                  'operationUuid': operation_uuid}
+        if not self._update_operation_record(operation_uuid, 'REJECTED', result):
+            return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                    'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE', 'operationUuid': operation_uuid}
+        return result
+
+    def _settle_rebooted_drain(self, command, prior):
+        """A reboot ends a drain: a completed one keeps its receipt, any other was interrupted."""
+        operation_uuid = command.get('operationUuid')
+        prior_control = prior.get('expectedControlOperationUuid')
+        active = self._get_active_control()
+        if prior.get('stage') in ('APPLIED', 'REJECTED') and isinstance(prior.get('readback'), dict):
+            if (prior.get('stage') == 'REJECTED' and active == operation_uuid and
+                    self._valid_identifier(prior_control)):
+                self._set_active_control(prior_control)
+            return prior['readback']
+        if prior.get('action') != 'drain' or prior.get('bootId') == self._current_boot_id():
+            return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                    'reasonCode': 'OPERATION_RECONCILE_REQUIRED', 'operationUuid': operation_uuid}
+        if not self._valid_identifier(prior_control) or active not in (operation_uuid, prior_control):
+            return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                    'reasonCode': 'DRAIN_CONTROL_MISMATCH', 'operationUuid': operation_uuid}
+        if active == operation_uuid:
+            # The drained pool did not survive the reboot; the prior apply owns the Host again.
+            # Return the control first so a retry can still finish an interrupted commit.
+            self._set_active_control(prior_control)
+        result = {'success': False, 'status': 'Failed',
+                  'reasonCode': 'DRAIN_INTERRUPTED_BY_REBOOT',
+                  'reason': 'DRAIN_INTERRUPTED_BY_REBOOT',
+                  'state': {'phase': 'FAILED'}, 'operationUuid': operation_uuid}
+        if not self._update_operation_record(operation_uuid, 'REJECTED', result):
+            return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
+                    'reasonCode': 'OPERATION_JOURNAL_UNAVAILABLE', 'operationUuid': operation_uuid}
+        return result
+
     def _finish_rejected_maintenance_activation(self, command, reason, readback):
         """Commit only an identity-verified, durable pre-activation rejection."""
         result = {'success': False, 'status': 'Failed', 'reasonCode': reason, 'reason': reason,
@@ -9238,6 +9327,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                         'operationUuid': operation_uuid})
             else:
                 return self._reply(self._reconcile_first_zram_use(command, prior))
+        if (prior.get('action') == 'apply' and prior.get('maintenanceProof') and
+                not isinstance(prior.get('activationIntent'), dict) and
+                prior.get('stage') != 'APPLIED'):
+            return self._reply(self._reconcile_unissued_activation(command, prior))
+        if prior.get('action') == 'drain' and prior.get('bootId') != self._current_boot_id():
+            return self._reply(self._reconcile_rebooted_drain(command, prior))
         if prior.get('bootId') != self._current_boot_id():
             return self._reply({'success': False, 'status': 'Unknown',
                                 'state': {'phase': 'UNKNOWN'},
@@ -9264,16 +9359,6 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 (prior.get('stage') == 'ACTIVATING' or
                  isinstance(prior.get('activationIntent'), dict))):
             return self._reply(self._reconcile_maintenance_activation(command, prior))
-        if (prior.get('action') == 'apply' and prior.get('maintenanceProof') and
-                not isinstance(prior.get('activationIntent'), dict)):
-            # A drained apply is never reconciled from configuration alone.
-            # It may have crashed between native policy writes and durable
-            # activation intent; only a new, explicit apply after inspection
-            # can proceed from that state.
-            return self._reply({'success': False, 'status': 'Unknown',
-                                'state': {'phase': 'MAINTENANCE_ACTIVATION_REQUIRED'},
-                                'reasonCode': 'MAINTENANCE_ACTIVATION_INTENT_REQUIRED',
-                                'operationUuid': operation_uuid})
         if prior.get('action') == 'prepareWritebackBackend':
             return self._reply(self._reconcile_backend_maintenance(command, prior))
         if prior.get('action') == 'prepareZramPool':
@@ -9594,8 +9679,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     'operationUuid': command.get('operationUuid')}
         boot_epoch = self._boot_epoch_millis()
         submitted = command.get('submittedAt', command.get('taskSubmittedAt'))
+        # A request from before this boot can no longer arrive. Its journal is
+        # written and synced before any effect, so an absent journal proves it
+        # never ran in either boot.
+        before_boot = (not isinstance(submitted, bool) and isinstance(submitted, INTEGER_TYPES) and
+                       isinstance(boot_epoch, INTEGER_TYPES) and submitted < boot_epoch and
+                       self._operation_file_state(command.get('operationUuid'))[0] == 'missing')
         if (isinstance(submitted, bool) or not isinstance(submitted, INTEGER_TYPES) or
-                not isinstance(boot_epoch, INTEGER_TYPES) or submitted < boot_epoch):
+                not isinstance(boot_epoch, INTEGER_TYPES) or (submitted < boot_epoch and not before_boot)):
             return {'success': False, 'status': 'Unknown', 'state': {'phase': 'UNKNOWN'},
                     'reasonCode': 'NOT_SENT_SUBMISSION_TIME_UNVERIFIED',
                     'operationUuid': command.get('operationUuid')}
@@ -11202,6 +11293,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if normalized.get('success') and normalized.get('status') == 'Succeeded':
                 normalized['appliedRevision'] = command.get('desiredRevision')
                 self._set_active_control(command['operationUuid'])
+            if maintenance_apply and normalized.get('status') == 'Unknown':
+                normalized = self._unissued_activation_rejection(command, normalized)
             operation_stage = 'APPLIED' if normalized.get('status') == 'Succeeded' else 'UNKNOWN'
             if (normalized.get('status') == 'Failed' and
                     isinstance(normalized.get('state'), dict) and
