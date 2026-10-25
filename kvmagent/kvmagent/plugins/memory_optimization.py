@@ -276,7 +276,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return False
         record = {
             'operationUuid': command.get('operationUuid'),
-            'requestHash': hashlib.sha256(json.dumps(command, sort_keys=True).encode('utf-8')).hexdigest(),
+            'requestHash': self._operation_hash(command),
             'desiredRevision': command.get('desiredRevision'),
             'stage': stage,
             'updatedAt': int(time.time() * 1000),
@@ -608,6 +608,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return 'unreadable', None
 
     def _operation_hash(self, command):
+        # A service-default capacity side is hashed as requested, before the
+        # service resolves it to bytes.
+        sides = command.get('defaultCapacitySides') if isinstance(command, dict) else None
+        zram = ((command.get('policy') or {}).get('zram')
+                if sides and isinstance(command.get('policy'), dict) else None)
+        if isinstance(zram, dict):
+            command = dict(command, policy=dict(command['policy'], zram=dict(
+                zram, **dict((side, None) for side in sides if side in zram))))
         return hashlib.sha256(json.dumps(command, sort_keys=True).encode('utf-8')).hexdigest()
 
     @staticmethod
@@ -5267,8 +5275,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             zram = (command.get('policy') or {}).get('zram') or {}
             return {'request_id': command['operationUuid'],
                     'expected_revision': command.get('capacityExpectedRevision', command.get('expectedRevision', 0)),
-                    'logical_capacity': {'bytes': zram.get('logicalCapacityBytes')},
-                    'physical_memory_limit': {'bytes': zram.get('ramLimitBytes')}}
+                    'logical_capacity': MemoryOptimizationPlugin._native_capacity_value(zram.get('logicalCapacityBytes')),
+                    'physical_memory_limit': MemoryOptimizationPlugin._native_capacity_value(zram.get('ramLimitBytes'))}
         if action == 'host-cpu':
             zram = (command.get('policy') or {}).get('zram') or {}
             wb = (command.get('policy') or {}).get('writeback') or {}
@@ -5423,6 +5431,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             cap_command['operationUuid'] = '%s-capacity' % command['operationUuid']
             cap_command['capacityExpectedRevision'] = read_state('capacity-state')['revision']
             readback['capacity'] = write_service('capacity', cap_command, 'capacity')
+            self._adopt_default_capacity(zram, readback['capacity'])
         if (any(key in zram for key in ('enabled', 'cpuThresholdPercent', 'cpuHoldSeconds')) or
                 'enabled' in wb):
             cpu_command = dict(command)
@@ -5549,6 +5558,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     capacity_receipt['agent_expected_revision'] = capacity_before['revision']
                 sections['capacity'] = capacity_receipt
                 sequence.append('capacity_written')
+                self._adopt_default_capacity(zram, capacity_receipt)
                 if self._is_async_service_result(capacity_receipt):
                     async_sections.append('capacity')
 
@@ -10969,6 +10979,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 raise ValueError('UNSUPPORTED_HOST_CAPABILITY:%s' %
                                  capabilities.get('reasonCode', 'UNKNOWN'))
             self._validate_requested_capabilities(command, capabilities)
+            self._restore_default_capacity_sides(command)
             self._fill_resolved_capacity_defaults(command)
             self._validate_policy(command.get('policy') or {})
             # A strict VM deny is a safety/rebind operation: it only removes
@@ -11234,7 +11245,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise ValueError('BACKEND_RESOURCE_UUID_REQUIRED')
         zram = policy.get('zram') or {}
         for key in ('logicalCapacityBytes', 'ramLimitBytes'):
-            if key in zram:
+            # None asks the service for its default capacity on that side.
+            if zram.get(key) is not None:
                 validate_positive_integer('ZRAM', key, zram[key])
         if 'cpuThresholdPercent' in zram and (not isinstance(zram['cpuThresholdPercent'], (int, float)) or
                                                zram['cpuThresholdPercent'] < 0 or
@@ -11303,6 +11315,36 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             missing.append('writeback')
         if missing:
             raise ValueError('UNSUPPORTED_HOST_CAPABILITY:%s' % ','.join(missing))
+
+    @staticmethod
+    def _restore_default_capacity_sides(command):
+        """MN names the service-default sides because JSON drops null fields."""
+        sides = command.get('defaultCapacitySides')
+        if sides is None:
+            return
+        if (not isinstance(sides, list) or
+                any(side not in ('logicalCapacityBytes', 'ramLimitBytes') for side in sides)):
+            raise ValueError('invalid defaultCapacitySides')
+        policy = command.setdefault('policy', {})
+        zram = policy.setdefault('zram', {})
+        for side in sides:
+            zram[side] = None
+
+    @staticmethod
+    def _native_capacity_value(value):
+        # A side without a unit is resolved from the service default.
+        return {} if value is None else {'bytes': value}
+
+    @staticmethod
+    def _adopt_default_capacity(zram, receipt):
+        """Record the bytes the service resolved for a default capacity side."""
+        desired = receipt.get('desired') if isinstance(receipt, dict) else None
+        for key, resolved in (('logicalCapacityBytes', 'logical_resolved_bytes'),
+                              ('ramLimitBytes', 'physical_resolved_bytes')):
+            value = desired.get(resolved) if isinstance(desired, dict) else None
+            if (key in zram and zram[key] is None and isinstance(value, INTEGER_TYPES) and
+                    not isinstance(value, bool) and value > 0):
+                zram[key] = value
 
     def _fill_resolved_capacity_defaults(self, command):
         """Fill omitted global ZRAM capacity from the service's current target."""

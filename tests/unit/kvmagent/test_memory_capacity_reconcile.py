@@ -5494,3 +5494,37 @@ def test_running_ksm_blocks_pool_preparation_only_when_the_drain_controlled_it(
     reasons = plugin._zram_pool_preparation_eligibility(HOST)['zramPoolPreparationReasons']
     assert 'ZRAM_POOL_PREPARATION_EVIDENCE_UNKNOWN' not in reasons
     assert ('KSM_NOT_DISABLED' in reasons) is blocked
+
+
+def test_default_capacity_side_is_resolved_by_service(tmp_path):
+    plugin, _, calls, command, applied = _capacity_apply_fixture(
+        tmp_path, zram={'ramLimitBytes': None})
+    capacity_writes = [payload for action, payload in calls if action == 'capacity']
+
+    assert len(capacity_writes) == 1
+    assert capacity_writes[0]['logical_capacity'] == {'bytes': LOGICAL_BYTES}
+    assert capacity_writes[0]['physical_memory_limit'] == {}
+    assert applied['status'] == 'Draining', applied
+    assert command['policy']['zram']['ramLimitBytes'] == PHYSICAL_BYTES
+    result = _reconcile(plugin)
+    assert result['status'] == 'Blocked', result
+    assert result['reasonCode'] == 'NATIVE_POOL_UNQUALIFIED'
+
+
+def test_default_capacity_sides_keep_the_request_hash_after_resolution():
+    plugin = MemoryOptimizationPlugin()
+    command = {'operationUuid': OPERATION, 'defaultCapacitySides': ['ramLimitBytes'],
+               'policy': {'zram': {'enabled': True, 'logicalCapacityBytes': LOGICAL_BYTES}}}
+
+    plugin._restore_default_capacity_sides(command)
+    assert command['policy']['zram']['ramLimitBytes'] is None
+    requested = plugin._operation_hash(command)
+    MemoryOptimizationPlugin._adopt_default_capacity(command['policy']['zram'], {
+        'desired': {'logical_resolved_bytes': LOGICAL_BYTES,
+                    'physical_resolved_bytes': PHYSICAL_BYTES}})
+
+    assert command['policy']['zram']['ramLimitBytes'] == PHYSICAL_BYTES
+    assert plugin._operation_hash(command) == requested
+    with pytest.raises(ValueError):
+        plugin._restore_default_capacity_sides({'defaultCapacitySides': ['enabled'],
+                                                'policy': {'zram': {}}})
