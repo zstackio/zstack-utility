@@ -392,11 +392,23 @@ def _capacity_apply_fixture(tmp_path, zram=None, writeback=None, cpu_enabled=Fal
                     'lifecycle': {'paused': False, 'migrationHold': {}}}
         if action == 'capacity':
             shared['revision'] += 1
-            configured_now = _configured(LOGICAL_BYTES, PHYSICAL_BYTES)
+            # The service keeps a side sent without a unit as its default share.
+            configured_now = {
+                'logical_capacity': payload['logical_capacity'] or {'percent_of_host': 50},
+                'physical_memory_limit': payload['physical_memory_limit'] or {'percent_of_logical': 50}}
+            basis = 8 * 1024 * 1024 * 1024
+
+            def resolve(side, denominator):
+                if 'bytes' in side:
+                    return side['bytes']
+                return denominator * side.get('percent_of_host', side.get('percent_of_logical')) // 100 // 4096 * 4096
+            logical_now = resolve(configured_now['logical_capacity'], basis)
+            physical_side = configured_now['physical_memory_limit']
+            physical_now = resolve(physical_side, logical_now if 'percent_of_logical' in physical_side else basis)
             desired_now = {'configured': configured_now,
-                           'basis_host_memory_bytes': 8 * 1024 * 1024 * 1024,
-                           'logical_resolved_bytes': LOGICAL_BYTES,
-                           'physical_resolved_bytes': PHYSICAL_BYTES}
+                           'basis_host_memory_bytes': basis,
+                           'logical_resolved_bytes': logical_now,
+                           'physical_resolved_bytes': physical_now}
             service_state['capacity'] = {
                 '_http_status': 200, 'revision': shared['revision'],
                 'desired': desired_now, 'effective_logical_bytes': None,
