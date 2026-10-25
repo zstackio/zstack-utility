@@ -722,7 +722,9 @@ def test_mixed_capacity_unknown_reconcile_seals_prewrite_without_losing_evidence
     stored = plugin._load_operation(command)
     assert stored['stage'] == 'NOT_ISSUED'
     assert stored['applyEvidence'] == failed['applyEvidence']
-    assert stored['readback'] == sealed
+    assert sealed['state']['controlOperationUuid'] == prior_command['operationUuid']
+    assert stored['readback'] == dict(sealed, state={
+        k: v for k, v in sealed['state'].items() if k != 'controlOperationUuid'})
     assert plugin._get_active_control() == prior_command['operationUuid']
     assert stored['policyHash'] == expected_policy_hash
     assert stored['requestHash'] == expected_request_hash
@@ -1465,8 +1467,9 @@ def test_pure_ksm_none_after_reboot_uses_current_proof_and_seals_only_prewrite(
             assert sealed['stage'] == 'NOT_ISSUED'
             assert sealed['applyEvidence'] == failed['applyEvidence']
             assert sealed['requestHash'] == failed['requestHash']
+            assert result['state']['controlOperationUuid'] == (plugin._get_active_control() or '')
             assert json.loads(plugin.reconcile({'body': json.dumps(query)})) == result
-            assert plugin.apply(command) == result
+            assert plugin.apply(command) == sealed['readback']
         else:
             assert result['status'] == 'Unknown', result
             assert plugin._load_operation(command) == failed
@@ -1838,6 +1841,20 @@ def test_service_disable_history_allows_only_readonly_first_use_reconciliation(
         count = len(reads)
         assert plugin._reconcile_first_zram_admission(query, after) == result
         assert len(reads) == count
+        # Nothing was issued: the reply names the control the Agent still holds.
+        replied = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+        assert replied['state'] == dict(result['state'], controlOperationUuid='ksm-after-disable')
+        assert plugin._load_operation(query) == after
+        plugin._set_active_control(None)
+        replied = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+        assert replied['state'] == dict(result['state'], controlOperationUuid='')
+        os.remove(plugin.active_control_path)
+        os.mkdir(plugin.active_control_path)
+        replied = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+        assert replied['state'] == result['state'], 'an unreadable control is omitted'
+        os.rmdir(plugin.active_control_path)
+        replied = json.loads(plugin.reconcile({'body': json.dumps(query)}))
+        assert replied['state'] == dict(result['state'], controlOperationUuid='')
 
 
 @pytest.mark.parametrize('tamper', [None, 'reason', 'policy_hash', 'intent', 'revision',
@@ -1959,8 +1976,9 @@ def test_only_exact_prewrite_rejections_enter_readonly_admission_reconcile(
                                desiredRevision=reconcile_command['desiredRevision'] + 1)
         assert json.loads(plugin.reconcile({'body': json.dumps(mismatched_wire)}))['status'] == 'Unknown'
         assert plugin._load_operation(command) == after
+        assert result['state']['controlOperationUuid'] == (plugin._get_active_control() or '')
         replay = plugin.apply(command)
-        assert replay == result
+        assert replay == after['readback']
         assert plugin._load_operation(command) == after
         assert not writes and not ksm_writes
     else:
@@ -2915,9 +2933,11 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                 assert service_policy_calls == []
                 active_read_count = state_reads[0]
                 assert json.loads(plugin.reconcile({
-                    'body': json.dumps(active_reconcile)})) == active_result
+                    'body': json.dumps(active_reconcile)})) == dict(
+                        active_result, state=dict(active_result['state'],
+                                                  controlOperationUuid=ksm_command['operationUuid']))
                 assert state_reads[0] == active_read_count
-                assert plugin.apply(active_rejected) == active_result
+                assert plugin.apply(active_rejected) == active_after['readback']
                 assert plugin._load_operation(active_rejected) == active_after
                 assert plugin._get_active_control() == ksm_command['operationUuid']
                 assert native_writes == [] and not published
@@ -2981,6 +3001,7 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                 assert rejected_result['status'] == 'Failed', rejected_result
                 assert rejected_result['reasonCode'] == 'FIRST_ZRAM_ADMISSION_NOT_ISSUED'
                 assert rejected_result['state']['policyWritesIssued'] is False
+                assert rejected_result['state']['controlOperationUuid'] == clear_command['operationUuid']
                 assert rejected_after['stage'] == 'NOT_ISSUED'
                 assert rejected_after['requestHash'] == rejected_before['requestHash']
                 assert rejected_after['policy'] == rejected_before['policy']
@@ -2998,7 +3019,7 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                 assert service_policy_calls == []
 
                 replay_result = plugin.apply(rejected_command)
-                assert replay_result == rejected_result
+                assert replay_result == rejected_after['readback']
                 assert plugin._load_operation(rejected_command) == rejected_after
                 assert plugin._get_active_control() == clear_command['operationUuid']
                 assert len(native_writes) == write_count
@@ -3095,7 +3116,8 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                 assert json.loads(plugin.reconcile({
                     'body': json.dumps(reconcile_command)})) == result
                 assert state_reads[0] == reads_before_replay
-                assert plugin.apply(command) == result
+                assert result['state']['controlOperationUuid'] == (plugin._get_active_control() or '')
+                assert plugin.apply(command) == after['readback']
                 assert plugin._load_operation(command) == after
             return
         result = plugin.apply(command)
