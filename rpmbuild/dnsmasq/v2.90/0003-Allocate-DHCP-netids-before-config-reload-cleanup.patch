@@ -1,0 +1,109 @@
+From 909f27deb4396d5481aee0080af38cd01ed55538 Mon Sep 17 00:00:00 2001
+From: "hongbo.liu" <hongbo.liu@zstack.io>
+Date: Tue, 7 Jul 2026 16:07:52 +0800
+Subject: [PATCH 3/3] Allocate DHCP netids before config reload cleanup
+
+---
+ src/dnsmasq.h |  1 +
+ src/option.c  |  2 +-
+ src/rfc2131.c | 27 +++++++++++----------------
+ 3 files changed, 13 insertions(+), 17 deletions(-)
+
+diff --git a/src/dnsmasq.h b/src/dnsmasq.h
+index ab64bb1..926c58d 100644
+--- a/src/dnsmasq.h
++++ b/src/dnsmasq.h
+@@ -1507,6 +1507,7 @@ void check_log_writer(int force);
+ void flush_log(void);
+ 
+ /* option.c */
++struct dhcp_netid *dhcp_netid_create(const char *net, struct dhcp_netid *next);
+ void read_opts (int argc, char **argv, char *compile_opts);
+ char *option_string(int prot, unsigned int opt, unsigned char *val, 
+ 		    int opt_len, char *buf, int buf_len);
+diff --git a/src/option.c b/src/option.c
+index f4ff7c0..480ef5f 100644
+--- a/src/option.c
++++ b/src/option.c
+@@ -1314,7 +1314,7 @@ static char *set_prefix(char *arg)
+    return arg;
+ }
+ 
+-static struct dhcp_netid *dhcp_netid_create(const char *net, struct dhcp_netid *next)
++struct dhcp_netid *dhcp_netid_create(const char *net, struct dhcp_netid *next)
+ {
+   struct dhcp_netid *tt;
+   tt = opt_malloc(sizeof (struct dhcp_netid));
+diff --git a/src/rfc2131.c b/src/rfc2131.c
+index 68834ea..6d19454 100644
+--- a/src/rfc2131.c
++++ b/src/rfc2131.c
+@@ -96,7 +96,7 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
+   unsigned char *agent_id = NULL, *uuid = NULL;
+   unsigned char *emac = NULL;
+   int vendor_class_len = 0, emac_len = 0;
+-  struct dhcp_netid known_id, iface_id, cpewan_id;
++  struct dhcp_netid *known_id, *iface_id, *cpewan_id;
+   struct dhcp_opt *o;
+   unsigned char pxe_uuid[17];
+   unsigned char *oui = NULL, *serial = NULL;
+@@ -107,9 +107,8 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
+   subnet_addr.s_addr = override.s_addr = 0;
+ 
+   /* set tag with name == interface */
+-  iface_id.net = iface_name;
+-  iface_id.next = NULL;
+-  netid = &iface_id; 
++  iface_id = dhcp_netid_create(iface_name, NULL);
++  netid = iface_id;
+   
+   if (mess->op != BOOTREQUEST || mess->hlen > DHCP_CHADDR_MAX)
+     return 0;
+@@ -173,9 +172,8 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
+ 		     the gateway id back. Note that the device class is optional */
+ 		  if (oui && serial)
+ 		    {
+-		      cpewan_id.net = "cpewan-id";
+-		      cpewan_id.next = netid;
+-		      netid = &cpewan_id;
++		      cpewan_id = dhcp_netid_create("cpewan-id", netid);
++		      netid = cpewan_id;
+ 		    }
+ 		  break;
+ 		}
+@@ -531,16 +529,14 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
+   /* set "known" tag for known hosts */
+   if (config)
+     {
+-      known_id.net = "known";
+-      known_id.next = netid;
+-      netid = &known_id;
++      known_id = dhcp_netid_create("known", netid);
++      netid = known_id;
+     }
+   else if (find_config(daemon->dhcp_conf, NULL, clid, clid_len, 
+ 		       mess->chaddr, mess->hlen, mess->htype, NULL, run_tag_if(netid)))
+     {
+-      known_id.net = "known-othernet";
+-      known_id.next = netid;
+-      netid = &known_id;
++      known_id = dhcp_netid_create("known-othernet", netid);
++      netid = known_id;
+     }
+   
+   if (mess_type == 0 && !pxe)
+@@ -808,9 +804,8 @@ size_t dhcp_reply(struct dhcp_context *context, char *iface_name, int int_index,
+ 		{
+ 		  config = new;
+ 		  /* set "known" tag for known hosts */
+-		  known_id.net = "known";
+-		  known_id.next = netid;
+-		  netid = &known_id;
++		  known_id = dhcp_netid_create("known", netid);
++		  netid = known_id;
+ 		}
+ 	    }
+ 	}
+-- 
+2.43.0
+

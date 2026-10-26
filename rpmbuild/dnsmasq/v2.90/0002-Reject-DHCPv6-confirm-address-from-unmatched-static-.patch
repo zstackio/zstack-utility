@@ -1,0 +1,75 @@
+From cb25ac5bd857f400256a1f9ff1d1824de0e3635f Mon Sep 17 00:00:00 2001
+From: "hongbo.liu" <hongbo.liu@zstack.io>
+Date: Tue, 7 Jul 2026 16:06:14 +0800
+Subject: [PATCH 2/3] Reject DHCPv6 confirm address from unmatched static range
+
+---
+ src/dhcp6.c   | 23 +++++++++++++++++++++++
+ src/dnsmasq.h |  2 ++
+ src/rfc3315.c |  3 ++-
+ 3 files changed, 27 insertions(+), 1 deletion(-)
+
+diff --git a/src/dhcp6.c b/src/dhcp6.c
+index c9d54dc..8a6478f 100644
+--- a/src/dhcp6.c
++++ b/src/dhcp6.c
+@@ -449,6 +449,29 @@ static int complete_context6(struct in6_addr *local,  int prefix,
+   return 1;
+ }
+ 
++int is_invalid_address_from_static_range(struct dhcp_context *context, struct in6_addr *taddr)
++{
++  struct dhcp_context *c;
++  struct dhcp_config *config;
++  int range_matched = 0;
++
++  for (c = context; c; c = c->current)
++    {
++      if (!is_same_net6(&c->start6, taddr, c->prefix))
++	continue;
++
++      range_matched = 1;
++      if (c->flags & CONTEXT_STATIC)
++	{
++	  config = config_find_by_address6(daemon->dhcp_conf, &c->start6, c->prefix, taddr);
++	  if (config)
++	    return 1;
++	}
++    }
++
++  return range_matched ? 0 : 1;
++}
++
+ struct dhcp_config *config_find_by_address6(struct dhcp_config *configs, struct in6_addr *net, int prefix,  struct in6_addr *addr)
+ {
+   struct dhcp_config *config;
+diff --git a/src/dnsmasq.h b/src/dnsmasq.h
+index be8cf2a..ab64bb1 100644
+--- a/src/dnsmasq.h
++++ b/src/dnsmasq.h
+@@ -1746,6 +1746,8 @@ struct dhcp_context *address6_valid(struct dhcp_context *context,
+ 				    struct in6_addr *taddr,
+ 				    struct dhcp_netid *netids,
+ 				    int plain_range);
++int is_invalid_address_from_static_range(struct dhcp_context *context,
++					 struct in6_addr *taddr);
+ struct dhcp_config *config_find_by_address6(struct dhcp_config *configs, struct in6_addr *net, 
+ 					    int prefix, struct in6_addr *addr);
+ void make_duid(time_t now);
+diff --git a/src/rfc3315.c b/src/rfc3315.c
+index 400d939..e194183 100644
+--- a/src/rfc3315.c
++++ b/src/rfc3315.c
+@@ -1094,7 +1094,8 @@ static int dhcp6_no_relay(struct state *state, int msg_type, unsigned char *inbu
+ 		/* alignment */
+ 		memcpy(&req_addr, opt6_ptr(ia_option, 0), IN6ADDRSZ);
+ 		
+-		if (!address6_valid(state->context, &req_addr, tagif, 1))
++		if (!address6_valid(state->context, &req_addr, tagif, 1) ||
++		    !is_invalid_address_from_static_range(state->context, &req_addr))
+ 		  {
+ 		    bad_addr = 1;
+ 		    log6_quiet(state, "DHCPREPLY", &req_addr, _("confirm failed"));
+-- 
+2.43.0
+
