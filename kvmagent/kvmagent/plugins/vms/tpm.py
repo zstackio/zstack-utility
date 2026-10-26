@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import uuid
 import xml.etree.ElementTree as etree
 
@@ -9,6 +10,7 @@ from zstacklib.utils import shell
 
 SWTPM_BASE = '/var/lib/libvirt/swtpm'
 TPM_PERMALL_RELATIVE_PATH = os.path.join('tpm2', 'tpm2-00.permall')
+SNAPSHOT_BACKUP_SUFFIX = '.snapshot-backup'
 
 def is_virsh_support_keep_tpm():
     return shell.run("virsh undefine --help | grep -q '\\-\\-keep-tpm'") == 0
@@ -36,6 +38,17 @@ class TpmStateHostFile(object):
         if not check_tpm_state_vm_host_file_path_format(to.path):
             raise Exception('invalid TPM state vm host file path ' + to.path)
         vm_host_file.write_vm_host_file(to)
+        if to.operation == vm_host_file.VmHostFileOperation.DELETE:
+            _remove_snapshot_backup_folder(to.path)
+
+def _remove_snapshot_backup_folder(tpm_state_folder):
+    # type: (str) -> None
+    folder = tpm_state_folder.rstrip('/')
+    if folder.endswith(SNAPSHOT_BACKUP_SUFFIX) or os.path.exists(folder):
+        return
+    backup_folder = folder + SNAPSHOT_BACKUP_SUFFIX
+    if os.path.isdir(backup_folder):
+        shutil.rmtree(backup_folder)
 
 def _uuid_with_hyphens(vm_uuid):
     # type: (str) -> str
