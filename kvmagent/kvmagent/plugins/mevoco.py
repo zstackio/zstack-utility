@@ -166,10 +166,8 @@ class NamespaceInfraEnv(object):
         if ret != 0:
             bash_errorout(get_ebtables_cmd() + ' -t nat -N {{EBCHAIN_NAME}}')
 
-        if bash_r(get_ebtables_cmd() + " -t nat -L PREROUTING | grep -E -- '(--logical-in|-i) {{BR_NAME}} -j {{EBCHAIN_NAME}}'") != 0:
-            # try --logical-in first; fall back to -i for kernels (e.g. alinux4 >= 6.6.102-5.3) that reject `meta ibrname`
-            if bash_r(get_ebtables_cmd() + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}') != 0:
-                bash_errorout(get_ebtables_cmd() + ' -t nat -I PREROUTING -i {{BR_NAME}} -j {{EBCHAIN_NAME}}')
+        if bash_r(get_ebtables_cmd() + " -t nat -L PREROUTING | grep -- '--logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}'") != 0:
+            bash_errorout(get_ebtables_cmd() + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}')
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         macAddr = ip.removeZeroFromMacAddress(MAC)
@@ -818,23 +816,7 @@ def getDhcpEbtableChainName(dhcpIp):
 
 
 def get_ebtables_userdata_chain_name(br_name, l3_network_uuid):
-    # Note: In ebtables v1.8 and above, the maximum allowed length for certain string fields
-    # (e.g., --comment, --set-mark, custom chain names) is limited to 28 characters.
-    if is_ebtables_nf_tables():
-        max_chain_name_len = 28
-        prefix = "UD"
-        uuid_len = 8
-        separator_len = 2  # two '-' characters
-        max_br_len = max_chain_name_len - len(prefix) - separator_len - uuid_len
-        return "%s-%s-%s" % (prefix, br_name[-max_br_len:], l3_network_uuid[:uuid_len])
-    else:
-        return "USERDATA-%s-%s" % (br_name[-12:], l3_network_uuid[:8])
-
-def is_ebtables_nf_tables():
-    r, o, e = bash_roe(get_ebtables_cmd() + ' --version')
-    if r != 0:
-        raise Exception('Failed to get ebtables version')
-    return "nf_tables" in o
+    return "USERDATA-%s-%s" % (br_name[-12:], l3_network_uuid[:8])
 
 
 def ensure_userdata_veth_pair(namespace_name, outer_dev, inner_dev, mtu):
@@ -1744,10 +1726,8 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if ret != 0:
             bash_errorout(get_ebtables_cmd() + ' -t nat -N {{EBCHAIN_NAME}}')
 
-        if bash_r(get_ebtables_cmd() + " -t nat -L PREROUTING | grep -E -- '(--logical-in|-i) {{BR_NAME}} -j {{EBCHAIN_NAME}}'") != 0:
-            # try --logical-in first; fall back to -i for kernels (e.g. alinux4 >= 6.6.102-5.3) that reject `meta ibrname`
-            if bash_r(get_ebtables_cmd() + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}') != 0:
-                bash_errorout(get_ebtables_cmd() + ' -t nat -I PREROUTING -i {{BR_NAME}} -j {{EBCHAIN_NAME}}')
+        if bash_r(get_ebtables_cmd() + " -t nat -L PREROUTING | grep -- '--logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}'") != 0:
+            bash_errorout(get_ebtables_cmd() + ' -t nat -I PREROUTING --logical-in {{BR_NAME}} -j {{EBCHAIN_NAME}}')
 
         # ebtables has a bug that will eliminate 0 in MAC, for example, aa:bb:0c will become aa:bb:c
         cidr = ip.IpAddress(to.vmIp).toCidr(to.netmask)
