@@ -6788,7 +6788,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     'record': backend_preparation.get('record'),
                 }
             return valid
-        except (IOError, OSError, ValueError, TypeError):
+        except (IOError, OSError, ValueError, TypeError, FirstZramConfigRejected):
             return False
 
     @staticmethod
