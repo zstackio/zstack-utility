@@ -10254,29 +10254,34 @@ host side snapshot files chian:
             r, o, e = bash.bash_roe(cmd)
             return o != ""
 
-        @linux.retry(3, 2)
         def detach_pci_device_from_vm(cmd, xml_path, vm_domain):
-            if not find_pci_device(cmd.vmUuid, cmd.pciDeviceAddress):
-                return
+            detach_timeout = 60
 
-            # Pre-detach if GPU
-            if pci.is_gpu(cmd.type):
-                return_code, output = gpu.pre_detach_from_vm(vm_domain, cmd.vmUuid, cmd.vendor)
-                if return_code != 0:
-                    raise Exception("pre_detach_from_vm failed: %s" % output)
+            @linux.retry(3, 2)
+            def request_detach():
+                if not find_pci_device(cmd.vmUuid, cmd.pciDeviceAddress):
+                    return
 
-            # Perform detach-device
-            r, o, e = bash.bash_roe("timeout -k 5 60 virsh detach-device %s %s" % (cmd.vmUuid, xml_path))
-            if r != 0:
-                raise Exception("detach-device failed: %s, %s" % (o, e))
+                # Pre-detach if GPU
+                if pci.is_gpu(cmd.type):
+                    return_code, output = gpu.pre_detach_from_vm(vm_domain, cmd.vmUuid, cmd.vendor)
+                    if return_code != 0:
+                        raise Exception("pre_detach_from_vm failed: %s" % output)
 
-            # Verify device is actually detached
+                r, o, e = bash.bash_roe("timeout -k 5 %d virsh detach-device %s %s" %
+                                        (detach_timeout, cmd.vmUuid, xml_path))
+                if r not in (0, 124) and "is already in the process of unplug" not in "%s, %s" % (o, e):
+                    raise Exception("detach-device failed: %s, %s" % (o, e))
+
+            request_detach()
+
             if not linux.wait_callback_success(
                     lambda args: not find_pci_device(args[0], args[1]),
                     [cmd.vmUuid, cmd.pciDeviceAddress],
-                    timeout=5
+                    timeout=detach_timeout
             ):
-                raise Exception("device still exists after detach")
+                raise Exception("pci device %s still exists on vm %s after %d seconds" %
+                                (cmd.pciDeviceAddress, cmd.vmUuid, detach_timeout))
 
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotUnplugPciDeviceRsp()
