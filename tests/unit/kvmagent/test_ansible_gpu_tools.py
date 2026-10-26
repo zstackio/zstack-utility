@@ -21,7 +21,7 @@ class TestNpuSmiDeployment(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.root)
 
-    def deploy(self):
+    def deploy(self, use_default_source=False):
         with open(os.path.join(ROOT, "kvmagent/ansible/kvm.py")) as stream:
             source = stream.read()
         function = re.search(r"^def install_virtualenv\(\):.*?(?=^def )",
@@ -38,7 +38,8 @@ class TestNpuSmiDeployment(unittest.TestCase):
             with open(helper) as stream:
                 eval(compile(stream.read(), helper, "exec"), module)
             build = module["build_npu_smi_link_command"]
-            namespace["build_npu_smi_link_command"] = lambda venv: build(venv, self.source)
+            namespace["build_npu_smi_link_command"] = (
+                lambda venv: build(venv) if use_default_source else build(venv, self.source))
         eval(compile(function, "kvm.py", "exec"), namespace)
         namespace["install_virtualenv"]()
         for command in commands:
@@ -81,6 +82,43 @@ class TestNpuSmiDeployment(unittest.TestCase):
         self.deploy()
         with open(self.target) as stream:
             self.assertEqual(stream.read(), "existing-tool")
+
+    def test_stale_link_is_repaired_on_reconnect(self):
+        os.symlink(os.path.join(self.root, "old-driver/npu-smi"), self.target)
+        self.write_tool(0o755)
+        self.deploy()
+        self.assertEqual(os.path.realpath(self.target), self.source)
+        self.assertEqual(subprocess.check_output([self.target]), b"npu-found\n")
+
+    def test_driver_symlink_is_supported(self):
+        self.write_tool(0o755)
+        vendor_tool = os.path.join(self.root, "vendor-npu-smi")
+        os.rename(self.source, vendor_tool)
+        os.symlink(vendor_tool, self.source)
+        self.deploy()
+        self.assertEqual(os.path.realpath(self.target), vendor_tool)
+        self.assertEqual(subprocess.check_output([self.target]), b"npu-found\n")
+
+    def test_driver_installed_after_host_add_is_discovered_on_reconnect(self):
+        self.deploy()
+        self.assertFalse(os.path.lexists(self.target))
+        self.write_tool(0o755)
+        self.deploy()
+        self.assertEqual(subprocess.check_output([self.target]), b"npu-found\n")
+
+    def test_non_executable_source_preserves_existing_tool(self):
+        self.write_tool(0o644)
+        with open(self.target, "w") as stream:
+            stream.write("existing-tool")
+        self.deploy()
+        with open(self.target) as stream:
+            self.assertEqual(stream.read(), "existing-tool")
+
+    def test_link_failure_is_reported(self):
+        self.write_tool(0o755)
+        os.rmdir(os.path.dirname(self.target))
+        with self.assertRaises(subprocess.CalledProcessError):
+            self.deploy()
 
 
 if __name__ == "__main__":
