@@ -3148,6 +3148,12 @@ def test_cold_prepared_backend_can_be_followed_by_first_zram_enable(
                            match='FIRST_ZRAM_CONFIG_NOT_FACTORY'):
             plugin._prepare_first_zram_use(command)
         assert restarts == []
+        # A config past factory mode, such as an admitted first use waiting
+        # for its pool, is no no-pool proof; the inventory stays readable.
+        assert plugin._first_use_no_pool_verified() is False
+        inventory = json.loads(plugin.writeback_backends({'body': json.dumps({'hostUuid': HOST})}))
+        assert inventory['success'] is True, inventory
+        assert inventory['state']['canPrepare'] is False
         return
     else:
         expected_reason = ('FIRST_ZRAM_CONFIG_READBACK_MISMATCH'
