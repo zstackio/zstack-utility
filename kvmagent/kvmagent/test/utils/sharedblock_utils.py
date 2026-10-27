@@ -128,12 +128,14 @@ def shareblock_revert_volume_from_snapshot(snapshotInstallPath=None, installPath
     }))
 
 @misc.return_jsonobject()
-def sharedblock_merge_snapshot(snapshotInstallPath=None, workspaceInstallPath=None, vgUuid=None, hostUuid=None):
+def sharedblock_merge_snapshot(snapshotInstallPath=None, workspaceInstallPath=None, vgUuid=None, hostUuid=None,
+                               provisioning=None):
     return get_sharedblock_plugin().merge_snapshot(misc.make_a_request({
         "snapshotInstallPath": snapshotInstallPath ,# random uuid
         "workspaceInstallPath": workspaceInstallPath,
         "vgUuid": vgUuid,
-        "hostUuid": hostUuid
+        "hostUuid": hostUuid,
+        "provisioning": provisioning
     }))
 
 @misc.return_jsonobject()
