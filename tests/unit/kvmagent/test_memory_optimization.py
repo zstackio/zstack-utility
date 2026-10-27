@@ -57,6 +57,13 @@ class FakeService(object):
         if action == 'lifecycle-activate-maintenance':
             if self.activation_error:
                 return {'_http_status': 409, 'error': self.activation_error}
+            prepared = self.receipts['pool']
+            # Like the service: a completed pool preparation must be named exactly; a backend one is
+            # checked by its own identity.
+            if prepared.get('stage') == 'APPLIED' and \
+                    prepared.get('expected_control_operation_uuid') != payload['expected_control_operation_uuid']:
+                # The service activates only the exact preparation it recorded.
+                return {'_http_status': 409, 'error': 'MAINTENANCE_ACTIVATION_PREPARATION_MISMATCH'}
             self.paused = False
             return {'receipt': {'stage': 'UNPAUSED'}}
         if action in ('zram-pool-maintenance-finalize', 'backend-maintenance-finalize'):
@@ -273,17 +280,40 @@ def test_resume_after_drain_prepares_finalizes_and_activates_the_pool(host):
     # The executor reset the pool and recorded it; the service starts paused, behind its fence.
     world['executors'][unit] = ('exited', 0)
     service.receipts['pool'] = {'stage': 'AWAITING_SERVICE_READBACK', 'request_id': request['request_id'],
+                                'expected_control_operation_uuid': request['expected_control_operation_uuid'],
                                 'pool_generation': POOL, 'host_boot_id': 'boot'}
     service.pool, service.maintenance = None, True
     world['drained'] = None
     second = apply(plugin, 12, desired())
     assert world['unit'] == 'active' and service.receipts['pool']['stage'] == 'APPLIED'
     activation = [payload for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
-    assert activation and activation[0]['request_id'] == 'activate-12-' + POOL[:16]
+    assert activation and activation[0]['request_id'] == 'activate-' + request['request_id']
+    assert activation[0]['expected_control_operation_uuid'] == request['expected_control_operation_uuid']
     assert service.paused is False and service.efficiency is True
     assert second['reasonCode'] == 'WAITING_FOR_POOL'
     service.pool = POOL
     assert apply(plugin, 12, desired())['status'] == 'Succeeded'
+
+
+def test_activation_names_the_preparation_the_service_activates(host):
+    plugin, service, world = host
+    service.pool, service.paused = None, True
+    service.receipts['backend'] = {'stage': 'APPLIED', 'request_id': 'backend-3-x', 'pool_generation': 'b' * 64}
+    service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-9-' + POOL[:16], 'pool_generation': POOL,
+                                'expected_control_operation_uuid': 'pool-9-' + POOL[:16]}
+    apply(plugin, 9, desired())
+    activation = [payload for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
+    assert activation[-1]['expected_pool_generation'] == POOL
+    assert activation[-1]['request_id'] == 'activate-pool-9-' + POOL[:16]
+    # Without a completed pool preparation the backend preparation is activated.
+    service.calls[:] = []
+    service.paused = True
+    service.receipts['pool'] = {'stage': 'NOT_STARTED'}
+    apply(plugin, 10, desired())
+    activation = [payload for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
+    assert activation[-1]['expected_pool_generation'] == 'b' * 64
+    assert activation[-1]['request_id'] == 'activate-backend-3-x'
+    assert service.paused is False
 
 
 def test_a_rejected_activation_keeps_the_pool_drained(host):

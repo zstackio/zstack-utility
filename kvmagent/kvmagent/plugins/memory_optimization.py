@@ -1374,14 +1374,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _activate_after_maintenance(self, generation):
         pool = self._receipt('pool')
         backend = self._receipt('backend')
-        receipt = backend if backend.get('stage') == 'APPLIED' and backend.get('pool_generation') else pool
+        # The service activates a completed pool preparation first, else a completed backend one.
+        receipt = pool if pool.get('stage') == 'APPLIED' else backend
         pool_generation = receipt.get('pool_generation')
         if receipt.get('stage') != 'APPLIED' or not pool_generation:
             raise Converging('MAINTENANCE_NOT_FINALIZED')
-        request_id = 'activate-%d-%s' % (generation, pool_generation[:16])
+        # The service activates only the exact preparation it recorded; one activation per preparation.
+        prepared = receipt.get('request_id') or 'generation-%d' % generation
         result = self._service_raw('lifecycle-activate-maintenance', {
-            'request_id': request_id,
-            'expected_control_operation_uuid': request_id,
+            'request_id': 'activate-%s' % prepared,
+            'expected_control_operation_uuid': receipt.get('expected_control_operation_uuid') or prepared,
             'expected_host_boot_id': receipt.get('host_boot_id') or self._current_boot_id(),
             'expected_pool_generation': pool_generation})
         code = result.get('_http_status')
