@@ -68,7 +68,7 @@ def test_no_change_does_not_probe_or_attach():
     vm.domain.attachDeviceFlags.assert_not_called()
 
 
-def test_missing_slot_limit_keeps_libvirt_validation():
+def test_missing_slot_limit_permits_attach_attempt():
     vm = make_vm(['dimm'] * 16, slots=None)
     vm.hotplug_mem(5 * GIB)
     vm.domain.attachDeviceFlags.assert_called_once()
@@ -93,6 +93,7 @@ def test_production_memory_xml_preserves_maximum_and_expands_numa_slots(use_numa
         node.text = value
     namespace = dict(elements={'root': root}, cmd=SimpleNamespace(memory=4 * GIB),
                      use_numa=use_numa, MAX_MEMORY=maximum, e=element)
+    exec(re.search(r'^MAX_MEMORY_SLOTS = .+$', PATH.read_text(), re.M).group(0), namespace)
     production_function('make_memory', namespace, '        ')()
     if use_numa:
         assert root.find('maxMemory').get('slots') == '64'

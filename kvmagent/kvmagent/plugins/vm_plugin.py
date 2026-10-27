@@ -89,6 +89,7 @@ SYSTEM_VIRTIO_DRIVER_PATHS = {
 QMP_SOCKET_PATH = "/var/lib/libvirt/qemu/zstack"
 PCI_ROM_PATH = "/var/lib/zstack/pcirom"
 MAX_MEMORY = 34359738368 if (HOST_ARCH != "aarch64") else linux.get_max_vm_ipa_size()/1024/16
+MAX_MEMORY_SLOTS = 64
 
 MIPS64EL_CPU_MODEL = "Loongson-3A4000-COMP"
 LOONGARCH64_CPU_MODEL = "Loongson-3A5000"
@@ -5071,7 +5072,7 @@ class Vm(object):
             root = elements['root']
             mem = cmd.memory / 1024
             if use_numa:
-                e(root, 'maxMemory', str(MAX_MEMORY), {'slots': '64', 'unit': 'KiB'})
+                e(root, 'maxMemory', str(MAX_MEMORY), {'slots': str(MAX_MEMORY_SLOTS), 'unit': 'KiB'})
                 # e(root,'memory',str(mem),{'unit':'k'})
                 e(root, 'currentMemory', str(mem), {'unit': 'k'})
             else:
