@@ -36,6 +36,9 @@ class TestVolumeWithIoThreadPin(TestCase, vm_utils.VmPluginTestStub):
                 pid = linux.find_vm_pid_by_uuid(self.vm_uuid)
                 if pid:
                     vm_utils.destroy_vm(self.vm_uuid)
+                    pid = linux.find_vm_pid_by_uuid(self.vm_uuid)
+                    if pid:
+                        logger.warning("tearDown cleanup failed: vm[%s] still running", self.vm_uuid)
             except Exception as e:
                 logger.warning("tearDown cleanup failed for vm[%s]: %s", self.vm_uuid, str(e))
 
