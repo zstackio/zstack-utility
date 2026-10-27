@@ -2323,8 +2323,11 @@ mimetype.assign = (
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
 
         namespace_dhcp = {}
+        rebuild = False
 
         for info in cmd.dhcpInfos:
+            if getattr(info, 'rebuild', False):
+                rebuild = True
             for d in info.dhcp:
                 lst = namespace_dhcp.get(d.namespaceName)
                 if not lst:
@@ -2332,7 +2335,7 @@ mimetype.assign = (
                     namespace_dhcp[d.namespaceName] = lst
                 lst.append(d)
 
-        self.do_apply_dhcp(namespace_dhcp, cmd.rebuild)
+        self.do_apply_dhcp(namespace_dhcp, rebuild)
         rsp = ApplyDhcpRsp()
         return jsonobject.dumps(rsp)
 
