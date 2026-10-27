@@ -9117,6 +9117,29 @@ host side snapshot files chian:
             r, o, e = bash.bash_roe(cmd)
             return o != ""
 
+        def detach_pci_device_from_vm(cmd, xml_path):
+            detach_timeout = 60
+
+            @linux.retry(4, 5)
+            def request_detach():
+                if not find_pci_device(cmd.vmUuid, cmd.pciDeviceAddress):
+                    return
+
+                r, o, e = bash.bash_roe("timeout -k 5 %d virsh detach-device %s %s" %
+                                        (detach_timeout, cmd.vmUuid, xml_path))
+                if r not in (0, 124) and "is already in the process of unplug" not in "%s, %s" % (o, e):
+                    raise Exception("detach-device failed: %s, %s" % (o, e))
+
+            request_detach()
+
+            if not linux.wait_callback_success(
+                    lambda args: not find_pci_device(args[0], args[1]),
+                    [cmd.vmUuid, cmd.pciDeviceAddress],
+                    timeout=detach_timeout
+            ):
+                raise Exception("pci device %s still exists on vm %s after %d seconds" %
+                                (cmd.pciDeviceAddress, cmd.vmUuid, detach_timeout))
+
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = HotUnplugPciDeviceRsp()
         addr = cmd.pciDeviceAddress
@@ -9152,27 +9175,12 @@ host side snapshot files chian:
         self.timeout_object.wait_until_object_timeout('hot-plug-pci-device-to-vm-%s' % cmd.vmUuid)
         self.timeout_object.put('hot-unplug-pci-device-from-vm-%s' % cmd.vmUuid, timeout=10)
 
-        retry_num = 4
-        retry_interval = 5
-        logger.debug("try to virsh detach xml for %d times: %s" % (retry_num, content))
-        for i in range(1, retry_num + 1):
-            r, o, e = bash.bash_roe("virsh detach-device %s %s" % (cmd.vmUuid, spath))
-            succ = linux.wait_callback_success(lambda args: not find_pci_device(args[0], args[1]), [cmd.vmUuid, addr], timeout=retry_interval)
-            if succ:
-                break
-
-            if i < retry_num:
-                continue
-
-            if r != 0:
-                rsp.success = False
-                rsp.error = "failed to detach-device %s from %s: %s, %s" % (addr, cmd.vmUuid, o, e)
-                return jsonobject.dumps(rsp)
-
-            if not succ:
-                rsp.success = False
-                rsp.error = "pci device %s still exists on vm %s after %ds" % (addr, cmd.vmUuid, retry_num * retry_interval)
-                return jsonobject.dumps(rsp)
+        try:
+            detach_pci_device_from_vm(cmd, spath)
+        except Exception as e:
+            rsp.success = False
+            rsp.error = str(e)
+            return jsonobject.dumps(rsp)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
