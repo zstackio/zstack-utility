@@ -55,7 +55,7 @@ from kvmagent.plugins import vm_artifact
 from kvmagent.plugins import zbs_vhost_target
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
-from kvmagent.plugins.nvram import nvram
+from kvmagent.plugins.nvram import nvram, nvram_secure_boot
 from kvmagent.plugins.vms import vm_host_file, vm_host_file_monitor, tpm
 from zstacklib.utils import bash, plugin, iscsi, gpu, traceable_shell
 from zstacklib.utils.bash import in_bash
@@ -6806,20 +6806,24 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 if yum_release in ("ky10sp3", "ky10sp3.2403"):
                     if need_register_nvram:
+                        nvram_template = '/usr/share/edk2-20220126/ovmf/OVMF_VARS.secboot.fd'
                         e(os, 'loader', '/usr/share/edk2-20220126/ovmf/OVMF_CODE.secboot.fd', attrib=loader_attribute)
-                        e(os, 'nvram', nvram_fd_path, attrib={'template': '/usr/share/edk2-20220126/ovmf/OVMF_VARS.secboot.fd'})
+                        e(os, 'nvram', nvram_fd_path, attrib={'template': nvram_template})
                     else:
                         e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.fd', attrib=loader_attribute)
                         e(os, 'nvram', nvram_fd_path, attrib={'template': '/usr/share/edk2/ovmf/OVMF_VARS.fd'})
                 else: # h84r ...
                     if need_register_nvram:
+                        nvram_template = '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd'
                         e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd', attrib=loader_attribute)
-                        element = e(os, 'nvram', None, attrib={'template': '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd'})
+                        element = e(os, 'nvram', None, attrib={'template': nvram_template})
                         e(element, 'source', nvram_fd_path)
                     else:
                         e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib=loader_attribute)
                         element = e(os, 'nvram', None, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
                         e(element, 'source', nvram_fd_path)
+                if need_register_nvram and not cmd.memorySnapshotPath:
+                    nvram_secure_boot.prepare_secure_boot_nvram(nvram_fd_path, nvram_template, bool(cmd.secureBoot))
             elif host_arch == "x86_64" and cmd.bootMode == "UEFI_WITH_CSM":
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
                 e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-with-csm.fd', attrib=loader_attribute)

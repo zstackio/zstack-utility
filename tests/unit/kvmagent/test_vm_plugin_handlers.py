@@ -16,7 +16,7 @@ import urllib.parse
 from collections.abc import Iterator
 from typing import Callable
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import call, patch, MagicMock
 from xml.etree import ElementTree as ET
 
 from zstacklib.utils import http, jsonobject
@@ -3121,6 +3121,54 @@ class TestVmStartCmdXmlBuild:
         assert '<hugepages' not in xml_str
         assert '<access mode="shared"' not in xml_str
         assert '<source type="memfd"' not in xml_str
+
+    def _prepare_secure_boot_nvram_calls(self, cmd, yum_release='h84r'):
+        with patch.object(vm_plugin.kvmagent, 'get_host_yum_release', return_value=yum_release), \
+                patch.object(vm_plugin.nvram_secure_boot, 'prepare_secure_boot_nvram') as prepare:
+            self._build_start_vm_xml(cmd)
+        return prepare.call_args_list
+
+    @pytest.mark.parametrize('yum_release, template', [
+        ('h84r', '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd'),
+        ('ky10sp3', '/usr/share/edk2-20220126/ovmf/OVMF_VARS.secboot.fd'),
+    ])
+    def test_uefi_secure_boot_prepares_nvram_from_secboot_template(self, yum_release, template):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = True
+
+        assert self._prepare_secure_boot_nvram_calls(cmd, yum_release) == [
+            call('/var/lib/libvirt/qemu/nvram/vm-uuid-host-files/vm-uuid.fd', template, True)
+        ]
+
+    def test_secure_boot_nvram_is_not_prepared_when_restoring_memory_snapshot(self):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = True
+        cmd.memorySnapshotPath = '/var/lib/zstack/memory-snapshot/vm-uuid'
+
+        assert self._prepare_secure_boot_nvram_calls(cmd) == []
+
+    def test_secure_boot_nvram_is_not_prepared_for_uefi_with_csm(self):
+        cmd = self._build_start_cmd()
+        cmd.bootMode = 'UEFI_WITH_CSM'
+        cmd.secureBoot = True
+
+        assert self._prepare_secure_boot_nvram_calls(cmd) == []
+
+    def test_secure_boot_nvram_is_not_prepared_without_nvram_registration(self):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = False
+
+        assert self._prepare_secure_boot_nvram_calls(cmd) == []
+
+    def test_tpm_without_secure_boot_registers_nvram_with_secure_boot_off(self):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = False
+        cmd.tpm = jsonobject.loads('{"installPath": "/var/lib/libvirt/swtpm/vm-uuid"}')
+
+        assert self._prepare_secure_boot_nvram_calls(cmd) == [
+            call('/var/lib/libvirt/qemu/nvram/vm-uuid-host-files/vm-uuid.fd',
+                 '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd', False)
+        ]
 
     def test_from_start_vm_cmd_builds_xml_with_features(self):
         vm_plugin.ovs.OvsDpdkSupportVnic = []
