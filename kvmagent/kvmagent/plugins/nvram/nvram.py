@@ -2,6 +2,7 @@ import errno
 import os
 import os.path
 import pipes
+import shutil
 import time
 
 from kvmagent.plugins.nvram import nvram_common, nvram_sblk, nvram_local
@@ -146,6 +147,18 @@ class NvRamHostFile(object):
         if not nvram_common.check_nvram_vm_host_file_path_format(to.path):
             raise Exception('invalid nvram vm host file path ' + to.path)
         vm_host_file.write_vm_host_file(to)
+        if to.operation == vm_host_file.VmHostFileOperation.DELETE:
+            self._remove_folder_if_nvram_deleted(to.path)
+
+    def _remove_folder_if_nvram_deleted(self, path):
+        # type: (str) -> None
+        vm_uuid = nvram_common.extract_vm_uuid_from_nvram_vm_host_file_path(path)
+        folder = os.path.dirname(path)
+        if not os.path.isdir(folder) or os.path.exists(nvram_common.build_nvram_vm_host_file_path(vm_uuid)):
+            return
+
+        shutil.rmtree(folder)
+        logger.debug('removed nvram host file folder %s' % folder)
 
 def cleanup_nvram_links_if_needed(install_path):
     # type: (str) -> None
