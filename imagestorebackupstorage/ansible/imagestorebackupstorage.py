@@ -281,7 +281,8 @@ if fs_rootpath != '' and remote_user != 'root':
 
 # name: restart image store server
 if client != "true":
-    if resource_assignment_enabled:
+    command = 'test "$(stat -fc %T /sys/fs/cgroup)" = cgroup2fs'
+    if resource_assignment_enabled or run_remote_command(command, host_post_info, return_status=True):
         if not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.slice$', resource_assignment_slice_name):
             error('Invalid resource assignment slice[%s]' % resource_assignment_slice_name)
         service = ('[Unit]\nDescription=ZStack Image Store\nAfter=network.target\n\n'

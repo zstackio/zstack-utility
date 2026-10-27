@@ -3,6 +3,8 @@ import fnmatch
 import importlib.util
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -48,6 +50,61 @@ def test_deployment_preserves_native_boolean_switch():
         args = SimpleNamespace(e=json.dumps({'resource_assignment_enabled': enabled}))
         parsed = eval(parser, {'json': json, 'args': args})
         assert parsed['resource_assignment_enabled'] is enabled, 'Deployment must preserve native booleans'
+
+
+@pytest.mark.parametrize('version,enabled,client,existing_slice', [
+    (2, False, 'false', None), (2, True, 'false', None),
+    (1, False, 'false', None), (1, True, 'false', None),
+    (2, False, 'true', None), (2, True, 'true', None),
+    (2, False, 'false', 'zstack-management.slice'),
+])
+def test_deployment_prepares_slice_before_start_without_enabling_limits(
+        tmp_path, version, enabled, client, existing_slice):
+    path = Path(__file__).resolve().parents[3] / 'imagestorebackupstorage/ansible/imagestorebackupstorage.py'
+    nodes = ast.parse(path.read_text()).body
+    block = next(node for node in nodes if isinstance(node, ast.If)
+                 and any(isinstance(child, ast.Name) and child.id == 'resource_assignment_enabled'
+                         for child in ast.walk(node)))
+    remote = Mock(return_value=version == 2)
+    host = SimpleNamespace(distro='rocky')
+    namespace = dict(client=client, resource_assignment_enabled=enabled,
+                     resource_assignment_slice_name='zstack-imagestore.slice', re=re, shell_quote=shlex.quote,
+                     host_info=host, host_post_info=host, RPM_BASED_OS=['rocky'], DEB_BASED_OS=[],
+                     run_remote_command=remote)
+    exec(compile(ast.Module(body=[block], type_ignores=[]), str(path), 'exec'), namespace)
+    probes = [invocation for invocation in remote.call_args_list if invocation.kwargs.get('return_status')]
+    if client == 'true' or enabled:
+        assert not probes, 'Client deployment and enabled switches must skip version detection'
+    else:
+        assert probes == [call('test "$(stat -fc %T /sys/fs/cgroup)" = cgroup2fs', host, return_status=True)]
+    commands = [invocation.args[0] for invocation in remote.call_args_list if not invocation.kwargs]
+    assert not any('cgroup2fs' in command or 'cgroup.controllers' in command for command in commands)
+    prepares_slice = client != 'true' and (enabled or version == 2)
+    assert sum('Slice=' in command for command in commands) == (2 if prepares_slice else 0)
+    if client == 'true':
+        assert not commands
+        return
+    if not prepares_slice:
+        return
+
+    systemd = tmp_path / 'systemd'
+    systemd.mkdir()
+    units = ['zstack-imagestorebackupstorage.service', 'bs_collectd_exporter.service']
+    for unit in units:
+        drop_in = systemd / (unit + '.d') / '50-zstack-resource-assignment.conf'
+        if existing_slice:
+            drop_in.parent.mkdir(parents=True)
+            drop_in.write_text('[Service]\nSlice=%s\n' % existing_slice)
+    reload_index = commands.index('systemctl daemon-reload')
+    assert reload_index < next(index for index, command in enumerate(commands) if 'systemctl start ' in command)
+    for _ in range(2):
+        for command in commands[:reload_index]:
+            subprocess.check_call(command.replace('/etc/systemd/system', str(systemd)), shell=True)
+    for unit in units:
+        drop_in = systemd / (unit + '.d') / '50-zstack-resource-assignment.conf'
+        assert drop_in.read_text() == '[Service]\nSlice=%s\n' % (existing_slice or 'zstack-imagestore.slice')
+    contents = ''.join(file.read_text() for file in systemd.rglob('*') if file.is_file())
+    assert not any(setting in contents for setting in ['AllowedCPUs=', 'MemoryMax=', 'MemoryLimit='])
 
 
 def load_cli(monkeypatch):

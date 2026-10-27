@@ -1162,7 +1162,8 @@ def do_systemd_config():
     run_remote_command(command, host_post_info)
 
 def configure_resource_assignment():
-    if resource_assignment_enabled != 'true':
+    command = 'test "$(stat -fc %T /sys/fs/cgroup)" = cgroup2fs'
+    if resource_assignment_enabled != 'true' and not run_remote_command(command, host_post_info, return_status=True):
         return
     if not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.slice$', resource_assignment_slice_name):
         error('Invalid resource assignment slice[%s]' % resource_assignment_slice_name)
