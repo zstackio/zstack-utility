@@ -2881,12 +2881,10 @@ class Vm(object):
         if os_type is None or not is_i440fx_machine_type(os_type.get('machine')):
             return
 
-        commandline = root.find('%scommandline' % qemu_namespace)
-        if commandline is None:
-            return
-
-        args = commandline.findall('%sarg' % qemu_namespace)
-        if not any(arg.get('value') == 'virtio-blk-pci.discard=on' for arg in args):
+        commandlines = root.findall('%scommandline' % qemu_namespace)
+        if not any(arg.get('value') == 'virtio-blk-pci.discard=on'
+                   for commandline in commandlines
+                   for arg in commandline.findall('%sarg' % qemu_namespace)):
             return
 
         @LibvirtAutoReconnect
@@ -2894,24 +2892,26 @@ class Vm(object):
             return conn.saveImageGetXMLDesc(path, 0)
 
         saved_root = etree.fromstring(get_saved_xml())
-        saved_commandline = saved_root.find('%scommandline' % qemu_namespace)
-        saved_args = saved_commandline.findall('%sarg' % qemu_namespace) if saved_commandline is not None else []
-        if any(arg.get('value') == 'virtio-blk-pci.discard=on' for arg in saved_args):
+        if any(arg.get('value') == 'virtio-blk-pci.discard=on'
+               for commandline in saved_root.findall('%scommandline' % qemu_namespace)
+               for arg in commandline.findall('%sarg' % qemu_namespace)):
             return
 
-        for arg in reversed(args):
-            if arg.get('value') != 'virtio-blk-pci.discard=on':
-                continue
+        for commandline in commandlines:
+            args = commandline.findall('%sarg' % qemu_namespace)
+            for arg in reversed(args):
+                if arg.get('value') != 'virtio-blk-pci.discard=on':
+                    continue
 
-            index = list(commandline).index(arg)
-            commandline.remove(arg)
-            if index > 0:
-                previous = list(commandline)[index - 1]
-                if previous.tag == '%sarg' % qemu_namespace and previous.get('value') == '-global':
-                    commandline.remove(previous)
+                index = list(commandline).index(arg)
+                commandline.remove(arg)
+                if index > 0:
+                    previous = list(commandline)[index - 1]
+                    if previous.tag == '%sarg' % qemu_namespace and previous.get('value') == '-global':
+                        commandline.remove(previous)
 
-        if not list(commandline):
-            root.remove(commandline)
+            if not list(commandline):
+                root.remove(commandline)
         self.domain_xml = etree.tostring(root)
 
     def start(self, timeout=60, create_paused=False, wait_console=True):
