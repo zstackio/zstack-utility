@@ -352,25 +352,6 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APICreateSNSUniversalSmsEndpointMsg' and params[0] in ['additionParam']:
                     all_params[params[0]] = eval_string(params[0], params[1])
-                elif apiname == 'APIUpdateMemoryPolicyMsg' and params[0] == 'expectedSourceRevisions':
-                    try:
-                        source_revisions = jsonobject.loads(params[1])
-                    except Exception:
-                        raise CliError('Invalid expectedSourceRevisions: expected a JSON object of integer revisions')
-
-                    if not isinstance(source_revisions, jsonobject.JsonObject):
-                        raise CliError('Invalid expectedSourceRevisions: expected a JSON object of integer revisions')
-
-                    source_revisions = source_revisions.__dict__.copy()
-                    try:
-                        integer_types = (int, long)
-                    except NameError:
-                        integer_types = (int,)
-                    for revision in source_revisions.values():
-                        if isinstance(revision, bool) or not isinstance(revision, integer_types) or \
-                                revision < -9223372036854775808 or revision > 9223372036854775807:
-                            raise CliError('Invalid expectedSourceRevisions: revisions must be signed 64-bit integers')
-                    all_params[params[0]] = source_revisions
                 elif apiname == 'APIAddSecurityGroupRuleMsg' and params[0] in ['rules', 'remoteSecurityGroupUuids']:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APISetVmNicSecurityGroupMsg' and params[0] == 'refs':
