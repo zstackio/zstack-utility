@@ -142,6 +142,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     ZRAM_CONFIG = '/etc/zram-memory/config.json'
     ZRAM_CONFIG_TEMPLATE = '/usr/share/zstack-zram/config.json'
     DRAINED = 'WITHDRAWN_SWAP_INACTIVE_POOL_PRESERVED'
+    # The service's DefaultCapacity(); a numeric 50 equals 50.0 in the comparison.
+    SERVICE_DEFAULT_CAPACITY = {'logical_capacity': {'percent_of_host': 50},
+                                'physical_memory_limit': {'percent_of_logical': 50}}
     PROGRESS_RETRY_SECONDS = 5
     WAIT_RETRY_SECONDS = 30
 
@@ -1147,7 +1150,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         writeback_wanted = desired['writeback']['enabled'] is True
         if desired['ksm']['enabled'] is True and not capabilities.get('ksm'):
             raise Rejected('KSM_UNSUPPORTED')
-        if (zram_wanted or writeback_wanted) and not capabilities.get('zram'):
+        interfaces = capabilities.get('interfaces') or {}
+        unknown = (capabilities.get('zramReasonCode') == 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
+                   and interfaces.get('cgroupv2') and interfaces.get('memory_reclaim'))
+        if (zram_wanted or writeback_wanted) and not capabilities.get('zram') and not unknown:
+            # A stopped (e.g. drained) service cannot report its qualification; it checks
+            # the kernel again when it starts, so only a known verdict is a rejection.
             raise Rejected(capabilities.get('zramReasonCode') or 'ZRAM_UNSUPPORTED')
         if writeback_wanted and not zram_wanted:
             raise Rejected('WRITEBACK_REQUIRES_ZRAM')
@@ -1263,14 +1271,20 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             desired = (self._service('capacity-state').get('desired') or {}).get('configured') or {}
             for side, value in (('logical_capacity', zram['logicalCapacityBytes']),
                                 ('physical_memory_limit', zram['ramLimitBytes'])):
-                # A side without a unit is the service default.
-                if (desired.get(side) or {}) != self._capacity_value(value):
+                if not self._same_capacity(side, desired.get(side) or {}, self._capacity_value(value)):
                     changes.append('capacity')
         if writeback['enabled'] is not None:
             settings = self._service('tuning-state').get('settings') or {}
             if (settings.get('writeback') or {}).get('enabled') is not (writeback['enabled'] is True):
                 changes.append('tuning')
         return sorted(set(changes))
+
+    @classmethod
+    def _same_capacity(cls, side, configured, wanted):
+        # A side without a unit is the service default, which the service stores as its percentage.
+        if not wanted:
+            return configured == {} or configured == cls.SERVICE_DEFAULT_CAPACITY[side]
+        return configured == wanted
 
     @staticmethod
     def _capacity_value(value):

@@ -165,6 +165,47 @@ def test_resending_the_applied_configuration_changes_nothing(host):
     assert result['status'] == 'Succeeded' and service.actions() == []
 
 
+def test_an_unset_capacity_matches_the_service_default_without_rewriting_it(host):
+    plugin, service, world = host
+    service.efficiency = True
+    service.capacity = {'logical_capacity': {'percent_of_host': 50.0},
+                        'physical_memory_limit': {'percent_of_logical': 50.0}}
+    result = apply(plugin, 6, desired())
+    assert result['status'] == 'Succeeded' and service.actions() == []
+    assert world['started'] == []
+
+
+def test_a_drained_host_with_its_service_stopped_rebuilds_instead_of_rejecting(host, monkeypatch):
+    plugin, service, world = host
+    world['unit'] = 'inactive'
+    world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED, 'pool_generation': POOL}
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN',
+        'interfaces': {'cgroupv2': True, 'memory_reclaim': True}})
+    result = apply(plugin, 7, desired())
+    assert result['status'] == 'Converging', result
+    assert world['started'][0][1] == '--prepare-zram-pool'
+
+
+def test_an_unknown_capability_without_reclaim_interfaces_is_rejected(host, monkeypatch):
+    plugin, service, world = host
+    world['unit'] = 'inactive'
+    world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED, 'pool_generation': POOL}
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN',
+        'interfaces': {'cgroupv2': True, 'memory_reclaim': False}})
+    assert apply(plugin, 7, desired())['reasonCode'] == 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
+    assert world['started'] == []
+
+
+def test_an_unsupported_kernel_is_still_rejected(host, monkeypatch):
+    plugin, service, world = host
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'UNSUPPORTED_RECLAIM_KERNEL'})
+    assert apply(plugin, 8, desired())['reasonCode'] == 'UNSUPPORTED_RECLAIM_KERNEL'
+    assert service.calls == []
+
+
 def test_a_new_capacity_for_a_live_pool_drains_it_for_rebuild(host):
     plugin, service, world = host
     service.efficiency = True
