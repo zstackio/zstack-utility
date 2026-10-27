@@ -2553,15 +2553,23 @@ class StartCmd(Command):
         if args.host:
             self._start_remote(args)
             return
-        # clean the error log before booting
-        boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
-        linux.rm_file_force(boot_error_log)
+        if os.getuid() != 0:
+            raise CtlError('please use sudo or root user')
+
+        if self._start_local(args) and not args.daemon:
+            shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception=False)
+
+    @lock.file_lock('/run/zstack-management-node-start.lock')
+    def _start_local(self, args):
         pid = get_management_node_pid()
         if pid:
             info('the management node[pid:%s] is already running' % pid)
             return
         else:
             linux.rm_file_force(os.path.join(os.path.expanduser('~zstack'), "management-server.pid"))
+
+        boot_error_log = os.path.join(ctl.USER_ZSTACK_HOME_DIR, 'bootError.log')
+        linux.rm_file_force(boot_error_log)
 
         def check_mn_port():
             mn_port = get_mn_port()
@@ -2793,9 +2801,6 @@ class StartCmd(Command):
             else:
                 ctl.delete_properties(['simulatorsOn'])
 
-        if os.getuid() != 0:
-            raise CtlError('please use sudo or root user')
-
         prepare_env()
         check_java_version()
         check_mn_port()
@@ -2829,11 +2834,10 @@ class StartCmd(Command):
 
             raise e
 
-        if not args.daemon:
-            shell('which systemctl >/dev/null 2>&1; [ $? -eq 0 ] && systemctl start zstack', is_exception = False)
         info_and_debug('successfully started management node')
 
         ctl.delete_env('ZSTACK_UPGRADE_PARAMS')
+        return True
 
 class StopCmd(Command):
     STOP_SCRIPT = "../../bin/shutdown.sh"
@@ -9119,6 +9123,7 @@ class UiStatusCmd(Command):
     ZSTACK_UI_HOME = os.path.join(USER_ZSTACK_HOME_DIR, 'zstack-ui/')
     ZSTACK_UI_STATUS = os.path.join(ZSTACK_UI_HOME, 'scripts/status.sh')
     ZSTACK_UI_SSL = 'http'
+    STATUS_TIMEOUT = '90s'
     def __init__(self):
         super(UiStatusCmd, self).__init__()
         self.name = "ui_status"
@@ -9131,6 +9136,23 @@ class UiStatusCmd(Command):
 
     def _remote_status(self, host):
         shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl ui_status"' % host)
+
+    def _run_status_script(self, url):
+        # runuser can also return 1; trust only a completed status script result.
+        command = ('ui_status_rc=0; bash %s %s || ui_status_rc=$?; '
+                   'printf "\\nZSTACK_UI_STATUS_EXIT=%%s\\n" "$ui_status_rc"') % (
+                       shell_quote(self.ZSTACK_UI_STATUS), shell_quote(url))
+        cmd = ShellCmd('timeout -k 1s %s runuser -l root -s /bin/bash -c %s' % (
+            self.STATUS_TIMEOUT, shell_quote(command)))
+        cmd(False)
+        output, marker, result = cmd.stdout.rpartition('\nZSTACK_UI_STATUS_EXIT=')
+        details = '\n'.join(part.strip() for part in (
+            output if marker else cmd.stdout, cmd.stderr) if part.strip())
+        if cmd.return_code != 0:
+            return None, details or 'status probe failed: exit %s' % cmd.return_code
+        if not marker or result not in ('0\n', '1\n', '2\n'):
+            return None, details or 'invalid status script result'
+        return int(result), details
 
     def run(self, args):
         self.quiet = args.quiet
@@ -9195,11 +9217,12 @@ class UiStatusCmd(Command):
             with open(StartUiCmd.HTTP_FILE, 'r') as fd2:
                 default_protcol = fd2.readline()
                 default_protcol = default_protcol.strip(' \t\n\r')
-        cmd = ShellCmd("runuser -l root -s /bin/bash -c 'bash %s %s://%s:%s'" %
-                       (UiStatusCmd.ZSTACK_UI_STATUS, default_protcol, '127.0.0.1', port), pipe=False)
-        cmd(False)
-        if cmd.return_code != 0:
-            write_status(cmd.stdout)
+        status, details = self._run_status_script('%s://127.0.0.1:%s' % (default_protcol, port))
+        if status != 0:
+            if status == 1 and not details:
+                write_status(colored('Stopped', 'red'))
+            else:
+                write_status('Unknown%s' % (' (%s)' % details if details else ''))
             return False
         else:
             default_ip = get_ui_address()
