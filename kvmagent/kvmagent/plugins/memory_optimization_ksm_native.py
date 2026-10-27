@@ -53,17 +53,6 @@ def native_sleep_msec(policy_msec, memtotal_kb):
     return native
 
 
-def _managed_expected_values(pages_to_scan, native_sleep):
-    return {
-        'KSM_NPAGES_MIN': pages_to_scan,
-        'KSM_NPAGES_MAX': pages_to_scan,
-        'KSM_NPAGES_BOOST': 0,
-        'KSM_NPAGES_DECAY': 0,
-        'KSM_SLEEP_MSEC': native_sleep,
-        'KSM_THRES_COEF': 100,
-        'KSM_THRES_CONST': 2048,
-    }
-
 
 def render_config(existing_text, revision, pages_to_scan, native_sleep):
     """Append one managed block, preserving all customer content outside it.
@@ -120,38 +109,3 @@ def render_config(existing_text, revision, pages_to_scan, native_sleep):
         output.append('')
     output.extend(block)
     return '\n'.join(output) + '\n'
-
-
-def managed_config_values(text):
-    """Read the final managed block without sourcing arbitrary shell syntax."""
-    lines = (text or '').splitlines()
-    starts = [i for i, line in enumerate(lines) if line == MANAGED_BEGIN]
-    if not starts:
-        return None
-    if len(starts) != 1:
-        raise NativeKsmConfigError('KSM_CONFIG_MULTIPLE_MANAGED_BLOCKS')
-    start = starts[0]
-    try:
-        end = lines.index(MANAGED_END, start + 1)
-    except ValueError:
-        raise NativeKsmConfigError('KSM_CONFIG_UNTERMINATED_MANAGED_BLOCK')
-    if any(line == MANAGED_BEGIN for line in lines[start + 1:end]):
-        raise NativeKsmConfigError('KSM_CONFIG_NESTED_MANAGED_BLOCK')
-    values = {}
-    for line in lines[start + 1:end]:
-        match = re.match(r'^([A-Z_][A-Z0-9_]*)=([0-9]+)$', line)
-        if match:
-            key, value = match.groups()
-            if key in values:
-                raise NativeKsmConfigError('KSM_CONFIG_DUPLICATE_KEY:%s' % key)
-            values[key] = int(value)
-    required = set(('KSM_NPAGES_MIN', 'KSM_NPAGES_MAX', 'KSM_NPAGES_BOOST',
-                    'KSM_NPAGES_DECAY', 'KSM_SLEEP_MSEC', 'KSM_THRES_COEF',
-                    'KSM_THRES_CONST'))
-    if set(values) != required:
-        raise NativeKsmConfigError('KSM_CONFIG_MANAGED_BLOCK_INCOMPLETE')
-    revision_match = re.match(r'^# CONFIG_REVISION=([1-9][0-9]*)$', lines[start + 1])
-    if not revision_match:
-        raise NativeKsmConfigError('KSM_CONFIG_REVISION_UNKNOWN')
-    values['CONFIG_REVISION'] = int(revision_match.group(1))
-    return values

@@ -70,9 +70,6 @@ def _command(runner, argv, timeout=5):
     raise ValueError('PROBE_RUNNER_RESULT_INVALID')
 
 
-def _decode_mount_field(value):
-    return re.sub(r'\\([0-7]{3})', lambda match: chr(int(match.group(1), 8)), value)
-
 
 def _rows_from_lsblk(document):
     parsed = json.loads(document)
@@ -188,12 +185,6 @@ def _read_optional(fs, path):
     except (IOError, OSError):
         return None
 
-
-def _major_minor_for_stat(value):
-    try:
-        return '%d:%d' % (os.major(value.st_rdev), os.minor(value.st_rdev))
-    except (AttributeError, ValueError):
-        return ''
 
 
 def _mount_and_swap_devices(fs, rows, runner):
