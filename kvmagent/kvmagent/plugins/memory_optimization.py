@@ -134,6 +134,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     KSM_PAGES_TO_SCAN = 2000
     KSM_SLEEP_MILLIS = 20
     MANAGED_ZRAM_UNIT = 'zram-memory.service'
+    # ZRAM is the Host's swap; at swappiness 0 (some distributions' default) reclaim moves no VM memory.
+    SWAPPINESS_PATH = '/proc/sys/vm/swappiness'
+    SWAPPINESS_CONF = '/etc/sysctl.d/99-zstack-zram.conf'
+    ZRAM_SWAPPINESS = 60
     KSM_CONF = '/etc/ksmtuned.conf'
     KSM_LOCK = '/run/zstack/memory-optimization/ksm.writer.lock'
     OPERATION_DIR = '/var/lib/zstack/memory-optimization/operations'
@@ -1208,10 +1212,24 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _ensure_service(self, capabilities):
         if self._managed_service_never_used() or capabilities.get('serviceActivationRequired'):
             self._activate_managed_service()
+        self._ensure_swappiness()
         unit = self._service_unit_state()
         if unit != 'active':
             self._start_service()
         self._authorize_reclaim()
+
+    def _ensure_swappiness(self):
+        """Raise a zero swappiness for ZRAM now and across reboots; a value above zero is left alone."""
+        try:
+            with open(self.SWAPPINESS_PATH, 'r') as stream:
+                if int(stream.read().strip()) > 0:
+                    return
+            self._atomic_write(self.SWAPPINESS_CONF, ('# ZStack memory optimization: ZRAM reclaim needs swappiness '
+                                                      'above 0.\nvm.swappiness = %d\n' % self.ZRAM_SWAPPINESS).encode('utf-8'), 0o644)
+            with open(self.SWAPPINESS_PATH, 'w') as stream:
+                stream.write(str(self.ZRAM_SWAPPINESS))
+        except (IOError, OSError, ValueError):
+            raise Rejected('HOST_SWAPPINESS_ZERO')
 
     def _start_service(self):
         try:
