@@ -47,6 +47,82 @@ class AgentRsp(object):
         self.error = None
 
 
+class CephFencerInitialization(object):
+    def __init__(self, worker_count):
+        self.worker_count = worker_count
+        self.condition = threading.Condition()
+        self.ready_workers = 0
+        self.error = None
+        self.aborted = False
+        self.committed = False
+        self.finished_workers = 0
+
+    def report_ready(self):
+        with self.condition:
+            if self.aborted:
+                return False
+            self.ready_workers += 1
+            self.condition.notify_all()
+            return True
+
+    def report_failure(self, pool_name, error):
+        with self.condition:
+            if self.error is None:
+                self.error = 'failed to initialize ceph fencer on pool[%s]: %s' % (pool_name, error)
+            self.condition.notify_all()
+
+    def wait_for_ready(self, timeout):
+        deadline = linux.monotime() + timeout
+        with self.condition:
+            while not self.aborted and self.error is None and self.ready_workers < self.worker_count:
+                remaining = deadline - linux.monotime()
+                if remaining <= 0:
+                    break
+                self.condition.wait(remaining)
+
+            if self.aborted:
+                return False, self.error or 'ceph fencer initialization was canceled'
+            if self.error is not None:
+                return False, self.error
+            if self.ready_workers != self.worker_count:
+                return False, 'timed out waiting for ceph fencer initialization'
+            return True, None
+
+    def abort(self, error):
+        with self.condition:
+            if self.error is None:
+                self.error = error
+            self.aborted = True
+            self.condition.notify_all()
+
+    def commit(self, publish):
+        with self.condition:
+            if self.aborted:
+                return False
+            publish()
+            self.committed = True
+            self.condition.notify_all()
+        return True
+
+    def wait_for_commit(self, timeout):
+        deadline = linux.monotime() + timeout
+        with self.condition:
+            while not self.committed and not self.aborted:
+                remaining = deadline - linux.monotime()
+                if remaining <= 0:
+                    if self.error is None:
+                        self.error = 'timed out waiting for ceph fencer setup decision'
+                    self.aborted = True
+                    self.condition.notify_all()
+                    return False
+                self.condition.wait(remaining)
+            return self.committed and not self.aborted
+
+    def finish_workers(self, count=1):
+        with self.condition:
+            self.finished_workers += count
+            return self.finished_workers == self.worker_count
+
 class CephHostHeartbeatCheckRsp(AgentRsp):
     def __init__(self):
         super(CephHostHeartbeatCheckRsp, self).__init__()
@@ -1825,6 +1901,7 @@ class HaPlugin(kvmagent.KvmAgent):
         self.vpc_lock = threading.RLock()
 
         self.fencer_storage_list = set()
+        self.ceph_fencer_initializations = {}
 
     @kvmagent.replyerror
     def cancel_ceph_self_fencer(self, req):
@@ -2378,16 +2455,43 @@ class HaPlugin(kvmagent.KvmAgent):
         rsp = self.setup_sharedblock_self_fencer_from_json(cmd)
         return jsonobject.dumps(rsp)
 
+    def _commit_ceph_fencer_initialization(self, ps_uuid, initialization, publish):
+        with self.fencer_lock:
+            if self.ceph_fencer_initializations.get(ps_uuid) is not initialization:
+                return False
+            if not initialization.commit(publish):
+                return False
+            self.ceph_fencer_initializations.pop(ps_uuid, None)
+            return True
+
     @kvmagent.replyerror
     def setup_ceph_self_fencer(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        mon_url = '\;'.join(cmd.monUrls)
-        mon_url = mon_url.replace(':', '\\\:')
+        rsp = AgentRsp()
+
+        pool_names = cmd.poolNames or []
+
+        if not pool_names:
+            rsp.success = False
+            rsp.error = 'cannot setup ceph fencer without a pool name'
+            return jsonobject.dumps(rsp)
+
+        setup_timeout = cmd.storageCheckerTimeout
 
         created_time = time.time()
 
         def get_fencer_key(ps_uuid, pool_name):
             return '%s-%s' % (ps_uuid, pool_name)
+
+        with self.fencer_lock:
+            previous_initialization = self.ceph_fencer_initializations.get(cmd.uuid)
+            if previous_initialization is not None:
+                rsp.success = False
+                rsp.error = 'previous ceph fencer initialization is still exiting'
+                return jsonobject.dumps(rsp)
+            self.cancel_fencer(cmd.uuid)
+            initialization = CephFencerInitialization(len(pool_names))
+            self.ceph_fencer_initializations[cmd.uuid] = initialization
 
         @thread.AsyncThread
         def heartbeat_on_ceph(ps_uuid, pool_name):
@@ -2410,19 +2514,18 @@ class HaPlugin(kvmagent.KvmAgent):
             if host_storage_name in fencer_list:
                 fencer_list.append(ceph_controller.get_ha_fencer_name())
 
-            self.setup_fencer(get_fencer_key(ps_uuid, pool_name),
-                              created_time, origin_uuid=ps_uuid)
-
             ha_fencer = AbstractHaFencer(cmd.interval, cmd.maxAttempts, cmd.vgUuid, fencer_list)
             update_fencer = True
             try:
                 conf_path, keyring_path, username = ceph.update_ceph_client_access_conf(ps_uuid, cmd.monUrls, cmd.userKey, cmd.manufacturer, cmd.fsId)
                 logger.debug("config file: %s, pool name: %s" % (conf_path, pool_name))
-                heartbeat_counter = 0
                 additional_conf_dict = {}
                 fencer_init = {}
                 if keyring_path:
                     additional_conf_dict['keyring'] = keyring_path
+                rados_timeout = str(cmd.storageCheckerTimeout)
+                additional_conf_dict['client_mount_timeout'] = rados_timeout
+                additional_conf_dict['rados_mon_op_timeout'] = rados_timeout
 
                 with rados.Rados(conffile=conf_path, conf=additional_conf_dict, name=username) as cluster:
                     logger.debug("connected to ceph[uuid: %s] cluster" % ceph_controller.primary_storage_uuid)
@@ -2430,26 +2533,60 @@ class HaPlugin(kvmagent.KvmAgent):
                         logger.debug("open ceph[uuid: %s] pool: %s]" % (ceph_controller.primary_storage_uuid, ceph_controller.pool_name))
                         ceph_controller.ioctx = ioctx
                         fencer_init[ceph_controller.get_ha_fencer_name()] = ceph_controller
+
+                        if not initialization.report_ready() or not initialization.wait_for_commit(setup_timeout):
+                            return
+
                         logger.debug("ceph start run fencer list :%s" % ",".join(fencer_list))
-                        while self.run_fencer(get_fencer_key(ps_uuid, pool_name), created_time):
-                            # wait an interval before next heartbeat
+                        fencer_key = get_fencer_key(ps_uuid, pool_name)
+                        while self.run_fencer(fencer_key, created_time):
                             time.sleep(cmd.interval)
-                            # reset variables
                             ha_fencer.exec_fencer_list(fencer_init, update_fencer)
                             update_fencer = False
-
-
-                logger.debug('stop self-fencer on pool %s of ceph primary storage' % pool_name)
+                        logger.debug('stop self-fencer on pool %s of ceph primary storage' % pool_name)
             except Exception as e:
                 logger.debug('self-fencer on pool %s ceph primary storage stopped abnormally, %s' % (pool_name, e))
                 content = traceback.format_exc()
                 logger.warn(content)
-                self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
+                initialization.report_failure(pool_name, e)
+                if initialization.committed:
+                    self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
+            finally:
+                if initialization.finish_workers():
+                    with self.fencer_lock:
+                        if initialization.aborted and self.ceph_fencer_initializations.get(cmd.uuid) is initialization:
+                            self.ceph_fencer_initializations.pop(cmd.uuid, None)
 
-        for pool_name in cmd.poolNames:
-            heartbeat_on_ceph(cmd.uuid, pool_name)
+        started_workers = 0
+        try:
+            for pool_name in pool_names:
+                heartbeat_on_ceph(cmd.uuid, pool_name)
+                started_workers += 1
+            initialized, error = initialization.wait_for_ready(setup_timeout)
+        except Exception as e:
+            initialization.finish_workers(len(pool_names) - started_workers)
+            initialized = False
+            error = 'failed to start ceph fencer worker: %s' % e
 
-        return jsonobject.dumps(AgentRsp())
+        def publish_fencer_state():
+            for pool_name in pool_names:
+                self.setup_fencer(get_fencer_key(cmd.uuid, pool_name),
+                                  created_time, origin_uuid=cmd.uuid)
+
+        if initialized and self._commit_ceph_fencer_initialization(
+                cmd.uuid, initialization, publish_fencer_state):
+            return jsonobject.dumps(rsp)
+        if initialized:
+            error = initialization.error or 'ceph fencer initialization was canceled'
+
+        initialization.abort(error or 'failed to initialize ceph fencer')
+        with self.fencer_lock:
+            if initialization.finished_workers == initialization.worker_count and \
+                    self.ceph_fencer_initializations.get(cmd.uuid) is initialization:
+                self.ceph_fencer_initializations.pop(cmd.uuid, None)
+        rsp.success = False
+        rsp.error = error
+        return jsonobject.dumps(rsp)
 
     def try_remount_fs(self, mount_path, ps_uuid, created_time, file_system_controller, url, options):
         if mount_path_is_nfs(mount_path):
@@ -2964,10 +3101,12 @@ class HaPlugin(kvmagent.KvmAgent):
             else:
                 self.fencer_storage_list.add(ps_uuid)
 
-
     def cancel_fencer(self, ps_uuid):
         with self.fencer_lock:
-            for key in self.run_fencer_timestamp.keys():
+            initialization = self.ceph_fencer_initializations.get(ps_uuid)
+            if initialization is not None:
+                initialization.abort('ceph fencer initialization was canceled')
+            for key in list(self.run_fencer_timestamp.keys()):
                 if ps_uuid in key:
                     logger.debug('cancel fencer for ps: %s, with fencer key: %s' % (ps_uuid, key))
                     self.run_fencer_timestamp.pop(key, None)
