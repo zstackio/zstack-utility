@@ -31,7 +31,7 @@ from kvmagent.plugins.memory_writeback_backends import probe_writeback_backends
 from kvmagent.plugins.memory_writeback_maintenance import (
     build_backend_maintenance_request, read_backend_maintenance_status)
 from kvmagent.plugins.memory_optimization_ksm_native import (
-    NativeKsmConfigError, native_sleep_msec, parse_memtotal_kb, render_config)
+    MANAGED_BEGIN, NativeKsmConfigError, native_sleep_msec, parse_memtotal_kb, remove_config, render_config)
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import linux
@@ -131,6 +131,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     NATIVE_KSM_FILES = ('/usr/sbin/ksmtuned', '/usr/libexec/ksmctl',
                         '/usr/lib/systemd/system/ksm.service',
                         '/usr/lib/systemd/system/ksmtuned.service')
+    # The persistent identifiers of the disk serving as the writeback backend.
+    BACKEND_IDENTITY = 'backend-identity'
     KSM_PAGES_TO_SCAN = 2000
     KSM_SLEEP_MILLIS = 20
     MANAGED_ZRAM_UNIT = 'zram-memory.service'
@@ -209,13 +211,19 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _retire_legacy_records(self):
         """Move an earlier Agent's operation journal aside; nothing reads it now."""
         legacy = [name for name in self._listdir(self.operation_dir)
-                  if name not in ('applied-generation', self.HOST_LOCK, 'executors')]
+                  if name not in ('applied-generation', 'accepted-generation', self.BACKEND_IDENTITY,
+                                  self.HOST_LOCK, 'executors')]
         if not legacy:
             return
         target = '%s-legacy-%d' % (self.operation_dir, int(time.time()))
-        os.makedirs(target, 0o700)
-        for name in legacy:
-            shutil.move(os.path.join(self.operation_dir, name), os.path.join(target, name))
+        try:
+            os.makedirs(target, 0o700)
+            for name in legacy:
+                shutil.move(os.path.join(self.operation_dir, name), os.path.join(target, name))
+        except (IOError, OSError) as exc:
+            # Unread history must not keep the Agent from starting.
+            logger.warn('unable to move legacy memory optimisation records to %s: %s' % (target, exc))
+            return
         logger.info('moved %d legacy memory optimisation records to %s' % (len(legacy), target))
 
     @staticmethod
@@ -264,6 +272,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _valid_identifier(value):
         return isinstance(value, STRING_TYPES) and re.match(r'^[A-Za-z0-9_.:-]{1,128}\Z', value) is not None
 
+    def _lock_wait(self, command):
+        """Wait for the host lock at most half the caller's budget, so a busy Host answers in progress in time."""
+        budget = (command.get('communication') or {}).get('communicationSeconds') if isinstance(command, dict) else None
+        if isinstance(budget, bool) or not isinstance(budget, (int, float)) or budget <= 0:
+            budget = self.communication_seconds
+        return budget / 2.0
+
     @contextmanager
     def _host_lock(self, wait_seconds=None):
         """Serialize host changes between concurrent requests to this Agent."""
@@ -309,16 +324,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 os.unlink(temporary)
             raise
 
-    def _applied_generation(self):
+    def _applied_generation(self, record='applied-generation'):
         try:
-            with open(os.path.join(self.operation_dir, 'applied-generation'), 'r') as stream:
+            with open(os.path.join(self.operation_dir, record), 'r') as stream:
                 value = stream.read().strip()
             return int(value) if re.match(r'^[0-9]{1,19}\Z', value) else None
         except (IOError, OSError):
             return None
 
-    def _record_applied_generation(self, generation):
-        self._atomic_write(os.path.join(self.operation_dir, 'applied-generation'),
+    def _record_applied_generation(self, generation, record='applied-generation'):
+        self._atomic_write(os.path.join(self.operation_dir, record),
                            ('%d\n' % generation).encode('utf-8'))
 
     @staticmethod
@@ -407,6 +422,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         subprocess.check_call(command)
         return paths
 
+    def _retire_failed_executor(self, unit, default):
+        """Read a failed step's coded error, then clear its unit so a resend runs the step again."""
+        error = self._executor_error(unit, default)
+        try:
+            self._bounded_command_output(['systemctl', 'reset-failed', unit], 30)
+        except (IOError, OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+            logger.warn('unable to clear the failed memory executor %s: %s' % (unit, exc))
+        return error
+
     def _executor_error(self, unit, default):
         """Read the service CLI's coded error from its stderr record."""
         path = os.path.join(self.operation_dir, 'executors', '%s.stderr' % unit)
@@ -445,11 +469,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if isinstance(generation, bool) or not isinstance(generation, INTEGER_TYPES) or generation < 1:
                 raise Rejected('INVALID_GENERATION')
             desired = self._desired(command.get('desired'))
-            with self._host_lock():
-                # A delayed request must not take the Host back to an older configuration.
-                applied = self._applied_generation()
-                if applied is not None and generation < applied:
+            with self._host_lock(self._lock_wait(command)):
+                # A delayed request must not take the Host back to an older configuration,
+                # also while a newer one is still converging.
+                known = [value for value in (self._applied_generation(), self._applied_generation('accepted-generation'))
+                         if value is not None]
+                if known and generation < max(known):
                     raise Rejected('STALE_GENERATION')
+                self._record_applied_generation(generation, 'accepted-generation')
                 self._converge(desired, generation)
                 self._record_applied_generation(generation)
             result.update({'success': True, 'status': 'Succeeded'})
@@ -489,7 +516,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     if item is not None and (isinstance(item, bool) or not isinstance(item, INTEGER_TYPES) or
                                              item <= 0 or item % 4096):
                         raise Rejected('INVALID_DESIRED_CONFIGURATION')
-                elif item not in (None, True, False):
+                elif item is not None and not isinstance(item, bool):
                     raise Rejected('INVALID_DESIRED_CONFIGURATION')
                 desired[section][field] = item
         return desired
@@ -499,12 +526,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         command = self._request_body(req)
         try:
             self._check_host(command)
-            with self._host_lock():
+            with self._host_lock(self._lock_wait(command)):
                 result = self._service('migration-hold', {
                     'action': command.get('holdAction', 'acquire'),
                     'operation_id': command.get('operationUuid'),
                     'pool_generation': command.get('poolGeneration', '')})
             reply = {'success': True, 'status': 'Succeeded', 'state': result}
+        except Converging as exc:
+            reply = {'success': True, 'status': 'Converging', 'reasonCode': exc.reason,
+                     'retryAfterSeconds': exc.retry_after, 'state': {}}
         except Rejected as exc:
             reply = {'success': False, 'status': 'Failed', 'reasonCode': exc.reason, 'state': {}}
         except Exception as exc:
@@ -762,7 +792,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return {'supported': False, 'reasonCode': 'UNSUPPORTED_OS_RELEASE'}
         if int(page_size) != 4096:
             return {'supported': False, 'reasonCode': 'UNSUPPORTED_PAGE_SIZE'}
-        ksm = all(interfaces.get(item) for item in ('ksm_run', 'ksm_pages_to_scan', 'ksm_sleep_millisecs'))
+        # KSM is managed through the vendor ksm/ksmtuned units.
+        ksm = (all(interfaces.get(item) for item in ('ksm_run', 'ksm_pages_to_scan', 'ksm_sleep_millisecs')) and
+               all(os.path.isfile(path) for path in self.NATIVE_KSM_FILES))
         kernel = platform.release()
         qualification = {}
         reason = 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
@@ -801,9 +833,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if driver.get('supported') is not True:
                 zram = False
                 reason = driver.get('reasonCode') or 'ZRAM_DRIVER_UNKNOWN'
-        if not interfaces.get('psi'):
-            # The managed reclaim host guards cannot qualify without PSI.
-            zram, reason = False, 'HOST_PSI_UNAVAILABLE'
+        # Report the first missing host precondition; the later ones would hide it.
+        missing = next((code for name, code in (('cgroupv2', 'UNSUPPORTED_CGROUP_MEMORY'),
+                                                ('memory_reclaim', 'UNSUPPORTED_MEMORY_RECLAIM'),
+                                                # The managed reclaim host guards cannot qualify without PSI.
+                                                ('psi', 'HOST_PSI_UNAVAILABLE'))
+                        if not interfaces.get(name)), None)
+        if missing:
+            zram, reason = False, missing
         installed_candidate = self.installed_reclaim_candidate(release, kernel)
         reboot_required = not zram and installed_candidate is not None
         if reboot_required:
@@ -906,6 +943,23 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             finally:
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
+    def _release_ksm_config(self):
+        """An unmanaged KSM keeps its running state; only the block this Agent added leaves the file."""
+        try:
+            with open(self.KSM_CONF, 'r') as stream:
+                existing = stream.read()
+        except IOError as exc:
+            if exc.errno == errno.ENOENT:
+                return
+            raise
+        if MANAGED_BEGIN not in existing.splitlines():
+            return
+        try:
+            content = remove_config(existing)
+        except NativeKsmConfigError as exc:
+            raise Rejected(str(exc))
+        self._publish_ksm_config(content)
+
     def _publish_ksm_config(self, content):
         mode = stat.S_IMODE(os.stat(self.KSM_CONF).st_mode) if os.path.exists(self.KSM_CONF) else 0o644
         with self._ksm_writer_lock():
@@ -933,12 +987,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """Run KSM through the vendor units; an unmanaged setting is left alone."""
         enabled, zero = ksm.get('enabled'), ksm.get('zeroPagesEnabled')
         if enabled is None and zero is None:
+            self._release_ksm_config()
             return
         if not all(os.path.isfile(path) for path in self.NATIVE_KSM_FILES):
             raise Rejected('KSM_NATIVE_PROFILE_UNSUPPORTED')
         zero_value = self._read_ksm_zero_pages()
         if zero is True and zero_value == 'unsupported':
-            raise Rejected('KSM_ZERO_PAGES_UNSUPPORTED')
+            # A kernel without zero-page merging keeps KSM running without it.
+            zero = None
         if zero is not None and zero_value != 'unsupported':
             zero_value = '1' if zero else '0'
         # A paused or drained host stops the KSM it manages; resuming restarts it.
@@ -970,6 +1026,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 self._write_ksm_sysfs('run', '1')
                 if current_tuned != 'active':
                     subprocess.check_call(['systemctl', 'start', self.KSM_TUNED_UNIT])
+                elif content != existing:
+                    # ksmtuned reads its configuration when it starts.
+                    subprocess.check_call(['systemctl', 'restart', self.KSM_TUNED_UNIT])
             else:
                 subprocess.check_call(['systemctl', 'stop', self.KSM_TUNED_UNIT])
                 subprocess.check_call(['systemctl', 'stop', self.KSM_UNIT])
@@ -1163,17 +1222,20 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     def _converge(self, desired, generation):
         capabilities = self.discover_capabilities()
-        zram_wanted = desired['zram']['enabled'] is True
-        writeback_wanted = desired['writeback']['enabled'] is True
-        if desired['ksm']['enabled'] is True and not capabilities.get('ksm'):
-            raise Rejected('KSM_UNSUPPORTED')
         interfaces = capabilities.get('interfaces') or {}
         unknown = (capabilities.get('zramReasonCode') == 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
                    and interfaces.get('cgroupv2') and interfaces.get('memory_reclaim'))
-        if (zram_wanted or writeback_wanted) and not capabilities.get('zram') and not unknown:
+        # What the Host cannot run stays unmanaged instead of failing the configuration;
+        # the observation reports the capability and its reason.
+        if not capabilities.get('ksm'):
+            desired['ksm'] = {'enabled': None, 'zeroPagesEnabled': None}
+        if not capabilities.get('zram') and not unknown:
             # A stopped (e.g. drained) service cannot report its qualification; it checks
-            # the kernel again when it starts, so only a known verdict is a rejection.
-            raise Rejected(capabilities.get('zramReasonCode') or 'ZRAM_UNSUPPORTED')
+            # the kernel again when it starts, so only a known verdict leaves ZRAM unmanaged.
+            desired['zram'] = dict.fromkeys(desired['zram'])
+            desired['writeback'] = {'enabled': None}
+        zram_wanted = desired['zram']['enabled'] is True
+        writeback_wanted = desired['writeback']['enabled'] is True
         if writeback_wanted and not zram_wanted:
             raise Rejected('WRITEBACK_REQUIRES_ZRAM')
         control = desired['control']
@@ -1187,8 +1249,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if unit == 'starting':
             raise Converging('SERVICE_STARTING')
         if unit in ('inactive', 'failed') and zram_wanted and self._backend_reclaim_required():
-            # A reboot left the backend claimed in the earlier boot; prepare the same disk again.
-            self._start_backend_maintenance(self._reboot_backend_request(generation))
+            if desired['writeback']['enabled'] is not False:
+                # A reboot left the backend claimed in the earlier boot; prepare the same disk again.
+                self._start_backend_maintenance(self._reboot_backend_request(generation))
+            else:
+                # Without writeback the Host runs RAM-only instead of claiming the disk again.
+                self._release_backend_config()
         drained = unit in ('inactive', 'failed') and self._is_drained()
         if control == 'drained':
             if not drained:
@@ -1203,6 +1269,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return
         if zram_wanted:
             self._ensure_service(capabilities)
+        device = self._previous_backend_device()
+        if writeback_wanted and device and self._backend_identity().get('device') != device:
+            # A backend prepared before its identity was kept, or on another disk: record it while it is active.
+            self._writeback_inventory(self._load_host_uuid())
         self._converge_service(desired, generation, control)
 
     def _is_drained(self):
@@ -1296,8 +1366,21 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             else:
                 self._service('lifecycle-pause', {'action': 'resume'})
         if zram['enabled'] is True and not pool_generation:
-            if not (self._service('status').get('host_zram') or {}).get('pool_generation'):
-                raise Converging('WAITING_FOR_POOL', self.WAIT_RETRY_SECONDS)
+            pool = self._service('status').get('host_zram') or {}
+            if not pool.get('pool_generation'):
+                raise Converging(self._waiting_for_pool(pool), self.WAIT_RETRY_SECONDS)
+
+    # Pool waits that end by themselves: no VM to reclaim yet, or the service still observing.
+    ORDINARY_POOL_WAITS = ('VM_INVENTORY_EMPTY', 'STARTUP_OBSERVATION_IN_PROGRESS')
+
+    @classmethod
+    def _waiting_for_pool(cls, pool):
+        """Name the service's coded cause when something other than an ordinary wait blocks the pool."""
+        reason = str(pool.get('reason') or '')
+        cause = reason.split(': ')[1] if reason.startswith('NO_QUALIFIED_MANAGED_POOL: ') else ''
+        if not re.match(r'^[A-Z][A-Z0-9_]{2,127}\Z', cause) or cause in cls.ORDINARY_POOL_WAITS:
+            return 'WAITING_FOR_POOL'
+        return 'WAITING_FOR_POOL: ' + cause
 
     def _service_changes(self, zram, writeback, efficiency, cpu):
         changes = []
@@ -1355,7 +1438,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if state == 'exited':
             if exit_status == 0 and self._is_drained():
                 return
-            raise Rejected(self._executor_error(unit, 'DRAIN_FAILED'))
+            raise Rejected(self._retire_failed_executor(unit, 'DRAIN_FAILED'))
         if state == 'unknown':
             raise Converging('DRAIN_EXECUTOR_STATE_UNKNOWN')
         if self._service_unit_state() == 'active':
@@ -1365,6 +1448,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._service('lifecycle-pause', {'action': 'pause'})
             self._set_efficiency(self._service('host-cpu-state'), False)
             self._bounded_command_output(['systemctl', 'stop', self.MANAGED_ZRAM_UNIT], 60)
+        if self._service_unit_state() not in ('inactive', 'failed'):
+            raise Converging('SERVICE_STOPPING')
         self._run_executor(unit, '--drain')
         raise Converging('DRAINING')
 
@@ -1391,7 +1476,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if receipt.get('request_id') == request_id and receipt.get('stage') != 'FAILED_REQUIRES_REVIEW':
                 self._finish_recorded_maintenance()
                 return
-            raise Rejected(self._executor_error(unit, receipt.get('reason') or 'ZRAM_POOL_PREPARATION_FAILED'))
+            raise Rejected(self._retire_failed_executor(unit, receipt.get('reason') or 'ZRAM_POOL_PREPARATION_FAILED'))
         if state == 'unknown':
             raise Converging('POOL_EXECUTOR_STATE_UNKNOWN')
         self._run_executor(unit, '--prepare-zram-pool', {
@@ -1542,7 +1627,48 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 inventory['status'] = 'PARTIAL'
         inventory.update({'poolGeneration': pool_generation, 'maintenance': receipt,
                           'canPrepare': not reasons, 'preparationReasons': reasons})
+        try:
+            self._remember_backend_identity(inventory)
+        except (IOError, OSError) as exc:
+            # Without a record a reboot does not reset the disk; the query itself still answers.
+            logger.warn('unable to record the writeback backend identity: %s' % exc)
         return inventory
+
+    def _remember_backend_identity(self, inventory):
+        """Keep the persistent identifiers of the active backend disk; a reboot changes all the others."""
+        device = self._previous_backend_device()
+        for candidate in inventory.get('candidates') or []:
+            if not (device and isinstance(candidate, dict) and candidate.get('device') == device and
+                    candidate.get('state') == 'ACTIVE'):
+                continue
+            stable = candidate.get('stableIdentity') or {}
+            identity = dict((key, stable.get(key) or '') for key in ('serial', 'wwn', 'byIdPath'))
+            if any(identity.values()):
+                identity['device'] = device
+                if identity != self._backend_identity():
+                    self._atomic_write(os.path.join(self.operation_dir, self.BACKEND_IDENTITY),
+                                       json.dumps(identity, sort_keys=True).encode('utf-8'))
+            return
+
+    def _backend_identity(self):
+        try:
+            with open(os.path.join(self.operation_dir, self.BACKEND_IDENTITY), 'r') as stream:
+                identity = json.load(stream)
+        except (IOError, OSError, ValueError):
+            return {}
+        return identity if isinstance(identity, dict) else {}
+
+    def _release_backend_config(self):
+        config = self._read_service_config()
+        if 'backend' in config:
+            del config['backend']
+            self._atomic_write(self.zram_config_path,
+                               json.dumps(config, sort_keys=True, indent=2).encode('utf-8') + b'\n')
+        try:
+            os.remove(os.path.join(self.operation_dir, self.BACKEND_IDENTITY))
+        except OSError as exc:
+            if exc.errno != errno.ENOENT:
+                raise
 
     def _previous_backend_device(self):
         try:
@@ -1569,7 +1695,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         try:
             if isinstance(generation, bool) or not isinstance(generation, INTEGER_TYPES) or generation < 1:
                 raise Rejected('INVALID_GENERATION')
-            with self._host_lock():
+            with self._host_lock(self._lock_wait(command)):
                 self._finish_recorded_maintenance()
                 receipt = self._receipt('backend')
                 request_id = 'backend-%d-%s' % (generation, str(command.get('candidateId', ''))[-16:])
@@ -1637,8 +1763,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _reboot_backend_request(self, generation):
         """Prepare again the configured disk the last preparation claimed, while it is still eligible.
 
-        Every recorded identity of that claim is bound to the earlier boot, so the disk is the
-        configured device with the recorded capacity that the current inventory finds unused.
+        Every identity the service recorded for that claim is bound to the earlier boot, so the disk
+        is the configured device with the recorded capacity and the serial, WWN and by-id path this
+        Agent kept while it was active. Without those, a same-sized disk under the same name is not
+        reset.
         """
         boot = self._current_boot_id()
         request_id = 'backend-%d-%s' % (generation, boot.replace('-', '')[:16])
@@ -1647,12 +1775,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return {'request_id': request_id}
         target = self._receipt('backend').get('target_identity') or {}
         device = (self._read_service_config().get('backend') or {}).get('device')
+        recorded = self._backend_identity()
         inventory = self._writeback_inventory(self._load_host_uuid())
         candidate = next((item for item in inventory.get('candidates') or []
                           if isinstance(item, dict) and device and item.get('device') == device and
                           item.get('device') == target.get('canonical_device') and
                           item.get('capacityBytes', item.get('capacity_bytes')) == target.get('capacity_bytes') and
-                          item.get('eligible') is True), None)
+                          item.get('eligible') is True and self._same_backend_disk(item, recorded)), None)
         if candidate is None:
             raise Rejected('REBOOT_BACKEND_NOT_ELIGIBLE')
         if inventory.get('canPrepare') is not True:
@@ -1666,6 +1795,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'backendCapacityBytes': candidate.get('capacityBytes', candidate.get('capacity_bytes')),
             'resetConfirmed': True})
 
+    @staticmethod
+    def _same_backend_disk(candidate, recorded):
+        stable = candidate.get('stableIdentity') or {}
+        return (recorded.get('device') == candidate.get('device') and
+                any(recorded.get(key) for key in ('serial', 'wwn', 'byIdPath')) and
+                all(stable.get(key) == recorded[key] for key in ('serial', 'wwn', 'byIdPath') if recorded.get(key)))
+
     def _start_backend_maintenance(self, request):
         unit = 'zstack-memory-backend-%s' % request['request_id']
         state, exit_status = self._executor_state(unit)
@@ -1676,7 +1812,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if receipt.get('request_id') == request['request_id'] and receipt.get('stage') != 'FAILED_REQUIRES_REVIEW':
                 self._finish_recorded_maintenance()
                 return
-            raise Rejected(self._executor_error(unit, receipt.get('reason') or 'BACKEND_MAINTENANCE_FAILED'))
+            raise Rejected(self._retire_failed_executor(unit, receipt.get('reason') or 'BACKEND_MAINTENANCE_FAILED'))
         if state == 'unknown':
             raise Converging('BACKEND_EXECUTOR_STATE_UNKNOWN')
         if self._service_unit_state() not in ('inactive', 'failed'):

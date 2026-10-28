@@ -1,10 +1,12 @@
 """Converge the host to the desired memory optimisation through a fake service."""
 import json
 import os
+import time
 
 import pytest
 
 from kvmagent.plugins import memory_optimization as module
+from kvmagent.plugins import memory_optimization_ksm_native as ksm_native
 from kvmagent.plugins.memory_optimization import Converging, MemoryOptimizationPlugin, Rejected
 
 HOST = '1' * 32
@@ -25,11 +27,13 @@ class FakeService(object):
         self.writeback = False
         self.receipts = {'pool': {'stage': 'NOT_STARTED'}, 'backend': {'stage': 'NOT_STARTED'}}
         self.activation_error = None
+        self.pool_reason = 'NO_QUALIFIED_MANAGED_POOL: VM_INVENTORY_EMPTY'
 
     def __call__(self, action, payload):
         self.calls.append((action, dict(payload)))
         if action == 'status':
-            return {'host_zram': {'pool_generation': self.pool}, 'mode': 'reclaim',
+            return {'host_zram': {'pool_generation': self.pool, 'reason': None if self.pool else self.pool_reason},
+                    'mode': 'reclaim',
                     'lifecycle': {'paused': self.paused}, 'maintenance_blocks_activation': self.maintenance,
                     'pending_operations': None, 'backend_resource': {}}
         if action == 'host-cpu-state':
@@ -113,6 +117,8 @@ def host(tmp_path, monkeypatch):
             world['unit'] = 'inactive'
         if argv[:2] == ['systemctl', 'start']:
             world['unit'] = 'active'
+        if argv[:2] == ['systemctl', 'reset-failed']:
+            world['executors'].pop(argv[2], None)
         return ''
     monkeypatch.setattr(plugin, '_bounded_command_output', staticmethod(command))
     return plugin, service, world
@@ -134,7 +140,49 @@ def test_invalid_requests_are_rejected_without_side_effects(host):
     assert plugin.apply({'hostUuid': 'other', 'generation': 1, 'desired': desired()})['reasonCode'] == 'HOST_IDENTITY_UNKNOWN'
     assert apply(plugin, True, desired())['reasonCode'] == 'INVALID_GENERATION'
     assert apply(plugin, 1, desired(logical=4097))['reasonCode'] == 'INVALID_DESIRED_CONFIGURATION'
+    assert apply(plugin, 1, desired(ksm=1))['reasonCode'] == 'INVALID_DESIRED_CONFIGURATION'
+    assert apply(plugin, 1, desired(zram=0))['reasonCode'] == 'INVALID_DESIRED_CONFIGURATION'
     assert service.actions() == [] and plugin._applied_generation() is None
+
+
+@pytest.mark.parametrize('memtotal_kb', [7000000, 8 << 20, 64 << 20])
+def test_ksm_sleep_is_the_nearest_the_vendor_script_can_reach(memtotal_kb):
+    native = ksm_native.native_sleep_msec(20, memtotal_kb)
+    assert max(10, native * ksm_native.SLEEP_BASE_KB // memtotal_kb) in (20, 21)
+
+
+def test_unmanaged_ksm_takes_out_only_the_block_the_agent_added(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    conf = tmp_path / 'ksmtuned.conf'
+    conf.write_text(ksm_native.render_config('KSM_MONITOR_INTERVAL=60\n', 1, 2000, 20))
+    monkeypatch.setattr(plugin, 'KSM_CONF', str(conf))
+    monkeypatch.setattr(plugin, 'KSM_LOCK', str(tmp_path / 'lock' / 'ksm.lock'))
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    assert conf.read_text() == 'KSM_MONITOR_INTERVAL=60\n'
+
+
+def test_a_busy_host_answers_in_progress_within_the_callers_budget(host):
+    plugin, service, world = host
+    budget = {'communication': {'communicationSeconds': 1}}
+    with plugin._host_lock():
+        started = time.time()
+        result = plugin.apply(dict(budget, hostUuid=HOST, generation=3, desired=desired()))
+        hold = json.loads(plugin.migration_hold({module.http.REQUEST_BODY: json.dumps(dict(
+            budget, hostUuid=HOST, operationUuid='m' * 32, resourceUuid='v' * 32, holdAction='acquire',
+            poolGeneration=POOL))}))
+    assert time.time() - started < 5
+    assert result['status'] == 'Converging' and result['reasonCode'] == 'HOST_OPERATION_IN_PROGRESS'
+    # The MN retries a hold that is in progress instead of recording it unknown.
+    assert hold['status'] == 'Converging' and hold['reasonCode'] == 'HOST_OPERATION_IN_PROGRESS', hold
+
+
+def test_an_older_generation_is_rejected_while_a_newer_one_converges(host):
+    plugin, service, world = host
+    world['unit'] = 'starting'
+    assert apply(plugin, 11, desired())['reasonCode'] == 'SERVICE_STARTING'
+    world['unit'] = 'active'
+    assert apply(plugin, 10, desired(zram=False))['reasonCode'] == 'STALE_GENERATION'
+    assert apply(plugin, 11, desired())['status'] == 'Succeeded'
 
 
 def test_an_older_generation_is_rejected_without_changes(host, monkeypatch):
@@ -210,23 +258,28 @@ def test_a_drained_host_with_its_service_stopped_rebuilds_instead_of_rejecting(h
     assert world['started'][0][1] == '--prepare-zram-pool'
 
 
-def test_an_unknown_capability_without_reclaim_interfaces_is_rejected(host, monkeypatch):
+def test_an_unknown_capability_without_reclaim_interfaces_leaves_zram_unmanaged(host, monkeypatch):
     plugin, service, world = host
     world['unit'] = 'inactive'
     world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED, 'pool_generation': POOL}
     monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
         'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN',
         'interfaces': {'cgroupv2': True, 'memory_reclaim': False}})
-    assert apply(plugin, 7, desired())['reasonCode'] == 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
+    assert apply(plugin, 7, desired())['status'] == 'Succeeded'
     assert world['started'] == []
 
 
-def test_an_unsupported_kernel_is_still_rejected(host, monkeypatch):
+@pytest.mark.parametrize('capabilities, ksm', [
+    ({'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'UNSUPPORTED_RECLAIM_KERNEL'}, True),
+    ({'supported': False, 'ksm': False, 'zram': False, 'zramReasonCode': 'UNSUPPORTED_OS_RELEASE'}, None)])
+def test_what_the_host_cannot_run_is_left_unmanaged_without_failing(host, monkeypatch, capabilities, ksm):
     plugin, service, world = host
-    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
-        'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'UNSUPPORTED_RECLAIM_KERNEL'})
-    assert apply(plugin, 8, desired())['reasonCode'] == 'UNSUPPORTED_RECLAIM_KERNEL'
-    assert service.calls == []
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: capabilities)
+    # A new cloud enables both by default; a Host without them must not fail and raise alarms.
+    result = apply(plugin, 8, desired(ksm=True, writeback=True))
+    assert result['status'] == 'Succeeded', result
+    assert service.actions() == []
+    assert world['ksm'] == [({'enabled': ksm, 'zeroPagesEnabled': None}, 'active')]
 
 
 def test_a_new_capacity_for_a_live_pool_drains_it_for_rebuild(host):
@@ -282,6 +335,17 @@ def test_a_failed_drain_reports_the_service_reason(host, monkeypatch):
     monkeypatch.setattr(plugin, '_executor_error', lambda unit, default: 'DRAIN_RESERVE_UNQUALIFIED')
     result = apply(plugin, 9, desired(control='drained'))
     assert result['status'] == 'Failed' and result['reasonCode'] == 'DRAIN_RESERVE_UNQUALIFIED'
+    # The failed step is cleared, so a resend of the same generation tries it again.
+    assert apply(plugin, 9, desired(control='drained'))['reasonCode'] == 'DRAINING'
+    assert world['started'][-1][:2] == ('zstack-memory-drain-9', '--drain')
+
+
+def test_a_drain_waits_for_the_service_to_stop_before_it_starts(host, monkeypatch):
+    plugin, service, world = host
+    monkeypatch.setattr(plugin, '_bounded_command_output', staticmethod(lambda argv, timeout: ''))
+    world['unit'] = 'active'
+    result = apply(plugin, 9, desired(control='drained'))
+    assert result['reasonCode'] == 'SERVICE_STOPPING' and world['started'] == []
 
 
 def test_resume_after_drain_prepares_finalizes_and_activates_the_pool(host):
@@ -342,6 +406,16 @@ def test_a_backend_prepared_without_a_pool_resumes_and_waits_for_the_pool(host):
     assert not [action for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
 
 
+@pytest.mark.parametrize('reason, expected', [
+    ('NO_QUALIFIED_MANAGED_POOL: VM_INVENTORY_EMPTY', 'WAITING_FOR_POOL'),
+    ('NO_QUALIFIED_MANAGED_POOL: open /var/lib/zram-efficiency/stock-pool.json: no such file', 'WAITING_FOR_POOL'),
+    ('NO_QUALIFIED_MANAGED_POOL: EXCLUSIVE_ZRAM_ROUTE_REQUIRED: /dev/dm-1', 'WAITING_FOR_POOL: EXCLUSIVE_ZRAM_ROUTE_REQUIRED')])
+def test_waiting_for_the_pool_names_what_blocks_it(host, reason, expected):
+    plugin, service, world = host
+    service.pool, service.pool_reason = None, reason
+    assert apply(plugin, 35, desired())['reasonCode'] == expected
+
+
 def test_an_activation_waiting_for_the_service_to_settle_is_converging(host):
     plugin, service, world = host
     service.pool, service.paused = None, True
@@ -379,12 +453,19 @@ def test_a_maintenance_needing_review_is_reported_not_retried(host):
     assert world['started'] == []
 
 
-def test_unsupported_zram_is_rejected_before_any_change(host, monkeypatch):
+def test_zram_reports_the_first_missing_host_precondition(host, monkeypatch):
     plugin, service, world = host
-    monkeypatch.setattr(plugin, 'discover_capabilities',
-                        lambda: {'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'HOST_PSI_UNAVAILABLE'})
-    result = apply(plugin, 17, desired())
-    assert result['reasonCode'] == 'HOST_PSI_UNAVAILABLE' and service.actions() == []
+    world['unit'] = 'inactive'
+    present = set(['/sys/kernel/mm/ksm/run', '/sys/kernel/mm/ksm/pages_to_scan', '/sys/kernel/mm/ksm/sleep_millisecs'])
+    monkeypatch.setattr(module.os.path, 'exists', lambda path: path in present)
+    monkeypatch.setattr(module.platform, 'machine', lambda: 'x86_64')
+    monkeypatch.setattr(plugin, 'host_release_from_os_release', lambda text: 'h84r')
+    monkeypatch.setattr(plugin, 'installed_reclaim_candidate', lambda release, kernel: None)
+    # cgroup v1 without PSI or a loaded zram: the cgroup is what to fix first.
+    capabilities = MemoryOptimizationPlugin.discover_capabilities(plugin)
+    assert capabilities['zram'] is False and capabilities['zramReasonCode'] == 'UNSUPPORTED_CGROUP_MEMORY'
+    present.update(['/sys/fs/cgroup/cgroup.controllers', '/sys/fs/cgroup/memory.reclaim'])
+    assert MemoryOptimizationPlugin.discover_capabilities(plugin)['zramReasonCode'] == 'HOST_PSI_UNAVAILABLE'
 
 
 def test_vm_bind_sets_the_instance_policy_and_revoke_changes_nothing(host):
@@ -401,11 +482,16 @@ def test_vm_bind_sets_the_instance_policy_and_revoke_changes_nothing(host):
     assert len(service.calls) == 1
 
 
-def _reboot_reclaim_host(plugin, service, world, monkeypatch, capacity, receipt_device='/dev/vdb'):
+def _reboot_reclaim_host(plugin, service, world, monkeypatch, capacity, receipt_device='/dev/vdb',
+                         serial='disk-a', recorded='disk-a'):
     world['unit'] = 'failed'
     monkeypatch.setattr(plugin, '_drain_check', lambda: {
         'error': 'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT: earlier boot claim'})
     monkeypatch.setattr(plugin, '_read_service_config', lambda: {'backend': {'device': '/dev/vdb'}})
+    if recorded:
+        # Recorded while the disk was this Host's active backend in the earlier boot.
+        plugin._remember_backend_identity({'candidates': [{'device': '/dev/vdb', 'state': 'ACTIVE', 'stableIdentity': {
+            'serial': recorded, 'wwn': '', 'byIdPath': '/dev/disk/by-id/virtio-' + recorded}}]})
     monkeypatch.setattr(plugin, '_current_boot_id', lambda: '6315d9da-c7cd-4b6c-9d80-c58617c8eabb')
     service.receipts['backend'] = {'stage': 'APPLIED', 'request_id': 'backend-3-x',
                                    'candidate_id': 'candidate:' + 'c' * 64,
@@ -413,7 +499,9 @@ def _reboot_reclaim_host(plugin, service, world, monkeypatch, capacity, receipt_
     scans = world.setdefault('scans', [])
     monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: scans.append(host_uuid) or {
         'canPrepare': True, 'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
-                                            'eligible': True, 'capacityBytes': capacity}]})
+                                            'eligible': True, 'capacityBytes': capacity, 'stableIdentity': {
+                                                'serial': serial, 'wwn': '',
+                                                'byIdPath': '/dev/disk/by-id/virtio-' + serial}}]})
     built = []
     monkeypatch.setattr(module, 'build_backend_maintenance_request',
                         lambda inventory, preparation: built.append(preparation) or {'request_id': preparation['requestId']})
@@ -467,6 +555,86 @@ def test_only_an_unfinished_preparation_of_this_boot_blocks_a_new_one(host, monk
         'candidates': [{'device': '/dev/vdb', 'eligible': True, 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
     inventory = plugin._writeback_inventory(HOST)
     assert inventory['canPrepare'] is can_prepare, inventory['preparationReasons']
+
+
+def test_only_a_possible_candidate_is_probed_for_signatures():
+    from kvmagent.plugins import memory_writeback_backends as backends
+    volumes = [{'name': '/dev/mapper/vg-lv%d' % i, 'kname': 'dm-%d' % i, 'type': 'lvm', 'size': 1 << 30,
+                'maj:min': '253:%d' % i} for i in range(300)]
+    lsblk = {'blockdevices': [{'name': '/dev/vdb', 'kname': 'vdb', 'type': 'disk', 'size': 1 << 30,
+                               'maj:min': '252:16', 'serial': 'disk-a', 'tran': 'virtio'}] + volumes}
+    probed = []
+
+    def runner(argv, timeout=5):
+        if argv[0] == 'lsblk':
+            return {'returncode': 0, 'stdout': json.dumps(lsblk), 'stderr': ''}
+        if argv[0] == 'blkid':
+            probed.append(argv[-1])
+        return {'returncode': 2, 'stdout': '', 'stderr': ''}
+
+    class Filesystem(object):
+        def read(self, path):
+            if path == '/proc/sys/kernel/random/boot_id':
+                return 'boot'
+            raise IOError(2, path)
+
+        def exists(self, path):
+            return False
+
+        def listdir(self, path):
+            raise OSError(2, path)
+
+        def realpath(self, path):
+            return path
+
+        def stat(self, path):
+            raise OSError(2, path)
+
+        lstat = stat
+    backends.probe_writeback_backends(HOST, runner=runner, filesystem=Filesystem())
+    # 300 logical volumes are ineligible anyway; a signature probe each would outlast the MN call.
+    assert len([path for path in probed if path.startswith('/dev/mapper/')]) == 0
+
+
+def test_the_active_backend_disk_is_recorded_by_its_persistent_identity(host, monkeypatch):
+    plugin, service, world = host
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: '/dev/vdb')
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': [{'device': '/dev/vdb', 'state': 'ACTIVE', 'eligible': True, 'stableIdentity': {
+            'serial': 'disk-a', 'wwn': '', 'byIdPath': '/dev/disk/by-id/virtio-disk-a', 'rdev': 64784}}]})
+    plugin._writeback_inventory(HOST)
+    assert plugin._backend_identity() == {'device': '/dev/vdb', 'serial': 'disk-a', 'wwn': '',
+                                          'byIdPath': '/dev/disk/by-id/virtio-disk-a'}
+
+
+@pytest.mark.parametrize('serial, recorded', [('disk-b', 'disk-a'), ('disk-a', None)])
+def test_a_rebooted_host_resets_only_the_disk_it_recorded(host, monkeypatch, serial, recorded):
+    plugin, service, world = host
+    # Another blank disk of the same size under the same name, or a disk never seen as the backend.
+    _reboot_reclaim_host(plugin, service, world, monkeypatch, 1 << 30, serial=serial, recorded=recorded)
+    result = apply(plugin, 7, desired(writeback=True))
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'REBOOT_BACKEND_NOT_ELIGIBLE'
+    assert world['started'] == []
+
+
+def test_a_rebooted_host_with_unmanaged_writeback_prepares_its_disk_again(host, monkeypatch):
+    plugin, service, world = host
+    _reboot_reclaim_host(plugin, service, world, monkeypatch, 1 << 30)
+    assert apply(plugin, 7, desired(writeback=None))['reasonCode'] == 'BACKEND_PREPARING'
+    assert world['started'][0][1] == '--prepare-backend-maintenance'
+
+
+def test_a_rebooted_host_without_writeback_runs_without_its_backend(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    _reboot_reclaim_host(plugin, service, world, monkeypatch, 1 << 30)
+    config = tmp_path / 'config.json'
+    config.write_text(json.dumps({'managed': True, 'mode': 'reclaim', 'resource_authorized': True,
+                                  'device': '/dev/zram0', 'backend': {'device': '/dev/vdb'}}))
+    monkeypatch.setattr(plugin, '_read_service_config', MemoryOptimizationPlugin._read_service_config.__get__(plugin))
+    apply(plugin, 7, desired(writeback=False))
+    assert 'backend' not in json.loads(config.read_text())
+    assert world['started'] == [] and world['unit'] == 'active'
+    assert plugin._backend_identity() == {}
 
 
 @pytest.mark.parametrize('capacity, receipt_device', [(2 << 30, '/dev/vdb'), (1 << 30, '/dev/vdc')])
@@ -542,3 +710,16 @@ def test_an_earlier_agent_journal_is_moved_aside_on_start(tmp_path):
     assert len(legacy) == 1
     assert sorted(os.listdir(str(tmp_path / legacy[0]))) == sorted(['drain', 'e' * 32 + '.json', 'active-control'])
     assert plugin._applied_generation() == 4
+
+
+def test_a_journal_that_cannot_be_moved_aside_does_not_stop_the_agent(tmp_path, monkeypatch):
+    operations = tmp_path / 'operations'
+    operations.mkdir()
+    (operations / 'active-control').write_text('e' * 32)
+    plugin = MemoryOptimizationPlugin(service_call=FakeService())
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(operations)})
+
+    def refuse(source, target):
+        raise OSError(30, 'Read-only file system')
+    monkeypatch.setattr(module.shutil, 'move', refuse)
+    plugin._retire_legacy_records()

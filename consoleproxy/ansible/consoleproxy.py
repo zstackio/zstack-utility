@@ -200,12 +200,6 @@ if not py_version:
     command = "python3.11 -m venv %s --system-site-packages" % virtenv_path
     run_remote_command(command, host_post_info)
 
-# Keep the compatibility venv, but pin its own pip before resolving Agent
-# packages so legacy system egg metadata cannot override venv dist-info.
-venv_pip_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path,
-                                       init_install)
-install_agent_venv_pip(venv_pip_install_arg, host_post_info)
-
 # name: install zstacklib
 agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
 agent_install_arg.agent_name = "zstacklib"

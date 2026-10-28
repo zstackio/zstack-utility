@@ -32,12 +32,12 @@ def parse_memtotal_kb(meminfo):
 
 
 def native_sleep_msec(policy_msec, memtotal_kb):
-    """Return a native KSM_SLEEP_MSEC which yields the requested sysfs value.
+    """Return the smallest native KSM_SLEEP_MSEC which yields at least the requested sysfs value.
 
     The supported EL8 vendor script calculates
-    ``max(10, configured * 16GiB / MemTotal)`` using integer division.  We
-    reject values it cannot represent exactly rather than acknowledging a
-    different applied sleep interval.
+    ``max(10, configured * 16GiB / MemTotal)`` using integer division, which
+    below 16 GiB cannot always reach the value exactly; it is then one
+    millisecond longer.
     """
     if (isinstance(policy_msec, bool) or not isinstance(policy_msec, INTEGER_TYPES) or
             policy_msec < 10 or isinstance(memtotal_kb, bool) or
@@ -46,12 +46,41 @@ def native_sleep_msec(policy_msec, memtotal_kb):
 
     # Find the smallest native setting that reaches the desired integer output.
     native = (policy_msec * memtotal_kb + SLEEP_BASE_KB - 1) // SLEEP_BASE_KB
-    native = max(native, 1)
-    effective = max(10, native * SLEEP_BASE_KB // memtotal_kb)
-    if effective != policy_msec:
-        raise NativeKsmConfigError('KSM_SLEEP_UNREPRESENTABLE')
-    return native
+    return max(native, 1)
 
+
+
+def _customer_lines(existing_text):
+    """The lines of the file outside the managed block, without the blank line added before it."""
+    lines = (existing_text or '').splitlines()
+    if sum(1 for line in lines if line == MANAGED_BEGIN) > 1:
+        raise NativeKsmConfigError('KSM_CONFIG_MULTIPLE_MANAGED_BLOCKS')
+    output = []
+    in_managed = False
+    for line in lines:
+        if line == MANAGED_BEGIN:
+            if in_managed:
+                raise NativeKsmConfigError('KSM_CONFIG_NESTED_MANAGED_BLOCK')
+            in_managed = True
+            if output and output[-1] == '':
+                output.pop()
+            continue
+        if line == MANAGED_END:
+            if not in_managed:
+                raise NativeKsmConfigError('KSM_CONFIG_UNMATCHED_MANAGED_END')
+            in_managed = False
+            continue
+        if not in_managed:
+            output.append(line)
+    if in_managed:
+        raise NativeKsmConfigError('KSM_CONFIG_UNTERMINATED_MANAGED_BLOCK')
+    return output
+
+
+def remove_config(existing_text):
+    """Take the managed block out, leaving the customer content as it was."""
+    output = _customer_lines(existing_text)
+    return '\n'.join(output) + '\n' if output else ''
 
 
 def render_config(existing_text, revision, pages_to_scan, native_sleep):
@@ -67,29 +96,9 @@ def render_config(existing_text, revision, pages_to_scan, native_sleep):
             not isinstance(native_sleep, INTEGER_TYPES) or native_sleep < 1):
         raise NativeKsmConfigError('KSM_CONFIG_VALUE_INVALID')
 
-    text = existing_text or ''
-    lines = text.splitlines()
-    if sum(1 for line in lines if line == MANAGED_BEGIN) > 1:
-        raise NativeKsmConfigError('KSM_CONFIG_MULTIPLE_MANAGED_BLOCKS')
     # ksmtuned sources this file as shell: the appended managed block wins over
     # earlier customer assignments without rewriting them.
-    output = []
-    in_managed = False
-    for line in lines:
-        if line == MANAGED_BEGIN:
-            if in_managed:
-                raise NativeKsmConfigError('KSM_CONFIG_NESTED_MANAGED_BLOCK')
-            in_managed = True
-            continue
-        if line == MANAGED_END:
-            if not in_managed:
-                raise NativeKsmConfigError('KSM_CONFIG_UNMATCHED_MANAGED_END')
-            in_managed = False
-            continue
-        if not in_managed:
-            output.append(line)
-    if in_managed:
-        raise NativeKsmConfigError('KSM_CONFIG_UNTERMINATED_MANAGED_BLOCK')
+    output = _customer_lines(existing_text)
 
     # The vendor script sources this file; values are validated decimal
     # literals and operation identity is intentionally not interpolated.

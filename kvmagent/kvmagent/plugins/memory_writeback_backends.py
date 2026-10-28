@@ -633,9 +633,12 @@ def probe_writeback_backends(host_uuid=None, service_backend=None, service_confi
             row, parent, by_id_path, serial,
             bool(serial and serial_counts.get(serial, 0) > 1),
             protected, filesystem, sys_path, now)
-        signature_reason = _signature_reason(runner, name)
-        if signature_reason:
-            reasons.append(signature_reason)
+        # Each probe reads the device and may take seconds; only a row that could still be a
+        # candidate, the drained pool's own backend (held only by zram) or a prepared file's loop needs one.
+        if set(reasons) <= set(['ACTIVE_BLOCK_HOLDERS']) or row_type == 'loop':
+            signature_reason = _signature_reason(runner, name)
+            if signature_reason:
+                reasons.append(signature_reason)
 
         try:
             device_stat = filesystem.stat(name)
