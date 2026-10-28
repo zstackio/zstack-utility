@@ -14573,22 +14573,26 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetVmIoThreadPinRsp()
 
-        iothread_info = self.get_iothread_info(cmd.vmUuid)
-        iothread_ids = [i[0] for i in iothread_info]
+        previous_pin = dict(self.get_iothread_info(cmd.vmUuid)).get(str(cmd.ioThreadId))
 
         err_info = None
-        if str(cmd.ioThreadId) not in iothread_ids:
+        if previous_pin is None:
             err_info = self.add_io_thread(cmd.vmUuid, cmd.ioThreadId)
         if err_info:
             rsp.error = err_info
             logger.error("add iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
             return jsonobject.dumps(rsp)
 
-        err_info = self.pin_io_thread(cmd.vmUuid, cmd.ioThreadId, cmd.pin)
-        if err_info:
-            rsp.error = err_info
-            logger.error("pin iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
-            return jsonobject.dumps(rsp)
+        with contextlib.ExitStack() as rollback:
+            if previous_pin is not None:
+                rollback.callback(linux.ignoreerror(self.pin_io_thread), cmd.vmUuid, cmd.ioThreadId, previous_pin)
+            err_info = self.pin_io_thread(cmd.vmUuid, cmd.ioThreadId, cmd.pin)
+            if err_info:
+                rsp.success = False
+                rsp.error = err_info
+                logger.error("pin iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
+                return jsonobject.dumps(rsp)
+            rollback.pop_all()
         logger.info("set iothread[{}] pin[{}] on vm[{}] successfully.".format(cmd.ioThreadId, cmd.pin, cmd.vmUuid))
         rsp.ioThreadId = cmd.ioThreadId
         return jsonobject.dumps(rsp)

@@ -16,7 +16,7 @@ import urllib.parse
 from collections.abc import Iterator
 from typing import Callable
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
 from xml.etree import ElementTree as ET
 
 from zstacklib.utils import http, jsonobject
@@ -1154,6 +1154,56 @@ class TestSetIothreadPinHandler:
 
         assert rsp['success'] is True
         assert rsp['ioThreadId'] == 1
+
+    @pytest.mark.parametrize('pin', ['24', '47'])
+    def test_failed_pin_restores_existing_affinity_before_reply(self, monkeypatch, pin):
+        plugin = _make_vm_plugin()
+        plugin.get_iothread_info = MagicMock(return_value=[('1', '23')])
+        plugin.add_io_thread = MagicMock()
+        plugin.pin_io_thread = MagicMock(side_effect=[RuntimeError('cannot set CPU affinity'), None])
+        monkeypatch.setattr(vm_plugin.linux, 'ignoreerror', lambda function: function)
+
+        rsp = json.loads(plugin.set_iothread_pin(_make_req({'vmUuid': 'vm-uuid', 'ioThreadId': 1, 'pin': pin})))
+
+        assert rsp['success'] is False
+        assert rsp['error'] == 'cannot set CPU affinity'
+        assert plugin.pin_io_thread.call_args_list == [call('vm-uuid', 1, pin), call('vm-uuid', 1, '23')]
+        plugin.get_iothread_info.assert_called_once_with('vm-uuid')
+        plugin.add_io_thread.assert_not_called()
+
+    def test_successful_update_does_not_restore_old_pin(self, monkeypatch):
+        plugin = _make_vm_plugin()
+        plugin.get_iothread_info = MagicMock(return_value=[('1', '23')])
+        plugin.pin_io_thread = MagicMock(return_value=None)
+        monkeypatch.setattr(vm_plugin.linux, 'ignoreerror', lambda function: function)
+
+        rsp = json.loads(plugin.set_iothread_pin(_make_req({'vmUuid': 'vm-uuid', 'ioThreadId': 1, 'pin': '22'})))
+
+        assert rsp['success'] is True
+        plugin.pin_io_thread.assert_called_once_with('vm-uuid', 1, '22')
+
+    def test_returned_pin_error_restores_old_pin_and_reports_failure(self, monkeypatch):
+        plugin = _make_vm_plugin()
+        plugin.get_iothread_info = MagicMock(return_value=[('1', '23')])
+        plugin.pin_io_thread = MagicMock(side_effect=['error: cannot set CPU affinity', None])
+        monkeypatch.setattr(vm_plugin.linux, 'ignoreerror', lambda function: function)
+
+        rsp = json.loads(plugin.set_iothread_pin(_make_req({'vmUuid': 'vm-uuid', 'ioThreadId': 1, 'pin': '24'})))
+
+        assert rsp['success'] is False
+        assert rsp['error'] == 'error: cannot set CPU affinity'
+        assert plugin.pin_io_thread.call_args_list == [call('vm-uuid', 1, '24'), call('vm-uuid', 1, '23')]
+
+    def test_new_iothread_failure_does_not_restore_an_unknown_pin(self):
+        plugin = _make_vm_plugin()
+        plugin.get_iothread_info = MagicMock(return_value=[])
+        plugin.add_io_thread = MagicMock(return_value=None)
+        plugin.pin_io_thread = MagicMock(side_effect=RuntimeError('cannot set CPU affinity'))
+
+        rsp = json.loads(plugin.set_iothread_pin(_make_req({'vmUuid': 'vm-uuid', 'ioThreadId': 1, 'pin': '24'})))
+
+        assert rsp['success'] is False
+        plugin.pin_io_thread.assert_called_once_with('vm-uuid', 1, '24')
 
 
 @pytest.mark.kvmagent
