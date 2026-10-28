@@ -2,9 +2,10 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import unittest
 import time
-import urllib2
+import urllib.request, urllib.error, urllib.parse
 from zstacklib.utils import http
 import simplejson
 
@@ -33,8 +34,8 @@ class Test(unittest.TestCase):
 
     @unittest.skip("demonstrating skipping")
     def test_sync_uri(self):
-        req = urllib2.Request("http://localhost:7070/sayhello/hi")
-        f = urllib2.urlopen(req)
+        req = urllib.request.Request("http://localhost:7070/sayhello/hi")
+        f = urllib.request.urlopen(req)
         rsp = f.read()
         f.close()
         self.assertEqual("hello", rsp)

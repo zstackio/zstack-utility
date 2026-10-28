@@ -4,6 +4,7 @@ import pyroute2
 from zstacklib.utils import log, lock
 from zstacklib.utils import shell
 from zstacklib.utils import jsonobject
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 
@@ -306,19 +307,19 @@ def query_addresses(namespace=None, **kwargs):
     with get_iproute(namespace) as ipr:
         if kwargs is not None:
             # ifname is not supported in pyroute2.IPRoute, unless use index
-            if kwargs.has_key('ifname'):
+            if pycompat.has_key(kwargs, 'ifname'):
                 device_index = _check_index_and_ifname(kwargs['ifname'], kwargs.get('index'), ipr, False)
                 if device_index == 0:
                     return []
                 kwargs['index'] = device_index
                 del kwargs['ifname']
             # scope should convert to int type
-            if kwargs.has_key('scope') and isinstance(kwargs['scope'], (str, unicode)):
+            if pycompat.has_key(kwargs, 'scope') and isinstance(kwargs['scope'], (str, unicode)):
                 kwargs['scope'] = _get_scope_name(kwargs['scope'], True)
-            if kwargs.has_key('ip') and isinstance(kwargs['ip'], (str, unicode)):
+            if pycompat.has_key(kwargs, 'ip') and isinstance(kwargs['ip'], (str, unicode)):
                 kwargs['address'] = kwargs['ip']
                 del kwargs['ip']
-            if kwargs.has_key('ip_version'):
+            if pycompat.has_key(kwargs, 'ip_version'):
                 kwargs['family'] = _check_ip_version(kwargs['ip_version'])
                 del kwargs['ip_version']
         return [IpAddr(chunk, ipr) for chunk in ipr.get_addr(**kwargs)]
@@ -582,12 +583,12 @@ def set_link_attribute(ifname_or_index, namespace=None, **attributes):
     with get_iproute(namespace) as ipr:
         index = _get_device_index(ifname_or_index, ipr)
         if attributes:
-            if attributes.has_key('master'):
+            if pycompat.has_key(attributes, 'master'):
                 attributes['master'] = _get_device_index(attributes['master'], ipr)
-            if attributes.has_key('netns'):  # ip link set ${dev} netns ${namespace}
+            if pycompat.has_key(attributes, 'netns'):  # ip link set ${dev} netns ${namespace}
                 attributes['net_ns_fd'] = attributes['netns']
                 del attributes['netns']
-            if attributes.has_key('alias'):
+            if pycompat.has_key(attributes, 'alias'):
                 attributes['IFLA_IFALIAS'] = attributes['alias']
                 del attributes['alias']
         ipr.link('set', index=index, **attributes)
@@ -654,7 +655,7 @@ def get_routes(ifname=None, ip_version=None, table=None, namespace=None, **kwarg
     kwargs.update(_make_pyroute2_route_args(
         namespace, ip_version, None, ifname, None, table, None, None, None))
     with get_iproute(namespace) as ipr:
-        return map(lambda chunk: IpRoute(chunk), ipr.route('get', **kwargs))
+        return list(map(lambda chunk: IpRoute(chunk), ipr.route('get', **kwargs)))
 
 
 def show_routes(ifname=None, ip_version=4, table=None, namespace=None, **kwargs):

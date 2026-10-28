@@ -1,5 +1,3 @@
-from jinja2 import Template
-
 from kvmagent import kvmagent
 from kvmagent.plugins import host_plugin
 from zstacklib.utils import http

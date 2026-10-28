@@ -7,9 +7,7 @@ from zstacklib.utils import plugin
 from zstacklib.utils import log
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
-from zstacklib.utils import shell
 from zstacklib.utils import daemon
-from zstacklib.utils import iptables
 import os.path
 import traceback
 import pprint
@@ -80,7 +78,7 @@ class VirtualRouter(object):
     def init(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         self.init_command = cmd
-        self.uuid = cmd.uuid;
+        self.uuid = cmd.uuid
         return jsonobject.dumps(InitRsp())
 
     @replyerror

@@ -15,11 +15,12 @@ from termcolor import colored
 import xml.etree.ElementTree as etree
 import yaml
 
-from utils import linux
-from utils import shell
-from utils.sql_query import MySqlCommandLineQuery
-import zstackctl.ctl
-from zstacklib import *
+from .utils import linux
+from .utils import shell
+from .utils.sql_query import MySqlCommandLineQuery
+from . import ctl
+from .zstacklib import *
+import subprocess
 
 
 def info_verbose(*msg):
@@ -28,10 +29,14 @@ def info_verbose(*msg):
     else:
         out = ''.join(msg)
     now = datetime.datetime.now()
-    out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + out
+    out = "%s " % now.strftime('%Y-%m-%d %H:%M:%S') + "  thread:%s  " % threading.get_native_id() + out
     sys.stdout.write(out)
     logger.info(out)
 
+
+def getstatusoutput(cmd):
+    status, output = subprocess.getstatusoutput(cmd)
+    return status, output
 
 def collect_fail_verbose(*msg):
     if len(msg) == 1:
@@ -122,36 +127,36 @@ class Summary(object):
         time_list.append(collect_time)
 
     def check_connectivity(self):
-        status, _ = commands.getstatusoutput("ping 119.29.29.29 -c 1 -W 3")
+        status, _ = getstatusoutput("ping 119.29.29.29 -c 1 -W 3")
         return True if status == 0 else False
 
     def get_identifier(self, collect_dir):
-        _, lic_md5 = commands.getstatusoutput(
+        _, lic_md5 = getstatusoutput(
             'find %s -iname "lic-application-code.txt" | sort | head -n 1 | xargs md5sum | awk \'{print $1}\'' % collect_dir)
 
-        _, username = commands.getstatusoutput(
+        _, username = getstatusoutput(
             "find %s -iname \"customer-identifier\" -exec cat {} \; 2>/dev/null | grep 'INSERT INTO `LicenseHistoryVO' | grep -Eo '[a-zA-Z0-9_-.]+@[a-zA-Z0-9_-]+(\.[a-zA-Z0-9_-]+)+' | tail -n1" % collect_dir)
 
         if username == "":
-            _, username = commands.getstatusoutput(
+            _, username = getstatusoutput(
                 '''timeout -s 9 3 zstack-cli GetLicenseInfo | grep '"user"' | awk '{print $2}' | tr -d ","''')
             username = username.strip('"')
 
-        _, o = commands.getstatusoutput(
+        _, o = getstatusoutput(
             "find %s -type f -iname \"customer-identifier\" | head -1 | xargs cat | sed -n '/<database/,/\/database/p'" % collect_dir)
 
-        _, ui3 = commands.getstatusoutput(
+        _, ui3 = getstatusoutput(
             "find %s/*/ui3-cfg/* -iname 'data.json' | head -1 | xargs cat" % collect_dir)
 
         cloud_title = self.get_cloud_title(o, ui3)
 
         if isinstance(lic_md5, str):
-            lic_md5 = lic_md5.decode('utf-8')
+            lic_md5 = lic_md5
 
-        if isinstance(cloud_title, str):
+        if isinstance(cloud_title, bytes):
             cloud_title = cloud_title.decode('utf-8')
 
-        if isinstance(username, str):
+        if isinstance(username, bytes):
             username = username.decode('utf-8')
 
         return lic_md5, username, cloud_title
@@ -168,21 +173,21 @@ class Summary(object):
 
         @param xml_text: something like
 <database name="zstack_ui">
-	<table_structure name="zs_kv">
-		...
-	</table_structure>
-	<table_data name="zs_kv">
-	<row>
-		<field name="id">3</field>
-		<field name="key">theme.config.zh-CN</field>
-		<field name="value">{&quot;__typename&quot;:&quot;ThemeConfig&quot;,&quot;loginTitle&quot;:&quot;欢迎使用 W Cloud 云平台&quot;,&quot;browserTitle&quot;:&quot;WW Cloud |\dsad\/dasdas&quot;,&quot;themeMode&quot;:&quot;light&quot;,&quot;themeColor&quot;:&quot;blue&quot;,&quot;bannerTitle&quot;:&quot;Wei's ZStack云平台&quot;,&quot;bannerFontSize&quot;:&quot;14px&quot;,&quot;overviewMode&quot;:&quot;classicalBlue&quot;,&quot;overviewTitle&quot;:&quot;ZStack实时监控&quot;,&quot;overviewMonitorType&quot;:&quot;externalMonitor&quot;,&quot;oem&quot;:null,&quot;versonName&quot;:null,&quot;versonNumber&quot;:null,&quot;email&quot;:null,&quot;copyRight&quot;:null,&quot;favicon&quot;:&quot;/public/theme/default/zh-CN/favicon.ico&quot;,&quot;loginLogo&quot;:&quot;/public/theme/default/zh-CN/logo.svg&quot;,&quot;bannerLogo&quot;:&quot;/public/theme/default/zh-CN/logo-bar.svg&quot;}</field>
-	</row>
-	<row>
-		<field name="id">4</field>
-		<field name="key">theme.config.en-US</field>
-		<field name="value">{&quot;themeMode&quot;:&quot;light&quot;,&quot;themeColor&quot;:&quot;blue&quot;,&quot;browserTitle&quot;:&quot;WW Cloud&quot;,&quot;loginTitle&quot;:&quot;Welcome to W Cloud Cloud&quot;,&quot;bannerTitle&quot;:&quot;W Cloud&quot;,&quot;bannerFontSize&quot;:&quot;14px&quot;,&quot;overviewTitle&quot;:&quot;Real-Time Monitor&quot;,&quot;overviewMode&quot;:&quot;classicalBlue&quot;,&quot;overviewMonitorType&quot;:&quot;externalMonitor&quot;,&quot;oem&quot;:null,&quot;versonName&quot;:null,&quot;versonNumber&quot;:null,&quot;email&quot;:null,&quot;copyRight&quot;:null,&quot;__typename&quot;:&quot;ThemeConfig&quot;,&quot;favicon&quot;:&quot;/public/theme/default/zh-CN/favicon.ico&quot;,&quot;loginLogo&quot;:&quot;/public/theme/default/zh-CN/logo.svg&quot;,&quot;bannerLogo&quot;:&quot;/public/theme/default/zh-CN/logo-bar.svg&quot;}</field>
-	</row>
-	</table_data>
+    <table_structure name="zs_kv">
+        ...
+    </table_structure>
+    <table_data name="zs_kv">
+    <row>
+        <field name="id">3</field>
+        <field name="key">theme.config.zh-CN</field>
+        <field name="value">{&quot;__typename&quot;:&quot;ThemeConfig&quot;,&quot;loginTitle&quot;:&quot;欢迎使用 W Cloud 云平台&quot;,&quot;browserTitle&quot;:&quot;WW Cloud |\dsad\/dasdas&quot;,&quot;themeMode&quot;:&quot;light&quot;,&quot;themeColor&quot;:&quot;blue&quot;,&quot;bannerTitle&quot;:&quot;Wei's ZStack云平台&quot;,&quot;bannerFontSize&quot;:&quot;14px&quot;,&quot;overviewMode&quot;:&quot;classicalBlue&quot;,&quot;overviewTitle&quot;:&quot;ZStack实时监控&quot;,&quot;overviewMonitorType&quot;:&quot;externalMonitor&quot;,&quot;oem&quot;:null,&quot;versonName&quot;:null,&quot;versonNumber&quot;:null,&quot;email&quot;:null,&quot;copyRight&quot;:null,&quot;favicon&quot;:&quot;/public/theme/default/zh-CN/favicon.ico&quot;,&quot;loginLogo&quot;:&quot;/public/theme/default/zh-CN/logo.svg&quot;,&quot;bannerLogo&quot;:&quot;/public/theme/default/zh-CN/logo-bar.svg&quot;}</field>
+    </row>
+    <row>
+        <field name="id">4</field>
+        <field name="key">theme.config.en-US</field>
+        <field name="value">{&quot;themeMode&quot;:&quot;light&quot;,&quot;themeColor&quot;:&quot;blue&quot;,&quot;browserTitle&quot;:&quot;WW Cloud&quot;,&quot;loginTitle&quot;:&quot;Welcome to W Cloud Cloud&quot;,&quot;bannerTitle&quot;:&quot;W Cloud&quot;,&quot;bannerFontSize&quot;:&quot;14px&quot;,&quot;overviewTitle&quot;:&quot;Real-Time Monitor&quot;,&quot;overviewMode&quot;:&quot;classicalBlue&quot;,&quot;overviewMonitorType&quot;:&quot;externalMonitor&quot;,&quot;oem&quot;:null,&quot;versonName&quot;:null,&quot;versonNumber&quot;:null,&quot;email&quot;:null,&quot;copyRight&quot;:null,&quot;__typename&quot;:&quot;ThemeConfig&quot;,&quot;favicon&quot;:&quot;/public/theme/default/zh-CN/favicon.ico&quot;,&quot;loginLogo&quot;:&quot;/public/theme/default/zh-CN/logo.svg&quot;,&quot;bannerLogo&quot;:&quot;/public/theme/default/zh-CN/logo-bar.svg&quot;}</field>
+    </row>
+    </table_data>
 </database>
         @param ui3cfg: str
         """
@@ -199,17 +204,17 @@ class Summary(object):
             for row in rows:
                 value_txt = row.findall('.//field[@name="value"]')[0].text
                 value_json = Summary.loads_str(value_txt)
-                if "theme.config.zh-CN" in etree.tostring(row):
-                    if value_json.get('bannerTitle') != "" and value_json.get('bannerTitle') != u"ZStack云平台":
+                if "theme.config.zh-CN" in etree.tostring(row, encoding="unicode"):
+                    if value_json.get('bannerTitle') != "" and value_json.get('bannerTitle') != "ZStack云平台":
                         zh_title = value_json.get('bannerTitle')
                     elif value_json.get('browserTitle') != "" and value_json.get('browserTitle') != "ZStack":
                         zh_title = value_json.get('browserTitle')
-                elif "theme.config.en-US" in etree.tostring(row):
+                elif "theme.config.en-US" in etree.tostring(row, encoding="unicode"):
                     if value_json.get('bannerTitle') != "" and value_json.get('bannerTitle') != "ZStack Cloud":
                         en_title = value_json.get('bannerTitle')
                     elif value_json.get('browserTitle') != "" and value_json.get('browserTitle') != "ZStack":
                         en_title = value_json.get('browserTitle')
-                elif "theme.config" in etree.tostring(row):
+                elif "theme.config" in etree.tostring(row, encoding="unicode"):
                     if value_json.get('bannerTitle') != "" and value_json.get('bannerTitle') != "ZStack Cloud":
                         zh_title = value_json.get('bannerTitle')
                     elif value_json['browserTitle'] != "" and value_json.get('browserTitle') != "ZStack":
@@ -248,17 +253,17 @@ class Summary(object):
     def persist(self, collect_dir):
         summary_file = collect_dir + 'summary'
         lic_md5, username, cloud_title = self.get_identifier(collect_dir)
-        with io.open(summary_file, 'a+', encoding='utf-8') as f:
+        with open(summary_file, 'a+', encoding='utf-8') as f:
             f.write(json.dumps({"lic_md5": lic_md5,
                                 "username": username,
-                                u"cloud_name": cloud_title,
+                                "cloud_name": cloud_title,
                                 "connectivity": self.check_connectivity(),
-                                "version": zstackctl.ctl.get_detail_version(),
+                                "version": ctl.get_detail_version(),
                                 "fail_count": self.fail_count,
                                 "success_count": self.success_count,
                                 "fail_list": self.fail_list,
                                 "collect_time_list": self.collect_time_list}, default=lambda o: o.__dict__,
-                                indent=4, ensure_ascii=False, encoding='utf-8'))
+                                indent=4, ensure_ascii=False))
 
 
 class db_info(object):
@@ -301,7 +306,7 @@ class CollectFromYml(object):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
             cmd = "mysql --host %s --port %s -u%s -p%s zstack -e \'%s\'" % (
-                db_hostname, db_port, db_user, zstackctl.ctl.shell_quote(db_password), suffix_sql)
+                db_hostname, db_port, db_user, ctl.shell_quote(db_password), suffix_sql)
         else:
             cmd = "mysql --host %s --port %s -u%s zstack -e \'%s\'" % (db_hostname, db_port, db_user, suffix_sql)
         return cmd
@@ -350,14 +355,14 @@ class CollectFromYml(object):
         db_hostname, db_port, db_user, db_password = self.ctl.get_live_mysql_portal()
         if db_password:
             cmd = "mysqldump --database -u%s -p%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (
-                db_user, zstackctl.ctl.shell_quote(db_password), db_port, mysqldump_skip_tables)
+                db_user, ctl.shell_quote(db_password), db_port, mysqldump_skip_tables)
         else:
             cmd = "mysqldump --database -u%s -P %s --single-transaction --quick zstack zstack_rest information_schema performance_schema %s" % (
                 db_user, db_port, mysqldump_skip_tables)
         return cmd
 
     def decode_conf_yml(self, args):
-        base_conf_path = '/var/lib/zstack/virtualenv/zstackctl/lib/python2.7/site-packages/zstackctl/conf/'
+        base_conf_path = '/var/lib/zstack/virtualenv/zstackctl/lib/python3.11/site-packages/zstackctl/conf/'
         default_yml_mn_only = 'collect_log_mn_only.yaml'
         default_yml_mn_db = 'collect_log_mn_db.yaml'
         default_yml_full = 'collect_log_full.yaml'
@@ -397,7 +402,7 @@ class CollectFromYml(object):
                 decode_error = 'do not find conf path %s' % yml_conf_dir
                 decode_result['decode_error'] = decode_error
                 return decode_result
-            
+
             f = open(yml_conf_dir)
             try:
                 conf_dict = yaml.load(f)
@@ -406,14 +411,14 @@ class CollectFromYml(object):
                 decode_result['decode_error'] = decode_error
                 return decode_result
 
-            for conf_key, conf_value in conf_dict.items():
+            for conf_key, conf_value in list(conf_dict.items()):
                 collect_type = conf_key
                 list_value = conf_value.get('list')
                 logs = conf_value.get('logs')
                 if list_value is None or logs is None:
-                    decode_error = 'host or log can not be empty in %s' % log
+                    decode_error = 'host or log can not be empty in %s' % base_conf_path
                     break
-    
+
                 if 'exec' not in list_value:
                     if '\n' in list_value:
                         temp_array = list_value.split('\n')
@@ -425,13 +430,13 @@ class CollectFromYml(object):
                         if ' ' in list_value:
                             temp_array = list_value.split()
                             conf_value['list'] = temp_array
-    
+
                 if collect_type == 'host' or collect_type == 'sharedblock':
                     if args.hosts is not None:
                         conf_value['list'] = args.hosts.split(',')
-    
+
                 history_configured = False
-    
+
                 for log in logs:
                     name_value = log.get('name')
                     dir_value = log.get('dir')
@@ -448,7 +453,7 @@ class CollectFromYml(object):
                             break
                         else:
                             name_array.append(name_value)
-    
+
                         if name_value == 'history':
                             history_configured = True
                     if dir_value is None:
@@ -471,13 +476,13 @@ class CollectFromYml(object):
                             break
                     if mode_value is None:
                         log['mode'] = "Normal"
-    
+
                 # collect `history` by default
                 if not history_configured:
                     logs.append({'name': 'history', 'mode': 'Normal', 'dir': '/var/log/history.d/', 'file': 'history'})
-    
+
                 decode_result[collect_type] = dict(
-                    (key, value) for key, value in conf_value.items() if key == 'list' or key == 'logs')
+                    (key, value) for key, value in list(conf_value.items()) if key == 'list' or key == 'logs')
                 name_array = []
 
         decode_result['decode_error'] = decode_error
@@ -493,7 +498,7 @@ class CollectFromYml(object):
         yml_vrouter = 'collect_log_vrouter.yaml'
         yml_pxeserver = 'collect_log_pxeserver.yaml'
         yml_baremetalv2gateway = 'collect_log_baremetalv2gateway.yaml'
-    
+
         yml_conf_dirs = set()
         logs = combination.strip().split(",")
         for log in logs:
@@ -515,7 +520,7 @@ class CollectFromYml(object):
                 yml_conf_dirs.add(base_conf_path + yml_baremetalv2gateway)
 
         return yml_conf_dirs
-    
+
     def build_collect_cmd(self, log, collect_dir):
         dir_value = log['dir']
         file_value = log['file']
@@ -598,7 +603,7 @@ class CollectFromYml(object):
         query.host = db_hostname
         query.port = db_port
         query.user = db_user
-        query.password = zstackctl.ctl.shell_quote(db_password)
+        query.password = ctl.shell_quote(db_password)
         query.table = 'zstack'
         if type == 'host' or type == 'sharedblock':
             query.sql = "select * from HostVO where managementIp='%s'" % host_ip
@@ -665,12 +670,12 @@ class CollectFromYml(object):
     def generate_tar_ball(self, collect_file_name, run_command_dir):
         info_verbose("Compressing log files ...")
 
-        command = "cd %s && tar --ignore-failed-read -zcf %s.tar.gz %s" % (
+        command = "cd %s && tar -zcf %s.tar.gz %s" % (
             run_command_dir, collect_file_name, collect_file_name)
         if self.delete_source_file is True:
             command = command + " --remove-files"
-            
-        (status, output) = commands.getstatusoutput(command)
+
+        (status, output) = getstatusoutput(command)
         if status != 0:
             error("Generate tarball failed: %s " % output)
 
@@ -685,12 +690,12 @@ class CollectFromYml(object):
         fetch(fetch_arg, host_post_info)
         command = "rm -rf %s../%s-collect-log.tar.gz %s" % (tmp_log_dir, type, tmp_log_dir)
         run_remote_command(command, host_post_info)
-        (status, output) = commands.getstatusoutput(
+        (status, output) = getstatusoutput(
             "cd %s && tar zxf %s-collect-log.tar.gz" % (local_collect_dir, type))
         if status != 0:
             warn("Uncompress %s%s-collect-log.tar.gz meet problem: %s" % (local_collect_dir, type, output))
 
-        commands.getstatusoutput("rm -f %s%s-collect-log.tar.gz" % (local_collect_dir, type))
+        getstatusoutput("rm -f %s%s-collect-log.tar.gz" % (local_collect_dir, type))
 
     def add_collect_thread(self, type, params):
         if "vrouter" in params:
@@ -724,7 +729,7 @@ class CollectFromYml(object):
                 sub2 = sub1[idx2 + len(begin):]
 
                 idx3 = sub2.index(end)
-                return sub2[:idx3].strip('\t\r\n ')
+                return sub2[:idx3].strip()
             except Exception as e:
                 logger.warn("get ha mn ip failed, please check keepalived conf, %s" % e)
                 return "localhost"
@@ -760,7 +765,7 @@ class CollectFromYml(object):
                 else:
                     exec_cmd = self.get_host_sql(host_list['exec']) + ' | awk \'NR>1\''
                     try:
-                        (status, output) = commands.getstatusoutput(exec_cmd)
+                        (status, output) = getstatusoutput(exec_cmd)
                         if status == 0 and output.startswith('ERROR') is not True:
                             host_list = output.split('\n')
                         else:
@@ -787,7 +792,7 @@ class CollectFromYml(object):
                 else:
                     if os.path.exists(log['dir']):
                         command = self.build_collect_cmd(log, None)
-                        (status, output) = commands.getstatusoutput(command)
+                        (status, output) = getstatusoutput(command)
                         if status == 0:
                             key = "%s:%s:%s" % (type, 'localhost', log['name'])
                             self.check_result[key] = output
@@ -815,7 +820,7 @@ class CollectFromYml(object):
                             exec_cmd = '(%s) > %s' % (command, file_path)
                         if exec_type == 'CdAndRun':
                             exec_cmd = 'cd %s && %s' % (dest_log_dir, command)
-                        (status, output) = commands.getstatusoutput(exec_cmd)
+                        (status, output) = getstatusoutput(exec_cmd)
                         if status == 0:
                             self.add_success_count()
                             logger.info(
@@ -824,7 +829,7 @@ class CollectFromYml(object):
                             self.add_fail_count(1, type, get_default_ip(), log['name'], output)
                     else:
                         if log['name'] == "ui-logs":
-                            (status, output) = commands.getstatusoutput(
+                            (status, output) = getstatusoutput(
                                 '''zstack-ctl show_ui_config | awk -F= '/^log/{print $2}' | awk '$1=$1' ''')
                             if status == 0:
                                 warn("ui_logs dir path changes from %s to %s on %s localhost" % (
@@ -833,11 +838,11 @@ class CollectFromYml(object):
 
                         if os.path.exists(log['dir']):
                             command = self.build_collect_cmd(log, dest_log_dir)
-                            (status, output) = commands.getstatusoutput(command)
+                            (status, output) = getstatusoutput(command)
                             if status == 0:
                                 self.add_success_count()
                                 command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % dest_log_dir
-                                (status, output) = commands.getstatusoutput(command)
+                                (status, output) = getstatusoutput(command)
                                 if "The directory is empty" in output:
                                     warn("Didn't find log [%s] on %s localhost" % (log['name'], type))
                                     logger.warn("Didn't find log [%s] on %s" % (log['name'], type))
@@ -858,28 +863,24 @@ class CollectFromYml(object):
             total_collect_time = str(round((end - start).total_seconds(), 1)) + 's'
             self.summary.add_collect_time(type, get_default_ip(), CollectTime(start, end, total_collect_time))
             command = 'test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty' % local_collect_dir
-            (status, output) = commands.getstatusoutput(command)
+            (status, output) = getstatusoutput(command)
             if "The directory is empty" in output:
                 warn("Didn't find log on localhost")
                 linux.rm_dir_force(local_collect_dir)
                 return 0
+
             info_verbose("Successfully collect log from %s localhost !" % type)
 
-    def add_success_count(self):
-        self.suc_lock.acquire()
-        self.summary.success_count += 1
-        self.suc_lock.release()
+    def add_success_count(self, *args):
+        with self.suc_lock:
+            self.summary.success_count += 1
 
     def add_fail_count(self, fail_log_number, log_type, ip, fail_log_name, fail_cause):
-        self.fail_lock.acquire()
-        fail_log_name = fail_log_name.decode('utf-8')
-        fail_cause = fail_cause.decode('utf-8')
-        try:
+        with self.fail_lock:
+            fail_log_name = fail_log_name
+            fail_cause = fail_cause
             self.summary.fail_count += fail_log_number
             self.summary.add_fail(log_type, ip, FailDetail(fail_log_name, fail_cause))
-        except Exception:
-            self.fail_lock.release()
-        self.fail_lock.release()
 
     @ignoreerror
     def get_sharedblock_log(self, host_post_info, tmp_log_dir):
@@ -922,10 +923,8 @@ class CollectFromYml(object):
         run_remote_command(command, host_post_info)
 
     def check_host_reachable_in_queen(self, host_post_info):
-        self.check_lock.acquire()
-        result = check_host_reachable(host_post_info)
-        self.check_lock.release()
-        return result
+        with self.check_lock:
+            return check_host_reachable(host_post_info)
 
     # @ignoreerror
     def get_host_log(self, host_post_info, log_list, collect_dir, type, tmp_path = "/tmp"):
@@ -984,7 +983,7 @@ if [ ! -e %s ]; then exit 2; fi
                             with_match=False,
                             callback_on_succ=[marshal.dumps(check_callback.__code__), id(ck_result), log['name'], type, host_post_info],)
                 pb.run()
-                for k, v in ck_result.items():
+                for k, v in list(ck_result.items()):
                     self.check_result[k] = v
             else:
                 info_verbose("Collecting log from %s %s ..." % (type, host_post_info.host))
@@ -1083,7 +1082,7 @@ test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty
                                 ("%s %s is unreachable!" % (type, host_post_info.host)))
 
     def get_total_size(self, run_command_dir):
-        values = self.check_result.values()
+        values = list(self.check_result.values())
         stat = os.statvfs(run_command_dir)
         total_size = 0
         for num in values:
@@ -1095,12 +1094,12 @@ test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty
                 total_size += float(num[:-1]) * 1024
             elif num.endswith('G'):
                 total_size += float(num[:-1]) * 1024 * 1024
-        total_size = str(round((total_size / 1024 / 1024), 2)) + 'G'
+        total_size = str(round((total_size // 1024 // 1024), 2)) + 'G'
         free_size = str(round((stat.f_frsize * stat.f_bavail) // (2**30), 2)) + 'G'
-        print '%-50s%-50s' % ('TotalSize(exclude exec statements)', colored(total_size, 'green'))
-        print '%-50s%-50s' % ('AvailableDiskCapacity', colored(free_size, 'green'))
+        print('%-50s%-50s' % ('TotalSize(exclude exec statements)', colored(total_size, 'green')))
+        print('%-50s%-50s' % ('AvailableDiskCapacity', colored(free_size, 'green')))
         for key in sorted(self.check_result.keys()):
-            print '%-50s%-50s' % (key, colored(self.check_result[key], 'green'))
+            print('%-50s%-50s' % (key, colored(self.check_result[key], 'green')))
 
     def append_time_param_for_journal(self, log, cmd):
         if log['name'] == 'journalctl-info':
@@ -1122,9 +1121,9 @@ test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty
                         return datetime.datetime(int(year), int(month), int(day)).strftime('%Y-%m-%d:%H:%M:%S')
                     else:
                         hms_array = d_arr[1].split(':')
-                        hour = hms_array[0] if len(hms_array) > 0 is not None else '00'
-                        minute = hms_array[1] if len(hms_array) > 1 is not None else '00'
-                        sec = hms_array[2] if len(hms_array) > 2 is not None else '00'
+                        hour = hms_array[0] if len(hms_array) > 0 else '00'
+                        minute = hms_array[1] if len(hms_array) > 1 else '00'
+                        sec = hms_array[2] if len(hms_array) > 2 else '00'
                         return datetime.datetime(int(year), int(month), int(day), int(hour), int(minute), int(sec)) \
                             .strftime('%Y-%m-%d:%H:%M:%S')
                 else:
@@ -1186,11 +1185,12 @@ test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty
         exec_cmd = self.get_host_sql(
             "select h.managementIp from HostVO h where h.hypervisorType = \"KVM\"") + ' | awk \'NR>1\''
         try:
-            (status, output) = commands.getstatusoutput(exec_cmd)
+            (status, output) = getstatusoutput(exec_cmd)
             if status == 0 and output.startswith('ERROR') is not True:
                 host_list = output.split('\n')
             else:
                 warn("dump thread get host_list fail: %s" % output)
+                return
 
             # When the HostVO table is empty, host_list.split('\n') will make host_list have an empty item
             if len(host_list) == 1 and not host_list[0]:
@@ -1240,7 +1240,7 @@ test "$(ls -A "%s" 2>/dev/null)" || echo The directory is empty
         if decode_result['decode_error'] is not None:
             error_verbose(decode_result['decode_error'])
 
-        for key, value in decode_result.items():
+        for key, value in list(decode_result.items()):
             if key == 'decode_error':
                 continue
             else:

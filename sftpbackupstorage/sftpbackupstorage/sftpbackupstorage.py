@@ -11,7 +11,7 @@ from zstacklib.utils import daemon
 from zstacklib.utils.bash import *
 from zstacklib.utils import secret
 import functools
-import urlparse
+import urllib.parse
 import traceback
 import pprint
 import os.path
@@ -264,7 +264,7 @@ class SftpBackupStorageAgent(object):
         if os.path.isfile(self.storage_path):
             raise Exception('storage path: %s is a file' % self.storage_path)
         if not os.path.exists(self.storage_path):
-            os.makedirs(self.storage_path, 0777)
+            os.makedirs(self.storage_path, 0o777)
         (total, avail) = self.get_capacity()
         logger.debug(http.path_msg(self.CONNECT_PATH, 'connected, [storage path:%s, total capacity: %s bytes, available capacity: %s size]' % (self.storage_path, total, avail)))
         rsp = ConnectResponse()
@@ -276,7 +276,7 @@ class SftpBackupStorageAgent(object):
         image_dir = os.path.dirname(image_install_path)
         md5sum = linux.md5sum(image_install_path)
         size = os.path.getsize(image_install_path)
-        meta = dict(meta_data.__dict__.items())
+        meta = dict(list(meta_data.__dict__.items()))
         meta['size'] = size
         meta['md5sum'] = md5sum
         metapath = os.path.join(image_dir, 'meta_data.json')
@@ -433,12 +433,12 @@ class SftpBackupStorageAgent(object):
 
         path = os.path.dirname(cmd.installPath)
         if not os.path.exists(path):
-            os.makedirs(path, 0777)
+            os.makedirs(path, 0o777)
         image_name = os.path.basename(cmd.installPath)
         install_path = cmd.installPath
 
         timeout = cmd.timeout if cmd.timeout else 7200
-        url = urlparse.urlparse(cmd.url)
+        url = urllib.parse.urlparse(cmd.url)
         if cmd.urlScheme in [self.URL_HTTP, self.URL_HTTPS, self.URL_FTP]:
             try:
                 cmd.url = linux.shellquote(cmd.url)

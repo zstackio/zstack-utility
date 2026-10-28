@@ -326,7 +326,7 @@ def get_disk_block_devices(slave_devices, scsi_info):
     block_devices_list = [None] * len(disks)
 
     slave_multipaths = shell.call("multipath -l | grep -A 1 policy | grep -v policy |awk -F - '{print $2}'| awk '{print $2}'").strip().splitlines()
-    slave_multipaths = filter(None, slave_multipaths)
+    slave_multipaths = list(filter(None, slave_multipaths))
     is_multipath_running_sign = is_multipath_running()
 
     def get_block_device_info(disk, i):
@@ -671,8 +671,8 @@ def config_lvm_filter(files, no_drbd=False, preserve_disks=None):
 
 
 def modify_sanlock_config(key, value):
+    global SANLOCK_CONFIG_FILE_PATH
     if not os.path.exists(SANLOCK_CONFIG_FILE_PATH) and os.path.exists(DEB_SANLOCK_CONFIG_FILE_PATH):
-        global SANLOCK_CONFIG_FILE_PATH
         SANLOCK_CONFIG_FILE_PATH = DEB_SANLOCK_CONFIG_FILE_PATH
     if not os.path.exists(os.path.dirname(SANLOCK_CONFIG_FILE_PATH)):
         linux.mkdir(os.path.dirname(SANLOCK_CONFIG_FILE_PATH))
@@ -1809,7 +1809,7 @@ def get_new_snapshot_name(absolutePath, remove_oldest=True):
         all_snaps = bash.bash_o("lvs -oname -Sorigin=%s --nolocking -t --noheadings | grep _snap_" % name).strip().splitlines()
         if len(all_snaps) == 0:
             return name + "_snap_1"
-        numbers = map(lambda x: int(x.strip().split("_")[-1]), all_snaps)
+        numbers = list(map(lambda x: int(x.strip().split("_")[-1]), all_snaps))
         if len(all_snaps) >= 3 and remove_oldest:
             oldest = name + "_snap_" + str(min(numbers))
             delete_lv("/".join(absolutePath.split("/")[:-1]) + "/" + oldest)
@@ -1904,7 +1904,7 @@ class LvLockOperator(object):
 
     def force_lock(self, target_lock):
         with self.op_lock:
-            self.exists_locks = filter(lambda exist_lock: exist_lock <= target_lock, self.exists_locks)
+            self.exists_locks = list(filter(lambda exist_lock: exist_lock <= target_lock, self.exists_locks))
             _active_lv(self.abs_path, target_lock == LvmlockdLockType.SHARE)
             self.exists_locks.append(target_lock)
             logger.debug("lv [path:%s] force lock to %d, existing locks: %s" % (self.abs_path, target_lock, self.exists_locks))
@@ -2121,7 +2121,7 @@ def list_pvs(vgUuid, timeout=10):
         return None
 
     paths = [s.strip() for s in o.splitlines()]
-    return filter(bool, paths)
+    return list(filter(bool, paths))
 
 def check_pv_status(vgUuid, timeout):
     r, o, e = bash.bash_roe("timeout -s SIGKILL %s pvs --noheading --nolocking -t -Svg_name=%s -oname,missing" % (timeout, vgUuid))
@@ -2218,7 +2218,7 @@ def lvm_check_operation(vgUuid):
         create_lv_from_absolute_path(test_lv, 1024*1024*4)
         delete_lv(test_lv, True)
     except Exception as e:
-        if "already exists" in e.message:
+        if "already exists" in str(e):
             return True
         return False
     finally:
@@ -2404,7 +2404,7 @@ def is_volume_on_pvs(volume_path, pvUuids, includingMissing=True):
         o = bash.bash_o(
             "timeout -s SIGKILL 10 lvs --noheading --nolocking -t %s -odevices" % f).strip().lower()  # type: str
         logger.debug("volume %s is on pv %s" % (volume_path, o))
-        if len(filter(lambda n: o.find(n.lower()) > 0, pv_names)) > 0:
+        if len(list(filter(lambda n: o.find(n.lower()) > 0, pv_names))) > 0:
             logger.debug("lv %s on pv %s(%s), return true" % (volume_path, pvUuids, pv_names))
             return True
         if o == "" and includingMissing:
@@ -2570,7 +2570,7 @@ def get_lv_affinity_sorted_pvs(lv_path, cmd=None):
         return None
 
     locations = get_lv_location(os.path.join("/dev", vg_name, lv_name))
-    rest_pvs = filter(lambda p: p not in locations, total_pvs)
+    rest_pvs = list(filter(lambda p: p not in locations, total_pvs))
     return locations + rest_pvs
 
 

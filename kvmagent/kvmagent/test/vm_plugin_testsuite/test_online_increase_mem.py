@@ -24,7 +24,7 @@ class TestOnlineIncreaseMem(TestCase, vm_utils.VmPluginTestStub):
 
         vm_utils.online_increase_mem(vm_uuid, mem_size)
         xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)
-        m_size = sizeunit.KiloByte.toByte(long(xml.memory.text_))
+        m_size = sizeunit.KiloByte.toByte(int(xml.memory.text_))
         self.assertEqual(mem_size, m_size, 'expect memory size[%s] but get %s' % (mem_size, m_size))
 
         self._destroy_vm(vm_uuid)

@@ -52,7 +52,7 @@ if [ "$@" = "status" ]; then
 else
 	apply_resource_settings
 
-	. /var/lib/zstack/virtualenv/zbsp/bin/activate && python -c "from zbsprimarystorage import zdaemon; zdaemon.main()" $@
+	. /var/lib/zstack/virtualenv/zbsp/bin/activate && python3.11 -c "from zbsprimarystorage import zdaemon; zdaemon.main()" $@
 fi
 
 if [ $? -eq 0 ]; then

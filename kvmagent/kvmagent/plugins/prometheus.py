@@ -1,4 +1,7 @@
 import os.path
+import re
+import shutil
+
 import pyudev  # installed by ansible
 import threading
 import time
@@ -18,6 +21,7 @@ from zstacklib.utils import lvm
 from zstacklib.utils import shell
 from zstacklib.utils import misc
 from zstacklib.utils import thread
+from zstacklib.utils import pycompat
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_host_physicl_nics
 from zstacklib.utils.ip import get_nic_supported_max_speed
@@ -261,7 +265,7 @@ def check_disk_insert_and_remove(disk_list):
         disk_list_record = disk_list
         return
 
-    if cmp(disk_list_record, disk_list) == 0:
+    if disk_list_record == disk_list:
         return
 
     # check disk insert
@@ -482,15 +486,15 @@ def collect_host_capacity_statistics():
 
     df_map = {}
     for df in dfInfo.splitlines():
-        df_size = long(df.split()[0].strip()) * 1024
+        df_size = int(df.split()[0].strip()) * 1024
         df_name = df.split()[-1].strip()
         df_map[df_name] = df_size
 
     for lbk in lbkInfo.splitlines():
         lbk_name = lbk.split()[0].strip()
-        lbk_size = long(lbk.split()[-1].strip())
+        lbk_size = int(lbk.split()[-1].strip())
 
-        lbk_used_size = 0L
+        lbk_used_size = 0
         ds = bash_o("lsblk -lb /dev/%s -omountpoint |awk '{if(length($1)>0) print $1}' | tail -n +2" % lbk_name)
         for d in ds.splitlines():
             if df_map.get(d.strip(), None) != None:
@@ -777,7 +781,7 @@ def collect_mini_raid_state():
             slot_number = info.strip().split(" ")[-1]
         elif "DiskGroup" in info:
             kvs = info.replace("Drive's position: ", "").split(",")
-            disk_group = filter(lambda x: "DiskGroup" in x, kvs)[0]
+            disk_group = list(filter(lambda x: "DiskGroup" in x, kvs))[0]
             disk_group = disk_group.split(" ")[-1]
         elif "Drive Temperature" in info:
             temp = info.split(":")[1].split("C")[0]
@@ -1177,7 +1181,7 @@ def collect_vm_statistics():
 
     n = 16  # procps/top has '#define MONPIDMAX  20'
     for i in range(0, len(pid_vm_map.keys()), n):
-        collect(pid_vm_map.keys()[i:i + n])
+        collect(list(pid_vm_map.keys())[i:i + n])
 
     return metrics.values()
 
@@ -1203,7 +1207,7 @@ def collect_vm_pvpanic_enable_in_domain_xml():
         vm_uuid = find_vm_uuid_from_vm_qemu_process(process)
         r = ""
         try:
-            r = filter(lambda word: word == 'pvpanic,ioport=1285', process.cmdline())
+            r = list(filter(lambda word: word == 'pvpanic,ioport=1285', process.cmdline()))
         except psutil.NoSuchProcess:
             pass
 
@@ -1760,6 +1764,9 @@ class PrometheusPlugin(kvmagent.KvmAgent):
     def start_prometheus_exporter(self, req):
         @in_bash
         def start_collectd(cmd):
+            if not shutil.which('collectdmon'):
+                logger.warn('collectd is unavailable, skip collectd startup')
+                return
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
             ingore_block_device = "/:sd[c-e]/" if kvmagent.host_arch in ["mips64el", "aarch64", "loongarch64"] else "//"
 
@@ -2049,7 +2056,7 @@ modules:
                             if Collector.check(vl) is False:
                                 return False
                     if isinstance(v, dict):
-                        for vk in v.iterkeys():
+                        for vk in pycompat.iterkeys(v):
                             if vk == "timestamp" or vk == "exemplar":
                                 continue
                             if Collector.check(v[vk]) is False:
@@ -2093,12 +2100,12 @@ modules:
                             time.sleep(0.5)
                             break
 
-                for k in collector_dict.iterkeys():
+                for k in pycompat.iterkeys(collector_dict):
                     if collector_dict[k].is_alive():
                         logger.warn("It seems that the collector [%s] has not been completed yet,"
                                     " temporarily use the last calculation result." % k)
 
-                for v in latest_collect_result.itervalues():
+                for v in pycompat.itervalues(latest_collect_result):
                     ret.extend(v)
                 Collector.__store_cache__(collectStartTime, ret)
                 return ret

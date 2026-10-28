@@ -556,7 +556,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         if cmd.storageNetworkCidr is not None:
             nics = linux.get_nics_by_cidr(cmd.storageNetworkCidr)
             if len(nics) != 0:
-                rsp.storageNetworkAddress = nics[0].values()[0]
+                rsp.storageNetworkAddress = list(nics[0].values())[0]
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.vgLvmUuid = lvm.get_vg_lvm_uuid(cmd.vgUuid)
         rsp.hostUuid = cmd.hostUuid
@@ -884,7 +884,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             linux.rm_dir_force(dst_dir)
 
         if not os.path.exists(dst_dir):
-            os.makedirs(dst_dir, 0755)
+            os.makedirs(dst_dir, 0o755)
         linux.upload_chain_to_filesystem(MiniFileConverter(), vol_path, dst_dir, overwrite=not cmd.skipIfExisting)
         rsp.totalSize = linux.get_filesystem_folder_size(dst_dir)
         return jsonobject.dumps(rsp)

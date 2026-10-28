@@ -62,7 +62,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
         super(PhysicalNicMonitor, self).__init__()
         self.state = False
 
-    def configure(self, config):
+    def configure(self, config=None):
         self.config = config
 
     def start(self):
@@ -127,7 +127,7 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
 
     @lock.lock('alarms_to_send')
     def send_alarms(self):
-        for nic, events in self.alarms_to_send.items():
+        for nic, events in list(self.alarms_to_send.items()):
             if len(events) == 0:
                 continue
 

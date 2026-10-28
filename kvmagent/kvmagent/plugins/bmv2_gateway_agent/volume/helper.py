@@ -1,7 +1,10 @@
 # coding=utf-8
 import os
 import socket
-import commands
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 
 from zstacklib.utils import log
 from zstacklib.utils import shell

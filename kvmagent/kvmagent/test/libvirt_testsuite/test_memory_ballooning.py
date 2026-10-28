@@ -1,7 +1,6 @@
 from kvmagent.plugins import vm_plugin
 from kvmagent.test.utils import vm_utils, network_utils, pytest_utils
 from kvmagent.test.utils.stub import *
-from zstacklib.test.utils import misc
 from zstacklib.utils import linux
 from zstacklib.utils import bash
 from unittest import TestCase
@@ -30,7 +29,7 @@ class TestMemoryBallooning(TestCase, vm_utils.VmPluginTestStub):
         """
         network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
+    @env.test_for(handlers=[
         vm_plugin.VmPlugin.KVM_START_VM_PATH
     ])
     @pytest_utils.ztest_decorater
@@ -68,7 +67,7 @@ class TestMemoryBallooning(TestCase, vm_utils.VmPluginTestStub):
 
         vm_utils.create_vm(vm)
 
-        TestMemoryBallooning.vm_original_memory_in_mb = vm.memory / 1024 / 1024
+        TestMemoryBallooning.vm_original_memory_in_mb = vm.memory // 1024 // 1024
         TestMemoryBallooning.vm_uuid = vm.vmInstanceUuid
 
         pid = linux.find_vm_pid_by_uuid(vm.vmInstanceUuid)
@@ -87,11 +86,11 @@ class TestMemoryBallooning(TestCase, vm_utils.VmPluginTestStub):
         """
         r, _ = bash.bash_ro("virsh setmem --domain %s --size %dM --current"
                              % (TestMemoryBallooning.vm_uuid,
-                                 TestMemoryBallooning.vm_original_memory_in_mb / 2))
+                                 TestMemoryBallooning.vm_original_memory_in_mb // 2))
 
         self.assertEqual(r, 0, "virsh setmem shrink failed")
-        self.check_used_memory(TestMemoryBallooning.vm_original_memory_in_mb / 2)
-        self.check_dommemstat(TestMemoryBallooning.vm_original_memory_in_mb / 2)
+        self.check_used_memory(TestMemoryBallooning.vm_original_memory_in_mb // 2)
+        self.check_dommemstat(TestMemoryBallooning.vm_original_memory_in_mb // 2)
 
     @bash.in_bash
     def increase_libvirt_guest_memory(self):

@@ -45,7 +45,7 @@ class ParsableErrorMiddleware(object):
         if (state['status_code'] // 100) not in (2, 3):
             app_iter = [i.decode('utf-8') for i in app_iter]
             body = [jsonutils.dumps({'error_message': '\n'.join(app_iter)})]
-            body = [i.encode('utf-8') for i in body]
+            body = [i.encode('utf-8') if type(i) == bytes else i for i in body]
             state['headers'].append(('Content-Type', 'application/json'))
             state['headers'].append(('Content-Length', str(len(body[0]))))
         else:

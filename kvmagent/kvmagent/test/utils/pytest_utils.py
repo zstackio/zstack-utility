@@ -39,8 +39,8 @@ class PytestExtension(object):
             }
         }
 
-        for k, v in modules_to_mock.items():
-            for m, r in v.items():
+        for k, v in list(modules_to_mock.items()):
+            for m, r in list(v.items()):
                 p = mock.patch.object(k, m, return_value=r)
                 p.start()
 

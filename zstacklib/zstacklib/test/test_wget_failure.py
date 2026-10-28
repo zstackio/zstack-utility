@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import unittest
 from zstacklib.utils import linux
 
@@ -14,7 +15,7 @@ class Test(unittest.TestCase):
     @unittest.expectedFailure
     def testName(self):
         ret = linux.wget("http://nothing", "/tmp", callback=self.callback)
-        print("ret: %s" % ret)
+        print(("ret: %s" % ret))
 
 
 if __name__ == "__main__":

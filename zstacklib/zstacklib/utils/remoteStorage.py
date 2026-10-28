@@ -1,7 +1,6 @@
-import os
-from zstacklib.utils import shell
 
 
+from __future__ import annotations
 class RemoteStorage(object):
     def __init__(self, mount_path, volume_mounted_device):
         self.volume_mounted_device = volume_mounted_device

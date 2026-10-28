@@ -28,7 +28,7 @@ class AgentVersionItem(object):
     def calculate_md5(self):
         if not os.path.exists(self.filepath):
             return
-        with open(self.filepath, 'r') as f:
+        with open(self.filepath, 'rb') as f:
             # file size < 15M
             m = hashlib.md5(f.read())
             self.md5 = m.hexdigest()

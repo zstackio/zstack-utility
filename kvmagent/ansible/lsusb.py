@@ -99,7 +99,7 @@ def parse_usb_ids():
 	mode = 0
 	strg = ""
 	cstrg = ""
-	for ln in file(usbids, "r").readlines():
+	for ln in open(usbids, "r").readlines():
 		if ln[0] == '#':
 			continue
 		ln = ln.rstrip('\n')
@@ -412,7 +412,7 @@ def display_diff(lst1, lst2, fmtstr, args):
 	"Compare lists (same length!) and display differences"
 	for idx in range(0, len(lst1)):
 		if lst1[idx] != lst2[idx]:
-			print "Warning: " + fmtstr % args(lst2[idx])
+			print("Warning: " + fmtstr % args(lst2[idx]))
 
 def fix_usbvend():
 	"Sort USB vendor list and (optionally) display diffs"
@@ -447,16 +447,16 @@ def fix_usbclass():
 
 def usage():
 	"Displays usage information"
-	print "Usage: lsusb.py [options]"
-	print "Options:"
-	print " -h display this help"
-	print " -i display interface information"
-	print " -I display interface information, even for hubs"
-	print " -u suppress empty hubs"
-	print " -U suppress all hubs"
-	print " -c use colors"
-	print " -w display warning if usb.ids is not sorted correctly"
-	print " -f FILE override filename for /usr/share/usb.ids"
+	print("Usage: lsusb.py [options]")
+	print("Options:")
+	print(" -h display this help")
+	print(" -i display interface information")
+	print(" -I display interface information, even for hubs")
+	print(" -u suppress empty hubs")
+	print(" -U suppress all hubs")
+	print(" -c use colors")
+	print(" -w display warning if usb.ids is not sorted correctly")
+	print(" -f FILE override filename for /usr/share/usb.ids")
 	return 2
 
 def read_usb():
@@ -475,8 +475,8 @@ def main(argv):
 	global showint, showhubint, noemptyhub, nohub, warnsort, cols, usbids
 	try:
 		(optlist, args) = getopt.gnu_getopt(argv[1:], "hiIuUwcf:", ("help",))
-	except getopt.GetoptError, exc:
-		print "Error:", exc
+	except getopt.GetoptError as exc:
+		print("Error: %s" % exc)
 		sys.exit(usage())
 	for opt in optlist:
 		if opt[0] == "-h" or opt[0] == "--help":
@@ -506,7 +506,7 @@ def main(argv):
 			usbids = opt[1]
 			continue
 	if len(args) > 0:
-		print "Error: excess args %s ..." % args[0]
+		print("Error: excess args %s ..." % args[0])
 		sys.exit(usage())
 
 	try:
@@ -515,8 +515,8 @@ def main(argv):
 		fix_usbprod()
 		fix_usbclass()
 	except:
-		print >>sys.stderr, " WARNING: Failure to read usb.ids"
-		print >>sys.stderr, sys.exc_info()
+		sys.stderr.write(" WARNING: Failure to read usb.ids" + "\n")
+		sys.stderr.write(str(sys.exc_info()) + "\n")
 	read_usb()
 
 # Entry point

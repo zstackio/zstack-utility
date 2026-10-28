@@ -6,9 +6,9 @@ import re
 import os.path
 import socket
 
-import linux
-import bash
-import lock
+from zstacklib.utils import linux
+from zstacklib.utils import bash
+from zstacklib.utils import lock
 import threading
 
 
@@ -30,7 +30,8 @@ class IpAddress(object):
     def __cmp__(self, ip2):
         index = 0
         while index < 4:
-            cmp_ret = cmp(self.ips[index], ip2.ips[index])
+            # 元素为 int(0-255)，数值全序，语义等价于 py2 的 cmp()
+            cmp_ret = (self.ips[index] > ip2.ips[index]) - (self.ips[index] < ip2.ips[index])
             if cmp_ret > 0:
                 return 1
             elif cmp_ret < 0:

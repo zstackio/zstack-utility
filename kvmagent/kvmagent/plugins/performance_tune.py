@@ -1,11 +1,8 @@
-import os.path
 import platform
 
-from zstacklib.utils import jsonobject
 from kvmagent import kvmagent
 from zstacklib.utils import log
 from zstacklib.utils import shell
-from zstacklib.utils import http
 from zstacklib.utils import misc
 
 logger = log.get_logger(__name__)

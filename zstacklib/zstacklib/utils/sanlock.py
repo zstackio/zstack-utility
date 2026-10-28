@@ -183,14 +183,14 @@ def check_stuck_vglk_and_gllk():
     # 1. clear the vglk/gllk held by the dead host
     # 2. check stuck vglk/gllk
     locks = get_vglks() + get_gllks()
-    logger.debug("start checking all vgs[%s] to see if the VGLK/GLLK on disk is normal" % map(lambda v: v.vg_name, locks))
+    logger.debug("start checking all vgs[%s] to see if the VGLK/GLLK on disk is normal" % list(map(lambda v: v.vg_name, locks)))
 
-    abnormal_lcks = filter(lambda v: v.abnormal_held(), locks)
+    abnormal_lcks = list(filter(lambda v: v.abnormal_held(), locks))
     if len(abnormal_lcks) == 0:
         logger.debug("no abnormal vglk or gllk found")
         return
 
-    logger.debug("found possible dirty vglk/gllk on disk: %s" % map(lambda v: v.vg_name, abnormal_lcks))
+    logger.debug("found possible dirty vglk/gllk on disk: %s" % list(map(lambda v: v.vg_name, abnormal_lcks)))
     results = {}
     def check_stuck_lock():
         @thread.AsyncThread

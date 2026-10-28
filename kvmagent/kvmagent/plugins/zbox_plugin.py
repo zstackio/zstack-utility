@@ -191,14 +191,14 @@ class SshfsRemoteStorage(object):
 
     def __enter__(self):
         if not os.path.exists(self.info.zboxPath):
-            os.makedirs(self.info.zboxPath, 0755)
+            os.makedirs(self.info.zboxPath, 0o755)
 
         vm = vm_plugin.get_vm_by_uuid(self.vm_uuid)
         linux.sshfs_mount_with_vm_xml(vm.domain_xmlobject, self.info.username, self.info.hostname, self.info.sshPort,
                                           self.info.password, self.info.zboxPath, self.info.zboxPath)
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        for i in xrange(6):
+        for i in range(6):
             if linux.fumount(self.info.zboxPath, 5) == 0:
                 break
             else:
@@ -245,7 +245,7 @@ class ZBoxPlugin(kvmagent.KvmAgent):
 
         if not os.path.exists(cmd.installPath):
             logger.debug("init backup[uuid:%s] on zbox[uuid:%s]" % (cmd.backupUuid, cmd.zboxUuid))
-            os.makedirs(cmd.installPath, 0755)
+            os.makedirs(cmd.installPath, 0o755)
             linux.write_file(os.path.join(cmd.installPath, "name"), cmd.name, create_if_not_exist=True)
 
         return jsonobject.dumps(rsp)
@@ -315,8 +315,8 @@ class ZBoxPlugin(kvmagent.KvmAgent):
                 rsp.infos.append(info)
                 continue
 
-            ejected_zbox = filter(lambda z: z.mountPath == mount_path and busnum == z.busNum and devnum == z.devNum,
-                                  cmd.ignoreZBoxes)
+            ejected_zbox = list(filter(lambda z: z.mountPath == mount_path and busnum == z.busNum and devnum == z.devNum,
+                                  cmd.ignoreZBoxes))
             if ejected_zbox:
                 info.uuid = ejected_zbox[0].uuid
                 info.name = ejected_zbox[0].name

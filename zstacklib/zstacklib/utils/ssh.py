@@ -5,7 +5,7 @@
 
 import paramiko
 import os.path
-import log
+from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
 

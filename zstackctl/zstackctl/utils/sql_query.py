@@ -1,4 +1,4 @@
-from shell import ShellCmd
+from .shell import ShellCmd
 
 
 class CtlError(Exception):
@@ -30,7 +30,7 @@ class MySqlCommandLineQuery(object):
             cmd = '''mysql -u %s --host %s --port %s -t %s -e "%s"''' % (self.user, self.host, self.port, self.table, sql)
 
         output = shell(cmd)
-        output = output.strip(' \t\n\r')
+        output = output.strip()
         ret = []
         if not output:
             return ret

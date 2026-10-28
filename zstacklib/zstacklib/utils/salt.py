@@ -3,12 +3,13 @@
 @author: YYK
 '''
 
-import shell
-import ssh
+from zstacklib.utils import shell
+from zstacklib.utils import ssh
 import os.path
-import log
+from zstacklib.utils import log
 import subprocess
-import lock
+from zstacklib.utils import lock
+from zstacklib.utils import pycompat
 import time
 import json
 
@@ -21,11 +22,11 @@ def prepare_salt_state(state_path, salt_state_path='/srv/salt'):
     try:
         subprocess.call(['salt', '--version'])
     except Exception as e:
-        print "Execute `salt --version` failed. Probably there isn't salt installed"
+        print("Execute `salt --version` failed. Probably there isn't salt installed")
         raise e
 
     if not os.path.exists(salt_state_path):
-        os.makedirs(salt_state_path, 0755)
+        os.makedirs(salt_state_path, 0o755)
 
     shell.call('rm -rf %s' % os.path.join(salt_state_path, os.path.basename(state_path)))
     shell.call('cp -r %s %s' % (state_path, salt_state_path))
@@ -39,7 +40,7 @@ def is_salt_failed(salt_json_output):
         for value in json_data.values():
             if isinstance(value, dict):
                 for item in value.values():
-                    if item.has_key('result'):
+                    if pycompat.has_key(item, 'result'):
                         if item['result'] == False:
                             return True
             elif value == False:
@@ -63,11 +64,11 @@ def execute_salt_state(hostname, username, password, state_name, master_name, ma
             ssh.execute('which salt-minion; [ $? -ne 0 ] && curl -L http://bootstrap.saltstack.org | sudo sh ;sed -i "^id/d" /etc/salt/minion; sed -i "^master/d" /etc/salt/minion; echo "id: %s" >>/etc/salt/minion; echo "master: %s" >> /etc/salt/minion; rm -f /etc/salt/pki/minion/minion_master.pub ; service salt-minion restart' % (machine_id, master_name), hostname, username, password, exception_if_error=False)
             wait_for_salt_minion_daemon(machine_id)
 
-        print 'salt %s %s' % (machine_id, state_name)
+        print('salt %s %s' % (machine_id, state_name))
         output = shell.call('salt --out=json %s %s' % (machine_id, state_name))
         if not is_salt_failed(output):
-            print '%s' % output
-            print "salt has deployed %s" % state_name
+            print('%s' % output)
+            print("salt has deployed %s" % state_name)
         else:
             raise SaltError('salt execution failure: %s' % output)
 
@@ -84,9 +85,9 @@ def wait_for_salt_minion_daemon(salt_minion_id, timeout_times=10, exception=True
             return True
         time.sleep(1)
         timeout_times -= 1
-        print 'Wait for salt minion: %s registration to master' % salt_minion_id
+        print('Wait for salt minion: %s registration to master' % salt_minion_id)
     else:
-        print 'Command fail: `salt %s test.ping`' % salt_minion_id
+        print('Command fail: `salt %s test.ping`' % salt_minion_id)
         if exception:
             raise SaltError('Salt minion daemon: %s failed to register to master, after trying %s times.' % (salt_minion_id, timeout_times))
         else:

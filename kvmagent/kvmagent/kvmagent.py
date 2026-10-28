@@ -10,16 +10,29 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import daemon
 from zstacklib.utils import linux
 from zstacklib.utils import qemu
+from zstacklib.utils import pycompat
 import os.path
 import traceback
 import pprint
 import functools
 import sys
-import commands
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
+
 import platform
 
-reload(sys)
-sys.setdefaultencoding('utf-8')
+if sys.version_info[0] == 2:
+    reload(sys)                                   # noqa: F821  (py2 内建)
+    sys.setdefaultencoding('utf-8')               # noqa: F821
+else:
+    import io
+    # py3 无隐式编码开关；显式设定标准流编码，替代 py2 的全局默认编码
+    for _stream_name in ('stdout', 'stderr'):
+        _s = getattr(sys, _stream_name, None)
+        if _s is not None and hasattr(_s, 'reconfigure'):
+            _s.reconfigure(encoding='utf-8')
 
 logger = log.get_logger(__name__)
 
@@ -77,7 +90,8 @@ def get_host_yum_release():
     return commands.getoutput("rpm -q zstack-release 2>/dev/null | awk -F'-' '{print $3}'").strip()
 
 def get_host_os_type():
-    dist, version, _ = platform.dist()
+    os_info = linux.get_freedesktop_os_release()
+    dist, version = os_info['ID'], re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
     if dist.lower() in linux.DIST_WITH_RPM_DEB:
         dist = "%s%s" % (dist.lower(), version)
     is_debian = any(map(lambda x: x in dist.lower(), linux.DEB_BASED_OS))
@@ -90,7 +104,7 @@ def get_qemu_path():
         try:
             _qemu_path = qemu.get_path()
         except Exception as e:
-            raise KvmError(e.message)
+            raise KvmError(str(e))
 
     return _qemu_path
         
@@ -112,7 +126,7 @@ class KvmRESTService(object):
         self.plugin_rgty = plugin.PluginRegistry(self.plugin_path)
     
     def _get_config(self, name):
-        return None if not self.config.has_key(name) else self.config[name]
+        return None if not pycompat.has_key(self.config, name) else self.config[name]
     
     def start(self, in_thread=True):
         config = {}

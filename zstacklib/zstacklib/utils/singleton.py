@@ -1,3 +1,4 @@
+from __future__ import annotations
 def singleton(cls):
     instances = {}
     def wrapper(*args, **kwargs):

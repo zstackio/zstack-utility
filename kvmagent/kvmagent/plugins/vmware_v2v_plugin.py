@@ -3,7 +3,10 @@
 
 import os
 import json
-import commands
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 import platform
 import string
 import re
@@ -97,7 +100,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        os_dist, os_version, _ = platform.dist()
+        from zstacklib.utils import linux
+        os_info = linux.get_freedesktop_os_release()
+        os_dist, os_version = os_info['ID'], re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
+
         versions = os_version.split('.')
         # check if os is centos 7.2
         if len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
@@ -125,10 +131,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         path = "/var/lib/zstack/v2v"
         if not os.path.exists(path):
-            os.makedirs(path, 0775)
+            os.makedirs(path, 0o775)
 
         if not os.path.exists(cmd.storagePath):
-            os.makedirs(cmd.storagePath, 0775)
+            os.makedirs(cmd.storagePath, 0o775)
 
         def get_dep_version_from_version_file(version_file):
             if not os.path.exists(version_file):
@@ -589,14 +595,14 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
             rsp.rootVolumeInfo['downloadTime'] = int(float(times[1]) - float(times[0]))
             times = times[1:]
-            for i in xrange(0, len(rsp.dataVolumeInfos)):
+            for i in range(0, len(rsp.dataVolumeInfos)):
                 if i + 1 < len(times):
                     rsp.dataVolumeInfos[i]["downloadTime"] = int(float(times[i + 1]) - float(times[i]))
 
         try:
             collect_time_cost()
         except Exception as e:
-            logger.debug("Failed to collect time cost, because %s" % e.message)
+            logger.debug("Failed to collect time cost, because %s" % str(e))
 
         return jsonobject.dumps(rsp)
 
@@ -608,7 +614,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     def _get_qcow2_sizes(self, path):
         cmd = "%s --output=json '%s'" % (qemu_img.subcmd('info'), path)
         _, output = commands.getstatusoutput(cmd)
-        return long(json.loads(output)['actual-size']), long(json.loads(output)['virtual-size'])
+        return int(json.loads(output)['actual-size']), int(json.loads(output)['virtual-size'])
 
     def clean_dnat(self, host_name, convert_ip):
         vmware_host_ip = linux.get_host_by_name(host_name)

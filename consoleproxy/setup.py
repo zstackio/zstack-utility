@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '5.2.0'
+version = '5.3.0'
 
 setup(name='consoleproxy',
       version=version,
@@ -18,7 +18,7 @@ setup(name='consoleproxy',
       include_package_data=True,
       zip_safe=True,
       install_requires=[
-        'websockify',
+        'websockify', # TODO upgrade
       ],
       entry_points="""
       # -*- Entry points: -*-

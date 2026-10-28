@@ -18,6 +18,7 @@ from zstacklib.utils import lock
 from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils import http
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 
@@ -1072,11 +1073,11 @@ class OvsBaseCtl(object):
                 if d['bond']['name'] == bondName:
                     dpdkBond.name = d['bond']['name']
                     dpdkBond.mode = d['bond']['mode']
-                    if d['bond'].has_key('lacp'):
+                    if pycompat.has_key(d['bond'], 'lacp'):
                         dpdkBond.lacp = d['bond']['lacp']
-                    if d['bond'].has_key('options'):
+                    if pycompat.has_key(d['bond'], 'options'):
                         dpdkBond.options = d['bond']['options']
-                    if d['bond'].has_key('policy'):
+                    if pycompat.has_key(d['bond'], 'policy'):
                         dpdkBond.policy = d['bond']['policy']
                     dpdkBond.id = d['bond']['id']
                     for i in d['bond']['slaves']:
@@ -1914,7 +1915,7 @@ class OvsDpdkCtl(OvsBaseCtl):
                     continue
     
                 if "slave" == item[0:5]:
-                    if not itemDict.has_key("slaves"):
+                    if not pycompat.has_key(itemDict, "slaves"):
                         slaveList = []
                     slaveDict = {}
                     slaveDict["status"] = item.split(":")[1][1:]
@@ -2625,11 +2626,11 @@ def getAllBondFromFile():
             dpdkBond = Bond()
             dpdkBond.name = d['bond']['name']
             dpdkBond.mode = d['bond']['mode']
-            if d['bond'].has_key('lacp'):
+            if pycompat.has_key(d['bond'], 'lacp'):
                 dpdkBond.lacp = d['bond']['lacp']
-            if d['bond'].has_key('options'):
+            if pycompat.has_key(d['bond'], 'options'):
                 dpdkBond.options = d['bond']['options']
-            if d['bond'].has_key('policy'):
+            if pycompat.has_key(d['bond'], 'policy'):
                 dpdkBond.policy = d['bond']['policy']
             dpdkBond.id = d['bond']['id']
             for i in d['bond']['slaves']:

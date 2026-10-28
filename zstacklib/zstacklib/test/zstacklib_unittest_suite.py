@@ -1,3 +1,4 @@
+from __future__ import annotations
 from kvmagent.test.utils import pytest_utils
 from zstacklib.test.utils import env
 from zstacklib.utils import bash

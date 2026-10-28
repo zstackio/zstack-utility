@@ -20,6 +20,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils.misc import IgnoreError
 from zstacklib.utils.plugin import completetask
 from zstacklib.utils.report import *
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 
@@ -344,7 +345,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                         rsync_exclude_files.add(filtPath)
                         rsync_excludes = rsync_excludes + " --exclude=%s" % filtPath
 
-            total_size = long(shell.call("rsync -anv %s/ %s %s | grep  -o -P 'total size is \K[\d|,]+'" %
+            total_size = int(shell.call("rsync -anv %s/ %s %s | grep  -o -P 'total size is \K[\d|,]+'" %
                                         (cmd.srcFolderPath, dst_folder_path, rsync_excludes)).replace(",", ""))
 
             src_qcow2s = t_shell.call("find %s -name '*.qcow2'" % cmd.srcFolderPath).strip().splitlines()
@@ -358,7 +359,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                     linux.mkdir(dir_name)
 
                 _, src_qcow2_size = linux.qcow2_size_and_actual_size(src_qcow2)
-                src_qcow2_size = long(src_qcow2_size)
+                src_qcow2_size = int(src_qcow2_size)
                 start = get_exact_percent(float(migrated_size) / total_size * 100, parent_stage)
                 end = get_exact_percent(float(migrated_size + src_qcow2_size) / total_size * 100, parent_stage)
 
@@ -376,7 +377,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                                                        task_name="MigrateVolumes")
 
                 _, dst_qcow2_size = linux.qcow2_size_and_actual_size(dst_qcow2)
-                rsp.dstFilesActualSize.update({dst_qcow2 : long(dst_qcow2_size)})
+                rsp.dstFilesActualSize.update({dst_qcow2 : int(dst_qcow2_size)})
 
                 migrated_size += src_qcow2_size
             if cmd.independentPath:
@@ -701,7 +702,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         install_path = cmd.imagePath
         dirname = os.path.dirname(cmd.volumePath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
         linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
@@ -871,7 +872,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         try:
             dirname = os.path.dirname(cmd.installPath)
             if not os.path.exists(dirname):
-                os.makedirs(dirname, 0755)
+                os.makedirs(dirname, 0o755)
 
             t_shell = traceable_shell.get_shell(cmd)
             linux.create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
@@ -958,7 +959,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def do_create_volume_with_backing(backing_path, vol_path, cmd):
         dirname = os.path.dirname(vol_path)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
 
@@ -1030,7 +1031,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 linux.link(backing_file, dst_file)
                 linux.qcow2_rebase_no_check(dst_file, f)
 
-        for src_file, dst_file in src_dst_dict.iteritems():
+        for src_file, dst_file in pycompat.iteritems(src_dst_dict):
             linux.link(src_file, dst_file)
 
     @kvmagent.replyerror

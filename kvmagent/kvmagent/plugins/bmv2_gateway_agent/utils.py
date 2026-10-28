@@ -122,7 +122,7 @@ class NamedLock(object):
         logger.debug('Acquire lock {name} in thread {thread}'.format(
             name=self.name, thread=threading.current_thread().ident))
 
-    def __exit__(self, type, value, trackback):
+    def __exit__(self, t, value, trackback):
         try:
             self.lock.release()
         except Exception as e:

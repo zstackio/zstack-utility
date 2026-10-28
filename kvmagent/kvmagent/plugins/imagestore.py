@@ -11,6 +11,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import bash_progress_1, in_bash, bash_r, bash_roe
 from zstacklib.utils.report import *
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 HOST_ARCH = platform.machine()
@@ -154,7 +155,7 @@ class ImageStoreClient(object):
                 for line in fd.readlines():
                     infosMap = {}
                     j = jsonobject.loads(line.strip())
-                    for key, val in j.__dict__.iteritems():
+                    for key, val in pycompat.iteritems(j.__dict__):
                         infosMap[key] = val
                     infosMaps.append(infosMap)
                     maxLatencies.append(max(infosMap.values()))

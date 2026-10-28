@@ -6,7 +6,7 @@ import libvirt
 import libvirt_qemu
 import xml.etree.ElementTree as ET
 
-import log
+from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
 
@@ -156,7 +156,7 @@ class VmQga(object):
             ret = libvirt_qemu.qemuAgentCommand(self.domain, cmd,
                                                 timeout, 0)
         except libvirt.libvirtError as e:
-            message = 'exec qga command[{}] args[{}] error: {}'.format(cmd, args, e.message)
+            message = 'exec qga command[{}] args[{}] error: {}'.format(cmd, args, str(e))
             raise Exception(message)
 
         try:
@@ -654,7 +654,7 @@ class VmQga(object):
         try:
             handle = self.call_qga_command("guest-file-open", args={"path": path, "mode": 'r'})
         except Exception as e:
-            if 'No such file' in e.message and not not_exist_exception:
+            if 'No such file' in str(e) and not not_exist_exception:
                 return 0, None
             raise e
 

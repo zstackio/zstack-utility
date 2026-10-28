@@ -279,10 +279,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def get_slave_path(self, multipath_path):
         def get_wwids(dev_name):
             symlinks = shell.call("udevadm info -q symlink -n %s" % dev_name).strip().split()
-            wwids = map(lambda p: os.path.basename(p), filter(lambda s: 'by-id' in s, symlinks))
+            wwids = list(map(lambda p: os.path.basename(p), filter(lambda s: 'by-id' in s, symlinks)))
             wwids.sort()
 
-            stable_wwids = filter(lambda w: "lvm-pv" not in w, wwids)
+            stable_wwids = list(filter(lambda w: "lvm-pv" not in w, wwids))
             return stable_wwids if stable_wwids else wwids
 
         dm = os.path.basename(os.path.realpath(multipath_path))
@@ -421,7 +421,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             except Exception as e:
                 current_hostname = linux.get_hostname()
                 rsp.error = "login iscsi server %s:%s on host %s failed, because %s" % \
-                            (cmd.iscsiServerIp, cmd.iscsiServerPort, current_hostname, e.message)
+                            (cmd.iscsiServerIp, cmd.iscsiServerPort, current_hostname, str(e))
                 rsp.success = False
                 return jsonobject.dumps(rsp)
 
@@ -863,7 +863,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if r != 0:
             return result
         in_entry = False
-        allocated_slots = map(lambda x: x.slotNumber, normal_devices)
+        allocated_slots = list(map(lambda x: x.slotNumber, normal_devices))
         for line in o.splitlines():
             if in_entry is True and "mb" not in line.lower():
                 in_entry = False
@@ -1059,7 +1059,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return []
 
         fc_targets.sort()
-        scsi_infos = filter(lambda s: "/dev/" in s, lvm.run_lsscsi_i())
+        scsi_infos = list(filter(lambda s: "/dev/" in s, lvm.run_lsscsi_i()))
         if not scsi_infos:
             logger.debug("not find any usable fc disks")
             return []
@@ -1269,7 +1269,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if not any_nqn_connected:
             raise Exception("unable connect any nqn on server[%s:%s, transport:%s], error: %s" % (cmd.ip, cmd.port, cmd.transport, str(error)))
 
-        return filter(lambda l: l.nqn in discovered_nqns and set(l.wwids).intersection(wwids), self.get_nvme_luns(rescan=True))
+        return list(filter(lambda l: l.nqn in discovered_nqns and set(l.wwids).intersection(wwids), self.get_nvme_luns(rescan=True)))
 
     @bash.in_bash
     def disconnect_nvme_controller(self, cmd):

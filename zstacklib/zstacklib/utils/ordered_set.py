@@ -1,6 +1,9 @@
-import collections
+try:
+    import collections.abc as _collections_abc
+except ImportError:
+    import collections as _collections_abc
 
-class OrderedSet(collections.MutableSet):
+class OrderedSet(_collections_abc.MutableSet):
 
     def __init__(self, iterable=None):
         self.end = end = [] 

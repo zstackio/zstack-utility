@@ -8,12 +8,16 @@ from zstacklib.utils import lvm
 from zstacklib.utils import thread
 from zstacklib.utils import drbd
 from zstacklib.utils import qemu_img
+from zstacklib.utils import pycompat
 from zstacklib.utils.bash import *
 import os.path
 import time
 import traceback
 import threading
-import commands
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 
 logger = log.get_logger(__name__)
 
@@ -85,7 +89,7 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                     continue
                 elif "DiskGroup" in info:
                     kvs = info.replace("Drive's position: ", "").split(",")
-                    disk_group = filter(lambda x: "DiskGroup" in x, kvs)[0]
+                    disk_group = list(filter(lambda x: "DiskGroup" in x, kvs))[0]
                     disk_group = disk_group.split(" ")[-1]
                 else:
                     disk_group = "unknown" if disk_group is None else disk_group
@@ -113,7 +117,7 @@ class FaultToleranceFecnerPlugin(kvmagent.KvmAgent):
                     report_to_mn_for_host_maintenance()
                     return
 
-                for key, value in group_health_dict.iteritems():
+                for key, value in pycompat.iteritems(group_health_dict):
                     if key == "1" and value <= 2:
                         report_to_mn_for_host_maintenance()
 

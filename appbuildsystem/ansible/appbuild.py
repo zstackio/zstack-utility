@@ -80,27 +80,22 @@ else:
     command = 'mkdir -p %s %s' % (appbuild_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-# name: install virtualenv
-virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status is False:
-    command = "rm -rf %s && rm -rf %s" % (virtenv_path, appbuild_root)
-    run_remote_command(command, host_post_info)
-    sys.exit(1)
-
-# name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv-2.7 --system-site-packages %s " % (virtenv_path, virtenv_path)
-run_remote_command(command, host_post_info)
 
 if host_info.distro in RPM_BASED_OS:
+    dep_pkg = "wget qemu-img"
+    py3_rpms = ' python3.11 python3.11-devel python3.11-pip libffi-devel openssl-devel'
+    if releasever in ['h84']:
+        dep_pkg += py3_rpms
+
     if zstack_repo != 'false':
-        command = ("pkg_list=`rpm -q wget qemu-img | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
-                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % zstack_repo
+        command = ("pkg_list=`rpm -q %s | grep \"not installed\" | awk '{ print $2 }'` && for pkg"
+                   " in $pkg_list; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;") % (dep_pkg, zstack_repo)
         run_remote_command(command, host_post_info)
         if host_info.major_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
             run_remote_command(command, host_post_info)
     else:
-        for pkg in [ "wget", "qemu-img"]:
+        for pkg in dep_pkg.split():
             yum_install_package(pkg, host_post_info)
         if host_info.major_version >= 7:
             command = "(which firewalld && service firewalld stop && chkconfig firewalld off) || true"
@@ -114,6 +109,18 @@ elif host_info.distro in DEB_BASED_OS:
     run_remote_command(command, host_post_info)
 else:
     error("unsupported OS!")
+
+# name: install virtualenv
+py_version = get_virtualenv_python_version(virtenv_path, host_post_info)
+if py_version and not py_version.startswith("3.11"):
+    command = "rm -rf %s" % virtenv_path
+    run_remote_command(command, host_post_info)
+    py_version = None
+
+if not py_version:
+    # name: make sure virtualenv has been setup
+    command = "python3.11 -m venv %s --system-site-packages" % virtenv_path
+    run_remote_command(command, host_post_info)
 
 # name: copy zstacklib
 copy_arg = CopyArg()

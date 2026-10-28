@@ -23,7 +23,7 @@ calculate_heap_sizes()
         ;;
         FreeBSD)
             system_memory_in_bytes=`sysctl hw.physmem | awk '{print $2}'`
-            system_memory_in_mb=`expr $system_memory_in_bytes / 1024 / 1024`
+            system_memory_in_mb=`expr $system_memory_in_bytes // 1024 // 1024`
             system_cpu_cores=`sysctl hw.ncpu | awk '{print $2}'`
         ;;
         SunOS)
@@ -32,7 +32,7 @@ calculate_heap_sizes()
         ;;
         Darwin)
             system_memory_in_bytes=`sysctl hw.memsize | awk '{print $2}'`
-            system_memory_in_mb=`expr $system_memory_in_bytes / 1024 / 1024`
+            system_memory_in_mb=`expr $system_memory_in_bytes // 1024 // 1024`
             system_cpu_cores=`sysctl hw.ncpu | awk '{print $2}'`
         ;;
         *)

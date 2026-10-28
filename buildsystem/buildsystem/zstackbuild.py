@@ -4,12 +4,12 @@
 '''
 import sys
 import os.path
-import ConfigParser
+import configparser
 import os
 import shutil
 import traceback
 from zstacklib.utils import shell
-import tools
+from . import tools
 
 class BuildError(Exception):
     '''build error'''
@@ -45,7 +45,7 @@ class ZstackCommon(object):
                    ]        
         
         tools.substitute_copy(install, thedict)
-        print "Completed assembling zstackcommon"
+        print("Completed assembling zstackcommon")
     
 class ZstackLib(object):
     def __init__(self):
@@ -66,7 +66,7 @@ class ZstackLib(object):
                    ]        
         
         tools.substitute_copy(install, thedict)
-        print "Completed assembling zstacklib"
+        print("Completed assembling zstacklib")
         
         
 class ZstackKvmAgent(object):
@@ -92,7 +92,7 @@ class ZstackKvmAgent(object):
         
         tools.substitute_copy(install, thedict)
         
-        print "Completed assembling kvmagent"
+        print("Completed assembling kvmagent")
 
 class ZstackSftpBackupStorage(object):
     def __init__(self):
@@ -117,7 +117,7 @@ class ZstackSftpBackupStorage(object):
         
         tools.substitute_copy(install, thedict)
         
-        print "Completed assembling sftpbackupstorage"       
+        print("Completed assembling sftpbackupstorage")       
 
 class ZstackVirtualRouter(object):
     def __init__(self):
@@ -142,7 +142,7 @@ class ZstackVirtualRouter(object):
         
         tools.substitute_copy(install, thedict)
         
-        print "Completed assembling virtualrouter"       
+        print("Completed assembling virtualrouter")       
         
 class Build(object):
     ZSTACK_JAVA_SECTION = 'zstack-java'
@@ -171,7 +171,7 @@ class Build(object):
     PUPPET_COMMON_MODULES = "puppet/commonModules"
     
     def _info(self, msg):
-        print '[zstack build]: %s' % msg
+        print('[zstack build]: %s' % msg)
         
     @staticmethod
     def get_component_home(war_path):
@@ -199,7 +199,7 @@ class Build(object):
         
         shell.ShellCmd('jar -cvf zstack.war *', workdir=war_path)()
         shell.ShellCmd('mv %s/zstack.war %s/zstack.war' % (war_path, self.build_path))
-        print "Completed assembling finally war file at %s/zstack.war" %  self.build_path
+        print("Completed assembling finally war file at %s/zstack.war" %  self.build_path)
     
     def main(self):
         self.confg_parser = tools.Parser()

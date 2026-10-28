@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 import functools
 import sys
-import commands
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 import logging
 import time
 import re
@@ -220,7 +223,7 @@ def main():
         exit(4)
     except Exception as e:
         logger.error("resouce %s fence get error" % resource_name)
-        logger.error(e.message)
+        logger.error(str(e))
         if FENCE_GW_RESULT is False and OUTDATE_PEER_RESULT is False:
             logger.error("keep resource %s io suspend" % resource_name)
             exit(5)

@@ -19,7 +19,7 @@ class TestOnlineChangeCpumem(TestCase, vm_utils.VmPluginTestStub):
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
+    @env.test_for(handlers=[
         vm_plugin.VmPlugin.KVM_ONLINE_CHANGE_CPUMEM_PATH,
     ])
     @pytest_utils.ztest_decorater
@@ -31,7 +31,7 @@ class TestOnlineChangeCpumem(TestCase, vm_utils.VmPluginTestStub):
         vm_utils.online_change_cpumem(vm_uuid, cpu_num, mem_size)
         xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm_uuid)
         n_cpu = int(xml.vcpu.current_)
-        m_size = sizeunit.KiloByte.toByte(long(xml.memory.text_))
+        m_size = sizeunit.KiloByte.toByte(int(xml.memory.text_))
         self.assertEqual(mem_size, m_size, 'expect memory size[%s] but get %s' % (mem_size, m_size))
         self.assertEqual(cpu_num, n_cpu, 'expect %s vcpu but get %s vcpu' % (n_cpu, cpu_num))
 

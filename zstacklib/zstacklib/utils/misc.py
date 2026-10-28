@@ -2,7 +2,10 @@
 
 @author: Frank
 '''
-import ConfigParser
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
 import functools
 import pprint
 import traceback
@@ -13,14 +16,23 @@ from contextlib import contextmanager
 from zstacklib.utils import bash
 from zstacklib.utils import log
 from zstacklib.utils import linux
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 
 
-class Parser(ConfigParser.SafeConfigParser):
+def _md5_of_bash_output(o):
+    # shell.get_process 启用 universal_newlines 后，py2 下 bash_ro 返回 bytes、
+    # py3 下返回 str。先归一成文本再算 md5，两种解释器结果一致。
+    if not isinstance(o, pycompat.string_types):
+        o = o.decode("utf-8")
+    return hashlib.md5(o.strip().encode("utf-8")).hexdigest()
+
+
+class Parser(ConfigParser.ConfigParser):
     def get(self, section, option, default=None):
         try:
-            return ConfigParser.SafeConfigParser.get(self, section, option)
+            return ConfigParser.ConfigParser.get(self, section, option)
         except ConfigParser.NoOptionError:
             return default
 
@@ -56,7 +68,7 @@ def isMiniHost():
     r, o = bash.bash_ro("dmidecode -s system-product-name")
     if r != 0:
         return False
-    return hashlib.md5(o.decode("utf-8").strip().encode("utf-8")).hexdigest() in [
+    return _md5_of_bash_output(o) in [
         "5fc8d2a363cdadac26f779074aab1a17",
         "39e7b016e11cc67bbdf885c4a1293546",
         "b525fe1f8611ce4583d07b0a2ffa8435",
@@ -77,6 +89,6 @@ def ignore_exception(exception_type, message=None):
     try:
         yield
     except exception_type as ex:
-        if message is not None and message not in str(ex.message):
+        if message is not None and message not in str(ex):
             raise ex
-        logger.debug("exception caught by the ignore_exception func : %s" % ex.message)
+        logger.debug("exception caught by the ignore_exception func : %s" % str(ex))

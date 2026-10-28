@@ -9,7 +9,6 @@ from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import ovs
-from zstacklib.utils.ovs import OvsError
 from zstacklib.utils import http
 from zstacklib.utils import lock
 
@@ -458,7 +457,7 @@ class OvsDpdkNetworkPlugin(kvmagent.KvmAgent):
 
         #Bond can't config through UI, check bond status not run in current version
         #check_bond_status()
-        check_ovs_status()
+        # check_ovs_status()
 
     def stop(self):
         http.AsyncUirHandler.STOP_WORLD = True

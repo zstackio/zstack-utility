@@ -6,12 +6,11 @@
 
 import os
 import sys
-import traceback
 import time
 
 import apibinding.api_actions as api_actions
 import apibinding.inventory as inventory
-import account_operations
+from . import account_operations
 
 # Define default get resource method. default is using searchAPI, it can also be ListAPI.
 SEARCH_RESOURCE_METHOD = 'search'
@@ -24,7 +23,6 @@ BACKUP_STORAGE = 'BackupStorage'
 SFTP_BACKUP_STORAGE = 'SftpBackupStorage'
 ZONE = 'Zone'
 CLUSTER = 'Cluster'
-PRIMARY_STORAGE = 'PrimaryStorage'
 L2_NETWORK = 'L2Network'
 L2_VLAN_NETWORK = 'L2VlanNetwork'
 L3_NETWORK = 'L3Network'

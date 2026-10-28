@@ -10,7 +10,7 @@ from zstacklib import *
 try:
     from zstacklib.ansible.zstacklib import *
 except Exception as e:
-    print e.message
+    print(str(e))
 
 def add_true_in_command(cmd):
     return "%s || true" % cmd

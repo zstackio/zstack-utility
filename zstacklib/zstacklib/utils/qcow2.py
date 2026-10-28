@@ -1,8 +1,8 @@
-import log
-import plugin
-import traceable_shell
-import report
-import linux
+from zstacklib.utils import log
+from zstacklib.utils import plugin
+from zstacklib.utils import traceable_shell
+from zstacklib.utils import report
+from zstacklib.utils import linux
 import tempfile
 
 logger = log.get_logger(__name__)

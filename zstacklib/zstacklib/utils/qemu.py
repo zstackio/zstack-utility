@@ -1,12 +1,12 @@
 
-import bash
+from zstacklib.utils import bash
 import os
-import log
-import jsonobject
-import shell
+from zstacklib.utils import log
+from zstacklib.utils import jsonobject
+from zstacklib.utils import shell
 import json
 import re
-from linux import get_vm_pid, HOST_ARCH
+from zstacklib.utils.linux import get_vm_pid, HOST_ARCH
 from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)

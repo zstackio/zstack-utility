@@ -13,6 +13,6 @@ class Test():
 
     def test_getSmartNicWhenOfedNotInstall(self):
         response_json = self.HOST_PLUGIN.get_host_network_facts(None)
-        print("get_host_network_facts() rsp: %s" % (response_json))
+        print(("get_host_network_facts() rsp: %s" % (response_json)))
         hasSmartNic = "offloadStatus" in response_json
         assert hasSmartNic == True

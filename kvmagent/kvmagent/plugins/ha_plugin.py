@@ -15,6 +15,7 @@ from zstacklib.utils import sanlock
 from zstacklib.utils import xmlobject
 from zstacklib.utils import jsonobject
 from zstacklib.utils import iscsi
+from zstacklib.utils import pycompat
 import os.path
 import time
 import traceback
@@ -1991,7 +1992,7 @@ class HaPlugin(kvmagent.KvmAgent):
             recovered_vg = []
             if len(self.sblk_health_checker.fired_vgs) != 0:
                 for vg in self.sblk_health_checker.fired_vgs:
-                    if not failed_vgs.has_key(vg):
+                    if not pycompat.has_key(failed_vgs, vg):
                         recovered_vg.append(vg)
 
             if len(recovered_vg) != 0:

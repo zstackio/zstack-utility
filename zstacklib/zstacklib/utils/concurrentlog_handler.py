@@ -61,7 +61,7 @@ except ImportError:
 # clobbering that the builtin class allows.
 
 # sibling module than handles all the ugly platform-specific details of file locking
-from portalocker import lock, unlock, LOCK_EX, LOCK_NB, LockException
+from zstacklib.utils.portalocker import lock, unlock, LOCK_EX, LOCK_NB, LockException
 
 
 # Workaround for handleError() in Python 2.7+ where record is written to stderr
@@ -154,10 +154,13 @@ class ConcurrentRotatingFileHandler(BaseRotatingHandler):
         """
         if mode is None:
             mode = self.mode
-        if self.encoding is None:
+        enc = self.encoding
+        if enc in (None, 'locale'):
+            # py3.11 起 FileHandler 的 encoding 默认值是字符串 'locale'，不是合法编解码名；
+            # 语义等价于"用区域默认编码的普通 open"，与 py2 的 None 分支一致。
             stream = open(self.baseFilename, mode)
         else:
-            stream = codecs.open(self.baseFilename, mode, self.encoding)
+            stream = codecs.open(self.baseFilename, mode, enc)
         return stream
 
     def _close(self):
@@ -220,7 +223,9 @@ class ConcurrentRotatingFileHandler(BaseRotatingHandler):
         Close log stream and stream_lock. """
         try:
             self._close()
-            if not self.stream_lock.closed:
+            # py3 的 logging.shutdown 会在解释器退出时对已 close 的 handler 再调一次
+            # close()，这里必须幂等，否则 stream_lock 为 None 时抛 AttributeError。
+            if self.stream_lock is not None and not self.stream_lock.closed:
                 self.stream_lock.close()
         finally:
             self.stream_lock = None

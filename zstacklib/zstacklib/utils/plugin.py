@@ -7,19 +7,24 @@ import abc
 import functools
 import os
 import os.path
-import imp
+import sys
 import inspect
 import threading
 import traceback
 
-import log
-import ConfigParser
+from zstacklib.utils import log
+
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
 
 import time
 
 from zstacklib.utils import jsonobject, http
 from zstacklib.utils.report import get_api_id, AutoReporter, get_timeout, get_task_stage
 from zstacklib.utils import traceable_shell
+from zstacklib.utils import pycompat
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
 
@@ -59,15 +64,14 @@ def completetask(func):
     return wrap
 
 
-class TaskDaemon(object):
-    __metaclass__ = abc.ABCMeta
+class TaskDaemon(pycompat.with_metaclass(abc.ABCMeta, object)):
 
     '''
     A daemon to track a long task, task will be canceled automatically when timeout or canceled by api.
     '''
 
     def __init__(self, task_spec, task_name, timeout=0):
-        if self.__class__.__name__ != TaskDaemon.__name__ and self.__class__.__dict__.has_key("__exit__"):
+        if self.__class__.__name__ != TaskDaemon.__name__ and pycompat.has_key(self.__class__.__dict__, "__exit__"):
             raise Exception("method __exit__ cannot be overridden")
         self.api_id = get_api_id(task_spec)
         self.task_name = task_name
@@ -287,8 +291,7 @@ class TaskManager(object):
 
         return len(to_cancel_tasks)
 
-class Plugin(TaskManager):
-    __metaclass__  = abc.ABCMeta
+class Plugin(pycompat.with_metaclass(abc.ABCMeta, TaskManager)):
 
     def __init__(self):
         super(Plugin, self).__init__()
@@ -319,17 +322,50 @@ class PluginRegistry(object):
                 name = member.__name__
                 self.plugins[name] = member()
 
+    @staticmethod
+    def _load_module_py3(base_module_name, module_name, search_path):
+        '''py3 无 imp；等价 imp.find_module + imp.load_module：
+        在 search_path 下解析 <base_module_name>.py（或包 __init__.py），
+        以 module_name 加载执行，并在 sys.modules 注册（加载失败时移除）。'''
+        import importlib.util
+        _cand = None
+        for _finder in search_path:
+            _cand = os.path.join(_finder, base_module_name + '.py')
+            if os.path.isfile(_cand):
+                break
+            _pkg_init = os.path.join(_finder, base_module_name, '__init__.py')
+            if os.path.isfile(_pkg_init):
+                _cand = _pkg_init
+                break
+        else:
+            _cand = None
+        if _cand is None:
+            raise ImportError('cannot find plugin %s in %s' % (base_module_name, search_path))
+        _spec = importlib.util.spec_from_file_location(module_name, _cand)
+        mobj = importlib.util.module_from_spec(_spec)
+        sys.modules[module_name] = mobj
+        try:
+            _spec.loader.exec_module(mobj)
+        except BaseException:
+            sys.modules.pop(module_name, None)
+            raise
+        return mobj
+
     def _load_module(self, mpath, mname=None):
         module_name = inspect.getmodulename(mpath) if not mname else mname
         search_path = [os.path.dirname(mpath)] if os.path.isfile(mpath) else [mpath]
         logger.debug('Loading module[name:%s, path:%s]' % (module_name, search_path))
         base_module_name = module_name.split('.')[-1]
-        (mfile, mpname, mdesc) = imp.find_module(base_module_name, search_path)
-        try:
-            mobj = imp.load_module(module_name, mfile, mpname, mdesc)
-            self._parse_plugins(mobj)
-        finally:
-            mfile.close()
+        if sys.version_info[0] == 2:
+            import imp
+            (mfile, mpname, mdesc) = imp.find_module(base_module_name, search_path)
+            try:
+                mobj = imp.load_module(module_name, mfile, mpname, mdesc)
+            finally:
+                mfile.close()
+        else:
+            mobj = self._load_module_py3(base_module_name, module_name, search_path)
+        self._parse_plugins(mobj)
 
     def _scan_folder(self):
         for root, dirs, files in os.walk(self.plugin_folder):
@@ -337,7 +373,7 @@ class PluginRegistry(object):
                 if f.endswith('.py'): self._load_module(os.path.join(root, f))
 
     def _parse_config(self):
-        config = ConfigParser.SafeConfigParser()
+        config = ConfigParser.ConfigParser()
         config.read(self.plugin_config)
         for (module_name, path) in config.items(PLUGIN_CONFIG_SECTION_NAME):
             if config.has_option('DEFAULT', module_name): continue

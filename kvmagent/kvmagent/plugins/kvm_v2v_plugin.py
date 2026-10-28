@@ -7,7 +7,10 @@ import os
 import random
 import tempfile
 import time
-import urlparse
+try:
+    import urlparse
+except ImportError:
+    from urllib import parse as urlparse
 import re
 
 from kvmagent import kvmagent
@@ -166,7 +169,7 @@ class LibvirtConn(object):
             return self.conn
         except Exception as e:
             e.args = (re.sub(":[^:]*@", ":*****@", arg) for arg in e.args)
-            e.message = re.sub(":[^:]*@", ":*****@", e.message)
+            e.message = re.sub(":[^:]*@", ":*****@", str(e))
             raise
         finally:
             if tmpkeyfile:
@@ -287,12 +290,12 @@ def getVolumes(dom, dxml=None):
     if not dxml:
         dxml = xmlobject.loads(dom.XMLDesc(0))
 
-    volumes = filter(lambda v:v, listVolumes(dom, dxml.devices.disk))
+    volumes = list(filter(lambda v:v, listVolumes(dom, dxml.devices.disk)))
 
     if len(volumes) == 0:
         raise Exception("no disks found for VM: "+dom.name())
 
-    if len(filter(lambda v: v.type == 'ROOT', volumes)) == 0:
+    if len(list(filter(lambda v: v.type == 'ROOT', volumes))) == 0:
         volumes[0].type = 'ROOT'
 
     return volumes
@@ -615,7 +618,7 @@ class KVMV2VPlugin(kvmagent.KvmAgent):
             if dxml.os.hasattr('firmware_') and dxml.os.firmware_ == 'efi' or dxml.os.hasattr('loader'):
                 rsp.bootMode = 'UEFI'
 
-            volumes = filter(lambda v: not skipVolume(filters, v.name), getVolumes(dom, dxml))
+            volumes = list(filter(lambda v: not skipVolume(filters, v.name), getVolumes(dom, dxml)))
             oldstat, _ = dom.state()
             needResume = True
             needDefine = False

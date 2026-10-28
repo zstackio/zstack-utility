@@ -130,7 +130,7 @@ class IscsiAclFailedCreate(BmV2GwAgentException):
                'system log for more information, instance: {instance_uuid}, '
                'volume: {volume_uuid}, backend dev: {iscsi_backend}'
                ).format(**kwargs)
-        super(IscsiLunFailedCreate, self).__init__(msg)
+        super(IscsiAclFailedCreate, self).__init__(msg)
 
 
 class DeviceNotExist(BmV2GwAgentException):

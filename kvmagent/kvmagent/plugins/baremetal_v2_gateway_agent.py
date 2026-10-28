@@ -2,7 +2,10 @@ import ast
 import json
 import os
 import shutil
-import commands
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 import tempfile
 
 from jinja2 import Template

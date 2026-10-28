@@ -118,15 +118,16 @@ elif host_info.distro in DEB_BASED_OS:
     service_status("iscsitarget", "state=started enabled=yes", host_post_info)
 
 # name: install virtualenv
-virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status is False:
-    command = "rm -rf %s && rm -rf %s" % (virtenv_path, iscsi_root)
+py_version = get_virtualenv_python_version(virtenv_path, host_post_info)
+if py_version and not py_version.startswith("3.11"):
+    command = "rm -rf %s" % virtenv_path
     run_remote_command(command, host_post_info)
-    sys.exit(1)
+    py_version = None
 
-# name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv %s " % (virtenv_path, virtenv_path)
-run_remote_command(command, host_post_info)
+if not py_version:
+    # name: make sure virtualenv has been setup
+    command = "python3.11 -m venv %s --system-site-packages" % virtenv_path
+    run_remote_command(command, host_post_info)
 
 # name: copy zstacklib and install zstacklib
 copy_arg = CopyArg()

@@ -16,7 +16,7 @@ class FileDB(object):
             file_path = file_name
         file_dir = os.path.dirname(file_path)
         if not os.path.exists(file_dir):
-            os.makedirs(file_dir, 0755)
+            os.makedirs(file_dir, 0o755)
         #force save for each db operation.
         self.file_db = pickledb.pickledb(file_path, True)
 

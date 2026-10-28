@@ -2,6 +2,7 @@
 
 @author: mingjian
 '''
+from __future__ import annotations
 # coding=utf-8
 import os
 import os.path

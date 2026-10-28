@@ -6,7 +6,7 @@
 from zstacklib.utils import shell
 import os.path
 import os
-import ConfigParser
+import configparser
 import shutil
 import string
 
@@ -50,15 +50,15 @@ def copy(pairs):
                 os.removedirs(dst)
             elif os.path.exists(dst):
                 os.remove(dst)
-            print "copying dir %s to %s" % (src, dst)
+            print("copying dir %s to %s" % (src, dst))
             shutil.copytree(src, dst)
         else:
-            print "copying %s to %s" % (src, dst)
+            print("copying %s to %s" % (src, dst))
             shutil.copy2(src, dst)
     
-class Parser(ConfigParser.SafeConfigParser):
+class Parser(configparser.SafeConfigParser):
     def get(self, section, option, default=None):
         try:
-            return ConfigParser.SafeConfigParser.get(self, section, option)
-        except ConfigParser.NoOptionError:
+            return configparser.SafeConfigParser.get(self, section, option)
+        except configparser.NoOptionError:
             return default

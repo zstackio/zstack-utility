@@ -110,6 +110,8 @@ if host_info.distro in RPM_BASED_OS:
     releasever_mapping = {
         'h84r': ' collectd-disk pyparted iscsi-initiator-utils',
         'h2203sp1o': ' collectd-disk iscsi-initiator-utils python2-pyparted',
+        'oe2309': ' nettle iscsi-initiator-utils python3-pyparted',
+        'ol9': ' nettle iscsi-initiator-utils python3-pyparted',
     }
 
     for k in kylin:

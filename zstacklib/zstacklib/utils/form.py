@@ -28,5 +28,5 @@ def load(stdout, sep=None):
     try:
         return _load(stdout, sep)
     except Exception as e:
-        logger.debug("not a standard form:%s" % e.message)
+        logger.debug("not a standard form:%s" % str(e))
         return []

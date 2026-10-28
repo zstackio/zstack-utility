@@ -15,6 +15,7 @@ from ansible.plugins import cache
 from ansible.plugins.cache import memory
 from ansible.plugins import callback as ansible_callback
 from ansible.vars import manager as ansible_vm
+from ansible.plugins.loader import init_plugin_loader
 
 
 ansible_constants.set_constant('HOST_KEY_CHECKING', False)
@@ -23,7 +24,7 @@ ansible_constants.set_constant('DEFAULT_GATHERING', 'implicit')
 ansible_constants.set_constant('INVENTORY_ENABLED', ['ini'])
 
 _ansible_cache = {}
-
+init_plugin_loader()
 
 class MemCache(cache.BaseCacheModule):
     def __init__(self, *args, **kwargs):
@@ -37,7 +38,7 @@ class MemCache(cache.BaseCacheModule):
         self._cache[key] = value
 
     def keys(self):
-        return self._cache.keys()
+        return list(self._cache.keys())
 
     def contains(self, key):
         return key in self._cache

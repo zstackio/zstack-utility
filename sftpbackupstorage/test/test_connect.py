@@ -18,10 +18,10 @@ class Test(unittest.TestCase):
         cmd.storagePath = "/tmp"
         #url = sftpbackupstorage._build_url_for_test([sftpbackupstorage.SftpBackupStorageAgent.CONNECT_PATH])
         url = 'http://localhost:7171%s' % sftpbackupstorage.SftpBackupStorageAgent.CONNECT_PATH
-        print url
+        print(url)
         rsp = http.json_dump_post(url, cmd)
         jrsp = jsonobject.loads(rsp)
-        print "total: %s, used: %s" % (jrsp.totalBackupStorageSize, jrsp.usedBackupStorageSize)
+        print("total: %s, used: %s" % (jrsp.totalBackupStorageSize, jrsp.usedBackupStorageSize))
         
         server.http_server.stop()
 

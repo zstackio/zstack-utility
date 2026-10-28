@@ -34,12 +34,17 @@ from zstacklib.utils import thread
 from zstacklib.utils import xmlobject
 from zstacklib.utils import ovs
 from zstacklib.utils import shell
+from zstacklib.utils import pycompat
 from zstacklib.utils.bash import *
 from zstacklib.utils.ip import get_nic_supported_max_speed
 from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.report import Report
 import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
+
+os_info = linux.get_freedesktop_os_release()
+DIST_NAME = os_info.get('ID', '').lower()
+DIST_NAME = 'centos' if DIST_NAME == 'helix' else DIST_NAME
 
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
@@ -259,6 +264,40 @@ class GetHostPhysicalMemoryFactsResponse(kvmagent.AgentResponse):
         self.physicalMemoryFacts = []
 
 
+class GetHostKernelInterfaceCmd(kvmagent.AgentCommand):
+    def __init__(self):
+        super(GetHostKernelInterfaceCmd, self).__init__()
+        self.hostUuid = None
+        self.targetIp = None
+
+
+class GetHostKernelInterfaceResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(GetHostKernelInterfaceResponse, self).__init__()
+        self.interfaces = []
+
+
+class UsedIpTO(object):
+    ACTION_CODE_ADD = "add"
+    ACTION_CODE_REMOVE = "remove"
+
+    def __init__(self, ipVersion=None, ip=None, netmask=None, gateway=None):
+        self.ipVersion = ipVersion
+        self.version = ipVersion
+        self.ip = ip
+        self.netmask = netmask
+        self.gateway = gateway
+        self.actionCode = None
+
+
+class HostKernelInterfaceTO(object):
+    def __init__(self, interface_name=None, vlan_id=None, bridge_name=None):
+        self.interfaceName = interface_name
+        self.vlanId = vlan_id
+        self.bridgeName = bridge_name
+        self.ips = []
+
+
 class GetHostNetworkBongdingCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(GetHostNetworkBongdingCmd, self).__init__()
@@ -365,19 +404,19 @@ class HostNetworkBondingInventory(object):
         bondData = self.bondingName
         self.speed = get_nic_supported_max_speed(self.interfaceName)
 
-        if not bondData.has_key('bond'):
+        if not pycompat.has_key(bondData, 'bond'):
             return
 
-        if bondData['bond'].has_key('name'):
+        if pycompat.has_key(bondData['bond'], 'name'):
             self.bondingName = bondData['bond']['name']
 
-        if bondData['bond'].has_key('mode'):
+        if pycompat.has_key(bondData['bond'], 'mode'):
             if type(bondData['bond']['mode']) is int:
                 self.mode = bondModeList[bondData['bond']['mode']]
             else:
                 self.mode = bondData['bond']['mode']
 
-        if bondData['bond'].has_key('policy'):
+        if pycompat.has_key(bondData['bond'], 'policy'):
             self.xmitHashPolicy = bondPolicyMap[bondData['bond']['policy']]
 
         self.type = "OvsBonding"
@@ -387,7 +426,7 @@ class HostNetworkBondingInventory(object):
         self.miimon = None
         self.allSlavesActive = None
 
-        if not bondData['bond'].has_key('slaves'):
+        if not pycompat.has_key(bondData['bond'], 'slaves'):
             return
 
         self.slaves = [None] * len(bondData['bond']['slaves'])
@@ -876,7 +915,7 @@ def _get_memory(word):
     (name, capacity) = out.split(':')
     capacity = re.sub('[k|K][b|B]', '', capacity).strip()
     #capacity = capacity.rstrip('kB').rstrip('KB').rstrip('kb').strip()
-    return sizeunit.KiloByte.toByte(long(capacity))
+    return sizeunit.KiloByte.toByte(int(capacity))
 
 def _get_total_memory():
     return _get_memory('MemTotal')
@@ -915,6 +954,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_HOST_OVS_CPU_PINNING = "/host/ovs/cpu-pin/update"
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
+    GET_KERNEL_INTERFACE_PATH = "/host/kernelinterface/get"
     SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
     CHECK_INTERFACE_VLAN = "/host/checkvlan/networkinterface"
     GET_INTERFACE_VLAN = "/host/getvlan/networkinterface"
@@ -1062,7 +1102,7 @@ class HostPlugin(kvmagent.KvmAgent):
                 logger.debug("failed to send pkg to mn")
                 break
 
-            if pkt_counter == sys.maxint:
+            if pkt_counter == getattr(sys, 'maxint', sys.maxsize):
                 pkt_counter = 0
 
             pkt_counter += 1
@@ -1115,17 +1155,17 @@ class HostPlugin(kvmagent.KvmAgent):
     def _cache_units_convert(self, str):
         if str is None or str == '':
             return 0
-        return float(sizeunit.get_size(str) / 1024)
+        tokens = (str or '').split()
+        value = sizeunit.get_size(tokens[0]) if tokens else 0
+        return float(value // 1024)
 
     @kvmagent.replyerror
     def fact(self, req):
         rsp = HostFactResponse()
-        rsp.osDistribution, rsp.osVersion, rsp.osRelease = platform.dist()
-        if rsp.osDistribution == 'centos':
-            rsp.osDistribution = platform.linux_distribution()[0].lower()
-        if rsp.osDistribution == 'openEuler':
-            rsp.osDistribution = platform.linux_distribution()[0].lower()
-        rsp.osRelease = rsp.osRelease if rsp.osRelease else "Core"
+        os_info = linux.get_freedesktop_os_release()
+        rsp.osDistribution = os_info['ID']
+        rsp.osVersion = re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
+        rsp.osRelease = "Core"
         # compatible with Kylin SP2 HostOS ISO and standardized ISO
         if rsp.osDistribution == "kylin":
             rsp.osRelease = rsp.osRelease.replace('ZStack', 'Sword')
@@ -1169,7 +1209,7 @@ class HostPlugin(kvmagent.KvmAgent):
             rsp.powerSupplyModelName = power_supply_model_name if power_supply_model_name != "" else "unknown"
             power_supply_max_power_capacity = shell.call("dmidecode -t 39 | grep -vi 'unknown' | grep -m1 'Max Power Capacity' | awk -F ':' '{print $2}'")
             if bool(re.search(r'\d', power_supply_max_power_capacity)):
-                rsp.powerSupplyMaxPowerCapacity = filter(str.isdigit, power_supply_max_power_capacity.strip())
+                rsp.powerSupplyMaxPowerCapacity = list(filter(str.isdigit, power_supply_max_power_capacity.strip()))
 
         rsp.qemuImgVersion = qemu_img_version
         rsp.libvirtVersion = self.libvirt_version
@@ -1407,7 +1447,7 @@ class HostPlugin(kvmagent.KvmAgent):
 
             hb_dir = os.path.dirname(hb)
             if not os.path.exists(hb_dir):
-                os.makedirs(hb_dir, 0755)
+                os.makedirs(hb_dir, 0o755)
 
             t = thread.timer(cmd.heartbeatInterval, self._heartbeat_func, args=[hb], stop_on_exception=False)
             t.start()
@@ -1581,7 +1621,10 @@ class HostPlugin(kvmagent.KvmAgent):
     @lock.file_lock('/run/usb_rules.lock')
     def handle_usb_device_events(self):
         bash_str = """#!/usr/bin/env python
-import urllib2
+try:
+    import urllib2
+except ImportError:
+    import urllib.request as urllib2
 def post_msg(data, post_url):
     headers = {"content-type": "application/json", "commandpath": "/host/reportdeviceevent"}
     req = urllib2.Request(post_url, data, headers)
@@ -1589,7 +1632,7 @@ def post_msg(data, post_url):
     response.close()
 
 if __name__ == "__main__":
-    post_msg("{'hostUuid':'%s'}", '%s')
+    post_msg("{'hostUuid':'%s'}".encode('utf-8'), '%s')
 """ % (self.config.get(kvmagent.HOST_UUID), self.config.get(kvmagent.SEND_COMMAND_URL))
 
         event_report_script = '/usr/bin/_report_device_event.py'
@@ -2040,6 +2083,108 @@ done
 
         rsp.bondings = self.get_host_networking_bonds(cmd.managementServerIp)
         rsp.nics = self.get_host_networking_interfaces(cmd.managementServerIp)
+
+        return jsonobject.dumps(rsp)
+
+    def _make_host_kernel_interface(self, interface_name=None, vlan_id=None, bridge_name=None):
+        if not interface_name or vlan_id is None:
+            return None
+        return HostKernelInterfaceTO(interface_name, vlan_id, bridge_name)
+
+    @staticmethod
+    def _is_bond(interface_name):
+        return os.path.exists("/sys/class/net/%s/bonding" % interface_name)
+
+    @staticmethod
+    def _is_vlan(interface_name):
+        return os.path.exists("/proc/net/vlan/%s" % interface_name)
+
+    @staticmethod
+    def _is_physical_nic(interface_name):
+        base = "/sys/class/net/%s" % interface_name
+        return (
+            os.path.exists(base)
+            and not os.path.exists("%s/bridge" % base)
+            and not os.path.exists("%s/brport" % base)
+            and not os.path.exists("%s/bonding" % base)
+            and not os.path.exists("/proc/net/vlan/%s" % interface_name)
+        )
+
+    @classmethod
+    def _get_vlan_parent(cls, interface_name):
+        link_path = "/sys/class/net/%s" % interface_name
+        if not os.path.exists(link_path):
+            return None
+        for entry in os.listdir(link_path):
+            if entry.startswith("lower_"):
+                parent = entry[len("lower_"):]
+                if cls._is_bond(parent) or cls._is_physical_nic(parent):
+                    return parent
+        return None
+
+    @staticmethod
+    def _get_vlan_id(interface_name):
+        vlan_info = linux.read_file("/proc/net/vlan/%s" % interface_name)
+        match = re.search(r"VID:\s+(\d+)", vlan_info)
+        return int(match.group(1)) if match else None
+
+    @kvmagent.replyerror
+    @in_bash
+    def get_kernel_interface(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = GetHostKernelInterfaceResponse()
+
+        link_name = linux.get_nic_name_by_ip(cmd.targetIp)
+        if not link_name:
+            rsp.error = "cannot find interface by ip[%s]" % cmd.targetIp
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        addresses = iproute.query_addresses(ifname=link_name, ip_version=4)
+        ip_list = [
+            UsedIpTO(
+                ipVersion=address.ip_version,
+                ip=address.address,
+                netmask=linux.cidr_to_netmask(address.prefixlen),
+                gateway=None,
+            )
+            for address in addresses
+        ]
+        interface = None
+        if linux.is_bridge(link_name):
+            for slave in linux.get_all_bridge_interface(link_name):
+                if not slave:
+                    continue
+                if self._is_bond(slave) or self._is_physical_nic(slave):
+                    interface = self._make_host_kernel_interface(slave, 0, link_name)
+                    break
+                if self._is_vlan(slave):
+                    vlan_parent = self._get_vlan_parent(slave)
+                    if vlan_parent and (self._is_bond(vlan_parent) or self._is_physical_nic(vlan_parent)):
+                        interface = self._make_host_kernel_interface(
+                            vlan_parent, self._get_vlan_id(slave), link_name)
+                        break
+        elif self._is_bond(link_name) or self._is_physical_nic(link_name):
+            interface = self._make_host_kernel_interface(link_name, 0)
+        elif self._is_vlan(link_name):
+            vlan_parent = self._get_vlan_parent(link_name)
+            if vlan_parent and (self._is_bond(vlan_parent) or self._is_physical_nic(vlan_parent)):
+                interface = self._make_host_kernel_interface(
+                    vlan_parent, self._get_vlan_id(link_name))
+        else:
+            rsp.error = "cannot parse interface[%s] by ip[%s]" % (link_name, cmd.targetIp)
+            rsp.success = False
+            return jsonobject.dumps(rsp)
+
+        if not interface:
+            rsp.error = "cannot find interface by ip[%s]" % cmd.targetIp
+            rsp.success = False
+        else:
+            interface.ips = [
+                UsedIpTO(ip=item.ip, netmask=item.netmask, ipVersion=item.version, gateway=item.gateway)
+                for item in ip_list
+            ]
+            rsp.interfaces.append(interface)
 
         return jsonobject.dumps(rsp)
 
@@ -3302,7 +3447,7 @@ done
         qemu_url = string.Template(cmd.qemuUrl).substitute(tmpl)
 
         if not os.path.exists(COLO_LIB_PATH):
-            os.makedirs(COLO_LIB_PATH, 0775)
+            os.makedirs(COLO_LIB_PATH, 0o775)
 
         def get_dep_version_from_version_file(version_file):
             if not os.path.exists(version_file):
@@ -3495,7 +3640,7 @@ done
 
                 free, size = 0, 0
                 for mem in data:
-                    temp = filter(lambda i: i, mem.strip().split(" "))[-2]
+                    temp = list(filter(lambda i: i, mem.strip().split(" ")))[-2]
                     if temp == "0":
                         continue
                     if "MemTotal" in mem:
@@ -3512,7 +3657,7 @@ done
                 if data is None or (not data):
                     return
                 data = data.strip()
-                return filter(lambda i: i, data.split(" "))
+                return list(filter(lambda i: i, data.split(" ")))
 
         rsp = GetNumaTopologyResponse()
         rsp.topology = NumaTopology()()
@@ -3593,6 +3738,7 @@ done
         http_server.register_async_uri(self.UPDATE_HOST_OVS_CPU_PINNING, self.update_ovs_cpu_pinning)
         http_server.register_async_uri(self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
+        http_server.register_async_uri(self.GET_KERNEL_INTERFACE_PATH, self.get_kernel_interface)
         http_server.register_async_uri(self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
 
         http_server.register_async_uri(self.CHECK_INTERFACE_VLAN, self.check_interface_vlan)

@@ -20,8 +20,8 @@ class ZStoneCephPoolCapacityGetter():
             return
         ratio = get_full_ratio()
         for pool_capacity in result:
-            pool_capacity.pool_total_size = long(pool_capacity.pool_total_size / ratio)
-            pool_capacity.available_capacity = long(pool_capacity.available_capacity + pool_capacity.pool_total_size * (1-ratio))
+            pool_capacity.pool_total_size = int(pool_capacity.pool_total_size / ratio)
+            pool_capacity.available_capacity = int(pool_capacity.available_capacity + pool_capacity.pool_total_size * (1-ratio))
             pool_capacity.used_capacity = pool_capacity.pool_total_size - pool_capacity.available_capacity
 
 

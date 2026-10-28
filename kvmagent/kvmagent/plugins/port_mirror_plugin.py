@@ -2,19 +2,15 @@
 
 @author: zhanyong.miao
 '''
-import copy
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
 from zstacklib.utils import log
 from zstacklib.utils import lock
 from zstacklib.utils import shell
-from zstacklib.utils import linux
 from zstacklib.utils import iproute
 from zstacklib.utils.bash import *
 import os
-import traceback
-import netaddr
 
 KVM_APPLY_MIRROR_SESSION_SOURCE = "/portmirror/apply/source"
 KVM_RELEASE_MIRROR_SESSION_SOURCE = "/portmirror/release/source"

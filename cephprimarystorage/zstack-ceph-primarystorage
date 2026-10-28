@@ -52,7 +52,7 @@ if [ "$@" = "status" ]; then
 else
 	apply_resource_settings
 
-	. /var/lib/zstack/virtualenv/cephp/bin/activate && python -c "from cephprimarystorage import cdaemon; cdaemon.main()" $@
+	. /var/lib/zstack/virtualenv/cephp/bin/activate && python3.11 -c "from cephprimarystorage import cdaemon; cdaemon.main()" $@
 fi
 
 if [ $? -eq 0 ]; then

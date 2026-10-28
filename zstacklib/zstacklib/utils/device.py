@@ -1,6 +1,6 @@
 import os
 
-import linux
+from zstacklib.utils import linux
 
 
 def get_device_wwid(device_name):

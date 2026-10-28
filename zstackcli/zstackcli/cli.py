@@ -13,8 +13,6 @@ except:
 import readline
 import sys
 
-reload(sys)
-sys.setdefaultencoding('utf8')
 import shlex
 import hashlib
 import optparse
@@ -22,8 +20,9 @@ import termcolor
 import pydoc
 import time
 import urllib3
+import urllib3.exceptions
 
-import cStringIO as c
+import io as c
 import csv
 import socket
 
@@ -66,7 +65,7 @@ NOT_QUERY_MYSQL_APIS = [
 ]
 
 def escape_split(str, deli=','):
-    return csv.reader(c.StringIO(str), delimiter=deli, escapechar='\\').next()
+    return next(csv.reader(c.StringIO(str), delimiter=deli, escapechar='\\'))
 
 def clean_password_in_cli_history():
     cmd_historys = None
@@ -129,16 +128,16 @@ class Cli(object):
         Cli.msg_creator[apiname] = func
 
     def usage(self):
-        print '''
+        print('''
   ZStack command line tool
   Type "help" for more information
   Type Tab key for auto-completion
   Type "quit" or "exit" or Ctrl-d to exit
 
-'''
+''')
 
     def print_error(self, err):
-        print '\033[91m' + err + '\033[0m'
+        print('\033[91m' + err + '\033[0m')
 
     def complete(self, pattern, index):
         """
@@ -228,7 +227,7 @@ class Cli(object):
                 fields_num = len(fields_objects)
                 apiname = currtext.split()[0]
                 new_api_name = 'API%sMsg' % apiname
-                if inventory.queryMessageInventoryMap.has_key(new_api_name):
+                if new_api_name in inventory.queryMessageInventoryMap:
                     api_obj_name = inventory.queryMessageInventoryMap[new_api_name].__name__
                     query_ext_fields = eval('inventory.%s().EXPANDED_FIELDS' % api_obj_name)
                     if head_field in query_ext_fields:
@@ -293,26 +292,26 @@ example: %sLogInByAccount accountName=admin password=your_super_secure_admin_pas
             def eval_string(key, value_string, to_str_list=False):
                 try:
                     if to_str_list:
-                        return map(lambda x: str(x), eval(value_string))
+                        return [str(x) for x in eval(value_string)]
                     else:
                         return eval(value_string)
                 except Exception as e:
                     err_msg = """
 Parse command parameters error:
-  eval '%s' error for: '%s'
-  the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]"
+    eval '%s' error for: '%s'
+    the right format is like: "[{'KEY':'VALUE'}, {'KEY':['VALUE1', 'VALUE2']}]"
                     """ % (value_string, key)
                     if key == "vmNics" or key == "servers":
                         err_msg2 = """
-  'KEY' is 'uuid' or 'ipAddress'
-  'VALUE' is the vm nics' uuid or ip address 
-  Example: vmNics="[{'uuid':'$vmNics1_UUID'},{'uuid':'$vmNics2_UUID'}]" or servers="[{'ipAddress':'$ipAddress1'},{'ipAddress':'$ipAddress2'}]"
+    'KEY' is 'uuid' or 'ipAddress'
+    'VALUE' is the vm nics' uuid or ip address 
+    Example: vmNics="[{'uuid':'$vmNics1_UUID'},{'uuid':'$vmNics2_UUID'}]" or servers="[{'ipAddress':'$ipAddress1'},{'ipAddress':'$ipAddress2'}]"
                     """
                     else:
                         err_msg2 = """
-  'KEY' is the uuid of network service provider
-  'VALUE' is the service name, like 'SNAT','DHCP' and so on
-  Example: networkServices="{'$NetworkServiceProvider_UUID':['SNAT','DHCP']}"
+    'KEY' is the uuid of network service provider
+    'VALUE' is the service name, like 'SNAT','DHCP' and so on
+    Example: networkServices="{'$NetworkServiceProvider_UUID':['SNAT','DHCP']}"
                     """
                     self.print_error(err_msg + err_msg2)
                     raise e
@@ -385,7 +384,7 @@ Parse command parameters error:
                     all_params[params[0]] = eval_string(params[0], params[1])
                 elif apiname == 'APIAddBackendServerToServerGroupMsg' and params[0] in ['vmNics','servers']:
                     all_params[params[0]] = eval_string(params[0], params[1])
-	        elif apiname == 'APIChangeLoadBalancerBackendServerMsg' and params[0] in ['vmNics','servers']:
+                elif apiname == 'APIChangeLoadBalancerBackendServerMsg' and params[0] in ['vmNics','servers']:
                     all_params[params[0]] = eval(params[1])
                 elif apiname == 'APIUpdateSchedulerJobMsg' and params[0] == 'parameters':
                     all_params[params[0]] = eval_string(params[0], params[1])
@@ -545,7 +544,7 @@ Parse command parameters error:
                 params = generate_query_params(apiname, params)
 
             msg = eval('inventory.%s()' % apiname)
-            for key in params.keys():
+            for key in list(params.keys()):
                 value = params[key]
                 setattr(msg, key, value)
             return msg
@@ -589,15 +588,15 @@ Parse command parameters error:
                            self.GET_TWO_FACTOR_AUTHENTICATION_SECRET]:
                 if not msg.password:
                     raise CliError('"password" must be specified')
-                msg.password = hashlib.sha512(msg.password).hexdigest()
+                msg.password = hashlib.sha512(msg.password.encode()).hexdigest()
 
             if apiname == self.POWER_OFF_HOST:
-                msg.adminPassword = hashlib.sha512(msg.adminPassword).hexdigest()
+                msg.adminPassword = hashlib.sha512(msg.adminPassword.encode()).hexdigest()
 
             if apiname in [self.USER_RESET_PASSWORD_NAME, self.ACCOUNT_RESET_PASSWORD_NAME,
                            self.IAM2_USER_RESET_PASSWORD_NAME]:
                 if msg.password:
-                    msg.password = hashlib.sha512(msg.password).hexdigest()
+                    msg.password = hashlib.sha512(msg.password.encode()).hexdigest()
 
             if apiname == self.LOGOUT_MESSAGE_NAME:
                 if not msg.sessionUuid:
@@ -658,15 +657,15 @@ Parse command parameters error:
             result = str(result)
             result2 = []
             for line in result.split('\n'):
-                result2.append(str(line).decode('unicode_escape').replace('\n', '\\n'))
+                result2.append(str(line).replace('\n', '\\n'))
             result = '\n'.join(result2)
-            print '%s\n' % result
+            print('%s\n' % result)
             # print 'Time costing: %fs' % (end_time - start_time)
             self.write_more(args, result)
         except urllib3.exceptions.MaxRetryError as url_err:
             self.print_error('Is %s reachable? Please make sure the management node is running.' % self.api.api_url)
             self.print_error(str(url_err))
-            raise ("Server: %s is not reachable" % self.hostname)
+            raise Exception("Server: %s is not reachable" % self.api.api_url)
         except Exception as e:
             self.write_more(args, str(e), False)
             if 'Session expired' in str(e):
@@ -690,7 +689,7 @@ Parse command parameters error:
                 if cmd:
                     self.do_command(cmd)
                 else:
-                    line = raw_input(self.get_prompt_with_account_info())
+                    line = input(self.get_prompt_with_account_info())
                     if line:
                         pairs = shlex.split(line)
                         self.do_command(pairs)
@@ -698,10 +697,10 @@ Parse command parameters error:
                 self.print_error(str(cli_err))
                 exit_code = 1
             except EOFError:
-                print ''
+                print('')
                 sys.exit(1)
             except KeyboardInterrupt:
-                print ''
+                print('')
             except Exception as e:
                 exit_code = 3
                 self.print_error(str(e))
@@ -720,7 +719,7 @@ Parse command parameters error:
         for apiname in inventory.api_names:
             obj = eval("inventory.%s()" % apiname)
             params = []
-            params.extend(obj.__dict__.keys())
+            params.extend(list(obj.__dict__.keys()))
             self.api_class_params[apiname] = rule_out_unneeded_params(params)
 
     def _parse_api_name(self, api_names):
@@ -766,8 +765,8 @@ Parse command parameters error:
                 try:
                     index = match.lower().index(self.curr_pattern.lower())
                 except Exception as e:
-                    print "can't find pattern: %s in match: %s" % (self.curr_pattern, match)
-                    print e
+                    print("can't find pattern: %s in match: %s" % (self.curr_pattern, match))
+                    print(e)
                     raise e
 
                 cprint(match[0:index], end='')
@@ -817,23 +816,23 @@ Parse command parameters error:
                 if query_cmd:
                     cprint('[Query Conditions:]', attrs=['bold'], end='\n')
                 print_match(columes, matches_dot, max_match_length)
-                print '\n'
+                print('\n')
             if matches_eq_cond:
                 # cprint('[Primitive Query Conditions:]', attrs=['bold'], end='\n')
                 print_match(columes, matches_eq_cond, max_match_length)
-                print '\n'
+                print('\n')
             if matches_eq_param:
                 if query_cmd:
                     cprint('[Parameters:]', attrs=['bold'], end='\n')
                 print_match(columes, matches_eq_param, max_match_length)
-                print '\n'
+                print('\n')
             if matches_ot:
                 print_match(columes, matches_ot, max_match_length)
-                print '\n'
+                print('\n')
 
-        print ''
+        print('')
         print_bold()
-        print ''
+        print('')
         cprint('%s%s' % (self.get_prompt_with_account_info(), readline.get_line_buffer()), end='')
 
         # readline.redisplay()
@@ -899,14 +898,14 @@ Parse command parameters error:
         more_usage = '\n'.join(more_usage_list)
 
         if not start_value:
-            print 'No command history to display.'
+            print('No command history to display.')
             return
 
         if num:
             if num.isdigit():
                 if int(num) > CLI_MAX_CMD_HISTORY:
-                    print 'Not find result for number: %s' % num
-                    print 'Max number is: %s ' % str(CLI_MAX_RESULT_HISTORY)
+                    print('Not find result for number: %s' % num)
+                    print('Max number is: %s ' % str(CLI_MAX_RESULT_HISTORY))
                     cprint(more_usage, attrs=['bold'], end='\n')
                     return
 
@@ -969,7 +968,7 @@ Parse command parameters error:
             pydoc.pager(more_result)
             return
 
-        print 'Not find result for number: %s' % num
+        print('Not find result for number: %s' % num)
         cprint(more_usage, attrs=['bold'], end='\n')
 
     def save_json_to_file(self, all_params):
@@ -977,7 +976,7 @@ Parse command parameters error:
         def write_to_file(output, file_name, num):
             file_name = os.path.abspath(file_name)
             with open(file_name, 'w') as f: f.write(output)
-            print "Saved command: %s result to file: %s" % (str(num), file_name)
+            print("Saved command: %s result to file: %s" % (str(num), file_name))
 
         if not all_params:
             self.show_help(None)
@@ -987,7 +986,7 @@ Parse command parameters error:
         if len(all_params) > 1:
             file_folder = all_params[1]
             if len(nums) > 1 and not os.path.isdir(file_folder):
-                print "%s must be a folder, to save more than 1 command" % file_folder
+                print("%s must be a folder, to save more than 1 command" % file_folder)
                 return
         else:
             file_folder = None
@@ -1000,7 +999,7 @@ Parse command parameters error:
         for num in nums:
             return_result = self.read_more(num, False, not json_only)
             if not return_result:
-                print "cannot find related command result to save"
+                print("cannot find related command result to save")
                 return
 
             cmd, output = return_result
@@ -1019,9 +1018,10 @@ Parse command parameters error:
                     file_name = '%s/%s-%s.json' % (new_file_folder, cmd[0], num)
                     write_to_file(output, file_name, num)
                 elif os.path.isdir(dirname):
+                    file_name = '%s/%s-%s.json' % (dirname, cmd[0], num)
                     write_to_file(output, file_name, num)
                 else:
-                    print "Can't find folder: %s" % dirname
+                    print("Can't find folder: %s" % dirname)
 
     def show_more(self, all_params):
         if not all_params:
@@ -1177,7 +1177,7 @@ Parse command parameters error:
         except:
             linux.rm_dir_force(CLI_RESULT_HISTORY_KEY)
             self.hd = filedb.FileDB(CLI_RESULT_HISTORY_KEY, is_abs_path=True)
-            print "\nRead history file: %s error. Has recreate it.\n" % CLI_RESULT_HISTORY_KEY
+            print("\nRead history file: %s error. Has recreate it.\n" % CLI_RESULT_HISTORY_KEY)
 
         self.start_key = 'start_key'
         self.last_key = 'last_key'
@@ -1187,7 +1187,7 @@ Parse command parameters error:
                              'quit': sys.exit,
                              'exit': sys.exit,
                              'save': self.save_json_to_file}
-        self.cli_cmd = self.cli_cmd_func.keys()
+        self.cli_cmd = list(self.cli_cmd_func.keys())
 
         self.raw_words_db = self._parse_api_name(inventory.api_names)
         self.words_db = list(self.raw_words_db)
@@ -1296,14 +1296,14 @@ def main():
     os.environ['ZSTACK_BUILT_IN_HTTP_SERVER_PORT'] = options.port
 
     if options.zstack_config_dump_file:
-        admin_passwd = hashlib.sha512(options.admin_password).hexdigest()
+        admin_passwd = hashlib.sha512(options.admin_password.encode()).hexdigest()
         read_config.dump_zstack(options.zstack_config_dump_file,
                                 admin_passwd)
     elif options.deploy_config_file:
         # deploy ZStack pre-configed environment.
         xml_config = parse_config.DeployConfig(options.deploy_config_file, options.deploy_config_template_file)
         deploy_xml_obj = xml_config.get_deploy_config()
-        admin_passwd = hashlib.sha512(options.admin_password).hexdigest()
+        admin_passwd = hashlib.sha512(options.admin_password.encode()).hexdigest()
         try:
             deploy_xml_obj.deployerConfig
         except:
@@ -1311,7 +1311,7 @@ def main():
         else:
             deploy_config.deploy_initial_database(deploy_xml_obj.deployerConfig, admin_passwd)
 
-        print('Successfully deployed a cloud from: %s' % options.deploy_config_file)
+        print(('Successfully deployed a cloud from: %s' % options.deploy_config_file))
 
     else:
         cli = Cli(options)

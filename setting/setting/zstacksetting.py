@@ -56,13 +56,13 @@ class Setting(object):
     
     def _create_backup_folder(self):
         if not os.path.exists(self.HOME_DIR):
-            os.makedirs(self.HOME_DIR, 0755)
+            os.makedirs(self.HOME_DIR, 0o755)
         if not os.path.exists(self.BACKUP_DIR):
-            os.makedirs(self.BACKUP_DIR, 0755)
+            os.makedirs(self.BACKUP_DIR, 0o755)
         if not os.path.exists(self.SYSTEM_CHNAGE_HISTROY_DIR):
-            os.makedirs(self.SYSTEM_CHNAGE_HISTROY_DIR, 0755)
+            os.makedirs(self.SYSTEM_CHNAGE_HISTROY_DIR, 0o755)
         if not os.path.exists(self.PROPERTIES_BACKUP_DIR):
-            os.makedirs(self.PROPERTIES_BACKUP_DIR, 0755)
+            os.makedirs(self.PROPERTIES_BACKUP_DIR, 0o755)
             
     def __init__(self):
         self.plugin_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'plugins')
@@ -112,7 +112,7 @@ class Setting(object):
             with open(property_file, 'w') as fd:
                 fd.write('\n'.join(content))
             
-            print 'wrote all settings to %s' % property_file
+            print('wrote all settings to %s' % property_file)
         
         dopetions = vars(options)
         for name, p in self.properties:
@@ -184,8 +184,8 @@ class Setting(object):
         with open(history_file, 'w') as fd:
             fd.write(info)
         
-        print info
-        print '\nthis change info has been saved to %s' % history_file
+        print(info)
+        print('\nthis change info has been saved to %s' % history_file)
         
         
     def main(self):
@@ -199,10 +199,10 @@ class Setting(object):
             options.func(options)
             self._print_system_change_info()
         except SettingError as se:
-            print str(se)
+            print(str(se))
             sys.exit(1)
         except Exception:
-            print 'internal error happened, check /var/log/zstack/zstack-setting.log for details'
+            print('internal error happened, check /var/log/zstack/zstack-setting.log for details')
             err = linux.get_exception_stacktrace()
             logger.warn(err)
             sys.exit(1)
@@ -232,7 +232,7 @@ def backup_file(filepath, subfolder=None):
         dst_dir = os.path.join(Setting.BACKUP_DIR, tdir)
     
     if not os.path.exists(dst_dir):
-        os.makedirs(dst_dir, 0755)
+        os.makedirs(dst_dir, 0o755)
     
     shell.call('yes | cp -f %s %s' % (filepath, dst_dir))
     bk = os.path.join(dst_dir, os.path.basename(filepath))
@@ -250,7 +250,7 @@ def backup_dir(dirpath, subfolder=None):
         dst_dir = os.path.join(Setting.BACKUP_DIR, tdir)
     
     if not os.path.exists(dst_dir):
-        os.makedirs(dst_dir, 0755)
+        os.makedirs(dst_dir, 0o755)
     
     shell.call('yes | cp -rf %s %s' % (dirpath, dst_dir))
     bk = os.path.join(dst_dir, os.path.basename(dirpath))

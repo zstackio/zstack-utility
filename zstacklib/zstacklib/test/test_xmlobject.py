@@ -2,6 +2,7 @@
 
 @author: Frank
 '''
+from __future__ import annotations
 import unittest
 from zstacklib.utils import jsonobject
 from zstacklib.utils import xmlobject
@@ -23,7 +24,7 @@ class Test(unittest.TestCase):
             xmlstr = xmldom.toprettyxml()
             text_re = re.compile('>\n\s+([^<>\s].*?)\n\s+</', re.DOTALL)    
             prettyXml = text_re.sub('>\g<1></', xmlstr)
-            print prettyXml
+            print(prettyXml)
 
 
 if __name__ == "__main__":

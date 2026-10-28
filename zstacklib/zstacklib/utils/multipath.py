@@ -33,8 +33,8 @@ def sorted_conf(sections):
     if not sections:
         return result
 
-    for section in sorted(sections, key=lambda s: s.keys()[0]):
-        section_name, section_value = section.items()[0]
+    for section in sorted(sections, key=lambda s: list(s.keys())[0]):
+        section_name, section_value = list(section.items())[0]
         if type(section_value) is list:
             result.append({section_name: sorted_conf(section_value)})
         else:
@@ -56,13 +56,14 @@ def write_multipath_conf(path, blacklist=None):
         blacklist_changed = False
         for section in config:
             if 'blacklist' in section:
-                blacklist_changed = cmp(sorted_conf(section['blacklist']), sorted_conf(blacklist)) != 0
+                # 仅需判等：等价于 py2 的 cmp(...) != 0；两侧均已经 sorted_conf 规范化排序
+                blacklist_changed = sorted_conf(section['blacklist']) != sorted_conf(blacklist)
 
             if 'devices' in section:
                 has_devices_section = True
                 for subsection in section['devices']:
                     for attribute in subsection['device'][:]:
-                        name, value = attribute.items()[0]
+                        name, value = list(attribute.items())[0]
                         if value.strip().strip('"') == '*':
                             attribute[name] = '.*'
                             modified = True
@@ -71,7 +72,8 @@ def write_multipath_conf(path, blacklist=None):
                             subsection['device'].remove(attribute)
                             modified = True
 
-                        if cmp(sorted(default_device['device']), sorted(subsection['device'])) == 0:
+                        # 仅需判等：等价于 py2 的 cmp(...) == 0
+                        if sorted(default_device['device']) == sorted(subsection['device']):
                             has_default_device = True
 
                 if not has_default_device:
@@ -79,7 +81,7 @@ def write_multipath_conf(path, blacklist=None):
                     modified = True
 
         if blacklist is not None and blacklist_changed:  # None blacklist means ignore
-            config = filter(lambda cfg : 'blacklist' not in cfg, config)
+            config = list(filter(lambda cfg : 'blacklist' not in cfg, config))
             config.append({'blacklist' : blacklist})
             modified = True
 
@@ -93,10 +95,10 @@ def write_multipath_conf(path, blacklist=None):
             fd.truncate()
 
             for section in config:
-                section_name, section_value = section.items()[0]
+                section_name, section_value = list(section.items())[0]
                 fd.write("%s {\n" % section_name)
                 for child in sorted_conf(section_value):
-                    child_name, child_value = child.items()[0]
+                    child_name, child_value = list(child.items())[0]
                     # child is attribute
                     if type(child_value) == str:
                         fd.write('\t%s "%s"\n' % (child_name.strip('"'), child_value.strip('"')))
@@ -105,7 +107,7 @@ def write_multipath_conf(path, blacklist=None):
                     # child is subsection
                     fd.write('\t%s {\n' % child_name)
                     for attribute in child_value:
-                        attrib_name, attrib_value = attribute.items()[0]
+                        attrib_name, attrib_value = list(attribute.items())[0]
                         fd.write('\t\t%s "%s"\n' % (attrib_name.strip('"'), attrib_value.strip('"')))
                     fd.write("\t}\n")
                 fd.write("}\n")

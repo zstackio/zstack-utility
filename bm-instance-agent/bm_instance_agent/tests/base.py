@@ -28,5 +28,5 @@ class TestCase(base.BaseTestCase):
     def set_defaults(self, **kw):
         """Set default values of config options."""
         group = kw.pop('group', None)
-        for o, v in kw.items():
+        for o, v in list(kw.items()):
             self.cfg_fixture.set_default(o, v, group=group)

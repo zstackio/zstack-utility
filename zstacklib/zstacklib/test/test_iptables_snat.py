@@ -2,6 +2,7 @@
 
 @author: Frank
 '''
+from __future__ import annotations
 import unittest
 from zstacklib.iptables import iptables
 
@@ -18,7 +19,7 @@ class Test(unittest.TestCase):
         t.to_source = '192.168.0.199'
         rule.set_target(t)
         iptc.nat_table_prerouting_chain_add_rule(rule)
-        print str(iptc)
+        print(str(iptc))
 
 
 if __name__ == "__main__":

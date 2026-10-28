@@ -2,13 +2,13 @@
 
 @author: MaJin
 '''
+from __future__ import annotations
 import os
 import tempfile
 
 from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import log
-from zstacklib.utils import ordered_set
 from pyparsing import *
 
 logger = log.get_logger(__name__)
@@ -141,7 +141,7 @@ class IPSetManager(object):
         if used_ipset:
             used_sets = used_ipset
         else:
-            used_sets = self.sets.keys()
+            used_sets = list(self.sets.keys())
 
         logger.debug('start cleanup other ipsets')
         set_list = shell.call("ipset list -n").splitlines()
@@ -163,7 +163,7 @@ class IPSetManager(object):
     def refresh_my_ipsets(self):
         (tmp_fd, tmp_path) = tempfile.mkstemp()
         tmp_fd = os.fdopen(tmp_fd, 'w')
-        for name, ipset in self.sets.items():
+        for name, ipset in list(self.sets.items()):
             tmp_fd.write(ipset.transform_cmd())
         tmp_fd.close()
 
@@ -187,7 +187,7 @@ class IPSetManager(object):
     def _parse_entry_action(self, tokens):
         set_name = tokens[1]
         ip = tokens[2]
-        if set_name not in self.sets.keys():
+        if set_name not in list(self.sets.keys()):
             self.create_set(name=set_name)
         self.sets[set_name].add_match_ip(ip)
 

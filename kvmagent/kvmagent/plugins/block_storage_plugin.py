@@ -394,7 +394,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
             self._logout_target(logout_cmd)
         except Exception as e:
             rsp.success = False
-            rsp.error = e.message
+            rsp.error = str(e)
             logger.debug(e)
         return jsonobject.dumps(rsp)
 

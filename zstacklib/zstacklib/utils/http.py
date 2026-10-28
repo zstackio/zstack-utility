@@ -7,7 +7,7 @@ import traceback
 import types
 
 import cherrypy
-import thread
+from zstacklib.utils import thread
 import threading
 
 import os
@@ -16,6 +16,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import linux
 from zstacklib.utils import debug
+from zstacklib.utils import pycompat
 
 TASK_UUID = 'taskuuid'
 ERROR_CODE = 'error'
@@ -62,7 +63,8 @@ class Request(object):
 
 class SyncUriHandler(object):
     def _check_response(self, rsp):
-        if rsp is not None and not isinstance(rsp, types.StringType):
+        # py2 的 StringType(bytes str) 与 py3 的 str 语义对应：两者都要求“文本串”响应体
+        if rsp is not None and not isinstance(rsp, pycompat.binary_type if pycompat.PY2 else pycompat.text_type):
             raise Exception('Response body must be string')
 
     def __init__(self, uri_obj):
@@ -165,7 +167,7 @@ class AsyncUirHandler(SyncUriHandler):
 
     def _get_callback_uri(self, req):
         callback_uri = None
-        if req.headers.has_key(CALLBACK_URI):
+        if pycompat.has_key(req.headers, CALLBACK_URI):
             callback_uri = req.headers[CALLBACK_URI]
         else:
             callback_uri = self.uri_obj.callback_uri
@@ -182,7 +184,7 @@ class AsyncUirHandler(SyncUriHandler):
             logger.warn(err)
             raise cherrypy.HTTPError(400, err)
 
-        if not cherrypy.request.headers.has_key(TASK_UUID):
+        if not pycompat.has_key(cherrypy.request.headers, TASK_UUID):
             err = 'taskUuid missing in request header'
             logger.warn(err)
             raise cherrypy.HTTPError(400, err)
@@ -358,7 +360,8 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False, print_
                 header[k] = headers[k]
 
             if body is not None:
-                assert isinstance(body, types.StringType)
+                # py2 的 StringType(bytes str) 与 py3 的 str 语义对应：请求体都是程序生成的 JSON 文本
+                assert isinstance(body, pycompat.binary_type if pycompat.PY2 else pycompat.text_type)
                 header['Content-Length'] = str(len(body))
                 if print_curl: print_curl_command(uri, method, header, body)
                 resp = pool.urlopen(method, uri, headers=header, body=str(body))
@@ -466,7 +469,7 @@ class UriBuilder(object):
                 rest = rest.lstrip(self.host)
 
         self.paths = [p.strip('/') for p in rest.split('/')]
-        self.paths = filter(lambda x: x != '', self.paths)
+        self.paths = list(filter(lambda x: x != '', self.paths))
         print(self.paths)
         self.paths = [] if not self.paths else self.paths
 

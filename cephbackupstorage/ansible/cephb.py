@@ -97,29 +97,10 @@ else:
     command = 'mkdir -p %s %s' % (cephb_root, virtenv_path)
     run_remote_command(command, host_post_info)
 
-# name: install virtualenv
-virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status is False:
-    command = "rm -rf %s && rm -rf %s" % (virtenv_path, cephb_root)
-    run_remote_command(command, host_post_info)
-    sys.exit(1)
-
-# name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv-2.7 --system-site-packages %s " % (virtenv_path, virtenv_path)
-run_remote_command(command, host_post_info)
-
-# name: install python pkg and replace ceph python path
-replace_content(ceph_file_path, "regexp='/usr/bin/env python' replace='/usr/bin/python2.7'", host_post_info)
-# name: install python pkg
-extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
-pip_install_arg = PipInstallArg()
-pip_install_arg.extra_args = extra_args
-pip_install_arg.name = "python-cephlibs"
-pip_install_arg.virtualenv = virtenv_path
-pip_install_package(pip_install_arg, host_post_info)
 
 if host_info.distro in RPM_BASED_OS:
     install_rpm_list = "wget nmap"
+    py3_rpms = ' python3.11 python3.11-devel python3.11-pip libffi-devel openssl-devel'
     if remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         (status, qemu_img_version) = get_qemu_img_version(host_post_info)
         # When the qemu-img version is smaller than 4.0.0, rbd is already included
@@ -136,6 +117,9 @@ if host_info.distro in RPM_BASED_OS:
         # qemu-kvm-ev
         if releasever == 'c74' and get_mn_release() in ['c76', 'c79', 'h76c', 'h79c']:
             install_rpm_list += " qemu-kvm"
+
+    if releasever in ['h84r']:
+        install_rpm_list += py3_rpms
 
     if zstack_repo != 'false':
         command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
@@ -184,6 +168,29 @@ elif host_info.distro in DEB_BASED_OS:
     run_remote_command(command, host_post_info)
 else:
     error("unsupported OS!")
+
+
+# name: install virtualenv
+py_version = get_virtualenv_python_version(virtenv_path, host_post_info)
+if py_version and not py_version.startswith("3.11"):
+    command = "rm -rf %s" % virtenv_path
+    run_remote_command(command, host_post_info)
+    py_version = None
+
+if not py_version:
+    # name: make sure virtualenv has been setup
+    command = "python3.11 -m venv %s --system-site-packages" % virtenv_path
+    run_remote_command(command, host_post_info)
+
+# name: install python pkg and replace ceph python path
+replace_content(ceph_file_path, "regexp='/usr/bin/env python' replace='/usr/bin/python3.11'", host_post_info)
+# name: install python pkg
+extra_args = "\"--trusted-host %s -i %s \"" % (trusted_host, pip_url)
+pip_install_arg = PipInstallArg()
+pip_install_arg.extra_args = extra_args
+pip_install_arg.name = "python-cephlibs"
+pip_install_arg.virtualenv = virtenv_path
+pip_install_package(pip_install_arg, host_post_info)
 
 # name: copy zstacklib
 copy_arg = CopyArg()

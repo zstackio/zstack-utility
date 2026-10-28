@@ -1,6 +1,5 @@
 import os
 
-from zstacklib.utils import shell
 from zstacklib.utils import lvm
 
 from kvmagent.plugins.bmv2_gateway_agent import exception

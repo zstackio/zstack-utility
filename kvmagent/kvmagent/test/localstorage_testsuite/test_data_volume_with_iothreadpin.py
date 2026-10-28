@@ -37,7 +37,7 @@ class TestVolumeWithIoThreadPin(TestCase, vm_utils.VmPluginTestStub):
         self.vol_uuid, self.vol_path = volume_utils.create_empty_volume()
         self.iothread_id = 2
         self.iothread_pin = "0,1,0-1,^0"
-        print("resource info: {} {}".format(self.vm_uuid, self.vol_uuid))
+        print(("resource info: {} {}".format(self.vm_uuid, self.vol_uuid)))
         _, self.vol = vm_utils.attach_iothreadpin_volume_to_vm(self.vm_uuid,
                                                                self.vol_uuid,
                                                                self.vol_path,

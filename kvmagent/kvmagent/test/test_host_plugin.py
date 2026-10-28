@@ -1,9 +1,14 @@
+# encoding: utf-8
+
 '''
 
 @author: frank
 '''
-import unittest
+import mock
+import subprocess
 import time
+import unittest
+
 from kvmagent import kvmagent
 from kvmagent.plugins import host_plugin
 from zstacklib.utils import http
@@ -35,14 +40,15 @@ class TestHostPlugin(unittest.TestCase):
 
 
     def test_connect(self):
-        url = kvmagent._build_url_for_test([host_plugin.CONNECT_PATH])
+        url = kvmagent._build_url_for_test([host_plugin.HostPlugin.CONNECT_PATH])
         logger.debug('calling %s' % url)
         ret = http.json_dump_post(url, body=ConnectCmd())
         rsp = jsonobject.loads(ret)
         self.assertTrue(rsp.success)
         
-    def test_hostfact(self):
-        url = kvmagent._build_url_for_test([host_plugin.HOSTFACT_PATH])
+    @mock.patch('subprocess.Popen')
+    def test_hostfact(self, mock_popen):
+        url = kvmagent._build_url_for_test([host_plugin.HostPlugin.FACT_PATH])
         cmd = HostFactCmd()
         ret = http.json_dump_post(url, body=cmd)
         rsp = jsonobject.loads(ret)
@@ -51,6 +57,6 @@ class TestHostPlugin(unittest.TestCase):
         self.assertEqual(host_plugin._get_cpu_speed(), rsp.cpuSpeed)
         self.assertEqual(host_plugin._get_total_memory(), rsp.totalMemory)
 
-if __name__ == "__main__":
-    #import sys;sys.argv = ['', 'Test.testName']
-    unittest.main()
+    if __name__ == "__main__":
+        #import sys;sys.argv = ['', 'Test.testName']
+        unittest.main()

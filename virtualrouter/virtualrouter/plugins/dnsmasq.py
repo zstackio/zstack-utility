@@ -159,12 +159,12 @@ class Dnsmasq(virtualrouter.VRAgent):
                         sed -i '/^$/d' %s; \
                         sed -i '/\<%s\>/d' %s; \
                         sed -i '/^$/d' %s;" \
-                           % (e.mac, self.HOST_DHCP_FILE, \
-                              e.ip, self.HOST_DHCP_FILE, \
-                              self.HOST_DHCP_FILE, \
-                              mac2, self.HOST_OPTION_FILE, \
-                              self.HOST_OPTION_FILE, \
-                              e.ip, self.HOST_DNS_FILE, \
+                           % (e.mac, self.HOST_DHCP_FILE,
+                              e.ip, self.HOST_DHCP_FILE,
+                              self.HOST_DHCP_FILE,
+                              mac2, self.HOST_OPTION_FILE,
+                              self.HOST_OPTION_FILE,
+                              e.ip, self.HOST_DNS_FILE,
                               self.HOST_DNS_FILE))
             linux.sync_file(self.HOST_DHCP_FILE)
         except virtualrouter.VirtualRouterError as e:
@@ -299,7 +299,7 @@ class Dnsmasq(virtualrouter.VRAgent):
             for e in cmd.dhcpEntries:
                 net_dev = shell.call("ip addr |grep -B 1 -i %s| head -n 1 | awk '{print $2}'" % e.vrNicMac)
                 net_dev = net_dev.replace(':', '')
-                net_dev = net_dev.strip('\t\r\n ')
+                net_dev = net_dev.strip()
                 mac2 = e.mac.replace(':', '')
 
                 shell.call("sed -i '/%s/d' %s; \
@@ -309,12 +309,12 @@ class Dnsmasq(virtualrouter.VRAgent):
                         sed -i '/\<%s\>/d' %s; \
                         sed -i '/^$/d' %s; \
                         dhcp_release %s %s %s"\
-                        % (e.mac, self.HOST_DHCP_FILE, \
-                        self.HOST_DHCP_FILE, \
-                        mac2, self.HOST_OPTION_FILE, \
-                        self.HOST_OPTION_FILE, \
-                        e.ip, self.HOST_DNS_FILE, \
-                        self.HOST_DNS_FILE, \
+                        % (e.mac, self.HOST_DHCP_FILE,
+                        self.HOST_DHCP_FILE,
+                        mac2, self.HOST_OPTION_FILE,
+                        self.HOST_OPTION_FILE,
+                        e.ip, self.HOST_DNS_FILE,
+                        self.HOST_DNS_FILE,
                         net_dev, e.ip, e.mac))
             #logger.debug("remove dhcp entries:%s" % (len(cmd.dhcpEntries)))
             linux.sync_file(self.HOST_DHCP_FILE)

@@ -1,4 +1,5 @@
 
+from __future__ import annotations
 import os
 import time
 import unittest
@@ -146,8 +147,8 @@ class Test(unittest.TestCase):
         else:
             ''' prometheus can handle 1000 interfaces in 1 second '''
             expect_time_cost = float(num_interfaces)/1000
-        print("time-cost = %s" % (str(time_cost)))
-        print("expect time-cost = %s" % (str(expect_time_cost)))
+        print(("time-cost = %s" % (str(time_cost))))
+        print(("expect time-cost = %s" % (str(expect_time_cost))))
         if time_cost > expect_time_cost:
             is_performance_good = False
         self.assertEqual(is_performance_good, True)

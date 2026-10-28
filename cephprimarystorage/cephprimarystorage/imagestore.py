@@ -45,7 +45,7 @@ class ImageStoreClient(object):
     def _ceph_file_existed(self, path):
         pool, meta = self._get_id_name_from_install(path)
         checkstr = 'rados -p pool %s stat %s' % (pool, meta)
-        if shell.run(checkstr.encode(encoding="utf-8")) == 0:
+        if shell.run(checkstr) == 0:
             return True
         return False
 
@@ -87,7 +87,7 @@ class ImageStoreClient(object):
             taskid, cmd.imageUuid, extpara, push_ext_param, cmd.srcPath)
         logger.debug('pushing %s to image store' % cmd.srcPath)
         shell = traceable_shell.get_shell(cmd)
-        shell.call(cmdstr.encode(encoding="utf-8"))
+        shell.call(cmdstr)
         logger.debug('%s pushed to image store' % cmd.srcPath)
 
         name, imageid = self._get_image_reference(cmd.srcPath)
@@ -145,6 +145,6 @@ class ImageStoreClient(object):
         req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.description, fpath)
 
         logger.debug('adding %s to local image store' % fpath)
-        shell.call(cmdstr.encode(encoding="utf-8"))
+        shell.call(cmdstr)
         logger.debug('%s added to local image store' % fpath)
 

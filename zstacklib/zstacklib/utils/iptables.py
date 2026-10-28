@@ -1061,4 +1061,4 @@ if __name__ == '__main__':
     ipt.add_rule(rule1)
     ipt.iptable_restore()
     ipt.iptables_save()
-    print ipt
+    print(ipt)

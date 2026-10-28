@@ -91,7 +91,7 @@ if os.name == 'nt':
         hfile = win32file._get_osfhandle(file.fileno())
         try:
             win32file.LockFileEx(hfile, flags, 0, -0x10000, __overlapped)
-        except pywintypes.error, exc_value:
+        except pywintypes.error as exc_value:
             # error: (33, 'LockFileEx', 'The process cannot access the file because another process has locked a portion of the file.')
             if exc_value[0] == 33:
                 raise LockException(LockException.LOCK_FAILED, exc_value[2])
@@ -104,7 +104,7 @@ if os.name == 'nt':
         hfile = win32file._get_osfhandle(file.fileno())
         try:
             win32file.UnlockFileEx(hfile, 0, -0x10000, __overlapped)
-        except pywintypes.error, exc_value:
+        except pywintypes.error as exc_value:
             if exc_value[0] == 158:
                 # error: (158, 'UnlockFileEx', 'The segment is already unlocked.')
                 # To match the 'posix' implementation, silently ignore this error
@@ -117,7 +117,7 @@ elif os.name == 'posix':
     def lock(file, flags):
         try:
             fcntl.flock(file.fileno(), flags)
-        except IOError, exc_value:
+        except IOError as exc_value:
             # The exception code varies on different systems so we'll catch
             # every IO error
             raise LockException(*exc_value)
@@ -137,7 +137,7 @@ if __name__ == '__main__':
     timestamp = strftime("%m/%d/%Y %H:%M:%S\n", localtime(time()))
     log.write(timestamp)
 
-    print "Wrote lines. Hit enter to release lock."
+    print("Wrote lines. Hit enter to release lock.")
     dummy = sys.stdin.readline()
 
     log.close()

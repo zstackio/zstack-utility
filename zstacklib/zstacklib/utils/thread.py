@@ -7,7 +7,7 @@ import threading
 import inspect
 import pprint
 import traceback
-import log
+from zstacklib.utils import log
 import functools
 
 logger = log.get_logger(__name__)

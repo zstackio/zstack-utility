@@ -92,15 +92,14 @@ else:
 
 
 # name: install dependencies
-install_rpm_list = ""
+install_rpm_list = "libcbd"
 qemu_installed = yum_check_package("qemu-kvm", host_post_info)
 if not qemu_installed:
     install_rpm_list += " %s" % qemu_alias.get(releasever, 'qemu-kvm')
 
 if zstack_repo != 'false':
-    command = """pkg_list=`rpm -q {} | grep "not installed" | awk '{{ print $2 }}'` && for pkg"""\
-            """ in $pkg_list; do yum --disablerepo=* --enablerepo={} install -y $pkg; done;"""\
-            .format(install_rpm_list, zstack_repo)
+    command = "for pkg in %s; do yum --disablerepo=* --enablerepo=%s install -y $pkg; done;" % (
+        install_rpm_list, zstack_repo)
     run_remote_command(command, host_post_info)
 
     if host_info.major_version >= 7:
@@ -114,18 +113,18 @@ else:
         run_remote_command(command, host_post_info)
 set_selinux("state=disabled", host_post_info)
 
-
 # name: install virtualenv
-virtual_env_status = check_and_install_virtual_env(virtualenv_version, trusted_host, pip_url, host_post_info)
-if virtual_env_status is False:
-    command = "rm -rf %s && rm -rf %s" % (virtenv_path, zbsp_root)
+py_version = get_virtualenv_python_version(virtenv_path, host_post_info)
+if py_version and not py_version.startswith("3.11"):
+    command = "rm -rf %s" % virtenv_path
     run_remote_command(command, host_post_info)
-    sys.exit(1)
+    py_version = None
 
+if not py_version:
+    # name: make sure virtualenv has been setup
+    command = "python3.11 -m venv %s --system-site-packages" % virtenv_path
+    run_remote_command(command, host_post_info)
 
-# name: make sure virtualenv has been setup
-command = "[ -f %s/bin/python ] || virtualenv --system-site-packages %s " % (virtenv_path, virtenv_path)
-run_remote_command(command, host_post_info)
 
 
 # name: copy zstacklib and install

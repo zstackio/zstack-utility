@@ -3,8 +3,9 @@ __author__ = 'Xingwei Yu'
 import traceback
 import pprint
 import os
+import base64
 
-import zbsutils
+from . import zbsutils
 import zstacklib.utils.jsonobject as jsonobject
 
 from zstacklib.utils import plugin
@@ -94,14 +95,56 @@ class CreateVolumeRsp(AgentResponse):
 class GetCapacityRsp(AgentResponse):
     def __init__(self):
         super(GetCapacityRsp, self).__init__()
-        self.capacity = 0
-        self.usedSize = 0
+        self.logicalPoolInfos = []
 
 
 class GetFactsRsp(AgentResponse):
     def __init__(self):
         super(GetFactsRsp, self).__init__()
-        self.version = None
+        self.mdsExternalAddr = None
+
+
+class LogicalPoolInfo:
+    class RedundanceAndPlacementPolicy:
+        def __init__(self, copyset_number=None, replica_number=None, zone_number=None):
+            self.copysetNum = copyset_number
+            self.replicaNum = replica_number
+            self.zoneNum = zone_number
+
+    def __init__(self, logical_pool_info):
+        self.logicalPoolID = logical_pool_info.logicalPoolID
+        self.logicalPoolName = logical_pool_info.logicalPoolName
+        self.physicalPoolID = logical_pool_info.physicalPoolID
+        self.physicalPoolName = logical_pool_info.physicalPoolName
+        self.type = logical_pool_info.type
+        self.createTime = logical_pool_info.createTime
+        self.redundanceAndPlaceMentPolicy = self.decode_redundance_and_placement_policy(
+            logical_pool_info.redundanceAndPlaceMentPolicy
+        )
+        self.userPolicy = logical_pool_info.userPolicy
+        self.allocateStatus = logical_pool_info.allocateStatus
+        self.capacity = logical_pool_info.capacity
+        self.usedSize = logical_pool_info.usedSize
+        self.allocatedSize = logical_pool_info.allocatedSize
+        self.rawUsedSize = logical_pool_info.rawUsedSize
+        self.rawWalUsedSize = logical_pool_info.rawWalUsedSize
+        self.quota = logical_pool_info.quota
+
+    def decode_redundance_and_placement_policy(self, redundance_and_placement_policy):
+        if not redundance_and_placement_policy:
+            return None
+
+        try:
+            d = jsonobject.loads(base64.b64decode(redundance_and_placement_policy).decode())
+            return self.RedundanceAndPlacementPolicy(
+                copyset_number=d.copysetNum,
+                replica_number=d.replicaNum,
+                zone_number=d.zoneNum
+            )
+        except Exception as e:
+            logger.error('failed to decode redundance and placement policy[%s], error[%s]' % (
+                redundance_and_placement_policy, str(e)
+            ))
 
 
 def replyerror(func):
@@ -135,7 +178,7 @@ def get_snapshot_name(install_path):
 class ZbsAgent(plugin.TaskManager):
     ECHO_PATH = "/zbs/primarystorage/echo"
     PING_PATH = "/zbs/primarystorage/ping"
-    GET_FACTS_PATH = "/zbs/primarystorage/facts"
+    DEPLOY_CLIENT_PATH = "/zbs/primarystorage/client/deploy"
     GET_CAPACITY_PATH = "/zbs/primarystorage/capacity"
     COPY_PATH = "/zbs/primarystorage/copy"
     CREATE_VOLUME_PATH = "/zbs/primarystorage/volume/create"
@@ -156,7 +199,7 @@ class ZbsAgent(plugin.TaskManager):
         super(ZbsAgent, self).__init__()
         self.http_server.register_sync_uri(self.ECHO_PATH, self.echo)
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
-        self.http_server.register_async_uri(self.GET_FACTS_PATH, self.get_facts)
+        self.http_server.register_async_uri(self.DEPLOY_CLIENT_PATH, self.deploy_client)
         self.http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         self.http_server.register_async_uri(self.COPY_PATH, self.copy)
         self.http_server.register_async_uri(self.CREATE_VOLUME_PATH, self.create_volume)
@@ -172,23 +215,22 @@ class ZbsAgent(plugin.TaskManager):
 
     @replyerror
     def ping(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
 
         o = zbsutils.query_mds_status_info()
-        ret = jsonobject.loads(o)
-        if ret.error.code != 0:
-            raise Exception('failed to query mds status info, error[%s]' % ret.error.message)
+        r = jsonobject.loads(o)
+        if not r.result:
+            raise Exception('failed to query mds info, error[%s]' % r.error.message)
 
         found = False
-        for mds in ret.result:
-            if cmd.mdsAddr in mds.addr:
+        for m in r.result:
+            if m.status == "leader":
                 found = True
                 break
 
         if not found:
             rsp.success = False
-            rsp.error = 'mds addr was not found on the server[uuid:%s], not %s anymore.' % (cmd.psUuid, cmd.mdsAddr)
+            rsp.error = 'cannot found mds leader.'
             return jsonobject.dumps(rsp)
 
         return jsonobject.dumps(rsp)
@@ -228,8 +270,8 @@ class ZbsAgent(plugin.TaskManager):
         with CopyDaemon(task_spec=cmd):
             o = zbsutils.query_snapshot_info(cmd.logicalPoolName, cmd.lunName)
             ret = jsonobject.loads(o)
-            if not ret.result.hasattr('fileInfo'):
-                raise Exception('failed to found snapshot for lun[%s]' % cmd.lunName)
+            if ret.error.code != 0:
+                raise Exception('failed to query snapshot info for lun[%s], error[%s]' % (cmd.lunName, ret.error.message))
 
             o = zbsutils.copy(snapshot_path, dst_lun_path, True)
             ret = jsonobject.loads(o)
@@ -442,17 +484,16 @@ class ZbsAgent(plugin.TaskManager):
         rsp = GetCapacityRsp()
 
         o = zbsutils.query_logical_pool_info()
-        ret = jsonobject.loads(o)
-        if ret.error.code != 0:
-            raise Exception('cannot found logical pool info, error[%s]' % ret.error.message)
+        r = jsonobject.loads(o)
+        if r.error.code != 0:
+            raise Exception('cannot found logical pool info, error[%s]' % r.error.message)
 
         found = False
-        for lp in jsonobject.loads(o).result[0].logicalPoolInfos:
-            if cmd.logicalPoolName in lp.logicalPoolName:
-                rsp.capacity = lp.capacity
-                rsp.usedSize = lp.usedSize
-                found = True
-                break
+        for physical_pool in r.result:
+            for logical_pool in physical_pool.logicalPoolInfos:
+                rsp.logicalPoolInfos.append(LogicalPoolInfo(logical_pool))
+                if cmd.logicalPoolName in logical_pool.logicalPoolName:
+                    found = True
 
         if not found:
             raise Exception('cannot found logical pool[%s], you must create it manually' % cmd.logicalPoolName)
@@ -460,31 +501,15 @@ class ZbsAgent(plugin.TaskManager):
         return jsonobject.dumps(rsp)
 
     @replyerror
-    def get_facts(self, req):
+    def deploy_client(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetFactsRsp()
+        rsp = AgentResponse()
 
-        if not os.path.exists(ZBS_CLIENT_CONF):
-            raise Exception('missing directory %s, please check the environment libcbd installation' % ZBS_CLIENT_CONF)
-
-        shell.call('sed -i "s/^mds\.listen\.addr=.*/mds.listen.addr=%s/" %s' % (cmd.mdsListenAddr, ZBS_CLIENT_CONF))
-
-        o = zbsutils.query_mds_status_info()
-        ret = jsonobject.loads(o)
-        if ret.error.code != 0:
-            raise Exception('cannot found mds info, error[%s]' % ret.error.message)
-
-        found = False
-        for mds in ret.result:
-            if cmd.mdsAddr in mds.addr:
-                rsp.version = mds.version
-                found = True
-                break
-
-        if not found:
+        o = zbsutils.deploy_client(cmd.clientIp, cmd.clientPassword)
+        r = jsonobject.loads(o)
+        if r.error.code != 0:
             rsp.success = False
-            rsp.error = 'mds addr was not found on the server[uuid:%s], not %s anymore.' % (cmd.psUuid, cmd.mdsAddr)
-            return jsonobject.dumps(rsp)
+            rsp.error = 'failed to deploy client, error[%s].' % r.error.message
 
         return jsonobject.dumps(rsp)
 

@@ -37,6 +37,8 @@ parser.add_argument('-e', type=str, help='set additional variables as key=value 
 args = parser.parse_args()
 argument_dict = eval(args.e)
 locals().update(argument_dict)
+# Console proxy virtualenv is Python2; use the Python2-compatible zstacklib package.
+pkg_zstacklib = 'zstacklib-5.0.0.tar.gz'
 # update the variable from shell arguments
 virtenv_path = "%s/virtualenv/consoleproxy/" % zstack_root
 consoleproxy_root = "%s/console/package" % zstack_root

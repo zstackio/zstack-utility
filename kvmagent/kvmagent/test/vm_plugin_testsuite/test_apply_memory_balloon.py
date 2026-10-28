@@ -22,7 +22,7 @@ class TestApplyMemoryBalloon(TestCase, vm_utils.VmPluginTestStub):
     def setUpClass(cls):
         network_utils.create_default_bridge_if_not_exist()
 
-    @misc.test_for(handlers=[
+    @env.test_for(handlers=[
         vm_plugin.VmPlugin.APPLY_MEMORY_BALLOON_PATH
     ])
     @pytest_utils.ztest_decorater
@@ -35,11 +35,11 @@ class TestApplyMemoryBalloon(TestCase, vm_utils.VmPluginTestStub):
             logger.debug("skip test_vm_apply_memory_balloon")
             return
 
-        mem_size = vm.memory - vm.memory * 5 / 100
+        mem_size = vm.memory - vm.memory * 5 // 100
 
         vm_utils.apply_memory_balloon([vm.vmInstanceUuid], 'Decrease', 5)
         xml = vm_utils.get_vm_xmlobject_from_virsh_dump(vm.vmInstanceUuid)
-        m_size = sizeunit.KiloByte.toByte(long(xml.memory.text_))
+        m_size = sizeunit.KiloByte.toByte(int(xml.memory.text_))
         self.assertNotEqual(mem_size, m_size, 'expect memory size[%s] but get %s' % (mem_size, m_size))
         self.assertNotEqual(vm.memory, m_size, 'expect memory size[%s] but get %s' % (mem_size, m_size))
 

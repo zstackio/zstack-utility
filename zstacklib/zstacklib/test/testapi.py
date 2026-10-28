@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+from __future__ import annotations
 import unittest
 from zstacklib.utils import jsonobject
 
@@ -22,9 +23,9 @@ class Test(unittest.TestCase):
 }}\
 '''
         jobj = jsonobject.loads(jstr)
-        print jobj.__dict__
-        key = jobj.__dict__.keys()[0]
-        print key
+        print(jobj.__dict__)
+        key = list(jobj.__dict__.keys())[0]
+        print(key)
 
 if __name__ == "__main__":
     unittest.main()

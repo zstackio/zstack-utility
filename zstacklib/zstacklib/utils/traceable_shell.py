@@ -1,5 +1,5 @@
-import bash
-import shell
+from zstacklib.utils import bash
+from zstacklib.utils import shell
 from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils.report import get_api_id, get_timeout

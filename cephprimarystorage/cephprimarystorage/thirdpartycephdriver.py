@@ -1,6 +1,6 @@
 from zstacklib.utils.bash import *
 from zstacklib.utils.thirdparty_ceph import RbdDeviceOperator
-import cephdriver
+from . import cephdriver
 
 logger = log.get_logger(__name__)
 
@@ -104,10 +104,6 @@ class ThirdpartyCephDriver(cephdriver.CephDriver):
 
     def create_client_group(self, cmd, client_ip):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_client_group(client_ip)
-
-    def get_mapping_groups(self, cmd, access_path_id, client_group_id):
-        return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).get_mapping_groups(access_path_id,
-                                                                                         client_group_id)
 
     def create_mapping_group(self, cmd, access_path_id, client_group_id, volume_name):
         return RbdDeviceOperator(cmd.monIp, cmd.token, cmd.tpTimeout).create_mapping_group(access_path_id,

@@ -3,6 +3,8 @@
 import copy
 import simplejson as json
 
+from zstacklib.utils import pycompat
+
 
 class LogTree(object):
     '''
@@ -79,7 +81,7 @@ class LogTree(object):
     def parent(self, log):
         if log == self.root:
             return None
-        for k, v in self.logs.iteritems():
+        for k, v in pycompat.iteritems(self.logs):
             if log in v:
                 return k
 
@@ -120,13 +122,13 @@ class LogTree(object):
 
         def link_branch(ubr, rendtr):
             nd = ubr.pop()
-            nd_ascii = filter(lambda x: x and ord(x[0]) < 127 and not x.isspace(), nd)
+            nd_ascii = list(filter(lambda x: x and ord(x[0]) < 127 and not x.isspace(), nd))
             starter = 0 if self.compact else 1
             upbr = rendtr[starter:rendtr.index(nd)]
             upbr.reverse()
 
             for g in upbr:
-                g_ascii = filter(lambda x: x and ord(x[0]) < 127 and not x.isspace(), g)
+                g_ascii = list(filter(lambda x: x and ord(x[0]) < 127 and not x.isspace(), g))
                 if not g_ascii:
                     continue
 

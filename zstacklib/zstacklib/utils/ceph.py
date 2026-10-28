@@ -2,6 +2,7 @@
 
 @author: lining
 '''
+from __future__ import annotations
 import os
 
 import zstacklib.utils.jsonobject as jsonobject
@@ -23,6 +24,7 @@ QEMU_NBD_SOCKET_DIR = "/var/lock/"
 QEMU_NBD_SOCKET_PREFIX = "qemu-nbd-nbd"
 NBD_DEV_PREFIX = "/dev/nbd"
 SUPPORT_DEFER_DELETING = None
+from distutils.version import LooseVersion
 
 def get_fsid(conffile='/etc/ceph/ceph.conf'):
     import rados
@@ -384,7 +386,7 @@ class DefaultCephPoolCapacityGetter:
         for pool_capacity in result:
             if not pool_capacity.related_osd_capacity:
                 continue
-            for osd_capacity in pool_capacity.related_osd_capacity.values():
+            for osd_capacity in list(pool_capacity.related_osd_capacity.values()):
                 pool_capacity.crush_item_osds_total_size = pool_capacity.crush_item_osds_total_size + osd_capacity.get_size()
                 pool_capacity.available_capacity = pool_capacity.available_capacity + osd_capacity.get_available_capacity()
                 pool_capacity.used_capacity = pool_capacity.used_capacity + osd_capacity.get_used_capacity()
@@ -402,3 +404,10 @@ class DefaultCephPoolCapacityGetter:
 pool_capacity_getter_mapping = {
     "zstone":ZStoneCephPoolCapacityGetter()
 }
+
+def get_version():
+    return shell.call("ceph version").split(" ")[2]
+
+def rbd_create_support_byte():
+    # ceph hammer not support in bytes
+    return get_ceph_manufacturer() != "open-source" or LooseVersion(get_version()) >= LooseVersion("10.0.0")

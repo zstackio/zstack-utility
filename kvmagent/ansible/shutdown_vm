@@ -14,13 +14,14 @@
 
 shutdown_vm() {
     lock_file="/var/lock/shutdown_vms.lock"
+    sendCommandUrl="send_command_url"
     if [ -e "$lock_file" ]; then
         echo "Another instance is already running. Exiting..."
         exit 1
     fi
     touch "$lock_file"
 
-    iptables -I 1 INPUT -s mn_ip -j DROP
+    iptables -I 1 INPUT -s $(echo "$sendCommandUrl" | cut -d'/' -f3 | cut -d':' -f1) -j DROP
 
     vms=$(virsh list --name)
 
@@ -39,7 +40,7 @@ shutdown_vm() {
       done
     fi
 
-    curl http://mn_ip:8080/zstack/asyncrest/sendcommand -X POST -H 'Content-Type:application/json' -H 'commandpath:/kvm/reporthoststop'  -d '{"hostIp": "host_ip"}' || true
+    curl "$sendCommandUrl" -X POST -H 'Content-Type:application/json' -H 'commandpath:/kvm/reporthoststop'  -d '{"hostUuid": "host_uuid"}' || true
     echo "notify mn host to shut down"
     rm "$lock_file"
 

@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # encoding: utf-8
-import commands
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 import datetime
 import functools
 import logging
@@ -24,7 +27,10 @@ from ansible.plugins import callback as ansible_callback
 from ansible.vars import manager as ansible_vm
 import jinja2
 import time
-import urllib2
+try:
+    import urllib2
+except ImportError:
+    import urllib.request as urllib2
 import yaml
 
 
@@ -45,10 +51,12 @@ centos = ['c74', 'c76', 'c79', 'h76c', 'h79c', 'rl84', 'h84r']
 enable_networkmanager_list = kylin + ["euler20", "uos1021a", "nfs4", "oe2203sp1", "h2203sp1o"]
 supported_arch_list = ["x86_64", "aarch64", "mips64el", "loongarch64"]
 
-KYLIN_DISTRO = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance"]
+KYLIN_DISTRO = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance",
+                "kylin_halberd", "kylin_swan25"]
 RPM_BASED_OS = ["kylin_zstack", "kylin_tercel", "kylin_sword", "kylin_lance",
-                "alibaba", "centos", "openeuler", "uniontech_kongzi", "nfs",
-                "redhat", "rocky", "helix"]
+                "kylin_halberd", "kylin_swan25",
+                "alibaba", "centos", "openeuler", "oraclelinux", "ol",
+                "uniontech_kongzi", "nfs", "redhat", "rocky", "helix"]
 DEB_BASED_OS = ["ubuntu", "uos", "kylin4.0.2", "debian", "uniontech_fou"]
 DISTRO_WITH_RPM_DEB = ["kylin", "uniontech"]
 
@@ -62,6 +70,8 @@ qemu_alias = {
     "c79": "qemu-kvm",
     "euler20": "qemu",
     "oe2203sp1": "qemu",
+    "oe2309": "qemu-kvm qemu-img",
+    "ol9": "qemu-kvm qemu-img",
     "h2203sp1o": "qemu",
     "uos1021a": "qemu-kvm",
     "nfs4": "qemu-kvm",
@@ -521,10 +531,19 @@ def get_mn_release():
 
 def get_host_releasever(host_info):
     supported_release_info = {
+        # kylin_halberd / kylin_swan25: 实测 .150/.168 的 os-release
+        #   ID=kylin, VERSION_ID=V10/V11, VERSION="V10 (Halberd)" / "V11 (Swan25)"
+        # ansible_distribution_version 对 Kylin 取 VERSION_ID，故同时登记 "v10"/"10"
+        # 两种写法，避免依赖对 ansible 版本推导的猜测。
+        "kylin_halberd halberd v10": "ky10halberd",
+        "kylin_halberd halberd 10": "ky10halberd",
+        "kylin_swan25 swan25 v11": "ky11swan25",
+        "kylin_swan25 swan25 11": "ky11swan25",
         "kylin_tercel tercel 10": "ky10sp1",
         "kylin_sword sword 10": "ky10sp2",
         "kylin_zstack zstack 10": "ky10sp2",
         "kylin_lance lance 10": "ky10sp3",
+        "openeuler na 23.09": "oe2309",
         "uniontech fou 20": "uos20",
         "redhat maipo 7.4": "ky10", # old kylinV10, oem 7.4 incompletely
         "centos core 7.9.2009": "c79",
@@ -535,6 +554,8 @@ def get_host_releasever(host_info):
         'helix core 7.6c': 'h76c',
         'helix core 7.9c': 'h79c',
         'helix green obsidian 8.4r': 'h84r',
+        "oraclelinux na 9.3": "ol9",
+        "oraclelinux na 9.8": "ol9",
         "helix lts-sp1 22.03": "h2203sp1o",
         "openeuler lts-sp1 20.03": "euler20",
         "openeuler lts-sp1 22.03": "oe2203sp1",
@@ -562,7 +583,9 @@ def post_msg(msg, post_url):
         if msg.label is not None:
             try:
                 headers = {"content-type": "application/json"}
-                req = urllib2.Request(post_url, data, headers)
+                # py3 的 urllib 要求 POST data 为 bytes；py2 下 json.dumps 输出 ASCII str，
+                # encode('utf-8') 字节不变，双模等价
+                req = urllib2.Request(post_url, data.encode("utf-8"), headers)
                 response = urllib2.urlopen(req)
                 response.close()
             except urllib2.URLError as e:
@@ -1077,7 +1100,7 @@ def pip_install_package(pip_install_arg, host_post_info):
         if param_dict_raw[item] is not None:
             param_dict[item] = param_dict_raw[item]
     option = 'name=' + name + ' ' + \
-        ' '.join(['{0}={1}'.format(k, v) for k, v in param_dict.iteritems()])
+        ' '.join(['{0}={1}'.format(k, v) for k, v in param_dict.items()])
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'pip'
@@ -2210,6 +2233,9 @@ def upgrade_to_helix(host_info, host_post_info):
 
 def install_release_on_host(is_rpm, host_info, host_post_info):
     releasever = get_host_releasever(host_info)
+    if releasever in ("oe2309", "ol9"):
+        return
+
     if is_rpm:
         release_name_mapping = {
             'rl84': 'el8',
@@ -2354,6 +2380,11 @@ class ZstackLib(object):
             basic.add("chrony")
             basic.add("iptables")
             basic.add("python2-libselinux")
+            return basic
+
+        if self.distro in ("openeuler", "oraclelinux", "ol") and \
+                self.distro_version >= 9:
+            basic.add("python3-libselinux")
             return basic
 
         basic.add("libselinux-python")

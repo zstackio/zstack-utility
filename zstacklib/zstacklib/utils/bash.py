@@ -8,7 +8,7 @@ import time
 
 from jinja2 import Template
 
-from progress_report import WatchThread_1
+from zstacklib.utils.progress_report import WatchThread_1
 from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell

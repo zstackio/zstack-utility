@@ -1,5 +1,4 @@
 import os
-import sys
 import subprocess
 import simplejson
 
@@ -30,21 +29,24 @@ class ShellCmd(object):
 
     def __call__(self, is_exception=True):
         if verbose:
-            print('executing shell command[%s]:' % self.cmd)
+            print(('executing shell command[%s]:' % self.cmd))
 
         (self.stdout, self.stderr) = self.process.communicate()
+        self.stdout = self.stdout.decode() if self.stdout else ''
+        self.stderr = self.stderr.decode() if self.stderr else ''
+
         if is_exception and self.process.returncode != 0:
             self.raise_error()
 
         self.return_code = self.process.returncode
 
         if verbose:
-            print(simplejson.dumps({
+            print((simplejson.dumps({
                 "shell" : self.cmd,
                 "return_code" : self.return_code,
                 "stdout": self.stdout,
                 "stderr": self.stderr
-            }, ensure_ascii=True, sort_keys=True, indent=4))
+            }, ensure_ascii=True, sort_keys=True, indent=4)))
 
         return self.stdout
 
@@ -55,6 +57,8 @@ def parse_positional_arguments(cmd):
     pa_key = 'positional arguments:'
     output = shell('%s -h' % cmd).split('\n')
     next_line = False
+
+    positional_arguments_line = None
     for line in output:
         if next_line:
             positional_arguments_line = line.strip()

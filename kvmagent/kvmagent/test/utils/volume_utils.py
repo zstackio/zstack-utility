@@ -1,4 +1,5 @@
 import os
+import fcntl
 
 from zstacklib.test.utils import env
 from zstacklib.utils import uuidhelper, linux, xmlobject
@@ -78,6 +79,21 @@ start_vm_sharedblock_data_vol = {
         "controllerIndex": 0,
         "ioThreadId": 0
     }
+
+
+def qcow2_write_lock(path):
+    fd = os.open(path, os.O_RDWR)
+    file_lock(fd, 100, 10, fcntl.LOCK_EX)
+    return fd
+
+
+def qcow2_unlock(fd):
+    file_lock(fd, 100, 10, fcntl.LOCK_UN)
+    return fd
+
+def file_lock(fd, offset, length, flag):
+    fcntl.lockf(fd, flag, length, offset, os.SEEK_SET)
+    return fd
 
 
 def create_empty_volume(size=134217728):  # 128M

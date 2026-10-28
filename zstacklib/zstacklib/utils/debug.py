@@ -22,7 +22,7 @@ logger = log.get_logger(__name__)
 def dump(sig, frame):
     message = "Signal received : dump Traceback:\n"
     message += ''.join(traceback.format_stack(frame))
-    print message
+    print(message)
 
 
 def install_runtime_tracedumper():
@@ -40,7 +40,7 @@ def dump_debug_info(signum, fram, *argv):
         thread.ThreadFacade.run_in_thread(dump_threads)
         thread.ThreadFacade.run_in_thread(dump_objects)
     except Exception as e:
-        logger.warn("get error when dump debug info %s" % e.message)
+        logger.warn("get error when dump debug info %s" % str(e))
 
 
 def dump_threads():
@@ -57,7 +57,7 @@ def dump_threads():
             output = "%s\n%s\n\n" % (output, beeprint.pp(thread_locals, output=False))
 
         except Exception as e:
-            logger.warn("get error when dump thread %s: %s" % (th, e.message))
+            logger.warn("get error when dump thread %s: %s" % (th, str(e)))
     output = "there are %s threads: \n%s" % (threads, output)
     logger.debug(output)
     return

@@ -355,7 +355,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
 
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0775)
+            os.makedirs(dirname, 0o775)
 
         linux.qcow2_clone_with_cmd(cmd.templatePathInCache, cmd.installPath, cmd)
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.uuid)
@@ -440,7 +440,7 @@ class AliyunNasStoragePlugin(kvmagent.KvmAgent):
         rsp = AliyunNasResponse()
         dirname = os.path.dirname(cmd.installPath)
         if not os.path.exists(dirname):
-            os.makedirs(dirname, 0755)
+            os.makedirs(dirname, 0o755)
         linux.create_template(cmd.volumePath, cmd.installPath)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))

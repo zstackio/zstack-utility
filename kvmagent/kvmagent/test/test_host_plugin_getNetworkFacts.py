@@ -29,7 +29,7 @@ class Test():
         rsp = jsonobject.loads(response)
 
         if rsp.bondings is None or rsp.nics is None:
-            print "rsp.bondings is None or rsp.nics is None"
+            print("rsp.bondings is None or rsp.nics is None")
             return
 
         bonds = rsp.bondings
@@ -50,5 +50,5 @@ class Test():
     def test_getDpdpBond(self):
         bonds = ovs.getAllBondFromFile()
         for bond in bonds:
-            print "bond name %s" % bond.name
+            print("bond name %s" % bond.name)
         return

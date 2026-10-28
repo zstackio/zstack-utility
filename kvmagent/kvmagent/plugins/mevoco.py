@@ -15,11 +15,15 @@ from zstacklib.utils import lock
 from zstacklib.utils.bash import *
 from zstacklib.utils import ip
 from zstacklib.utils import thread
+from zstacklib.utils import pycompat
 import os.path
 import re
 import email
 import tempfile
-import cStringIO as c
+try:
+    import cStringIO as c
+except ImportError:
+    import io as c
 from email.mime.multipart import MIMEMultipart
 from jinja2 import Template
 import struct
@@ -1790,7 +1794,7 @@ mimetype.assign = (
             'userdata_vm_ips': userdata_vm_ips
         })
 
-        linux.mkdir(http_root, 0777)
+        linux.mkdir(http_root, 0o777)
 
         if not os.path.exists(conf_path):
             with open(conf_path, 'w') as fd:
@@ -2518,7 +2522,7 @@ tag:{{o.tag}},option6:domain-search,{{o.domainList}}
             else:
                 self._refresh_dnsmasq(namespace_name, conf_file_path)
 
-        for k, v in namespace_dhcp.iteritems():
+        for k, v in pycompat.iteritems(namespace_dhcp):
             if v[0].ipVersion == 4 or v[0].ipVersion == 46:
                 apply(v)
             else:
@@ -2622,7 +2626,7 @@ sed -i '/^$/d' {{DNS}}
                 self._erase_configurations(d.mac, d.ip, dhcp_path, dns_path, option_path)
                 self._restart_dnsmasq(d.namespaceName, conf_file_path)
 
-        for k, v in namespace_dhcp.iteritems():
+        for k, v in pycompat.iteritems(namespace_dhcp):
             release(v)
 
         rsp = ReleaseDhcpRsp()

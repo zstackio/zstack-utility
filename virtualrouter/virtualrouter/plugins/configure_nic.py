@@ -52,7 +52,7 @@ class NicPlugin(virtualrouter.VRAgent):
             l2 = lines[i]
             mac = l2.split()[1].strip()
             i += 1
-            if nics.has_key(mac):
+            if mac in nics:
                 wrong_dev_name = nics[mac]
                 err = 'two nics[%s, %s] has the same mac address[%s], this is not allowed in virtual router' % (dev_name, wrong_dev_name, mac)
                 raise virtualrouter.VirtualRouterError(err)
@@ -116,7 +116,7 @@ NETMASK="%(netmask)s"
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         nics_to_configure = cmd.nics
         for n in nics_to_configure:
-            if not nics.has_key(n.mac):
+            if n.mac not in nics:
                 rsp.error = 'unable to find nic with mac[%s] in virtual router vm' % n.mac
                 rsp.success = False
                 return jsonobject.dumps(rsp)

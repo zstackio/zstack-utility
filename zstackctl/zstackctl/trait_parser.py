@@ -9,12 +9,10 @@ import copy
 import time
 from datetime import datetime
 from termcolor import colored
-from utils.shell import ShellCmd
+from .utils.shell import ShellCmd
 from collections import OrderedDict
 from threading import Thread, Lock
 
-reload(sys)
-sys.setdefaultencoding('utf8')
 
 try:
     import simplejson as json
@@ -68,8 +66,8 @@ def error(msg):
 
 def print_data(name, value):
     if DEBUG:
-        print('%s:' % name)
-        print(json.dumps(value, sort_keys=True, indent=4))
+        print(('%s:' % name))
+        print((json.dumps(value, sort_keys=True, indent=4)))
 
 
 def parse_iscsi_info(iscsi_info):
@@ -98,10 +96,10 @@ def parse_iscsi_info(iscsi_info):
                 iscsi_dict.setdefault(portal, {}).setdefault("devices", {})[dev_name] = scsi_line[-1]
 
     dev_portal_map = {}
-    for portl, info in iscsi_dict.items():
-        if not info.has_key('devices'):
+    for portl, info in list(iscsi_dict.items()):
+        if 'devices' not in info:
             continue
-        for dev, state in info['devices'].items():
+        for dev, state in list(info['devices'].items()):
             dev_portal_map[dev] = {'portal': portl, 'sid': info['sid'], 'state': state}
 
     print_data('dev_portal_map', dev_portal_map)
@@ -239,13 +237,13 @@ def get_trait_pattern(trait_type="scsi"):
     with open(trait_file_path, 'r') as f:
         trait_dict = json.loads(f.read())
 
-    for trait_cls, re_pattern in trait_dict.items():
+    for trait_cls, re_pattern in list(trait_dict.items()):
         if not re_pattern:
             continue
         trait_pattern_dict[trait_cls] = re.compile('|'.join(re_pattern), flags=re.IGNORECASE)
 
     patterns = []
-    for pattern_list in trait_dict.values():
+    for pattern_list in list(trait_dict.values()):
         patterns.extend(pattern_list)
 
     trait_pattern = '|'.join(patterns)
@@ -299,7 +297,7 @@ def scsi_trait_match(host,
         log_msg = ' '.join(log_list[4:])
         dev_name_list = [d for d in log_list if 'sd' in d or 'dm-' in d]
 
-        for trait_class, re_pattern in trait_pattern_dict.items():
+        for trait_class, re_pattern in list(trait_pattern_dict.items()):
             if re_pattern.search(log) is None:
                 continue
 
@@ -319,7 +317,7 @@ def scsi_trait_match(host,
             if trait_class != 'iscsi_connection':
                 continue
 
-            for dev_name, dev_info in dev_map.items():
+            for dev_name, dev_info in list(dev_map.items()):
                 update_log = False
                 # trait log: "kernel: connection18:0: detected conn error (1022)", class: "iscsi_connection"
                 if 'detected conn error' in log:
@@ -343,9 +341,9 @@ def scsi_trait_match(host,
                     break
 
     # attach and merge repeated logs
-    for dev_name, trait_cls_log_dict in log_dict.items():
-        for trait_cls, log_dict in trait_cls_log_dict.items():
-            for log_msg, datetime_list in log_dict.items():
+    for dev_name, trait_cls_log_dict in list(log_dict.items()):
+        for trait_cls, log_dict in list(trait_cls_log_dict.items()):
+            for log_msg, datetime_list in list(log_dict.items()):
                 log_count = len(datetime_list)
                 if log_count > 1:
                     log = '[%s -- %s]' % (datetime_list[0], datetime_list[-1]) + ' { %s } * %s' % (log_msg,  log_count)
@@ -365,7 +363,7 @@ def add_dev_leaf(dev_name, dev_info, trait_log, dev_log_map):
     # if errs:
     #     trait_log.add('error_statistics: %s' % errs, dev_name)
 
-    for trait_cls, log_list in dev_log_map[dev_name].items():
+    for trait_cls, log_list in list(dev_log_map[dev_name].items()):
         if errs:
             dev_trait = '%s:%s:error(%s)' % (dev_name, trait_cls, errs[trait_cls])
         else:
@@ -422,47 +420,47 @@ def do_scsi_diagnose(host,
             return
 
         dm_map = {}
-        for dm_id, dm_info_dict in mpath.items():
-            for mpathx, wwid in mpath_map.items():
+        for dm_id, dm_info_dict in list(mpath.items()):
+            for mpathx, wwid in list(mpath_map.items()):
                 if dm_info_dict['mpath'] not in [mpathx, wwid]:
                     continue
                 dm_map[(dm_info_dict['mpath'], dm_id)] = dm_info_dict['devices']
 
         new_dev_map = copy.deepcopy(dev_map)
-        for dev_name, dev_info in dev_map.items():
+        for dev_name, dev_info in list(dev_map.items()):
             # skip healthy device
             if 'errors' not in dev_info:
                 new_dev_map.pop(dev_name)
                 continue
 
             # scsi dev hbtl/hba map
-            for hbtl, scsi_vender_dev in scsi_info.items():
+            for hbtl, scsi_vender_dev in list(scsi_info.items()):
                 if dev_name == scsi_vender_dev.split('/')[-1]:
                     new_dev_map[dev_name]['hbtl'] = hbtl
                     scsi_host = hbtl.split(':')[0]
-                    if hba_map.has_key(scsi_host):
+                    if scsi_host in hba_map:
                         new_dev_map[dev_name]['hba'] = hba_map[scsi_host]
 
             # mpath dm dev map
-            for mpathx_dm_set, devices in dm_map.items():
+            for mpathx_dm_set, devices in list(dm_map.items()):
                 if dev_name in devices or dev_name in mpathx_dm_set:
                     dm_alias = '%s:%s' % mpathx_dm_set
                     if dm_alias not in new_dev_map:
                         new_dev_map[dm_alias] = {}
                     new_dev_map[dm_alias][dev_name] = new_dev_map[dev_name]
-                    new_dev_map[dm_alias]['paths'] = devices.keys()
+                    new_dev_map[dm_alias]['paths'] = list(devices.keys())
                     new_dev_map.pop(dev_name)
 
         # dev_ps_dict = copy.deepcopy(new_dev_map)
-        for dm_alias, dev_info_dict in new_dev_map.items():
-            for vg_uuid, pv_list in vg_pv_map.items():
+        for dm_alias, dev_info_dict in list(new_dev_map.items()):
+            for vg_uuid, pv_list in list(vg_pv_map.items()):
                 sblk_uuid = 'SBLK:%s' % vg_uuid
                 for pv in pv_list:
                     if dm_alias.split(':')[0] != pv.split('/')[-1]:
                         # record offline devices
-                        for dev_name, dev_info in dev_info_dict.items():
+                        for dev_name, dev_info in list(dev_info_dict.items()):
                             if 'offline' in str(dev_info):
-                                if not offline_dev.has_key(host):
+                                if host not in offline_dev:
                                     offline_dev[host] = {}
                                 offline_dev[host][dev_name] = dev_info
                         continue
@@ -480,7 +478,7 @@ def do_scsi_diagnose(host,
                         trait_log.add('paths: %s' % dev_info_dict['paths'], blk)
                     # dev_ps_dict[dm_alias]['sblk'] = vg_uuid
 
-                    for dev_name, dev_info in dev_info_dict.items():
+                    for dev_name, dev_info in list(dev_info_dict.items()):
                         # skip none scsi device
                         if dev_name == 'paths':
                             continue
@@ -537,11 +535,11 @@ def diagnose_scsi(log_dir, log_path, args):
     if blk_err_dict:
         warn("SharedBlock storage errors were found %s, below is a summary, check details in %s\n" % (
             desc, os.path.join(os.getcwd(), log_path)))
-        print(json.dumps(blk_err_dict, sort_keys=True, indent=4))
+        print((json.dumps(blk_err_dict, sort_keys=True, indent=4)))
         if offline_dev:
             warn("Found offline devices:\n%s" % json.dumps(offline_dev, sort_keys=True, indent=4))
     else:
-        print("SharedBlock storage error was not found %s, the storage access seems good.\n" % desc)
+        print(("SharedBlock storage error was not found %s, the storage access seems good.\n" % desc))
 
 
 def diagnose(log_dir, log_path, args, trait_type='scsi'):

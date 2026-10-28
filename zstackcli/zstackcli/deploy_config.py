@@ -15,8 +15,8 @@ import zstacklib.utils.lock as lock
 import apibinding.inventory as inventory
 import apibinding.api_actions as api_actions
 
-import account_operations
-import resource_operations as res_ops
+from . import account_operations
+from . import resource_operations as res_ops
 
 # global exception information for thread usage
 exc_info = []
@@ -30,7 +30,7 @@ class DeployError(Exception):
 
 
 def deploy_logger(msg):
-    print '\n[Deploy Log:] %s\n' % msg
+    print('\n[Deploy Log:] %s\n' % msg)
 
 
 def get_first_item_from_list(list_obj, list_obj_name, list_obj_value, action_name):
@@ -955,15 +955,15 @@ def add_image(deployConfig, session_uuid):
             if i.uuid__:
                 action.resourceUuid = i.uuid__
             thread = threading.Thread(target=_add_image, args=(action,))
-            print 'before add image1: %s' % i.url_
+            print('before add image1: %s' % i.url_)
             wait_for_image_thread_queue()
-            print 'before add image2: %s' % i.url_
+            print('before add image2: %s' % i.url_)
             thread.start()
-            print 'add image: %s' % i.url_
+            print('add image: %s' % i.url_)
 
-    print 'all images add command are executed'
+    print('all images add command are executed')
     wait_for_thread_done(True)
-    print 'all images have been added'
+    print('all images have been added')
 
 
 # Add Disk Offering
@@ -1161,7 +1161,7 @@ def decrease_image_thread():
 def wait_for_image_thread_queue():
     while image_thread_queue >= IMAGE_THREAD_LIMIT:
         time.sleep(1)
-        print 'image_thread_queue: %d' % image_thread_queue
+        print('image_thread_queue: %d' % image_thread_queue)
 
 
 def wait_for_thread_queue():
@@ -1179,7 +1179,7 @@ def check_thread_exception():
         info1 = exc_info[0][1]
         info2 = exc_info[0][2]
         cleanup_exc_info()
-        raise info1, None, info2
+        raise info1.with_traceback(info2)
 
 
 def wait_for_thread_done(report=False):
@@ -1187,5 +1187,5 @@ def wait_for_thread_done(report=False):
         check_thread_exception()
         time.sleep(1)
         if report:
-            print 'thread workers: %d' % (threading.active_count() - 1)
+            print('thread workers: %d' % (threading.active_count() - 1))
     check_thread_exception()

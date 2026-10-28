@@ -1,6 +1,6 @@
-import singleton
+from zstacklib.utils import singleton
 import libvirt
-import thread
+from zstacklib.utils import thread
 from zstacklib.utils import log
 from zstacklib.utils import singleton
 

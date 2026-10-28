@@ -14,7 +14,7 @@ class Base(object):
     k_v_mapping = {}
 
     def __init__(self):
-        for v in self.k_v_mapping.values():
+        for v in list(self.k_v_mapping.values()):
             setattr(self, v, None)
 
     @staticmethod
@@ -25,24 +25,24 @@ class Base(object):
         return b_data
 
     def construct(self, data):
-        for k, v in self.k_v_mapping.items():
-            if k in data.keys():
+        for k, v in list(self.k_v_mapping.items()):
+            if k in list(data.keys()):
                 setattr(self, v, data[k])
-            if v in data.keys():
+            if v in list(data.keys()):
                 setattr(self, v, data[v])
 
     @classmethod
     def construct_list(cls, items):
         obj = cls()
         for data in items:
-            for k, v in obj.k_v_mapping.items():
-                if k in data.keys():
+            for k, v in list(obj.k_v_mapping.items()):
+                if k in list(data.keys()):
                     setattr(obj, v, data[k])
             yield obj
 
     def to_json(self):
         return json.dumps(
-            {k: getattr(self, k) for k in self.k_v_mapping.values()})
+            {k: getattr(self, k) for k in list(self.k_v_mapping.values())})
 
 
 class BmInstanceObj(Base):

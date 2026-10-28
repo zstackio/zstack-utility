@@ -103,7 +103,7 @@ class BtrfsPlugin(plugin.Plugin):
         if not avail:
             raise Exception('cannot find available capacity, "df" output":\n %s' % out)
 
-        return total, long(avail) * 1024
+        return total, int(avail) * 1024
 
     @iscsiagent.replyerror
     def init(self, req):

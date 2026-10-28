@@ -4,7 +4,10 @@
 
 import os
 import base64
-import commands
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 
 from zstacklib.utils import log
 from zstacklib.utils import shell

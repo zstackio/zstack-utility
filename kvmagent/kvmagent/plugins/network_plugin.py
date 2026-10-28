@@ -1210,9 +1210,9 @@ configure lldp status rx-only \n
         if len(temp_nics) != 0:
             nics = temp_nics
 
-        temp_ips = [d.values()[0] for d in nics]
+        temp_ips = [list(d.values())[0] for d in nics]
         ips = sorted(set(temp_ips), key=temp_ips.index)
-        temp_nicnames = [d.keys()[0] for d in nics]
+        temp_nicnames = [list(d.keys())[0] for d in nics]
         nicnames = sorted(set(temp_nicnames), key=temp_nicnames.index)
 
         ''' there are 7 cases:

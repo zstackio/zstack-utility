@@ -11,7 +11,7 @@ pidfile = '/var/run/zstack/iscsi-filesystem-agent.pid'
 log.configure_log('/var/log/zstack/zstack-iscsi-filesystem-agent.log')
 logger = log.get_logger(__name__)
 
-import iscsiagent
+from . import iscsiagent
 
 def prepare_pid_dir(path):
     pdir = os.path.dirname(path)
@@ -21,7 +21,7 @@ def prepare_pid_dir(path):
 def main():
     usage = 'usage: python -c "from iscsifilesystemagent import idaemon; idaemon.main()" start|stop|restart'
     if len(sys.argv) != 2 or not sys.argv[1] in ['start', 'stop', 'restart']:
-        print usage
+        print(usage)
         sys.exit(1)
     
     global pidfile

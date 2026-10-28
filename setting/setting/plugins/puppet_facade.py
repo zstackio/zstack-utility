@@ -77,7 +77,7 @@ class PuppetFacadeSetting(zstacksetting.SettingPlugin):
             raise zstacksetting.SettingError("cannot find %s and %s, the system is neither debian based nor redhat based" % (self.REDHAT_HOSTNAME, self.DEBIAN_HOSTNAME))
         
         shell.call('hostname %s' % hostname)
-        print 'set hostname to %s' % hostname
+        print('set hostname to %s' % hostname)
     
     def add_subcommand(self, subcommand_parser):
         hostname_cmd = subcommand_parser.add_parser('setHostName', help=("set hostname of machine"),

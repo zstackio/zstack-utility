@@ -3,11 +3,11 @@
 @author: Frank
 '''
 
-import shell
-import ssh
+from zstacklib.utils import shell
+from zstacklib.utils import ssh
 import os.path
-import log
-import lock
+from zstacklib.utils import log
+from zstacklib.utils import lock
 
 logger = log.get_logger(__name__)
 

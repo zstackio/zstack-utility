@@ -29,6 +29,8 @@ class ShellCmd(object):
     def __call__(self, is_exception=True):
 
         (self.stdout, self.stderr) = self.process.communicate()
+        self.stdout = self.stdout.decode() if self.stdout else ''
+        self.stderr = self.stderr.decode() if self.stderr else ''
         if is_exception and self.process.returncode != 0:
             self.raise_error()
 

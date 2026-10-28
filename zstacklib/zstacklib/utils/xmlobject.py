@@ -6,6 +6,8 @@ import xml.etree.ElementTree as etree
 import re
 import types
 
+from zstacklib.utils import pycompat
+
 class XmlObjectError(Exception):
     '''XmlObject error'''
 
@@ -51,7 +53,7 @@ class XmlObject(object):
             return
             
         nodes = getattr(self, name)
-        if not isinstance(nodes, types.ListType):
+        if not isinstance(nodes, list):
             nodes = []
             old = getattr(self, name)
             nodes.append(old)
@@ -81,7 +83,7 @@ class XmlObject(object):
             return []
         
         children = getattr(self, key)
-        if isinstance(children, types.ListType):
+        if isinstance(children, list):
             return children
         else:
             return [children]
@@ -89,7 +91,7 @@ class XmlObject(object):
     def get_children_nodes(self):
         children = {}
         for key, value in self.__dict__.items():
-            if isinstance(value, XmlObject) or isinstance(value, types.ListType):
+            if isinstance(value, XmlObject) or isinstance(value, list):
                 children[key] = value
         return children
     
@@ -99,7 +101,7 @@ class XmlObject(object):
             xmlstr = []
             opentag = []
             opentag.append('<%s' % obj.get_tag())
-            for key, val in obj.__dict__.iteritems():
+            for key, val in pycompat.iteritems(obj.__dict__):
                 if not key.endswith('_') or key.startswith('_') or key == 'text_':
                     continue
                 opentag.append('%s="%s"' % (key[:-1], val))
@@ -107,11 +109,11 @@ class XmlObject(object):
             xmlstr.append('>')
             
             found_child = False
-            for key, val in obj.__dict__.iteritems():
+            for key, val in pycompat.iteritems(obj.__dict__):
                 if isinstance(val, XmlObject):
                     xmlstr.append(_dump(val))
                     found_child = True
-                if isinstance(val, types.ListType):
+                if isinstance(val, list):
                     for l in val:
                         if isinstance(l, XmlObject):
                             xmlstr.append(_dump(l))
@@ -189,7 +191,7 @@ def has_element(xmlobj, elementstr):
     return _has_element(xmlobj)
 
 def safe_list(obj):
-    if isinstance(obj, types.ListType):
+    if isinstance(obj, list):
         return obj
     else:
         return [obj]

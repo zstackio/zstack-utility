@@ -3,10 +3,8 @@ root_dir=`dirname $0`
 cd $root_dir
 rm -rf build dist zstackcli.egg-info
 
-which virtualenv &>/dev/null
-[ $? -ne 0 ] && echo "Need to install virtualenv before install zstack-cli." && exit 1
 VIRTUAL_ENV=/var/lib/zstack/virtualenv/zstackcli
-[ ! -d $VIRTUAL_ENV ] && virtualenv $VIRTUAL_ENV
+[ ! -d $VIRTUAL_ENV ] && python3.11 -m venv $VIRTUAL_ENV
 source $VIRTUAL_ENV/bin/activate
 
 [ -d ../apibinding ] && ../apibinding/install.sh

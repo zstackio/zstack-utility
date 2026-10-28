@@ -1,8 +1,6 @@
 from kvmagent import kvmagent
-from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
-from zstacklib.utils import linux
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import qemu_img
@@ -91,5 +89,5 @@ class CephStoragePlugin(kvmagent.KvmAgent):
     def stop(self):
         pass
         
-    def configure(self, config):
+    def configure(self, config=None):
         self.config = config

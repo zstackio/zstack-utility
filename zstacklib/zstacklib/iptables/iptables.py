@@ -3,8 +3,8 @@
 @author: frank
 '''
 
-from matches import *
-from targets import *
+from zstacklib.iptables.matches import *
+from zstacklib.iptables.targets import *
 from zstacklib.utils import log
 from zstacklib.utils import shell
 from zstacklib.utils import xmlobject

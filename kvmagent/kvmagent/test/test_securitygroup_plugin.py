@@ -20,7 +20,7 @@ class TestSecurityGroupPlugin(object):
     
     def callback(self, req):
         rsp = jsonobject.loads(req[http.REQUEST_BODY])
-        print jsonobject.dumps(rsp)
+        print(jsonobject.dumps(rsp))
         
     def setUp(self):
         self.service = kvmagent.new_rest_service()

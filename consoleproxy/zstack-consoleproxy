@@ -40,7 +40,7 @@ fi
 if [ "$@" = "status" ]; then
 	check_status
 else
-	. /var/lib/zstack/virtualenv/consoleproxy/bin/activate && python -c "from consoleproxy import cdaemon; cdaemon.main()" $@
+	. /var/lib/zstack/virtualenv/consoleproxy/bin/activate && python3.11 -c "from consoleproxy import cdaemon; cdaemon.main()" $@
 fi
 
 if [ $? -eq 0 ]; then

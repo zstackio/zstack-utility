@@ -19,7 +19,10 @@ import shutil
 import simplejson
 import base64
 import uuid
-import urlparse
+try:
+    import urlparse
+except ImportError:
+    from urllib import parse as urlparse
 import json
 import socket
 from signal import SIGKILL
@@ -63,6 +66,7 @@ from zstacklib.utils import ovs
 from zstacklib.utils import drbd
 from zstacklib.utils.jsonobject import JsonObject
 from zstacklib.utils.qga import *
+from zstacklib.utils import pycompat
 from zstacklib.utils import jsonobject
 from zstacklib.utils.qmp import get_block_node_name_and_file, QmpResult
 from zstacklib.utils.report import *
@@ -74,9 +78,10 @@ from zstacklib.utils.libvirt_singleton import LibvirtSingleton
 logger = log.get_logger(__name__)
 
 HOST_ARCH = platform.machine()
-DIST = platform.dist()
-DIST_NAME = DIST[0]
-DIST_NAME_VERSION = "%s%s" % (DIST[0], DIST[1])
+os_info = linux.get_freedesktop_os_release()
+DIST_NAME = os_info.get('ID', '').lower()
+DIST_NAME = 'centos' if DIST_NAME == 'helix' else DIST_NAME
+DIST_NAME_VERSION = "{}{}".format(DIST_NAME, os_info.get('VERSION_ID', ''))
 
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
@@ -388,7 +393,7 @@ class SshfsRemoteStorage(RemoteFileSystem):
             raise kvmagent.KvmError("failed to prepare backup space for [vm:%s]" % self.vm_uuid)
 
     def umount(self):
-        for i in xrange(6):
+        for i in range(6):
             if linux.fumount(self.mount_point, 5) == 0:
                 break
             else:
@@ -659,8 +664,8 @@ class TakeVolumeBackupCommand(kvmagent.AgentCommand):
         self.volume = None
         self.bitmap = None
         self.lastBackup = None
-        self.networkWriteBandwidth = 0L
-        self.volumeWriteBandwidth = 0L
+        self.networkWriteBandwidth = 0
+        self.volumeWriteBandwidth = 0
         self.maxIncremental = 0
         self.mode = None
         self.storageInfo = None
@@ -745,8 +750,8 @@ class TakeVolumesBackupsCommand(kvmagent.AgentCommand):
         self.vmUuid = None
         self.backupInfos = []
         self.deviceIds = []  # type:list[int]
-        self.networkWriteBandwidth = 0L
-        self.volumeWriteBandwidth = 0L
+        self.networkWriteBandwidth = 0
+        self.volumeWriteBandwidth = 0
         self.maxIncremental = 0
         self.mode = None
         self.volumes = []
@@ -855,7 +860,7 @@ class ChangeVmPasswordCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(ChangeVmPasswordCmd, self).__init__()
         self.accountPerference = AccountPerference()  # type:AccountPerference
-        self.timeout = 0L
+        self.timeout = 0
 
 
 class ChangeVmPasswordRsp(kvmagent.AgentResponse):
@@ -1220,7 +1225,7 @@ class VncPortIptableRule(object):
         current_ip = linux.get_host_by_name(self.host_ip)
 
         # get ipv4 subnet
-        current_ip_addr_list = filter(lambda addr: addr.scope == 'universe', iproute.query_addresses_by_ip(current_ip, 4))
+        current_ip_addr_list = list(filter(lambda addr: addr.scope == 'universe', iproute.query_addresses_by_ip(current_ip, 4)))
         if not current_ip_addr_list:
             err = 'cannot get host ip with netmask for %s' % self.host_ip
             logger.warn(err)
@@ -1356,7 +1361,10 @@ def is_nbd_disk(disk_xml):
 def compare_version(version1, version2):
     def normalize(v):
         return [int(x) for x in re.sub(r'(\.0+)*$','', v).split(".")]
-    return cmp(normalize(version1), normalize(version2))
+    v1 = normalize(version1)
+    v2 = normalize(version2)
+    # 语义等价于 py2 的 cmp(v1, v2)：元素均为 int，列表按字典序全序比较
+    return (v1 > v2) - (v1 < v2)
 
 
 KERNEL_VERSION = platform.release()
@@ -1942,7 +1950,7 @@ class MergeSnapshotDaemon(plugin.TaskDaemon):
             raise ex
 
         consistent_backing_store_by_libvirt = False
-        for i in xrange(5):
+        for i in range(5):
             self.vm.refresh()
             consistent_backing_store_by_libvirt = self.check_vm_xml_backing_file_consistency(self.base, self.top)
             if consistent_backing_store_by_libvirt:
@@ -2610,7 +2618,7 @@ class Vm(object):
         self.domain.setMemoryFlags(memory_size_in_mega_bytes)
 
     def get_memory(self):
-        return long(self.domain_xmlobject.currentMemory.text_) * 1024
+        return int(self.domain_xmlobject.currentMemory.text_) * 1024
 
     def get_name(self):
         return self.domain_xmlobject.description.text_
@@ -3664,9 +3672,9 @@ class Vm(object):
         except libvirt.libvirtError as ex:
             logger.warn(linux.get_exception_stacktrace())
             ret = []
-            for i in xrange(5):
+            for i in range(5):
                 self.refresh()
-                ret = filter(lambda s: self._check_target_disk_existing_by_path(s.installPath, refresh=False), return_structs)
+                ret = list(filter(lambda s: self._check_target_disk_existing_by_path(s.installPath, refresh=False), return_structs))
                 if len(ret) == len(return_structs):
                     break
                 time.sleep(1)
@@ -4538,7 +4546,7 @@ class Vm(object):
 
             # c.f. https://bugzilla.redhat.com/show_bug.cgi?id=1878659
             # support new qemu version which will raise exception when detach a nic which is already in the process of unplug
-            if "is already in the process of unplug" in str(e.message):
+            if "is already in the process of unplug" in str(e):
                 wait_for_detach()
             # check one more time
             if not check_device(None):
@@ -4700,8 +4708,8 @@ class Vm(object):
                                                                  cmd.accountPerference.userAccount,
                                                                  escape_password))
         except Exception as e:
-            logger.warn(e.message)
-            if e.message.find("child process has failed to set user password") < 0:
+            logger.warn(str(e))
+            if str(e).find("child process has failed to set user password") < 0:
                 raise e
 
             raise kvmagent.KvmError('unable to execute "chpasswd" in guest[uuid:%s], check if user[%s] existing or guest system log.'
@@ -5405,7 +5413,7 @@ class Vm(object):
                         cdrom_device_id_list = cdroms.split(',')
 
                         empty_cdrom_configs = []
-                        for i in xrange(len(cdrom_device_id_list)):
+                        for i in range(len(cdrom_device_id_list)):
                             empty_cdrom_configs.append(
                                 EmptyCdromConfig('hd%s' % Vm.ISO_DEVICE_LETTERS[i], str(i / 2), str(i % 2)))
                 elif machine_type == 'q35':
@@ -6106,7 +6114,7 @@ class Vm(object):
             channel = cmd.addons['channel']
             if channel:
                 basedir = os.path.dirname(channel.socketPath)
-                linux.mkdir(basedir, 0777)
+                linux.mkdir(basedir, 0o777)
                 chan = e(devices, 'channel', None, {'type': 'unix'})
                 e(chan, 'source', None, {'mode': 'bind', 'path': channel.socketPath})
                 e(chan, 'target', None, {'type': 'virtio', 'name': channel.targetName})
@@ -6325,7 +6333,7 @@ class Vm(object):
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'pcie-root', 'index': str(pci_idx_generator.next())})
                 e(devices, 'controller', None, {'type': 'pci', 'model': 'dmi-to-pci-bridge', 'index': str(pci_idx_generator.next())})
 
-                for _ in xrange(cmd.predefinedPciBridgeNum):
+                for _ in range(cmd.predefinedPciBridgeNum):
                     e(devices, 'controller', None, {'type': 'pci', 'model': 'pci-bridge', 'index': str(pci_idx_generator.next())})
 
                 for i in pci_idx_generator:
@@ -6334,7 +6342,7 @@ class Vm(object):
                 if not cmd.predefinedPciBridgeNum:
                     return
 
-                for i in xrange(cmd.predefinedPciBridgeNum):
+                for i in range(cmd.predefinedPciBridgeNum):
                     e(devices, 'controller', None, {'type': 'pci', 'index': str(i + 1), 'model': 'pci-bridge'})
 
         def add_cpu_vendor_id_to_cpu_flags():
@@ -6608,7 +6616,7 @@ def get_vm_blocks(domain_id):
 # Deprecation, use get_disk_device_name instead.
 def get_block_node_name_by_disk_name(domain_id, disk_name):
     all_blocks = get_vm_blocks(domain_id)
-    block = filter(lambda b: disk_name in b['qdev'].split("/"), all_blocks)[0]
+    block = list(filter(lambda b: disk_name in b['qdev'].split("/"), all_blocks))[0]
     if LooseVersion(LIBVIRT_VERSION) < LooseVersion("6.0.0"):
         return block['device']
     return block["inserted"]['node-name']
@@ -6643,9 +6651,9 @@ def check_mirror_jobs(domain_id, migrate_without_bitmaps):
 def get_block_file_content_by_disk_name(domain_id, disk_name):
     all_blocks = get_vm_blocks(domain_id)
     no_prefix_name = disk_name.replace("drive-", "")
-    block = filter(lambda b: b.get('device') == disk_name or b.get('device') == no_prefix_name or
+    block = list(filter(lambda b: b.get('device') == disk_name or b.get('device') == no_prefix_name or
                              (b.get('inserted') and b['inserted'].get('node-name') == disk_name) or
-                             (b.get('qdev') and no_prefix_name in b['qdev'].split("/")), all_blocks)
+                             (b.get('qdev') and no_prefix_name in b['qdev'].split("/")), all_blocks))
 
     if len(block) == 0:
         raise kvmagent.KvmError("No blocks found[uuid:{}, disk_name:{}]".format(domain_id, disk_name))
@@ -6934,20 +6942,20 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
 
             # c.f. https://access.redhat.com/solutions/2735671
-            if "org.fedoraproject.FirewallD1 was not provided" in str(e.message):
+            if "org.fedoraproject.FirewallD1 was not provided" in str(e):
                 _stop_world()  # to trigger libvirtd restart
                 raise kvmagent.KvmError(
                     'unable to start vm[uuid:%s, name:%s], libvirt error: %s' % (
                     cmd.vmInstanceUuid, cmd.vmName, str(e)))
 
-            if "Device or resource busy" in str(e.message):
+            if "Device or resource busy" in str(e):
                 raise kvmagent.KvmError(
                     'unable to start vm[uuid:%s, name:%s], libvirt error: %s' % (
                     cmd.vmInstanceUuid, cmd.vmName, str(e)))
 
             # c.f. http://jira.zstack.io/browse/ZSTAC-54965
-            if "could not find capabilities for domaintype=kvm" in str(e.message) \
-                    or "does not support virt type 'kvm'" in str(e.message):
+            if "could not find capabilities for domaintype=kvm" in str(e) \
+                    or "does not support virt type 'kvm'" in str(e):
                 # check kvm is available
                 if not os.path.exists("/dev/kvm"):
                     raise kvmagent.KvmError(
@@ -7505,22 +7513,22 @@ class VmPlugin(kvmagent.KvmAgent):
             k = info[0].strip()
             if k == "total_bytes_sec":
                 v = info[1].strip()
-                rsp.bandWidth = v if long(v) > 0 else -1
+                rsp.bandWidth = v if int(v) > 0 else -1
             elif k == "read_bytes_sec":
                 v = info[1].strip()
-                rsp.bandWidthRead = v if long(v) > 0 else -1
+                rsp.bandWidthRead = v if int(v) > 0 else -1
             elif k == "write_bytes_sec":
                 v = info[1].strip()
-                rsp.bandWidthWrite = v if long(v) > 0 else -1
+                rsp.bandWidthWrite = v if int(v) > 0 else -1
             elif k == "total_iops_sec":
                 v = info[1].strip()
-                rsp.iopsTotal = v if long(v) > 0 else -1
+                rsp.iopsTotal = v if int(v) > 0 else -1
             elif k == "read_iops_sec":
                 v = info[1].strip()
-                rsp.iopsRead = v if long(v) > 0 else -1
+                rsp.iopsRead = v if int(v) > 0 else -1
             elif k == "write_iops_sec":
                 v = info[1].strip()
-                rsp.iopsWrite = v if long(v) > 0 else -1
+                rsp.iopsWrite = v if int(v) > 0 else -1
 
         return jsonobject.dumps(rsp)
 
@@ -7550,8 +7558,8 @@ class VmPlugin(kvmagent.KvmAgent):
         inbound = shell.call('virsh domiftune %s %s | grep "inbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
         outbound = shell.call('virsh domiftune %s %s | grep "outbound.average:"|awk \'{print $2}\'' % (cmd.vmUuid, cmd.internalName)).strip()
 
-        rsp.inbound = long(inbound) * 8 * 1024 if long(inbound) > 0 else -1
-        rsp.outbound = long(outbound) * 8 * 1024 if long(outbound) > 0 else -1
+        rsp.inbound = int(inbound) * 8 * 1024 if int(inbound) > 0 else -1
+        rsp.outbound = int(outbound) * 8 * 1024 if int(outbound) > 0 else -1
 
         return jsonobject.dumps(rsp)
 
@@ -7568,8 +7576,8 @@ class VmPlugin(kvmagent.KvmAgent):
                 rsp.active = True
                 return jsonobject.dumps(rsp)
             except Exception as err:
-                if 'cannont resolve to ip address' in err.message:
-                    logger.warn(err.message)
+                if 'cannont resolve to ip address' in str(err):
+                    logger.warn(str(err))
                     logger.warn('wait 1 seconds')
                 else:
                     raise err
@@ -8689,7 +8697,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 'unable to take snapshot on vm[uuid:{0}] volume[id:{1}], because vm is not Running, Stopped or Paused, current state is {2}'.format(
                 vm.uuid, cmd.volume.deviceId, vm.state))
 
-        sorted_volume_chain = map(lambda x: x[0], sorted(cmd.volumeChainToCheck.items(), key=lambda item: item[1], reverse=True))
+        sorted_volume_chain = list(map(lambda x: x[0], sorted(cmd.volumeChainToCheck.items(), key=lambda item: item[1], reverse=True)))
 
         # check if any inconsistent issue happened on top layer
         disk, disk_name = vm._get_target_disk_by_path(sorted_volume_chain[0], is_exception=False)
@@ -8706,7 +8714,7 @@ class VmPlugin(kvmagent.KvmAgent):
         # image cache should be excluded from host side
         if cmd.excludeInstallPaths and len(cmd.excludeInstallPaths) > 0:
             logger.debug("those paths %s should be exlcuded in back_file_chain" % cmd.excludeInstallPaths)
-            back_file_chain = filter(lambda a: a not in cmd.excludeInstallPaths, back_file_chain)
+            back_file_chain = list(filter(lambda a: a not in cmd.excludeInstallPaths, back_file_chain))
 
         if back_file_chain == sorted_volume_chain:
             logger.debug('volume[uuid:%s] chain matched, return success' % cmd.volumeUuid)
@@ -8758,7 +8766,7 @@ host side snapshot files chian:
         def makedir_if_need(new_path):
             dirname = os.path.dirname(new_path)
             if not os.path.exists(dirname):
-                os.makedirs(dirname, 0755)
+                os.makedirs(dirname, 0o755)
 
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path):
             makedir_if_need(install_path)
@@ -10048,7 +10056,7 @@ host side snapshot files chian:
                 rsp.status, rsp.version = self.get_linux_vm_guest_tools_info(vm_uuid)
             except Exception as e:
                 rsp.success = False
-                rsp.error = e.message
+                rsp.error = str(e)
         return jsonobject.dumps(rsp)
 
     @in_bash
@@ -10110,7 +10118,7 @@ host side snapshot files chian:
 
     @in_bash
     def get_lighttpd_status_for_vm(self, vm_uuid, rsp):
-        pid_list = filter(lambda pid: pid != '', linux.get_pids_by_process_name('lighttpd'))
+        pid_list = list(filter(lambda pid: pid != '', linux.get_pids_by_process_name('lighttpd')))
         rsp.values['lighttpd.pid'] = ', '.join(pid_list) if pid_list else 'None'
 
         r, o, _ = bash.bash_roe('ebtables -L | grep "ARP --arp-ip-dst 169.254.169.254 -j USERDATA"')
@@ -10120,7 +10128,7 @@ host side snapshot files chian:
 
     @in_bash
     def get_push_gateway_routing_for_vm(self, vm_uuid, rsp):
-        pid_list = filter(lambda pid: pid != '', linux.get_pids_by_process_name('pushgateway'))
+        pid_list = list(filter(lambda pid: pid != '', linux.get_pids_by_process_name('pushgateway')))
         rsp.values['pushgateway.pid'] = ', '.join(pid_list) if pid_list else 'None'
 
         r, o, _ = bash.bash_roe("netstat -nap | awk '/pushgateway/ { print $4 }'")
@@ -10135,9 +10143,9 @@ host side snapshot files chian:
                 port = bind_addresses[0].split(':')[-1]
                 url = 'http://localhost:%s/metrics' % port
                 result = http.json_post(url, body=None, headers={'Content-Type':'text/plain'}, method='GET')
-                lines = filter(lambda line:
+                lines = list(filter(lambda line:
                         line.startswith('push_time_seconds') and line.find(vm_uuid) >= 0,
-                        result.split('\n'))
+                        result.split('\n')))
                 if lines:
                     push_time_seconds = float(lines[0].split(' ')[-1])
                     rsp.values['pushgateway.guest_tools.metrics.push_time_seconds'] = lines[0].split(' ')[-1]
@@ -10270,7 +10278,7 @@ host side snapshot files chian:
                                                     ' "arguments":{"command-line": "drive_del replication%s"}}' % count)
             count += 1
 
-        for i in xrange(0, cmd.nicNumber):
+        for i in range(0, cmd.nicNumber):
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                     '"arguments":{"id":"fm-%s"}}' % i)
             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
@@ -10480,7 +10488,7 @@ host side snapshot files chian:
 
         domain_xml = vm.domain.XMLDesc(0)
         is_origin_secondary = 'filter-rewriter' in domain_xml
-        for count in xrange(0, len(cmd.nics)):
+        for count in range(0, len(cmd.nics)):
             if cmd.nics[count].driverType == 'virtio':
                 execute_qmp_command(cmd.vmInstanceUuid,
                                     '{"execute": "object-add", "arguments":{ "qom-type": "colo-compare", "id": "comp-%s",'
@@ -10535,7 +10543,7 @@ host side snapshot files chian:
                                                 % cmd.checkpointDelay)
 
         def colo_qemu_object_cleanup():
-            for i in xrange(cmd.nicNumber):
+            for i in range(cmd.nicNumber):
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                         '"arguments":{"id":"fm-%s"}}' % i)
                 execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
@@ -10834,11 +10842,11 @@ host side snapshot files chian:
         for vm_uuid in cmd.intervalMap.__dict__.keys():
             interval = cmd.intervalMap[vm_uuid]
             # check interval
-            if not self.sync_clock_cron_exp_map.has_key(interval):
+            if not pycompat.has_key(self.sync_clock_cron_exp_map, interval):
                 rsp.success = False
                 rsp.error = "failed to start sync vm clock task: unexpect interval %d" % interval
                 return jsonobject.dumps(rsp)
-            if interval_uuid_map.has_key(interval):
+            if pycompat.has_key(interval_uuid_map, interval):
                 interval_uuid_map[interval].append(vm_uuid)
             else:
                 interval_uuid_map[interval] = [vm_uuid]
@@ -11372,7 +11380,7 @@ host side snapshot files chian:
                                                 '{"command-line": "drive_del replication%s" } }' % count)
                             count += 1
 
-                        for i in xrange(cmd.redirectNum):
+                        for i in range(cmd.redirectNum):
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                                     '"arguments":{"id":"fm-%s"}}' % i)
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
@@ -11385,7 +11393,7 @@ host side snapshot files chian:
                     else:
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "nbd-server-stop"}')
                         execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "x-colo-lost-heartbeat"}')
-                        for i in xrange(cmd.redirectNum):
+                        for i in range(cmd.redirectNum):
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
                                                                     '"arguments":{"id":"fr-secondary-%s"}}' % i)
                             execute_qmp_command(cmd.vmInstanceUuid, '{"execute": "object-del",'
@@ -11555,7 +11563,7 @@ host side snapshot files chian:
     @bash.in_bash
     @misc.ignoreerror
     def _extend_sharedblock(self, conn, dom, event, detail, opaque):
-        from shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
+        from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
         logger.debug("got event from libvirt, %s %s %s %s" %
                      (dom.name(), LibvirtEventManager.event_to_string(event), detail, opaque))
 
@@ -11585,7 +11593,7 @@ host side snapshot files chian:
                 lvm.extend_lv(path, extend_size)
             except Exception as e:
                 logger.warn("extend lv[%s] to size[%s] failed" % (path, extend_size))
-                if "incompatible mode" not in e.message.lower():
+                if "incompatible mode" not in str(e).lower():
                     return
                 try:
                     with lvm.OperateLv(path, shared=False, delete_when_exception=False):
@@ -11970,7 +11978,7 @@ host side snapshot files chian:
             url = "http://localhost:%s/metrics/job/zwatch_vm_agent/vmUuid/%s" % (port, vm_uuid)
             shell.run('curl -X DELETE ' + url)
         except Exception as e:
-            logger.warn("delete pushgateway metric when vm stoped failed: %s" % e.message)
+            logger.warn("delete pushgateway metric when vm stoped failed: %s" % str(e))
 
     def register_libvirt_event(self):
         #LibvirtAutoReconnect.add_libvirt_callback(libvirt.VIR_DOMAIN_EVENT_ID_LIFECYCLE, self._vm_lifecycle_event)
@@ -12082,7 +12090,7 @@ host side snapshot files chian:
             temp = cmd_res.split("\n")
             temp = temp[2:]
             for t in temp:
-                i = filter(lambda i: i, t.strip().split(" "))
+                i = list(filter(lambda i: i, t.strip().split(" ")))
                 if not i:
                     continue
                 if i[0].isdigit():
@@ -12385,4 +12393,3 @@ def touchQmpSocketWhenExists(vmUuid):
     path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
     if os.path.exists(path):
         bash.bash_roe("touch %s" % path)
-

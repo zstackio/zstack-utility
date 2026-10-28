@@ -1,12 +1,15 @@
 import glob
 import os
 import re
-import urlparse
+try:
+    import urlparse
+except ImportError:
+    from urllib import parse as urlparse
 
-import linux
-import lock
-import shell
-import device
+from zstacklib.utils import linux
+from zstacklib.utils import lock
+from zstacklib.utils import shell
+from zstacklib.utils import device
 
 
 # only support single ip

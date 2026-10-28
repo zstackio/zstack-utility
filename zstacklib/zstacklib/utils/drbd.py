@@ -514,4 +514,4 @@ def up_all_resouces():
             if r.config.local_host.minor is not None and linux.linux_lsof(r.config.local_host.get_drbd_device()).strip() == "":
                 r.demote()
         except Exception as e:
-            logger.warn("up resource %s failed: %s" % (name, e.message))
+            logger.warn("up resource %s failed: %s" % (name, str(e)))

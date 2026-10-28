@@ -55,6 +55,15 @@ def migrate_bits(srcFolderPath, dstFolderPath, independentPath=False, filtPaths=
         "kvmHostAddons":kvmHostAddons
     }))
 
+@misc.return_jsonobject()
+def rebase_migrated_volume(srcPsMountPath, dstPsMountPath, dstVolumeFolderPath, dstImageCacheTemplateFolderPath=None):
+    return NFS_PLUGIN.rebase_volume_backing_file(misc.make_a_request({
+        "srcPsMountPath": srcPsMountPath,
+        "dstPsMountPath": dstPsMountPath,
+        "dstVolumeFolderPath": dstVolumeFolderPath,
+        "dstImageCacheTemplateFolderPath": dstImageCacheTemplateFolderPath
+    }))
+
 
 @misc.return_jsonobject()
 def get_volume_base_image(volumeInstallPath, volumeInstallDir, imageCacheDir, volumeUuid):

@@ -119,7 +119,7 @@ else
 		install_i40e_driver
 	fi
 
-	. /var/lib/zstack/virtualenv/kvm/bin/activate && python -c "from kvmagent import kdaemon; kdaemon.main()" "$@"
+	. /var/lib/zstack/virtualenv/kvm/bin/activate && python3.11 -c "from kvmagent import kdaemon; kdaemon.main()" "$@"
 fi
 
 if [ $? -eq 0 ]; then

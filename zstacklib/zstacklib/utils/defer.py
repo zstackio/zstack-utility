@@ -1,3 +1,4 @@
+from __future__ import annotations
 import functools
 import threading
 import traceback
@@ -28,6 +29,6 @@ def protect(f):
                 try:
                     df()
                 except Exception:
-                    print('unhandled defer error:\n%s\n' % traceback.format_exc())
+                    print(('unhandled defer error:\n%s\n' % traceback.format_exc()))
 
     return inner

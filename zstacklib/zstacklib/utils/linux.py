@@ -36,6 +36,7 @@ from zstacklib.utils import xmlobject
 from zstacklib.utils import shell
 from zstacklib.utils import log
 from zstacklib.utils import iproute
+from zstacklib.utils import pycompat
 
 
 logger = log.get_logger(__name__)
@@ -401,7 +402,7 @@ def get_ethernet_info():
             alias_eth.netmask = netmask
             alias_eth.ip = ip
             devices[alias_eth.interface] = alias_eth
-        else:
+        elif eth.ip is None:
             eth.ip = ip
             eth.broadcast_address = brd
             eth.netmask = netmask
@@ -437,11 +438,11 @@ def get_used_disk_size(dir_path):
 
 def get_used_disk_apparent_size(dir_path, max_depth = 1, block_size = 1):
     output = shell.call('du --apparent-size --block-size=%s --max-depth=%s %s | tail -1' % (block_size, max_depth, dir_path))
-    return long(output.split()[0])
+    return int(output.split()[0])
 
 def get_directory_used_physical_size(dir_path, max_depth = 1, block_size = 1):
     output = shell.call('du --block-size=%s --max-depth=%s %s | tail -1' % (block_size, max_depth, dir_path))
-    return long(output.split()[0])
+    return int(output.split()[0])
 
 def get_total_file_size(paths):
     total = 0
@@ -456,7 +457,7 @@ def get_total_file_size(paths):
 
 def get_disk_capacity_by_df(dir_path):
     total, avail = shell.call("df %s|tail -1|awk '{print $(NF-4), $(NF-2)}'" % dir_path).split()
-    return long(total) * 1024, long(avail) * 1024
+    return int(total) * 1024, int(avail) * 1024
 
 def get_folder_size(path = "."):
     total_size = 0
@@ -495,7 +496,7 @@ def mount(url, path, options=None, fstype=None):
     if cmd.return_code == 0: raise MountError(url, '%s is occupied by another device. Details[%s]' % (path, cmd.stdout))
 
     if not os.path.exists(path):
-        os.makedirs(path, 0775)
+        os.makedirs(path, 0o775)
 
     cmdstr = "mount"
 
@@ -673,7 +674,7 @@ def get_file_size_by_http_head(url):
     for l in output.split('\n'):
         if 'Content-Length' in l:
             filesize = l.split(':')[1].strip()
-            return long(filesize)
+            return int(filesize)
     return None
 
 def shellquote(s):
@@ -697,7 +698,7 @@ def wget(url, workdir, rename=None, timeout=0, interval=1, callback=None, callba
         for l in output.split('\n'):
             if 'Content-Length' in l:
                 filesize = l.split(':')[1].strip()
-                return True, long(filesize)
+                return True, int(filesize)
         return False, 0
 
     cmdlst = ['wget']
@@ -855,7 +856,7 @@ def scp_download(hostname, sshkey, src_filepath, dst_filepath, host_account='roo
 
     # scp bandwidth limit
     if bandWidth is not None:
-        bandWidth = '-l %s' % (long(bandWidth) / 1024)
+        bandWidth = '-l %s' % (int(bandWidth) // 1024)
     else:
         bandWidth = ''
 
@@ -908,7 +909,7 @@ def sftp_get(hostname, sshkey, filename, download_to, timeout=0, interval=1, cal
             output = cmd.stdout.strip()
             outputs = output.split('\n')
             size_pair = outputs[0]
-            return long(size_pair.split()[0])
+            return int(size_pair.split()[0])
         finally:
             if keyfile_path:
                 os.remove(keyfile_path)
@@ -987,7 +988,7 @@ def qcow2_size_and_actual_size(file_path):
     if not virtual_size and not actual_size:
         raise Exception('cannot get the virtual/actual size of the file[%s], %s %s' % (shellquote(file_path), cmd.stdout, cmd.stderr))
 
-    virtual_size = long(virtual_size) if virtual_size else None
+    virtual_size = int(virtual_size) if virtual_size else None
     return virtual_size, actual_size
 
 '''  
@@ -1177,7 +1178,7 @@ def qcow2_virtualsize(file_path):
     if cmd.return_code != 0:
         raise Exception('cannot get the virtual size of the file[%s], %s %s' % (file_path, cmd.stdout, cmd.stderr))
     out = cmd.stdout.strip(' \t\r\n')
-    return long(out)
+    return int(out)
 
 def qcow2_get_backing_file(path):
     if not os.path.exists(path):
@@ -1252,7 +1253,7 @@ def qcow2_get_backing_chain(path):
 
 def get_qcow2_file_chain_size(path):
     chain = qcow2_get_file_chain(path)
-    size = 0L
+    size = 0
     for path in chain:
         size += get_local_file_disk_usage(path)
     return size
@@ -1285,7 +1286,7 @@ def qcow2_measure_required_size(path, cluster_size=0):
     opts = "" if cluster_size == 0 else "-o cluster_size=%s" % cluster_size
 
     out = shell.call("%s --output=json -f qcow2 -O qcow2 %s %s" % (qemu_img.subcmd('measure'), opts, path))
-    return long(simplejson.loads(out)["required"])
+    return int(simplejson.loads(out)["required"])
 
 
 def qcow2_get_cluster_size(path):
@@ -1315,13 +1316,12 @@ def get_block_discard_max_bytes(path):
         raise Exception("block device %s not exists" % path)
 
     discard_max_bytes = read_file('/sys/class/block/%s/queue/discard_max_bytes' % os.path.basename(path))
-    return 0 if discard_max_bytes is None else long(discard_max_bytes)
+    return 0 if discard_max_bytes is None else int(discard_max_bytes)
 
 def support_blkdiscard(path):
     return get_block_discard_max_bytes(path) > 0
 
-class AbstractFileConverter(object):
-    __metaclass__ = abc.ABCMeta
+class AbstractFileConverter(pycompat.with_metaclass(abc.ABCMeta, object)):
 
     def __init__(self):
         pass
@@ -1763,7 +1763,7 @@ def get_socket_num():
 def get_cpu_speed():
     max_freq = '/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq'
     if os.path.exists(max_freq):
-        out = file(max_freq).read()
+        out = open(max_freq).read()
         return int(float(out) / 1000)
 
     if platform.machine() == 'aarch64':
@@ -2506,7 +2506,7 @@ def get_eth_ips():
 def get_nics_by_cidr(cidr):
     eths = get_eth_ips()
     nics = []
-    for e in eths.itervalues():
+    for e in pycompat.itervalues(eths):
         if e.status == False:
             continue
         for ip in e.ips:
@@ -2872,7 +2872,7 @@ def link(source, link_name):
         return
 
     if not os.path.exists(os.path.dirname(link_name)):
-        os.makedirs(os.path.dirname(link_name), 0755)
+        os.makedirs(os.path.dirname(link_name), 0o755)
 
     os.link(source, link_name)
     logger.debug("link %s to %s" % (source, link_name))
@@ -2921,7 +2921,7 @@ def fake_dead(name):
     fakedead_file = '/tmp/fakedead-%s' % name
     if not os.path.exists(fakedead_file):
         return False
-    ctx = file(fakedead_file).read().strip()
+    ctx = open(fakedead_file).read().strip()
     if ctx == 'fakedead':
         return True
     return False
@@ -2934,7 +2934,7 @@ def recover_fake_dead(name):
 def get_agent_pid_by_name(name):
     cmd = shell.ShellCmd('ps -aux | grep \'%s\' | grep -E \'start|restart\' | grep -v grep | awk \'{print $2}\'' % name)
     output = cmd(False)
-    print output
+    print(output)
     if cmd.return_code != 0:
         return None
     output = output.strip(" \t\r")
@@ -3161,5 +3161,5 @@ class VmUsbManager(object):
 
     def print_status(self):
         logger.info("Current USB slot status:")
-        for usb_type, count in self.usb_slots.iteritems():
+        for usb_type, count in pycompat.iteritems(self.usb_slots):
             logger.info("bus:%s: %d" % (usb_type, count))

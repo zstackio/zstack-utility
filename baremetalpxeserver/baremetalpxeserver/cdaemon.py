@@ -10,7 +10,7 @@ import zstacklib.utils.iptables as iptables
 pidfile = '/var/run/zstack/zstack-baremetalpxeserver.pid'
 log.configure_log('/var/log/zstack/zstack-baremetalpxeserver.log')
 logger = log.get_logger(__name__)
-import pxeserveragent
+from . import pxeserveragent
 
 def prepare_pid_dir(path):
     pdir = os.path.dirname(path)
@@ -20,7 +20,7 @@ def prepare_pid_dir(path):
 def main():
     usage = 'usage: python -c "from baremetalpxeserver import cdaemon; cdaemon.main()" start|stop|restart'
     if len(sys.argv) != 2 or not sys.argv[1] in ['start', 'stop', 'restart']:
-        print usage
+        print(usage)
         sys.exit(1)
 
     global pidfile

@@ -4,7 +4,7 @@ from oslo_log import log as logging
 from bm_instance_agent.common import utils as agent_utils
 from bm_instance_agent.systems.linux import driver as linux_driver
 from bm_instance_agent import objects
-from centos_network_config import CentOSNetworkConfig as config
+from .centos_network_config import CentOSNetworkConfig as config
 
 LOG = logging.getLogger(__name__)
 

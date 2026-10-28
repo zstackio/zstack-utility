@@ -2,6 +2,7 @@
 
 @author: Frank
 '''
+from __future__ import annotations
 import unittest
 from zstacklib.iptables import iptables
 
@@ -30,7 +31,7 @@ class Test(unittest.TestCase):
         r.set_target(t)
         c.add_rule(r)
         tbl.add_chain(c)
-        print tbl
+        print(tbl)
 
 
 if __name__ == "__main__":

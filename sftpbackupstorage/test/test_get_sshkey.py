@@ -14,7 +14,7 @@ class Test(unittest.TestCase):
     
     def callback(self, req):
         rsp = jsonobject.loads(req[http.REQUEST_BODY])
-        print "sshkey: %s" % rsp.sshKey
+        print("sshkey: %s" % rsp.sshKey)
         
 
     def testName(self):
@@ -25,9 +25,9 @@ class Test(unittest.TestCase):
         
         cmd = sftpbackupstorage.GetSshKeyCommand()
         url = 'http://localhost:7171%s' % sftpbackupstorage.SftpBackupStorageAgent.GET_SSHKEY_PATH
-        print url
+        print(url)
         rsp = http.json_dump_post(url, cmd, headers={http.TASK_UUID:uuidhelper.uuid(), http.CALLBACK_URI:self.CALLBACK_URL})
-        print "post back"
+        print("post back")
         time.sleep(5)
         
         server.http_server.stop()
