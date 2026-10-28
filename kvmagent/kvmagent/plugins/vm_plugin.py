@@ -78,9 +78,10 @@ from zstacklib.utils.libvirt_singleton import LibvirtSingleton
 logger = log.get_logger(__name__)
 
 HOST_ARCH = platform.machine()
-DIST = platform.dist()
-DIST_NAME = DIST[0]
-DIST_NAME_VERSION = "%s%s" % (DIST[0], DIST[1])
+os_info = linux.get_freedesktop_os_release()
+DIST_NAME = os_info.get('ID', '').lower()
+DIST_NAME = 'centos' if DIST_NAME == 'helix' else DIST_NAME
+DIST_NAME_VERSION = "{}{}".format(DIST_NAME, os_info.get('VERSION_ID', ''))
 
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
@@ -12392,4 +12393,3 @@ def touchQmpSocketWhenExists(vmUuid):
     path = "%s/%s.sock" % (QMP_SOCKET_PATH, vmUuid)
     if os.path.exists(path):
         bash.bash_roe("touch %s" % path)
-

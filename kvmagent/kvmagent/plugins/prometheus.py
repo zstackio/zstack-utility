@@ -1,4 +1,7 @@
 import os.path
+import re
+import shutil
+
 import pyudev  # installed by ansible
 import threading
 import time
@@ -1761,6 +1764,9 @@ class PrometheusPlugin(kvmagent.KvmAgent):
     def start_prometheus_exporter(self, req):
         @in_bash
         def start_collectd(cmd):
+            if not shutil.which('collectdmon'):
+                logger.warn('collectd is unavailable, skip collectd startup')
+                return
             conf_path = os.path.join(os.path.dirname(cmd.binaryPath), 'collectd.conf')
             ingore_block_device = "/:sd[c-e]/" if kvmagent.host_arch in ["mips64el", "aarch64", "loongarch64"] else "//"
 

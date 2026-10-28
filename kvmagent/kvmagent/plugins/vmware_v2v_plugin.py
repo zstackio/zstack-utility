@@ -100,7 +100,10 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        os_dist, os_version, _ = platform.dist()
+        from zstacklib.utils import linux
+        os_info = linux.get_freedesktop_os_release()
+        os_dist, os_version = os_info['ID'], re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
+
         versions = os_version.split('.')
         # check if os is centos 7.2
         if len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
