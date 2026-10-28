@@ -855,7 +855,10 @@ def yum_install_package(name, host_post_info, ignore_error=False,
     runner_args = ZstackRunnerArg()
     runner_args.host_post_info = host_post_info
     runner_args.module_name = 'shell'
-    runner_args.module_args = "rpm -q %s" % name
+    # --whatprovides so a capability already satisfied by an installed
+    # package (e.g. libselinux-python provided by python2-libselinux) is
+    # skipped without needing a repo
+    runner_args.module_args = "rpm -q --whatprovides %s" % name
     runner_args.name = name
     zstack_runner = ZstackRunner(runner_args)
     result = zstack_runner.run()
