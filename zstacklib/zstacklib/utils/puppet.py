@@ -2,13 +2,12 @@
 
 @author: Frank
 '''
-from __future__ import annotations
 
-from . import shell
-from . import ssh
+from zstacklib.utils import shell
+from zstacklib.utils import ssh
 import os.path
-from . import log
-from . import lock
+from zstacklib.utils import log
+from zstacklib.utils import lock
 
 logger = log.get_logger(__name__)
 

@@ -2,7 +2,6 @@
 
 @author: YYK
 '''
-from __future__ import annotations
 import pickledb
 import os
 
@@ -19,7 +18,7 @@ class FileDB(object):
         if not os.path.exists(file_dir):
             os.makedirs(file_dir, 0o755)
         #force save for each db operation.
-        self.file_db = pickledb.PickleDB(file_path, True, None)
+        self.file_db = pickledb.pickledb(file_path, True)
 
     def get(self, key):
         try:
@@ -37,4 +36,4 @@ class FileDB(object):
         return self.file_db.db
 
     def close(self):
-        pass
+        self.file_db.close()

@@ -1,6 +1,9 @@
+import re
+import tempfile
 import os
 import os.path
 import platform
+import json
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -8,6 +11,7 @@ from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import bash_progress_1, in_bash, bash_r, bash_roe
 from zstacklib.utils.report import *
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 HOST_ARCH = platform.machine()
@@ -62,7 +66,7 @@ class ImageStoreClient(object):
     def commit_image(self, fpath):
         cmdstr = '%s -json add -file %s' % (self.ZSTORE_CLI_PATH, fpath)
         logger.debug('adding %s to local image store' % fpath)
-        output = shell.call(cmdstr)
+        output = shell.call(cmdstr.encode(encoding="utf-8"))
         logger.debug('%s added to local image store' % fpath)
 
         return jsonobject.loads(output.splitlines()[-1])
@@ -151,7 +155,7 @@ class ImageStoreClient(object):
                 for line in fd.readlines():
                     infosMap = {}
                     j = jsonobject.loads(line.strip())
-                    for key, val in j.__dict__.items():
+                    for key, val in pycompat.iteritems(j.__dict__):
                         infosMap[key] = val
                     infosMaps.append(infosMap)
                     maxLatencies.append(max(infosMap.values()))
@@ -160,12 +164,12 @@ class ImageStoreClient(object):
                     maxLatency = max(maxLatencies)
                     minLatency = min(maxLatencies)
                     for infoMap in infosMaps:
-                        k = [k for k, v in list(infoMap.items()) if v == maxLatency]
+                        k = [k for k, v in infoMap.items() if v == maxLatency]
                         if k:
                             maxInfoMap = infoMap
                             break
                     for infoMap in infosMaps:
-                        values = list(infoMap.values())
+                        values = infoMap.values()
                         if values and all(i <= minLatency for i in values):
                             minInfoMap = infoMap
                             break
@@ -281,7 +285,7 @@ class ImageStoreClient(object):
         cmdstr = '%s -json  -callbackurl %s -taskid %s -imageUuid %s add -desc \'%s\' -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
                 req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.description, fpath)
         logger.debug('adding %s to local image store' % fpath)
-        output = shell.call(cmdstr)
+        output = shell.call(cmdstr.encode(encoding="utf-8"))
         logger.debug('%s added to local image store' % fpath)
 
         imf = jsonobject.loads(output.splitlines()[-1])

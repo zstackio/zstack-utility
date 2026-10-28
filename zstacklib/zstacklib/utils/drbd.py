@@ -1,4 +1,3 @@
-from __future__ import annotations
 import os
 import platform
 
@@ -24,6 +23,7 @@ class DrbdRole(object):
 
 class DrbdNetState(object):
     WFConnection = "WFConnection"
+    Unconfigured = "Unconfigured"
     StandAlone = "StandAlone"
     Disconnecting = "Disconnecting"
     Unconnected = "Unconnected"
@@ -324,17 +324,17 @@ class DrbdConfigStruct(DrbdStruct):
                 except IndexError:
                     continue
 
-                if key in list(self.__dict__.keys()):
+                if key in self.__dict__.keys():
                     self.__dict__[key] = value
-                elif key in list(self.net.__dict__.keys()):
+                elif key in self.net.__dict__.keys():
                     self.net.__dict__[key] = value
-                elif on_local and key in list(self.local_host.__dict__.keys()):
+                elif on_local and key in self.local_host.__dict__.keys():
                     if key == "device":
                         self.local_host.device = value.split(" ")[0]
                         self.local_host.minor = value.split(" ")[2]
                         continue
                     self.local_host.__dict__[key] = value
-                elif on_remote and key in list(self.remote_host.__dict__.keys()):
+                elif on_remote and key in self.remote_host.__dict__.keys():
                     if key == "device":
                         self.remote_host.device = value.split(" ")[0]
                         self.remote_host.minor = value.split(" ")[2]
@@ -410,11 +410,11 @@ resource {{ name }} {
 
     def make_ctx(self):
         ctx = {}
-        for k, v in list(self.__dict__.items()):
+        for k, v in self.__dict__.items():
             if isinstance(v, str):
                 ctx[k] = v
             elif isinstance(v, DrbdStruct):
-                for m, n in list(v.__dict__.items()):
+                for m, n in v.__dict__.items():
                     ctx["%s_%s" % (k, m)] = n
         ctx["local_host_hostname"] = linux.get_hostname()
         return ctx

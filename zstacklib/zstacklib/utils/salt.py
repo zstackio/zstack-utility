@@ -2,14 +2,14 @@
 
 @author: YYK
 '''
-from __future__ import annotations
 
-from . import shell
-from . import ssh
+from zstacklib.utils import shell
+from zstacklib.utils import ssh
 import os.path
-from . import log
+from zstacklib.utils import log
 import subprocess
-from . import lock
+from zstacklib.utils import lock
+from zstacklib.utils import pycompat
 import time
 import json
 
@@ -37,10 +37,10 @@ def is_salt_failed(salt_json_output):
         return True
 
     if isinstance(json_data, dict):
-        for value in list(json_data.values()):
+        for value in json_data.values():
             if isinstance(value, dict):
-                for item in list(value.values()):
-                    if 'result' in item:
+                for item in value.values():
+                    if pycompat.has_key(item, 'result'):
                         if item['result'] == False:
                             return True
             elif value == False:

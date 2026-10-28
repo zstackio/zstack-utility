@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from __future__ import annotations
 import sys, os, time, atexit
 import traceback
 import locale
@@ -83,7 +82,11 @@ class Daemon(object):
         sys.stderr.flush()
         si = open(self.stdin, 'r')
         so = open(self.stdout, 'a+')
-        se = open(self.stderr, 'a+', buffering=1)
+        # py2 的 file(x,'a+',0) 无缓冲；py3 禁止无缓冲文本流，改用行缓冲（最接近的合法语义）
+        if sys.version_info[0] == 2:
+            se = open(self.stderr, 'a+', 0)
+        else:
+            se = open(self.stderr, 'a+', 1)
         os.dup2(si.fileno(), sys.stdin.fileno())
         os.dup2(so.fileno(), sys.stdout.fileno())
         os.dup2(se.fileno(), sys.stderr.fileno())

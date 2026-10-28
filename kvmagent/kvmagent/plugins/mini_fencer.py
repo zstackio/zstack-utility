@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 import functools
 import sys
-import subprocess
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 import logging
 import time
 import re
@@ -66,7 +69,7 @@ def retry(times=5, sleep_time=1):
 def getstatusoutput(c):
     # type: (str) -> (int, str)
     start_time = time.time()
-    r, o = subprocess.getstatusoutput(c)
+    r, o = commands.getstatusoutput(c)
     end_time = time.time()
     logger.debug("command:[%s], returnCode:[%s], output:[%s], spendTime:[%s] ms" % (c, r, o, (end_time - start_time) * 1000))
     return r, o

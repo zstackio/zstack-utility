@@ -2,7 +2,6 @@
 
 @author: frank
 '''
-import re
 
 from zstacklib.utils import plugin
 from zstacklib.utils import http
@@ -11,12 +10,29 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import daemon
 from zstacklib.utils import linux
 from zstacklib.utils import qemu
+from zstacklib.utils import pycompat
 import os.path
 import traceback
 import pprint
 import functools
-import subprocess
+import sys
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
+
 import platform
+
+if sys.version_info[0] == 2:
+    reload(sys)                                   # noqa: F821  (py2 内建)
+    sys.setdefaultencoding('utf-8')               # noqa: F821
+else:
+    import io
+    # py3 无隐式编码开关；显式设定标准流编码，替代 py2 的全局默认编码
+    for _stream_name in ('stdout', 'stderr'):
+        _s = getattr(sys, _stream_name, None)
+        if _s is not None and hasattr(_s, 'reconfigure'):
+            _s.reconfigure(encoding='utf-8')
 
 logger = log.get_logger(__name__)
 
@@ -39,19 +55,19 @@ class KvmAgent(plugin.Plugin):
         linux.recover_fake_dead('kvmagent')
         super(KvmAgent, self).__init__()
 
-ha_cleanup_handlers = [] # type: list[callable]
+ha_cleanup_handlers = [] # type: list[function]
 
 def register_ha_cleanup_handler(handler):
-    # type: (callable) -> None
+    # type: (function) -> None
     logger.debug('start registered ha cleanup handler %s' % handler)
     global ha_cleanup_handlers
     ha_cleanup_handlers.append(handler)
     logger.debug('success registered ha cleanup handlers %s' % ha_cleanup_handlers)
 
-metric_collectors = []  # type: list[callable]
+metric_collectors = []  # type: list[function]
 
 def register_prometheus_collector(collector):
-    # type: (callable) -> None
+    # type: (function) -> None
     logger.debug('start registered %s' % collector)
     global metric_collectors
     metric_collectors.append(collector)
@@ -71,14 +87,14 @@ def get_http_server():
     return _rest_service.http_server
 
 def get_host_yum_release():
-    return subprocess.getoutput("rpm -q zstack-release 2>/dev/null | awk -F'-' '{print $3}'").strip()
+    return commands.getoutput("rpm -q zstack-release 2>/dev/null | awk -F'-' '{print $3}'").strip()
 
 def get_host_os_type():
     os_info = linux.get_freedesktop_os_release()
     dist, version = os_info['ID'], re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
     if dist.lower() in linux.DIST_WITH_RPM_DEB:
         dist = "%s%s" % (dist.lower(), version)
-    is_debian = any([x in dist.lower() for x in linux.DEB_BASED_OS])
+    is_debian = any(map(lambda x: x in dist.lower(), linux.DEB_BASED_OS))
     return 'debian' if is_debian else 'redhat'
 
 
@@ -110,7 +126,7 @@ class KvmRESTService(object):
         self.plugin_rgty = plugin.PluginRegistry(self.plugin_path)
     
     def _get_config(self, name):
-        return None if name not in self.config else self.config[name]
+        return None if not pycompat.has_key(self.config, name) else self.config[name]
     
     def start(self, in_thread=True):
         config = {}
@@ -180,5 +196,3 @@ class KvmDaemon(daemon.Daemon):
 SEND_COMMAND_URL = 'SEND_COMMAND_URL'
 HOST_UUID = 'HOST_UUID'
 VERSION = 'VERSION'
-kvmagent_physical_memory_usage_alarm_threshold = None
-kvmagent_physical_memory_usage_hardlimit = None

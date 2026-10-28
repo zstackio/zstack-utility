@@ -1,6 +1,6 @@
-from __future__ import annotations
+
 from zstacklib.utils import log
-from zstacklib.utils.collection_ops import union_dict
+
 
 logger = log.get_logger(__name__)
 MULTIPATH_PATH = "/etc/multipath.conf"
@@ -56,7 +56,7 @@ def write_multipath_conf(path, blacklist=None):
         blacklist_changed = False
         for section in config:
             if 'blacklist' in section:
-                # TODO(py3) test
+                # 仅需判等：等价于 py2 的 cmp(...) != 0；两侧均已经 sorted_conf 规范化排序
                 blacklist_changed = sorted_conf(section['blacklist']) != sorted_conf(blacklist)
 
             if 'devices' in section:
@@ -72,7 +72,8 @@ def write_multipath_conf(path, blacklist=None):
                             subsection['device'].remove(attribute)
                             modified = True
 
-                        if union_dict(*default_device['device']) == union_dict(*subsection['device']):
+                        # 仅需判等：等价于 py2 的 cmp(...) == 0
+                        if sorted(default_device['device']) == sorted(subsection['device']):
                             has_default_device = True
 
                 if not has_default_device:
@@ -80,7 +81,7 @@ def write_multipath_conf(path, blacklist=None):
                     modified = True
 
         if blacklist is not None and blacklist_changed:  # None blacklist means ignore
-            config = [cfg for cfg in config if 'blacklist' not in cfg]
+            config = list(filter(lambda cfg : 'blacklist' not in cfg, config))
             config.append({'blacklist' : blacklist})
             modified = True
 

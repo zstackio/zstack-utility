@@ -2,7 +2,10 @@ import ast
 import json
 import os
 import shutil
-import subprocess
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 import tempfile
 
 from jinja2 import Template
@@ -288,7 +291,6 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             return Template(f.read())
 
     def _prepare_provision_network(self, network_obj):
-        # type: (NetworkObj) -> None
         """ Prepare provision network
 
         :param network_obj: The network obj
@@ -398,7 +400,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
             ip_addr=instance_obj.provision_ip,
             uuid=instance_obj.uuid)
 
-        with open(self.DNSMASQ_HOSTS_PATH, 'a+') as f:
+        with open(self.DNSMASQ_HOSTS_PATH, 'a+r') as f:
             if host not in f.read():
                 f.write(host)
 
@@ -406,7 +408,7 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
         opts = opts_template.render(
             uuid=instance_obj.uuid,
             tftp_server_address=instance_obj.gateway_ip)
-        with open(self.DNSMASQ_OPTS_PATH, 'a+') as f:
+        with open(self.DNSMASQ_OPTS_PATH, 'a+r') as f:
             if opts not in f.read():
                 f.write(opts)
                 f.write('\n')
@@ -825,16 +827,16 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
                     nbd_id = volume_driver.nbd_id
                     break
 
-            status,output = subprocess.getstatusoutput('guestmount --ro -a /dev/nbd%s -m /dev/sda2 %s' % (nbd_id, tempdir))
+            status,output = commands.getstatusoutput('guestmount --ro -a /dev/nbd%s -m /dev/sda2 %s' % (nbd_id, tempdir))
             if not os.path.exists(os.path.join(tempdir, 'baremetal2/vmlinuz')) or \
                     not os.path.exists(os.path.join(tempdir, 'baremetal2/initrd.img')) or \
                     not os.path.exists(os.path.join(tempdir, 'baremetal2/root_uuid')):
-                subprocess.getoutput('umount %s; rm -rf %s' % (tempdir, tempdir))
+                commands.getoutput('umount %s; rm -rf %s' % (tempdir, tempdir))
 
             shutil.copy(os.path.join(tempdir, 'baremetal2/vmlinuz'), image_dir)
             shutil.copy(os.path.join(tempdir, 'baremetal2/initrd.img'), image_dir)
             shutil.copy(os.path.join(tempdir, 'baremetal2/root_uuid'), image_dir)
-            subprocess.getoutput('chmod 0777 %s/*; umount %s; rm -rf %s' % (image_dir, tempdir, tempdir))
+            commands.getoutput('chmod 0777 %s/*; umount %s; rm -rf %s' % (image_dir, tempdir, tempdir))
 
         root_uuid = ''
         if os.path.exists(os.path.join(image_dir, 'root_uuid')):
@@ -1677,5 +1679,5 @@ class BaremetalV2GatewayAgentPlugin(kvmagent.KvmAgent):
     def stop(self):
         pass
 
-    def configure(self, config=None):
+    def configure(self, config):
         self.config = config

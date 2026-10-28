@@ -1,4 +1,3 @@
-from __future__ import annotations
 import base64
 import json
 import time
@@ -7,7 +6,7 @@ import libvirt
 import libvirt_qemu
 import xml.etree.ElementTree as ET
 
-from . import log
+from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
 
@@ -49,21 +48,13 @@ qga_channel_state_disconnected = 'disconnected'
 encodings = ['utf-8', 'GB2312', 'ISO-8859-1']
 
 
-def decode_with_fallback(encoded_bytes) -> str:
-    if not isinstance(encoded_bytes, bytes):
-        return encoded_bytes
-
-    errs = []
+def decode_with_fallback(encoded_bytes):
     for encoding in encodings:
         try:
-            return encoded_bytes.decode(encoding)
-        except UnicodeDecodeError as e:
-            errs.append((encoding, str(e)))
+            return encoded_bytes.decode(encoding).encode('utf-8')
+        except UnicodeDecodeError:
             continue
-
-    error_details = "\n".join([f"{enc}: {err}" for enc, err in errs])
-    raise Exception(
-        f"Unable to decode bytes using provided encodings. Attempted encodings and errors:\n{error_details}")
+    raise UnicodeDecodeError("Unable to decode bytes using provided encodings")
 
 def merge_cmd(cmd_str, args):
     for sub_key in args:
@@ -158,10 +149,7 @@ class VmQga(object):
         cmd = {'execute': command}
         if args:
             if 'buf-b64' in args:
-                content = args['buf-b64']
-                if isinstance(content, str):
-                    content = content.encode()
-                args['buf-b64'] = base64.b64encode(content).decode()
+                args['buf-b64'] = base64.b64encode(args['buf-b64'])
             cmd['arguments'] = args
         cmd = json.dumps(cmd)
         try:
@@ -185,11 +173,11 @@ class VmQga(object):
         parsedRet = parsed['return']
         if isinstance(parsedRet, dict):
             if 'out-data' in parsedRet:
-                parsedRet['out-data'] = base64.b64decode(parsedRet['out-data']).decode()
+                parsedRet['out-data'] = base64.b64decode(parsedRet['out-data'])
             if 'err-data' in parsedRet:
-                parsedRet['err-data'] = base64.b64decode(parsedRet['err-data']).decode()
+                parsedRet['err-data'] = base64.b64decode(parsedRet['err-data'])
             if 'buf-b64' in parsedRet:
-                parsedRet['buf-b64'] = base64.b64decode(parsedRet['buf-b64']).decode()
+                parsedRet['buf-b64'] = base64.b64decode(parsedRet['buf-b64'])
 
         return parsedRet
 
@@ -706,7 +694,7 @@ class VmQga(object):
             'username': 'root',
             'keys': [public_key]
         }
-        ret = self.call_qga_command('guest-ssh-add-authorized-keys', args)
+        ret = self.call_qga_command('guest-ssh-add-authorized_keys', args)
         return ret
 
     def guest_ssh_remove_authorized_keys(self, public_key):
@@ -714,5 +702,5 @@ class VmQga(object):
             'username': 'root',
             'keys': [public_key]
         }
-        ret = self.call_qga_command('guest-ssh-remove-authorized-keys', args)
+        ret = self.call_qga_command('guest-ssh-remove-authorized_keys', args)
         return ret

@@ -1,3 +1,4 @@
+import json
 import random
 import re
 import time
@@ -39,7 +40,7 @@ class AgentRsp(object):
 
 class RaidPhysicalDriveStruct(object):
     rotationRate = None  # type: int
-    size = None  # type: int
+    size = None  # type: long
     diskGroup = None  # type: int
     deviceId = None  # type: int
     slotNumber = None  # type: int
@@ -66,7 +67,7 @@ class RaidPhysicalDriveStruct(object):
 
 
 class SmartDataStruct(object):
-    rawValue = None  # type: int
+    rawValue = None  # type: long
     thresh = None  # type: int
     worst = None  # type: int
     value = None  # type: int
@@ -126,30 +127,6 @@ class FiberChannelLunStruct(ScsiLunStruct):
         self.storageWwnn = ""
 
 
-class HbaStruct(object):
-    def __init__(self):
-        self.name = ""
-
-
-class FcHbaStruct(HbaStruct):
-    def __init__(self):
-        super(FcHbaStruct, self).__init__()
-        self.name = ""
-        self.portName = ""
-        self.portState = ""
-        self.speed = ""
-        self.supportedSpeeds = ""
-        self.symbolicName = ""
-        self.supportedClasses = ""
-        self.nodeName = ""
-
-
-class FcHbaScanRsp(AgentRsp):
-    def __init__(self):
-        super(FcHbaScanRsp, self).__init__()
-        self.hbaDeviceStructs = []
-
-
 class NvmeController():
     def __init__(self):
         self.name = ''
@@ -201,16 +178,6 @@ class FcSanScanRsp(AgentRsp):
         self.fiberChannelLunStructs = []
         self.hbaWwnns = []
 
-class GetMultipathTopologyRsp(AgentRsp):
-    def __init__(self):
-        super(GetMultipathTopologyRsp, self).__init__()
-        self.devices = {} # type: dict[str, Device]
-
-class Device(object):
-    def __init__(self, disk, status, state):
-        self.disk = disk
-        self.status = status
-        self.state = state
 
 class NvmeSanScanRsp(AgentRsp):
     def __init__(self):
@@ -263,7 +230,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     NVME_DISCONNECT_PATH = "/storagedevice/nvme/disconnect"
     MULTIPATH_ENABLE_PATH = "/storagedevice/multipath/enable"
     MULTIPATH_DISABLE_PATH = "/storagedevice/multipath/disable"
-    GET_MULTIPATH_TOPOLOGY_PATH = "/storagedevice/multipath/topology"
     ATTACH_SCSI_LUN_PATH = "/storagedevice/scsilun/attach"
     DETACH_SCSI_LUN_PATH = "/storagedevice/scsilun/detach"
     DETACH_SCSI_DEV_PATH = "/storagedevice/scsilun/detachdev"
@@ -271,7 +237,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     RAID_SMART_PATH = "/storagedevice/raid/smart"
     RAID_LOCATE_PATH = "/storagedevice/raid/locate"
     RAID_SELF_TEST_PATH = "/storagedevice/raid/selftest"
-    HBA_SCAN_PATH = "/storagedevice/hba/scan"
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -290,61 +255,9 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.RAID_SMART_PATH, self.raid_smart)
         http_server.register_async_uri(self.RAID_LOCATE_PATH, self.raid_locate)
         http_server.register_async_uri(self.RAID_SELF_TEST_PATH, self.drive_self_test)
-        http_server.register_async_uri(self.HBA_SCAN_PATH, self.hba_scan)
-        http_server.register_async_uri(self.GET_MULTIPATH_TOPOLOGY_PATH, self.get_multipath_topology)
 
     def stop(self):
         pass
-
-    @kvmagent.replyerror
-    def hba_scan(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = FcHbaScanRsp()
-        rsp.hbaDeviceStructs = self.get_hba_devices()
-        return jsonobject.dumps(rsp)
-
-    def get_hba_devices(self):
-        ret = []
-        r, o, e = bash.bash_roe("systool -c fc_host -v")
-        if r != 0:
-            return ret
-
-        name_ = node_name_ = port_name_ = speed_ = None
-        supported_speeds_ = port_state_ = symbolic_name_ = supported_classes_ = None
-        for line in o.strip().split("\n"):
-            infos = line.split("=")
-            if len(infos) != 2:
-                continue
-            k = infos[0].lower().strip()
-            v = infos[1].strip().strip('"')
-            if k == "class device":
-                name_ = v
-            elif k == "node_name":
-                node_name_ = v
-            elif k == "port_name":
-                port_name_ = v
-            elif k == "speed":
-                speed_ = v
-            elif k == "supported_speeds":
-                supported_speeds_ = v
-            elif k == "symbolic_name":
-                symbolic_name_ = v
-            elif k == "port_state":
-                port_state_ = v
-            elif k == "supported_classes":
-                supported_classes_ = v
-            elif k == "device path":
-                h = FcHbaStruct()
-                h.name = name_
-                h.nodeName = node_name_
-                h.portName = port_name_
-                h.speed = speed_
-                h.supportedSpeeds = supported_speeds_
-                h.symbolicName = symbolic_name_
-                h.portState = port_state_
-                h.supportedClasses = supported_classes_
-                ret.append(h)
-        return ret
 
     @kvmagent.replyerror
     @bash.in_bash
@@ -366,10 +279,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def get_slave_path(self, multipath_path):
         def get_wwids(dev_name):
             symlinks = shell.call("udevadm info -q symlink -n %s" % dev_name).strip().split()
-            wwids = [os.path.basename(p) for p in [s for s in symlinks if 'by-id' in s]]
+            wwids = list(map(lambda p: os.path.basename(p), filter(lambda s: 'by-id' in s, symlinks)))
             wwids.sort()
 
-            stable_wwids = [w for w in wwids if "lvm-pv" not in w]
+            stable_wwids = list(filter(lambda w: "lvm-pv" not in w, wwids))
             return stable_wwids if stable_wwids else wwids
 
         dm = os.path.basename(os.path.realpath(multipath_path))
@@ -672,8 +585,13 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def raid_smart(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RaidPhysicalDriveSmartRsp()
+
+        r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+        if r != 0:
+            raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
+
         bus_number = self.get_bus_number()
-        drive = self.get_megaraid_device_via_device_number_and_bus_number(cmd.deviceNumber, bus_number)
+        drive = self.get_megaraid_device_info_megacli("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
         if drive.wwn != cmd.wwn:
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
                             (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
@@ -733,10 +651,16 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        r, o, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-        if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
-            self.mega_raid_locate_storcli(cmd, o)
-            return jsonobject.dumps(rsp)
+        if misc.isHyperConvergedHost():
+            r, o, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
+            if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
+                self.mega_raid_locate_storcli(cmd, o)
+                return jsonobject.dumps(rsp)
+        else:
+            r, o, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+            if r == 0 and "Adapter #" in o:
+                self.mega_raid_locate_megacli(cmd, o)
+                return jsonobject.dumps(rsp)
 
         r, o, e = bash.bash_roe("arcconf list")
         if r == 0 and "Controller ID" in o:
@@ -824,8 +748,12 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = RaidPhysicalDriveSmartTestRsp()
 
+        r, raid_info, e = bash.bash_roe("/opt/MegaRAID/MegaCli/MegaCli64 -LdPdInfo -aALL")
+        if r != 0:
+            raise Exception("can not execute MegaCli: returnCode: %s, stdout: %s, stderr: %s" % (r, raid_info, e))
+
         bus_number = self.get_bus_number()
-        drive = self.get_megaraid_device_via_device_number_and_bus_number(cmd.deviceNumber, bus_number)
+        drive = self.get_megaraid_device_info_megacli("/dev/bus/%d -d megaraid,%d" % (bus_number, cmd.deviceNumber), raid_info)
         if drive.wwn != cmd.wwn:
             raise Exception("expect drive[busNumber %s, deviceId %s, slotNumber %s] wwn is %s, but is %s actually" %
                             (bus_number, cmd.deviceNumber, cmd.slotNumber, cmd.wwn, drive.wwn))
@@ -887,7 +815,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         rsp = RaidScanRsp()
         r, o, e = bash.bash_roe("smartctl --scan | grep megaraid")
         if r == 0 and o.strip() != "":
-            rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_storcli(o)
+            if misc.isHyperConvergedHost():
+                rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_storcli(o)
+            else:
+                rsp.raidPhysicalDriveStructs = self.get_megaraid_devices_megacli(o)
             return jsonobject.dumps(rsp)
 
         r, o, e = bash.bash_roe("arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
@@ -932,7 +863,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if r != 0:
             return result
         in_entry = False
-        allocated_slots = [x.slotNumber for x in normal_devices]
+        allocated_slots = list(map(lambda x: x.slotNumber, normal_devices))
         for line in o.splitlines():
             if in_entry is True and "mb" not in line.lower():
                 in_entry = False
@@ -962,7 +893,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def get_info_from_size(size, unit, d, allocated_slots):
-        # type: (str, str, RaidPhysicalDriveStruct, list[int]) -> RaidPhysicalDriveStruct
+        # type: (str, str, RaidPhysicalDriveStruct) -> RaidPhysicalDriveStruct
         #TODO(weiw): warning: very hard code
         if "mb" not in unit.lower():
             logger.warn("unexpected unit on missing drive 'Size Expected': %s" % unit)
@@ -975,7 +906,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         else:
             d.diskGroup = 1
             d.raidLevel = "raid5"
-            unallocated = set([x for x in allocated_slots if x > 1]).symmetric_difference({2, 3, 4, 5})
+            unallocated = set(filter(lambda x: x > 1, allocated_slots)).symmetric_difference({2, 3, 4, 5})
             d.slotNumber = unallocated.pop() if len(unallocated) > 0 else None
         return d
 
@@ -1048,7 +979,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
 
     @bash.in_bash
     def get_megaraid_device_disk_info_smartctl(self, line):
-        # type: (str) -> RaidPhysicalDriveStruct
+        # type: (str, str) -> RaidPhysicalDriveStruct
         line = line.split(" #")[0]
         d = RaidPhysicalDriveStruct()
         r, o = bash.bash_ro("smartctl -i %s " % line)
@@ -1128,7 +1059,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             return []
 
         fc_targets.sort()
-        scsi_infos = [s for s in lvm.run_lsscsi_i() if "/dev/" in s]
+        scsi_infos = list(filter(lambda s: "/dev/" in s, lvm.run_lsscsi_i()))
         if not scsi_infos:
             logger.debug("not find any usable fc disks")
             return []
@@ -1136,7 +1067,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         luns = [[] for _ in enumerate(fc_targets)]
 
         def fill_lun_info(fc_target, i):
-            for target_scsi_info in [x for x in scsi_infos if '[' + fc_target in x]:
+            for target_scsi_info in filter(lambda x: '[' + fc_target in x, scsi_infos):
                 device_info = self.get_fc_device_info(target_scsi_info, rescan)
                 if device_info:
                     luns[i].append(device_info)
@@ -1147,7 +1078,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         for t in threads:
             t.join()
 
-        return sum([_f for _f in luns if _f], [])
+        return sum(filter(None, luns), [])
 
     def multipath_conf_cannot_change(self):
         r, o, e = bash.bash_roe('''grep -rF "<disk type='block' device='lun'" /var/run/libvirt/qemu/* ''')
@@ -1181,52 +1112,6 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
     def disable_multipath(self, req):
         rsp = AgentRsp()
         lvm.disable_multipath()
-        return jsonobject.dumps(rsp)
-
-    @kvmagent.replyerror
-    def get_multipath_topology(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = GetMultipathTopologyRsp()
-
-        def convert_state(s):
-            return "running" if s in ["running", "active", "live"] else "failed"
-
-        def parse_multipath_topology():
-            # multipathd process needs to be running
-            r, multipaths = bash.bash_ro("multipathd show multipaths json")
-            if r != 0:
-                return {}
-            multipaths = jsonobject.loads(multipaths)
-            if not multipaths.maps:
-                return {}
-            results = {}
-            for mpath in multipaths.maps:
-                if not mpath.path_groups:
-                    continue
-
-                wwid = mpath.uuid
-                results.update({wwid: []})
-                for path_group in mpath.path_groups:
-                    for path in path_group.paths:
-                        results.get(wwid).append(Device("/dev/"+path.dev, path_group.dm_st, convert_state(path.dm_st)))
-            return results
-
-        def get_disk_by_wwid(wwid):
-            for cond in ['scsi-', "nvme-"]:
-                rp = os.path.realpath("/dev/disk/by-id/%s%s" % (cond, wwid))
-                if os.path.exists(rp):
-                    return rp
-
-        multipath_topology = parse_multipath_topology()
-        for wwid in cmd.wwids:
-            if wwid not in multipath_topology:
-                disk = get_disk_by_wwid(wwid)
-                if disk is not None:
-                    rsp.devices.update({wwid: [Device(disk, "active", convert_state(linux.read_file("/sys/block/%s/device/state" %
-                                                                                      os.path.basename(disk)).strip()))]})
-            else:
-                rsp.devices.update({wwid: multipath_topology.get(wwid)})
-
         return jsonobject.dumps(rsp)
 
     @staticmethod
@@ -1384,7 +1269,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         if not any_nqn_connected:
             raise Exception("unable connect any nqn on server[%s:%s, transport:%s], error: %s" % (cmd.ip, cmd.port, cmd.transport, str(error)))
 
-        return [l for l in self.get_nvme_luns(rescan=True) if l.nqn in discovered_nqns and set(l.wwids).intersection(wwids)]
+        return list(filter(lambda l: l.nqn in discovered_nqns and set(l.wwids).intersection(wwids), self.get_nvme_luns(rescan=True)))
 
     @bash.in_bash
     def disconnect_nvme_controller(self, cmd):
@@ -1774,17 +1659,3 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                 result.append(d)
        
         return result
-
-    @bash.in_bash
-    def get_megaraid_device_via_device_number_and_bus_number(self, device_number, bus_number):
-        # type: (int, int) -> RaidPhysicalDriveStruct
-        r, vd_info, e = bash.bash_roe("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-        if r != 0:
-            raise Exception("can not execute storcli64: %s, stdout: %s, stderr: %s" % (r, vd_info, e))
-        # If a RAID-built disk is pulled out, this cmd will return 45.
-        pd_info = bash.bash_o("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
-
-        drive = self.get_megaraid_device_info_storcli("/dev/bus/%d -d megaraid,%d" % (bus_number, device_number), vd_info, pd_info)
-        return drive
-
-

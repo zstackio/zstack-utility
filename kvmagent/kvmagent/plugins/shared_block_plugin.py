@@ -11,6 +11,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import lock
 from zstacklib.utils import lvm, sanlock
+from zstacklib.utils import list_ops
 from zstacklib.utils import bash
 from zstacklib.utils import qemu_img, qcow2
 from zstacklib.utils import traceable_shell
@@ -232,9 +233,6 @@ class CheckDisk(object):
             return self.identifier == other.identifier
         return False
 
-    def __hash__(self):
-        return hash(self.identifier)
-
     def get_path(self, raise_exception=True):
         o = self.check_disk_by_wwid()
         if o is not None:
@@ -455,7 +453,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return diskPaths
 
     def create_vg_if_not_found(self, vgUuid, disks, hostUuid, allDisks, forceWipe=False, is_first_create_vg=False):
-        # type: (str, set[CheckDisk], str, set[CheckDisk], bool, bool) -> bool
+        # type: (str, set([CheckDisk]), str, set([CheckDisk]), bool) -> bool
         @linux.retry(times=5, sleep_time=random.uniform(0.1, 3))
         def find_vg(vgUuid, raise_exception=True):
             cmd = shell.ShellCmd("timeout 5 vgscan --ignorelockingfailure; vgs --nolocking -t %s -otags | grep %s" % (vgUuid, INIT_TAG))
@@ -620,12 +618,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         def config_lvm(host_id, enableLvmetad=False):
             lvm.backup_lvm_config()
             config = lvm.get_lvm_default_config()
-            lvmlockd_lock_retries = 6
             config.modify({
                 "use_lvmlockd": 1,
                 "host_id": host_id,
                 "sanlock_lv_extend": DEFAULT_SANLOCK_LV_SIZE,
-                "lvmlockd_lock_retries": lvmlockd_lock_retries,
+                "lvmlockd_lock_retries": 6,
                 "issue_discards": 0,
                 "reserved_stack": 256,
                 "reserved_memory": 131072,
@@ -645,10 +642,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 linux.write_file(lvm.LVM_CONFIG_FILE, new_config, create_if_not_exist=True)
                 linux.write_file(lvm.LVM_LOCAL_CONFIG_FILE, new_config, create_if_not_exist=True)
                 logger.debug("lvm config has changed:\n %s" % '\n'.join(diff))
-                lvm.report_config_changed()
 
-            # max lock retries times = (external lvmlockd_lock_retries + 1) * (internal lock_retries + 1 after a lock conflict)
-            lvm.lvm_cmd_timeout_with_locking = ((lvmlockd_lock_retries + 1) * 6) * 5
             lvm.modify_sanlock_config("sh_retries", 20)
             lvm.modify_sanlock_config("logfile_priority", 7)
             lvm.modify_sanlock_config("renewal_read_extend_sec", 24)
@@ -755,7 +749,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def disconnect(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
-        if cmd.vgUuid in list(self.vgs_path_and_wwid.keys()):
+        if cmd.vgUuid in self.vgs_path_and_wwid.keys():
             self.vgs_path_and_wwid.pop(cmd.vgUuid)
 
         @linux.retry(times=3, sleep_time=random.uniform(0.1, 3))
@@ -1087,7 +1081,6 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, False)
 
-    @kvmagent.replyerror
     def cancel_download_from_sftp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
@@ -1439,7 +1432,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetBatchVolumeSizeRsp()
 
-        for uuid, installPath in list(cmd.volumeUuidInstallPaths.__dict__.items()):
+        for uuid, installPath in cmd.volumeUuidInstallPaths.__dict__.items():
             with IgnoreError():
                 install_abs_path = translate_absolute_path_from_install_path(installPath)
                 rsp.actualSizes[uuid] = lvm.get_lv_size(install_abs_path)

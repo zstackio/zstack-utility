@@ -2,6 +2,7 @@ import os.path
 import re
 import random
 import time
+from distutils.version import LooseVersion
 
 from typing import Dict, Any
 
@@ -123,18 +124,18 @@ class ReplicationInformation(object):
     diskStatus = None  # type: str
     networkStatus = None  # type: str
     role = None  # type: str
-    size = None  # type: int
+    size = None  # type: long
     name = None  # type: str
-    minor = None  # type: int
+    minor = None  # type: long
 
     def __init__(self):
         super(ReplicationInformation, self).__init__()
         self.diskStatus = None  # type: str
         self.networkStatus = None  # type: str
         self.role = None  # type: str
-        self.size = None  # type: int
+        self.size = None  # type: long
         self.name = None  # type: str
-        self.minor = None  # type: int
+        self.minor = None  # type: long
 
 
 
@@ -640,7 +641,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
         command = shell.ShellCmd("vgs --nolocking -t %s -otags | grep %s" % (cmd.vgUuid, INIT_TAG))
         command(is_exception=False)
         if command.return_code != 0:
-            self.create_vg_if_not_found(cmd.vgUuid, {disk}, [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
+            self.create_vg_if_not_found(cmd.vgUuid, set(disk), [disk.get_path()], cmd.hostUuid, cmd.forceWipe)
         else:
             if cmd.forceWipe is True:
                 lvm.wipe_fs([disk.get_path()], cmd.vgUuid)
@@ -835,7 +836,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
 
     @staticmethod
     def convertInstallPathToMount(path):
-        # type: (str) -> str
+        # type: (string) -> string
         return path.replace("mini:/", "/tmp")
 
     @kvmagent.replyerror

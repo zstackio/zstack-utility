@@ -2,10 +2,11 @@
 
 @author: Frank
 '''
-from __future__ import annotations
 import xml.etree.ElementTree as etree
 import re
 import types
+
+from zstacklib.utils import pycompat
 
 class XmlObjectError(Exception):
     '''XmlObject error'''
@@ -89,7 +90,7 @@ class XmlObject(object):
     
     def get_children_nodes(self):
         children = {}
-        for key, value in list(self.__dict__.items()):
+        for key, value in self.__dict__.items():
             if isinstance(value, XmlObject) or isinstance(value, list):
                 children[key] = value
         return children
@@ -100,7 +101,7 @@ class XmlObject(object):
             xmlstr = []
             opentag = []
             opentag.append('<%s' % obj.get_tag())
-            for key, val in obj.__dict__.items():
+            for key, val in pycompat.iteritems(obj.__dict__):
                 if not key.endswith('_') or key.startswith('_') or key == 'text_':
                     continue
                 opentag.append('%s="%s"' % (key[:-1], val))
@@ -108,7 +109,7 @@ class XmlObject(object):
             xmlstr.append('>')
             
             found_child = False
-            for key, val in obj.__dict__.items():
+            for key, val in pycompat.iteritems(obj.__dict__):
                 if isinstance(val, XmlObject):
                     xmlstr.append(_dump(val))
                     found_child = True
@@ -143,7 +144,7 @@ class XmlObject(object):
 
 def _loads(node):
     xo = XmlObject(node.tag)
-    for key in list(node.attrib.keys()):
+    for key in node.attrib.keys():
         xo.put_attr(key, node.attrib.get(key))
     if node.text:
         xo.put_text(node.text)
@@ -179,7 +180,7 @@ def has_element(xmlobj, elementstr):
     
     def _has_element(obj):
         try:
-            e = next(it)
+            e = it.next()
             if hasattr(obj, e):
                 return _has_element(getattr(obj, e))
             else:

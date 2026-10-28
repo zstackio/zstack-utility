@@ -1,10 +1,9 @@
-from __future__ import annotations
 __author__ = 'frank'
 
 import threading
 import functools
 import traceback
-from . import log
+from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
 

@@ -2,26 +2,29 @@
 
 @author: frank
 '''
-from __future__ import annotations
 
 import abc
 import functools
 import os
 import os.path
-import imp
+import sys
 import inspect
 import threading
 import traceback
-import warnings
 
-from . import log
-import configparser
+from zstacklib.utils import log
+
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
 
 import time
 
 from zstacklib.utils import jsonobject, http
 from zstacklib.utils.report import get_api_id, AutoReporter, get_timeout, get_task_stage
 from zstacklib.utils import traceable_shell
+from zstacklib.utils import pycompat
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
 
@@ -61,22 +64,14 @@ def completetask(func):
     return wrap
 
 
-class TaskResult(object):
-    def __init__(self, success=True, error=None):
-        self.success = success
-        self.error = error
+class TaskDaemon(pycompat.with_metaclass(abc.ABCMeta, object)):
 
-    def fail(self, error):
-        self.success = False
-        self.error = error
-
-class TaskDaemon(object, metaclass=abc.ABCMeta):
     '''
     A daemon to track a long task, task will be canceled automatically when timeout or canceled by api.
     '''
 
     def __init__(self, task_spec, task_name, timeout=0):
-        if self.__class__.__name__ != TaskDaemon.__name__ and "__exit__" in self.__class__.__dict__:
+        if self.__class__.__name__ != TaskDaemon.__name__ and pycompat.has_key(self.__class__.__dict__, "__exit__"):
             raise Exception("method __exit__ cannot be overridden")
         self.api_id = get_api_id(task_spec)
         self.task_name = task_name
@@ -88,8 +83,6 @@ class TaskDaemon(object, metaclass=abc.ABCMeta):
         self.closed = False
         self.start_time = None
         self.deadline = None
-        self.complete_event = threading.Event()
-        self.result = TaskResult()
 
     def __enter__(self):
         self.start()
@@ -108,19 +101,12 @@ class TaskDaemon(object, metaclass=abc.ABCMeta):
         except:
             pass
 
-        ignore_err = False
         try:
-            ignore_err = self._exit(exc_type, exc_val, exc_tb)
-            return ignore_err
+            return self._exit(exc_type, exc_val, exc_tb)
         except Exception:
             if exc_type is not None:
                 raise
             logger.warning("ignoring an exception when exiting the task daemon:\n%s" % traceback.format_exc())
-        finally:
-            if not ignore_err and exc_type is not None:
-                self.result.fail(str(exc_val))
-            self.complete_event.set()
-
 
     def start(self):
         if self.api_id:
@@ -205,7 +191,6 @@ def _cancel_job(cmd, rsp, times=1, interval=3):
     rsp.error = "no matched job to cancel"
     return rsp
 
-
 class TaskManager(object):
     CANCEL_JOB = "/job/cancel"
     global task_daemons
@@ -220,31 +205,25 @@ class TaskManager(object):
 
     # TODO(MJ): use task daemon instead
     def load_task(self, req):
-        warnings.warn("deprecated function {}.".format(self.load_task.__name__), category=DeprecationWarning)
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        if cmd.identificationCode in list(self.longjob_progress_mapper.keys()):
+        if cmd.identificationCode in self.longjob_progress_mapper.keys():
             return self.longjob_progress_mapper[cmd.identificationCode]
         return None
 
     # todo : load task when agent restart
     def load_and_save_task(self, req, rsp, validate_task_result_existing, args):
-        warnings.warn("deprecated function {}.".format(self.load_and_save_task.__name__), category=DeprecationWarning)
-
         assert validate_task_result_existing, "you must validate task result has not been clean"
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if not cmd.identificationCode:
             return None
         with self.mapper_lock:
-            if validate_task_result_existing(args) and cmd.identificationCode in list(self.longjob_progress_mapper.keys()):
+            if validate_task_result_existing(args) and cmd.identificationCode in self.longjob_progress_mapper.keys():
                 return self.longjob_progress_mapper[cmd.identificationCode]
             else:
                 self.longjob_progress_mapper[cmd.identificationCode] = TaskProgressInfo(req=req, rsp=rsp, key=cmd.identificationCode)
                 return None
 
     def complete_task(self, req, err=None):
-        warnings.warn("deprecated function {}.".format(self.complete_task.__name__), category=DeprecationWarning)
-
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         if not cmd.identificationCode:
             return
@@ -261,8 +240,6 @@ class TaskManager(object):
         # threading.Timer(300, self.longjob_progress_mapper.pop, args=[cmd.identificationCode]).start()
 
     def wait_task_complete(self, task_info, timeout=259200):
-        warnings.warn("deprecated function {}.".format(self.wait_task_complete.__name__), category=DeprecationWarning)
-
         interval = 60
         key = task_info.key
         assert self.longjob_progress_mapper[key].completed is not None, "last task must be existing"
@@ -314,38 +291,8 @@ class TaskManager(object):
 
         return len(to_cancel_tasks)
 
-    @staticmethod
-    def wait_task(task_spec, task_name, no_task_return=lambda task_name, api_id:
-                TaskResult(False, "cannot find task[name=%s] for api[%s]" % (task_name, api_id))):
-        # type: (object, str, callable) -> TaskResult
+class Plugin(pycompat.with_metaclass(abc.ABCMeta, TaskManager)):
 
-        api_id = get_api_id(task_spec)
-        timeout = get_timeout(task_spec)
-        task = None
-        with task_operator_lock:
-            if api_id not in task_daemons:
-                return no_task_return(task_name, api_id)
-
-            tasks = task_daemons[api_id]
-            for t in tasks:
-                if t.task_name == task_name:
-                    task = t
-                    break
-
-        if not task:
-            return no_task_return(task_name, api_id)
-
-        logger.debug("waiting for task[name=%s, api_id=%s] to complete" % (task_name, api_id))
-        ret = task.complete_event.wait(timeout)
-        if not ret:
-            logger.debug("task[name=%s, api_id=%s] timeout after %d seconds" % (task_name, api_id, timeout))
-            task.cancel()
-            return TaskResult(False, "task[name=%s, api_id=%s] timeout after %d seconds" % (task_name, api_id, timeout))
-        logger.debug("task[name=%s, api_id=%s] completed, success: %s" % (task_name, api_id, task.result.success))
-        return task.result
-
-
-class Plugin(TaskManager, metaclass=abc.ABCMeta):
     def __init__(self):
         super(Plugin, self).__init__()
         self.config = None
@@ -375,17 +322,50 @@ class PluginRegistry(object):
                 name = member.__name__
                 self.plugins[name] = member()
 
+    @staticmethod
+    def _load_module_py3(base_module_name, module_name, search_path):
+        '''py3 无 imp；等价 imp.find_module + imp.load_module：
+        在 search_path 下解析 <base_module_name>.py（或包 __init__.py），
+        以 module_name 加载执行，并在 sys.modules 注册（加载失败时移除）。'''
+        import importlib.util
+        _cand = None
+        for _finder in search_path:
+            _cand = os.path.join(_finder, base_module_name + '.py')
+            if os.path.isfile(_cand):
+                break
+            _pkg_init = os.path.join(_finder, base_module_name, '__init__.py')
+            if os.path.isfile(_pkg_init):
+                _cand = _pkg_init
+                break
+        else:
+            _cand = None
+        if _cand is None:
+            raise ImportError('cannot find plugin %s in %s' % (base_module_name, search_path))
+        _spec = importlib.util.spec_from_file_location(module_name, _cand)
+        mobj = importlib.util.module_from_spec(_spec)
+        sys.modules[module_name] = mobj
+        try:
+            _spec.loader.exec_module(mobj)
+        except BaseException:
+            sys.modules.pop(module_name, None)
+            raise
+        return mobj
+
     def _load_module(self, mpath, mname=None):
         module_name = inspect.getmodulename(mpath) if not mname else mname
         search_path = [os.path.dirname(mpath)] if os.path.isfile(mpath) else [mpath]
         logger.debug('Loading module[name:%s, path:%s]' % (module_name, search_path))
         base_module_name = module_name.split('.')[-1]
-        (mfile, mpname, mdesc) = imp.find_module(base_module_name, search_path)
-        try:
-            mobj = imp.load_module(module_name, mfile, mpname, mdesc)
-            self._parse_plugins(mobj)
-        finally:
-            mfile.close()
+        if sys.version_info[0] == 2:
+            import imp
+            (mfile, mpname, mdesc) = imp.find_module(base_module_name, search_path)
+            try:
+                mobj = imp.load_module(module_name, mfile, mpname, mdesc)
+            finally:
+                mfile.close()
+        else:
+            mobj = self._load_module_py3(base_module_name, module_name, search_path)
+        self._parse_plugins(mobj)
 
     def _scan_folder(self):
         for root, dirs, files in os.walk(self.plugin_folder):
@@ -393,29 +373,29 @@ class PluginRegistry(object):
                 if f.endswith('.py'): self._load_module(os.path.join(root, f))
 
     def _parse_config(self):
-        config = configparser.SafeConfigParser()
+        config = ConfigParser.ConfigParser()
         config.read(self.plugin_config)
         for (module_name, path) in config.items(PLUGIN_CONFIG_SECTION_NAME):
             if config.has_option('DEFAULT', module_name): continue
             self._load_module(os.path.abspath(path), module_name)
 
     def configure_plugins(self, config={}):
-        for p in list(self.plugins.values()):
+        for p in self.plugins.values():
             p.configure(config)
 
     def start_plugins(self):
-        for p in list(self.plugins.values()):
+        for p in self.plugins.values():
             p.start()
 
     def stop_plugins(self):
-        for p in list(self.plugins.values()):
+        for p in self.plugins.values():
             p.stop()
 
     def get_plugin(self, name):
         return self.plugins[name]
 
     def get_plugins(self):
-        return list(self.plugins.values())
+        return self.plugins.values()
 
     def __init__(self, path):
         '''

@@ -2,14 +2,11 @@
 
 @author: yyk
 '''
-from __future__ import annotations
 
 import os
 import sys
-import imp
-from . import log
-import imp
-from . import linux
+from zstacklib.utils import log
+from zstacklib.utils import linux
 
 PLUGIN_CONFIG_SECTION_NAME = 'plugins'
 
@@ -49,6 +46,15 @@ class ComponentLoader(object):
         if not self.module_file_path:
             raise Exception('Did not find module file: %s in module path: %s with parent path depth: %s' % (self.module_file_name, self.module_file_path, self.parent_path_depth))
         sys.path.append(os.path.dirname(self.module_file_path))
-        self.module = imp.load_source(self.module_name, self.module_file_path)
+        if sys.version_info[0] == 2:
+            import imp
+            self.module = imp.load_source(self.module_name, self.module_file_path)
+        else:
+            # py3 无 imp；语义对齐 imp.load_source：按文件加载并在 sys.modules 注册
+            import importlib.util
+            _spec = importlib.util.spec_from_file_location(self.module_name, self.module_file_path)
+            self.module = importlib.util.module_from_spec(_spec)
+            sys.modules[self.module_name] = self.module
+            _spec.loader.exec_module(self.module)
         return self.module
 

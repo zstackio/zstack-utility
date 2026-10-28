@@ -169,7 +169,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     @bash.in_bash
     def _rescan_disk(self, install_path):
         disk_path = translate_absolute_path_from_install_paht(install_path)
-        device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % disk_path).strip()
+        device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % disk_path).strip();
         linux.write_file("/sys/block/%s/device/rescan" % device_letter, "1")
 
     @kvmagent.replyerror
@@ -196,6 +196,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         umounted = linux.umount(cmd.path)
         rsp = AgentRsp()
+        rsp.success
         if umounted is not True:
             rsp.success = False
             rsp.error = "fail to umount path: " + cmd.path
@@ -293,7 +294,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
         bash.bash_roe("timeout 120 /usr/bin/rescan-scsi-bus.sh -u >/dev/null")
         lun_has_been_mapped = self.make_sure_lun_has_been_mapped(cmd)
         if lun_has_been_mapped is not True:
-            err_msg = "fail to find heartbeat lun, please make sure host is connected with ps"
+            err_msg = "fail to find heartbeat lun, please make sure host is connected with ps";
             logger.debug(err_msg)
             rsp.success = False
             rsp.error = err_msg
@@ -410,7 +411,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
     def _logout_target(self, logout_cmd):
         wwn = logout_cmd.wwn
         disk_path = translate_absolute_path_from_wwn(wwn)
-        device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % disk_path).strip()
+        device_letter = bash.bash_o("ls -al %s | awk -F '/' '{print $NF}'" % disk_path).strip();
         linux.write_file("/sys/block/%s/device/delete" % device_letter, "1")
         self.wait_lun_deleted(disk_path)
 
