@@ -99,6 +99,7 @@ def host(tmp_path, monkeypatch):
     monkeypatch.setattr(plugin, '_observe', lambda: {})
     monkeypatch.setattr(plugin, '_converge_ksm', lambda ksm, control: world.setdefault('ksm', []).append((ksm, control)))
     monkeypatch.setattr(plugin, '_receipt', lambda kind: dict(service.receipts[kind]))
+    monkeypatch.setattr(plugin, '_current_boot_id', lambda: 'boot')
 
     def run_executor(unit, argument, request=None):
         world['started'].append((unit, argument, request))
@@ -316,6 +317,16 @@ def test_activation_names_the_preparation_the_service_activates(host):
     assert service.paused is False
 
 
+def test_a_backend_prepared_without_a_pool_resumes_and_waits_for_the_pool(host):
+    plugin, service, world = host
+    service.pool, service.paused = None, True
+    service.receipts['backend'] = {'stage': 'APPLIED', 'request_id': 'backend-35-x'}
+    result = apply(plugin, 35, desired(writeback=True))
+    assert result['reasonCode'] == 'WAITING_FOR_POOL', result
+    assert service.paused is False
+    assert not [action for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
+
+
 def test_an_activation_waiting_for_the_service_to_settle_is_converging(host):
     plugin, service, world = host
     service.pool, service.paused = None, True
@@ -408,6 +419,39 @@ def test_a_rebooted_writeback_host_prepares_the_same_disk_again(host, monkeypatc
     # A resend while the executor runs does not scan the disks again.
     assert apply(plugin, 7, desired(writeback=True))['reasonCode'] == 'BACKEND_PREPARING'
     assert len(world['scans']) == 1
+
+
+def test_a_preparation_left_unfinished_by_a_reboot_is_prepared_again(host, monkeypatch):
+    plugin, service, world = host
+    built = _reboot_reclaim_host(plugin, service, world, monkeypatch, 1 << 30)
+    service.receipts['backend'].update(stage='AWAITING_SERVICE_READBACK', request_id='backend-6-x',
+                                       host_boot_id='ee9d1165-923d-46e3-9077-a94bbbd11dfb')
+    result = apply(plugin, 7, desired(writeback=True))
+    assert result['reasonCode'] == 'BACKEND_PREPARING', result
+    assert built and world['started'][0][1] == '--prepare-backend-maintenance'
+
+
+def test_observing_a_stopped_service_waits_for_no_running_apply(host):
+    plugin, service, world = host
+    world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED}
+    assert plugin._observed_control('inactive', {}) == 'drained'
+    with plugin._host_lock():
+        # The service's state lock may be in use by the apply; report, do not collide.
+        world['drained'] = None
+        assert plugin._observed_control('inactive', {}) == 'unknown'
+
+
+@pytest.mark.parametrize('receipt_boot, can_prepare', [('boot', False), ('earlier-boot', True)])
+def test_only_an_unfinished_preparation_of_this_boot_blocks_a_new_one(host, monkeypatch, receipt_boot, can_prepare):
+    plugin, service, world = host
+    world['unit'] = 'failed'
+    world['drained'] = {'error': 'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT'}
+    service.receipts['backend'] = {'stage': 'AWAITING_SERVICE_READBACK', 'host_boot_id': receipt_boot}
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': [{'device': '/dev/vdb', 'eligible': True, 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+    inventory = plugin._writeback_inventory(HOST)
+    assert inventory['canPrepare'] is can_prepare, inventory['preparationReasons']
 
 
 @pytest.mark.parametrize('capacity, receipt_device', [(2 << 30, '/dev/vdb'), (1 << 30, '/dev/vdc')])

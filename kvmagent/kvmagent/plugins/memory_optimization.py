@@ -1079,7 +1079,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 return 'paused'
             return 'active' if zram.get('lifecycle') else 'unknown'
         if unit in ('inactive', 'failed'):
-            native = self._drain_check()
+            # The check takes the service's state lock, which a running apply may be using.
+            try:
+                with self._host_lock(wait_seconds=0):
+                    native = self._drain_check()
+            except Converging:
+                return 'unknown'
             if isinstance(native, dict) and native.get('state') == self.DRAINED:
                 return 'drained'
             return 'stopped'
@@ -1380,7 +1385,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         raise Converging('POOL_PREPARING')
 
     def _maintenance_prepared(self):
-        return self._receipt('pool').get('stage') == 'APPLIED' or self._receipt('backend').get('stage') == 'APPLIED'
+        """A completed preparation left a rebuilt pool for the service to activate.
+
+        A backend prepared without a pool (e.g. after a reboot) has none; its pool is created on first use.
+        """
+        pool = self._receipt('pool')
+        receipt = pool if pool.get('stage') == 'APPLIED' else self._receipt('backend')
+        return receipt.get('stage') == 'APPLIED' and bool(receipt.get('pool_generation'))
 
     def _activate_after_maintenance(self, generation):
         pool = self._receipt('pool')
@@ -1411,6 +1422,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             receipt = self._receipt(kind)
             stage = receipt.get('stage')
             if stage in ('NOT_STARTED', 'APPLIED', None):
+                continue
+            if receipt.get('host_boot_id') not in (None, '', self._current_boot_id()):
+                # Recorded before a reboot; the reboot reclaim prepares the backend again.
                 continue
             if stage == 'FAILED_REQUIRES_REVIEW':
                 if self._service_unit_state() in ('inactive', 'failed') and not self._is_drained():
@@ -1488,7 +1502,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if not pool_generation:
             reasons.append('POOL_GENERATION_UNKNOWN')
         receipt = self._receipt('backend')
-        if receipt.get('stage') not in ('NOT_STARTED', 'APPLIED'):
+        # A preparation left unfinished before a reboot is set aside by the next one.
+        if (receipt.get('stage') not in ('NOT_STARTED', 'APPLIED') and
+                receipt.get('host_boot_id') in (None, '', self._current_boot_id())):
             reasons.append('BACKEND_MAINTENANCE_UNRESOLVED')
         previous = self._previous_backend_device()
         for candidate in inventory.get('candidates') or []:
