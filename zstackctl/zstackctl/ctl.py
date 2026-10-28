@@ -3235,6 +3235,15 @@ EOF
         info("removed stale properties integrity records for management node %s" % node_uuid)
 
     def _report_property_updated(self):
+        if not ctl.read_property('management.server.ip') or not (
+                ctl.read_property('managementServerId') or os.path.isfile('/var/lib/zstack/management-server-id.properties')):
+            return
+
+        pool_uuid = self._mysql_cmd("SELECT COALESCE(value, 'None') FROM GlobalConfigVO WHERE category='securityMachine' "
+                                    "AND name='crypto.dataProtect.resourcePoolUuid'").strip()
+        if pool_uuid in ('', 'None'):
+            return
+
         config_cmd = UpdatePropertyCmd()
         config_cmd.propertiesDigestValue = file_hex_digest(self.properties_algorithm, ctl.properties_file_path)
         config_cmd.mnIp = ctl.read_property('management.server.ip')

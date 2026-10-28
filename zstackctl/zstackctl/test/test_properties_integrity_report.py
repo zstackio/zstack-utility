@@ -111,7 +111,7 @@ class TestPropertiesIntegrityExecution(unittest.TestCase):
         cmd = SimpleNamespace(_asdict=lambda: {"propertiesDigestValue": cmd.propertiesDigestValue, "mnIp": cmd.mnIp})
         self.namespace = dict(Command=object, ctl=self.ctl, re=re, os=os, subprocess=subprocess,
                               CtlError=RuntimeError, PropertyFile=Mock(), simplejson=json,
-                              UpdatePropertyCmd=lambda: cmd, file_hex_digest=lambda *args: "digest",
+                              UpdatePropertyCmd=lambda: cmd, file_hex_digest=Mock(return_value="digest"),
                               format_url_host=lambda host: "[%s]" % host if ":" in host else host,
                               ShellCmd=Mock(), logger=Mock(), warn=Mock(), info=Mock())
         self.namespace["PropertyFile"].return_value.read_property.return_value = "a" * 32
@@ -123,8 +123,12 @@ class TestPropertiesIntegrityExecution(unittest.TestCase):
     def test_online_report_waits_and_keeps_database_untouched(self):
         report = self.namespace["ShellCmd"].return_value
         report.return_code = 0
+        self.command._mysql_cmd = Mock(return_value="b" * 32)
         self.command._delete_property_integrity_records = Mock()
         self.command._report_property_updated()
+        sql = self.command._mysql_cmd.call_args.args[0]
+        self.assertIn("category='securityMachine'", sql)
+        self.assertIn("name='crypto.dataProtect.resourcePoolUuid'", sql)
         report.assert_called_once_with(False)
         self.command._delete_property_integrity_records.assert_not_called()
         command = self.namespace["ShellCmd"].call_args.args[0]
@@ -137,6 +141,7 @@ class TestPropertiesIntegrityExecution(unittest.TestCase):
 
     def test_offline_report_uses_database_fallback(self):
         self.namespace["ShellCmd"].return_value.return_code = 7
+        self.command._mysql_cmd = Mock(return_value="b" * 32)
         self.command._delete_property_integrity_records = Mock()
         self.command._report_property_updated()
         self.command._delete_property_integrity_records.assert_called_once_with()
@@ -148,6 +153,60 @@ class TestPropertiesIntegrityExecution(unittest.TestCase):
         with patch.object(os.path, "isfile", return_value=False):
             self.command._report_property_updated()
         self.command._mysql_cmd.assert_not_called()
+
+    def test_default_installation_properties_without_node_identity_skip_reporting(self):
+        self.ctl.read_property.side_effect = {"DB.user": "zstack", "DB.url": "jdbc:mysql://localhost:3306"}.get
+        self.command._mysql_cmd = Mock(side_effect=FileNotFoundError("mysql"))
+        with patch.object(os.path, "isfile", return_value=False):
+            self.command._report_property_updated()
+        self.command._mysql_cmd.assert_not_called()
+        self.namespace["ShellCmd"].assert_not_called()
+        self.namespace["file_hex_digest"].assert_not_called()
+
+    def test_reinstallation_template_with_old_node_identity_skips_reporting(self):
+        for configured_identity in (None, "a" * 32):
+            with self.subTest(configured_identity=configured_identity):
+                self.ctl.read_property.side_effect = {
+                    "DB.user": "zstack", "DB.password": "", "DB.url": "jdbc:mysql://localhost:3306",
+                    "managementServerId": configured_identity,
+                }.get
+                self.command._mysql_cmd = Mock(side_effect=PermissionError("default credentials cannot access old database"))
+                with patch.object(os.path, "isfile", return_value=True):
+                    self.command._report_property_updated()
+                self.command._mysql_cmd.assert_not_called()
+                self.namespace["ShellCmd"].assert_not_called()
+                self.namespace["file_hex_digest"].assert_not_called()
+
+    def test_unset_data_protection_pool_skips_reporting_and_cleanup(self):
+        for pool_uuid in ("", "None", " None\n"):
+            with self.subTest(pool_uuid=pool_uuid):
+                self.command._mysql_cmd = Mock(return_value=pool_uuid)
+                self.command._delete_property_integrity_records = Mock()
+                self.command._report_property_updated()
+                self.command._mysql_cmd.assert_called_once()
+                self.command._delete_property_integrity_records.assert_not_called()
+                self.namespace["ShellCmd"].assert_not_called()
+                self.namespace["file_hex_digest"].assert_not_called()
+
+    def test_repeated_installation_rechecks_pool_after_node_initialization(self):
+        self.ctl.read_property.side_effect = {"DB.user": "zstack", "management.server.ip": "127.0.0.1"}.get
+        self.command._mysql_cmd = Mock(side_effect=["None", "b" * 32])
+        self.namespace["ShellCmd"].return_value.return_code = 0
+        with patch.object(os.path, "isfile", return_value=False):
+            self.command._report_property_updated()
+            self.command._mysql_cmd.assert_not_called()
+        with patch.object(os.path, "isfile", return_value=True):
+            self.command._report_property_updated()
+            self.namespace["ShellCmd"].assert_not_called()
+            self.command._report_property_updated()
+        self.assertEqual(2, self.command._mysql_cmd.call_count)
+        self.namespace["ShellCmd"].assert_called_once()
+
+    def test_pool_query_failure_remains_visible_on_initialized_node(self):
+        self.command._mysql_cmd = Mock(side_effect=RuntimeError("database unavailable"))
+        with self.assertRaisesRegex(RuntimeError, "database unavailable"):
+            self.command._report_property_updated()
+        self.namespace["ShellCmd"].assert_not_called()
 
     def test_existing_database_or_node_identity_keeps_database_errors(self):
         for properties, persisted in [({"DB.user": "zstack"}, False),
