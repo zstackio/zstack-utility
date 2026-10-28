@@ -316,6 +316,16 @@ def test_activation_names_the_preparation_the_service_activates(host):
     assert service.paused is False
 
 
+def test_an_activation_waiting_for_the_service_to_settle_is_converging(host):
+    plugin, service, world = host
+    service.pool, service.paused = None, True
+    service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-9-' + POOL[:16], 'pool_generation': POOL,
+                                'expected_control_operation_uuid': 'pool-9-' + POOL[:16]}
+    service.activation_error = 'MAINTENANCE_ACTIVATION_NATIVE_NOT_READY'
+    result = apply(plugin, 9, desired())
+    assert result['status'] == 'Converging' and result['reasonCode'] == 'MAINTENANCE_ACTIVATION_NATIVE_NOT_READY'
+
+
 def test_a_rejected_activation_keeps_the_pool_drained(host):
     plugin, service, world = host
     service.paused, service.pool = True, None
@@ -363,6 +373,43 @@ def test_vm_bind_sets_the_instance_policy_and_revoke_changes_nothing(host):
     revoke = {'body': json.dumps({'hostUuid': HOST, 'action': 'revoke', 'resourceUuid': 'b' * 32})}
     assert json.loads(plugin.vm_efficiency(revoke))['status'] == 'Succeeded'
     assert len(service.calls) == 1
+
+
+def _reboot_reclaim_host(plugin, service, world, monkeypatch, identity):
+    world['unit'] = 'failed'
+    monkeypatch.setattr(plugin, '_drain_check', lambda: {
+        'error': 'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT: earlier boot claim'})
+    monkeypatch.setattr(plugin, '_read_service_config', lambda: {'backend': {'device': '/dev/vdb'}})
+    monkeypatch.setattr(plugin, '_current_boot_id', lambda: '6315d9da-c7cd-4b6c-9d80-c58617c8eabb')
+    service.receipts['backend'] = {'stage': 'APPLIED', 'request_id': 'backend-3-x',
+                                   'candidate_id': 'candidate:' + 'd' * 64}
+    monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {
+        'canPrepare': True, 'candidates': [{'identity': identity, 'device': '/dev/vdb', 'eligible': True,
+                                            'capacityBytes': 1 << 30}]})
+    built = []
+    monkeypatch.setattr(module, 'build_backend_maintenance_request',
+                        lambda inventory, preparation: built.append(preparation) or {'request_id': preparation['requestId']})
+    return built
+
+
+def test_a_rebooted_writeback_host_prepares_the_same_disk_again(host, monkeypatch):
+    plugin, service, world = host
+    built = _reboot_reclaim_host(plugin, service, world, monkeypatch, 'candidate:' + 'd' * 64)
+    result = apply(plugin, 7, desired(writeback=True))
+    assert result['status'] == 'Converging' and result['reasonCode'] == 'BACKEND_PREPARING', result
+    assert built[0]['candidateId'] == 'candidate:' + 'd' * 64
+    assert built[0]['expectedPoolGeneration'] == 'none'
+    assert built[0]['expectedHostBootId'] == '6315d9da-c7cd-4b6c-9d80-c58617c8eabb'
+    assert world['started'][0][:2] == ('zstack-memory-backend-backend-7-6315d9dac7cd4b6c',
+                                       '--prepare-backend-maintenance')
+
+
+def test_a_rebooted_host_whose_disk_changed_is_not_prepared(host, monkeypatch):
+    plugin, service, world = host
+    _reboot_reclaim_host(plugin, service, world, monkeypatch, 'candidate:' + 'e' * 64)
+    result = apply(plugin, 7, desired(writeback=True))
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'REBOOT_BACKEND_NOT_ELIGIBLE'
+    assert world['started'] == []
 
 
 def test_writeback_preparation_derives_its_request_and_completes_on_resend(host, monkeypatch):
