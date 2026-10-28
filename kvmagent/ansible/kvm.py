@@ -8,6 +8,7 @@ from pipes import quote
 import re
 from uuid import uuid4
 
+from gpu_tools import build_npu_smi_link_command
 from zstacklib import *
 
 # create log
@@ -783,6 +784,10 @@ def install_virtualenv():
     command = "[ -f %s/bin/python ] || virtualenv-2.7 %s %s " % (virtenv_path, virtenv_flag, virtenv_path)
     host_post_info.post_label = "ansible.shell.check.virtualenv"
     host_post_info.post_label_param = None
+    run_remote_command(command, host_post_info)
+
+    command = build_npu_smi_link_command(virtenv_path)
+    host_post_info.post_label = "ansible.shell.link.npu-smi"
     run_remote_command(command, host_post_info)
 
 def install_python_pkg():
