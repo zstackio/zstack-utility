@@ -142,6 +142,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     ZRAM_CONFIG = '/etc/zram-memory/config.json'
     ZRAM_CONFIG_TEMPLATE = '/usr/share/zstack-zram/config.json'
     DRAINED = 'WITHDRAWN_SWAP_INACTIVE_POOL_PRESERVED'
+    ACTIVATION_WAIT_REASONS = ('MAINTENANCE_ACTIVATION_NATIVE_NOT_READY', 'MAINTENANCE_ACTIVATION_RUNTIME_NOT_QUIESCENT')
     # The service's DefaultCapacity(); a numeric 50 equals 50.0 in the comparison.
     SERVICE_DEFAULT_CAPACITY = {'logical_capacity': {'percent_of_host': 50},
                                 'physical_memory_limit': {'percent_of_logical': 50}}
@@ -992,7 +993,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             output = self._bounded_command_output(
                 [self.service_binary, '--config', self.zram_config_path, '--drain-check'], 30)
             native = json.loads(output)
-        except (IOError, OSError, ValueError, RuntimeError, subprocess.CalledProcessError):
+        except subprocess.CalledProcessError as failed:
+            # The service reports why it cannot check, for example a backend to reclaim after a reboot.
+            try:
+                native = json.loads(failed.output)
+            except (TypeError, ValueError):
+                return None
+            return native if isinstance(native, dict) and native.get('error') else None
+        except (IOError, OSError, ValueError, RuntimeError):
             return None
         return native if isinstance(native, dict) else None
 
@@ -1169,6 +1177,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         unit = self._service_unit_state()
         if unit == 'starting':
             raise Converging('SERVICE_STARTING')
+        if unit in ('inactive', 'failed') and zram_wanted and self._backend_reclaim_required():
+            # A reboot left the backend claimed in the earlier boot; prepare the same disk again.
+            self._start_backend_maintenance(self._reboot_backend_request(generation))
         drained = unit in ('inactive', 'failed') and self._is_drained()
         if control == 'drained':
             if not drained:
@@ -1388,7 +1399,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'expected_pool_generation': pool_generation})
         code = result.get('_http_status')
         if isinstance(code, int) and code >= 300:
-            raise Rejected(str(result.get('error') or 'MAINTENANCE_ACTIVATION_FAILED'))
+            error = str(result.get('error') or 'MAINTENANCE_ACTIVATION_FAILED')
+            if error in self.ACTIVATION_WAIT_REASONS:
+                # A just-started service has no fresh host sample or is still settling; ask again.
+                raise Converging(error)
+            raise Rejected(error)
 
     def _finish_recorded_maintenance(self):
         """Start the service for a recorded preparation, verify it, then finalize."""
@@ -1579,6 +1594,32 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'candidateId': candidate.get('identity'),
             'expectedHostBootId': self._current_boot_id(),
             'expectedPoolGeneration': pool_generation,
+            'backendCapacityBytes': candidate.get('capacityBytes', candidate.get('capacity_bytes')),
+            'resetConfirmed': True})
+
+    def _backend_reclaim_required(self):
+        native = self._drain_check() or {}
+        return str(native.get('error') or '').startswith('BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT')
+
+    def _reboot_backend_request(self, generation):
+        """Prepare again the disk the last preparation claimed, if it is still that eligible disk."""
+        previous = self._receipt('backend')
+        device = (self._read_service_config().get('backend') or {}).get('device')
+        inventory = self._writeback_inventory(self._load_host_uuid())
+        candidate = next((item for item in inventory.get('candidates') or []
+                          if isinstance(item, dict) and item.get('identity') == previous.get('candidate_id') and
+                          item.get('device') == device and item.get('eligible') is True), None)
+        if candidate is None:
+            raise Rejected('REBOOT_BACKEND_NOT_ELIGIBLE')
+        if inventory.get('canPrepare') is not True:
+            reasons = inventory.get('preparationReasons') or []
+            raise Rejected(reasons[0] if reasons else 'REBOOT_BACKEND_NOT_ELIGIBLE')
+        boot = self._current_boot_id()
+        return build_backend_maintenance_request(inventory, {
+            'requestId': 'backend-%d-%s' % (generation, boot.replace('-', '')[:16]),
+            'candidateId': candidate.get('identity'),
+            'expectedHostBootId': boot,
+            'expectedPoolGeneration': 'none',
             'backendCapacityBytes': candidate.get('capacityBytes', candidate.get('capacity_bytes')),
             'resetConfirmed': True})
 
