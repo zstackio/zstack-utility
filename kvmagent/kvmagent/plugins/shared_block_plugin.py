@@ -1175,7 +1175,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
                                                         cmd.primaryStorageInstallPath, cmd.concurrency,
-                                                        failure_action=clean)
+                                                        failure_action=clean, task_spec=cmd)
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
