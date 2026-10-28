@@ -1011,12 +1011,6 @@ def link_gpu_tools():
 def install_agent_pkg():
     """install zstacklib and kvmagent on host"""
 
-    # The venv intentionally inherits system packages; pin only its pip before
-    # dependency discovery so legacy system egg metadata cannot win package_set.
-    venv_pip_install_arg = AgentInstallArg(trusted_host, pip_url,
-                                           virtenv_path, init_install)
-    install_agent_venv_pip(venv_pip_install_arg, host_post_info)
-
     if copy_zstacklib_status != "changed:False":
         agent_install_arg = AgentInstallArg(trusted_host, pip_url, virtenv_path, init_install)
         agent_install_arg.agent_name = "zstacklib"
