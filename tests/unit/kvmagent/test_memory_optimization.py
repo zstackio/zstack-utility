@@ -506,6 +506,27 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
     assert len(world['started']) == 1
 
 
+def test_a_host_without_a_pool_stops_its_service_to_prepare_a_backend(host, monkeypatch):
+    plugin, service, world = host
+    service.pool, service.efficiency = None, True
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb', 'eligible': True,
+                        'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+    monkeypatch.setattr(module, 'build_backend_maintenance_request',
+                        lambda inventory, preparation: {'request_id': preparation['requestId']})
+    inventory = plugin._writeback_inventory(HOST)
+    assert inventory['canPrepare'] is True and inventory['poolGeneration'] == 'none', inventory
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 4, 'candidateId': 'candidate:' + 'd' * 64,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': 'none', 'backendCapacityBytes': 1 << 30,
+               'resetConfirmed': True}
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+    assert result['status'] == 'Converging' and result['reasonCode'] == 'BACKEND_PREPARING', result
+    # Stopped like a drain: paused, and the host policy off as the readback requires.
+    assert world['unit'] == 'inactive' and service.paused is True and service.efficiency is False
+    assert world['started'][0][1] == '--prepare-backend-maintenance'
+
+
 def test_an_earlier_agent_journal_is_moved_aside_on_start(tmp_path):
     operations = tmp_path / 'operations'
     (operations / 'drain').mkdir(parents=True)

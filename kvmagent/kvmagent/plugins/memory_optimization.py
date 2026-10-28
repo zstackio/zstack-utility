@@ -1577,7 +1577,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     reply.update({'success': True, 'status': 'Succeeded', 'state': {'maintenance': receipt}})
                 else:
                     inventory = self._writeback_inventory(command['hostUuid'])
-                    if inventory.get('canPrepare') is not True and not self._cold_first_use(inventory):
+                    if inventory.get('canPrepare') is not True:
                         reasons = inventory.get('preparationReasons') or []
                         raise Rejected(reasons[0] if reasons else 'BACKEND_MAINTENANCE_NOT_ELIGIBLE')
                     request = build_backend_maintenance_request(inventory, {
@@ -1586,6 +1586,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         'expectedPoolGeneration': command.get('expectedPoolGeneration'),
                         'backendCapacityBytes': command.get('backendCapacityBytes'),
                         'resetConfirmed': command.get('resetConfirmed')})
+                    self._stop_service_without_pool(inventory)
                     self._start_backend_maintenance(request)
                     reply.update({'success': True, 'status': 'Succeeded',
                                   'state': {'maintenance': self._receipt('backend')}})
@@ -1601,17 +1602,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                           'reason': str(exc)})
         return reply
 
-    def _cold_first_use(self, inventory):
-        """A never-configured service runs in observe mode without a pool; stop it for the offline step."""
+    def _stop_service_without_pool(self, inventory):
+        """A service without a pool holds no VM memory; stop it for the offline step, as a drain does."""
         if inventory.get('poolGeneration') != 'none' or self._service_unit_state() != 'active':
-            return False
-        if [reason for reason in inventory.get('preparationReasons') or [] if reason != 'MEMORY_SERVICE_NOT_STOPPED']:
-            return False
-        status = self._service('status')
-        if status.get('mode') != 'observe' or (status.get('host_zram') or {}).get('pool_generation'):
-            return False
+            return
+        self._service('lifecycle-pause', {'action': 'pause'})
+        self._set_efficiency(self._service('host-cpu-state'), False)
+        if (self._service('status').get('host_zram') or {}).get('pool_generation'):
+            raise Rejected('MEMORY_SERVICE_NOT_STOPPED')
         self._bounded_command_output(['systemctl', 'stop', self.MANAGED_ZRAM_UNIT], 60)
-        return self._service_unit_state() == 'inactive'
 
     def _drained_backend_request(self, generation, pool_generation, config):
         """Re-prepare the drained pool's own backend disk for the rebuilt pool."""
