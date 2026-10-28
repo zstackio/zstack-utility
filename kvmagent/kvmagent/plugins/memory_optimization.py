@@ -1602,21 +1602,31 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         return str(native.get('error') or '').startswith('BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT')
 
     def _reboot_backend_request(self, generation):
-        """Prepare again the disk the last preparation claimed, if it is still that eligible disk."""
-        previous = self._receipt('backend')
+        """Prepare again the configured disk the last preparation claimed, while it is still eligible.
+
+        Every recorded identity of that claim is bound to the earlier boot, so the disk is the
+        configured device with the recorded capacity that the current inventory finds unused.
+        """
+        boot = self._current_boot_id()
+        request_id = 'backend-%d-%s' % (generation, boot.replace('-', '')[:16])
+        if self._executor_state('zstack-memory-backend-%s' % request_id)[0] != 'absent':
+            # Already started in this boot; the executor's own state decides the next step.
+            return {'request_id': request_id}
+        target = self._receipt('backend').get('target_identity') or {}
         device = (self._read_service_config().get('backend') or {}).get('device')
         inventory = self._writeback_inventory(self._load_host_uuid())
         candidate = next((item for item in inventory.get('candidates') or []
-                          if isinstance(item, dict) and item.get('identity') == previous.get('candidate_id') and
-                          item.get('device') == device and item.get('eligible') is True), None)
+                          if isinstance(item, dict) and device and item.get('device') == device and
+                          item.get('device') == target.get('canonical_device') and
+                          item.get('capacityBytes', item.get('capacity_bytes')) == target.get('capacity_bytes') and
+                          item.get('eligible') is True), None)
         if candidate is None:
             raise Rejected('REBOOT_BACKEND_NOT_ELIGIBLE')
         if inventory.get('canPrepare') is not True:
             reasons = inventory.get('preparationReasons') or []
             raise Rejected(reasons[0] if reasons else 'REBOOT_BACKEND_NOT_ELIGIBLE')
-        boot = self._current_boot_id()
         return build_backend_maintenance_request(inventory, {
-            'requestId': 'backend-%d-%s' % (generation, boot.replace('-', '')[:16]),
+            'requestId': request_id,
             'candidateId': candidate.get('identity'),
             'expectedHostBootId': boot,
             'expectedPoolGeneration': 'none',
