@@ -2,13 +2,12 @@
 
 @author: frank
 '''
-from __future__ import annotations
 import copy
 import traceback
 import types
 
 import cherrypy
-from . import thread
+from zstacklib.utils import thread
 import threading
 
 import os
@@ -17,6 +16,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import log
 from zstacklib.utils import linux
 from zstacklib.utils import debug
+from zstacklib.utils import pycompat
 
 TASK_UUID = 'taskuuid'
 ERROR_CODE = 'error'
@@ -56,14 +56,15 @@ class Request(object):
     def from_cherrypy_request(creq):
         req = Request()
         req.headers = copy.copy(creq.headers)
-        req.body = creq.body.fp.read().decode() if creq.body else None
+        req.body = creq.body.fp.read() if creq.body else None
         req.method = copy.copy(creq.method)
         req.query_string = copy.copy(creq.query_string) if creq.query_string else None
         return req
 
 class SyncUriHandler(object):
     def _check_response(self, rsp):
-        if rsp is not None and not isinstance(rsp, str):
+        # py2 的 StringType(bytes str) 与 py3 的 str 语义对应：两者都要求“文本串”响应体
+        if rsp is not None and not isinstance(rsp, pycompat.binary_type if pycompat.PY2 else pycompat.text_type):
             raise Exception('Response body must be string')
 
     def __init__(self, uri_obj):
@@ -151,10 +152,10 @@ class AsyncUirHandler(SyncUriHandler):
         try:
             content = super(AsyncUirHandler, self)._do_index(request)
             self._check_response(content)
-        except Exception as e:
+        except Exception:
             content = traceback.format_exc()
-            logger.warn('[WARN]: unhandled error: %s]' % content)
-            headers[ERROR_CODE] = str(e)
+            logger.warn('[WARN]: %s]' % content)
+            headers[ERROR_CODE] = content
 
         try:
             logger.debug("async http call handler finished[task uuid: %s] to %s: %s" % (task_uuid, callback_uri, content))
@@ -166,7 +167,7 @@ class AsyncUirHandler(SyncUriHandler):
 
     def _get_callback_uri(self, req):
         callback_uri = None
-        if CALLBACK_URI in req.headers:
+        if pycompat.has_key(req.headers, CALLBACK_URI):
             callback_uri = req.headers[CALLBACK_URI]
         else:
             callback_uri = self.uri_obj.callback_uri
@@ -183,7 +184,7 @@ class AsyncUirHandler(SyncUriHandler):
             logger.warn(err)
             raise cherrypy.HTTPError(400, err)
 
-        if TASK_UUID not in cherrypy.request.headers:
+        if not pycompat.has_key(cherrypy.request.headers, TASK_UUID):
             err = 'taskUuid missing in request header'
             logger.warn(err)
             raise cherrypy.HTTPError(400, err)
@@ -220,7 +221,7 @@ class HttpServer(object):
         self.mapper = None
 
     def register_async_uri(self, uri, func, callback_uri=None, cmd=None):
-        # type:(str, callable, str, object) -> None
+        # type:(str, function, str, object) -> None
         async_uri_obj = AsyncUri()
         async_uri_obj.callback_uri = callback_uri
         if async_uri_obj.callback_uri is None:
@@ -233,7 +234,7 @@ class HttpServer(object):
         self.async_uri_handlers[uri] = async_uri_obj
 
     def register_sync_uri(self, uri, func, cmd=None):
-        # type:(str, callable, object) -> None
+        # type:(str, function, object) -> None
         sync_uri = SyncUri()
         sync_uri.func = func
         sync_uri.uri = uri
@@ -271,13 +272,13 @@ class HttpServer(object):
             logger.debug('function[%s] registered uri: %s' % (uri_obj.func.__name__, nuri))
 
     def _build(self):
-        for akey in list(self.async_uri_handlers.keys()):
+        for akey in self.async_uri_handlers.keys():
             aval = self.async_uri_handlers[akey]
             self._add_mapping(aval)
-        for skey in list(self.sync_uri_handlers.keys()):
+        for skey in self.sync_uri_handlers.keys():
             sval = self.sync_uri_handlers[skey]
             self._add_mapping(sval)
-        for skey in list(self.raw_uri_handlers.keys()):
+        for skey in self.raw_uri_handlers.keys():
             sval = self.raw_uri_handlers[skey]
             self._add_mapping(sval)
 
@@ -300,8 +301,7 @@ class HttpServer(object):
                 'on_start_resource',
                 tool_disable_multipart_preprocessing)
         site_config['tools.disable_multipart.on'] = True
-        # if cherrypy.__version__ < '12.0.0':
-        #    site_config['engine.timeout_monitor.on'] = False
+        site_config['engine.timeout_monitor.on'] = False
 
         cherrypy.config.update(site_config)
         cherrypy.log.error_log.propagate = 0  # NOTE(weiw): disable cherrypy logging
@@ -356,11 +356,12 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False, print_
             pool = urllib3.PoolManager(timeout=120.0, retries=urllib3.util.retry.Retry(15))
             header = {'Content-Type': 'application/json', 'Connection': 'close'}
             content = None
-            for k in list(headers.keys()):
+            for k in headers.keys():
                 header[k] = headers[k]
 
             if body is not None:
-                assert isinstance(body, str)
+                # py2 的 StringType(bytes str) 与 py3 的 str 语义对应：请求体都是程序生成的 JSON 文本
+                assert isinstance(body, pycompat.binary_type if pycompat.PY2 else pycompat.text_type)
                 header['Content-Length'] = str(len(body))
                 if print_curl: print_curl_command(uri, method, header, body)
                 resp = pool.urlopen(method, uri, headers=header, body=str(body))
@@ -389,7 +390,7 @@ def json_post(uri, body=None, headers={}, method='POST', fail_soon=False, print_
         if not linux.wait_callback_success(post, ignore_exception_in_callback=True):
             raise Exception('unable to post to %s, body: %s, see before error' % (uri, body))
 
-    return ret[0].decode() if isinstance(ret[0], bytes) else ret[0]
+    return ret[0]
 
 
 def json_dump_post(uri, body=None, headers=None, fail_soon=False, print_curl=False):
@@ -468,8 +469,8 @@ class UriBuilder(object):
                 rest = rest.lstrip(self.host)
 
         self.paths = [p.strip('/') for p in rest.split('/')]
-        self.paths = [x for x in self.paths if x != '']
-        print((self.paths))
+        self.paths = list(filter(lambda x: x != '', self.paths))
+        print(self.paths)
         self.paths = [] if not self.paths else self.paths
 
 

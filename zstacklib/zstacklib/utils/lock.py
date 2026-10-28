@@ -2,12 +2,11 @@
 
 @author: Frank
 '''
-from __future__ import annotations
 
 import weakref
 import threading
 import functools
-from . import log
+from zstacklib.utils import log
 import os
 import fcntl
 #import typing
@@ -94,7 +93,6 @@ class FileLock(object):
     LOCK_DIR = '/var/lib/zstack/lock/'
 
     def __init__(self, lock_prefix, locker=Lockf()):
-        self.lock_file = None
         def _prepare_lock_file(dname, fname):
             if not os.path.exists(dname):
                 os.makedirs(dname, 0o755)

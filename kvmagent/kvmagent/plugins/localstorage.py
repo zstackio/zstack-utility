@@ -18,6 +18,7 @@ from zstacklib.utils.report import *
 from zstacklib.utils.plugin import completetask
 from zstacklib.utils import secret
 from zstacklib.utils.misc import IgnoreError
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 
@@ -306,7 +307,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         shell.run("pkill -9 -f '%s'" % cmd.primaryStorageInstallPath)
 
-        linux.rm_file_force(cmd.primaryStorageInstallPath)
+        self.do_delete_bits(cmd.primaryStorageInstallPath)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -400,7 +401,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = GetBatchVolumeSizeRsp()
 
-        for uuid, installPath in list(cmd.volumeUuidInstallPaths.__dict__.items()):
+        for uuid, installPath in cmd.volumeUuidInstallPaths.__dict__.items():
             with IgnoreError():
                 _, rsp.actualSizes[uuid] = linux.qcow2_size_and_actual_size(installPath)
 
@@ -1048,7 +1049,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
                 linux.link(backing_file, dst_file)
                 linux.qcow2_rebase_no_check(dst_file, f)
 
-        for src_file, dst_file in src_dst_dict.items():
+        for src_file, dst_file in pycompat.iteritems(src_dst_dict):
             linux.link(src_file, dst_file)
 
     @kvmagent.replyerror

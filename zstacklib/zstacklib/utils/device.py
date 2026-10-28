@@ -1,7 +1,6 @@
-from __future__ import annotations
 import os
 
-from . import linux
+from zstacklib.utils import linux
 
 
 def get_device_wwid(device_name):

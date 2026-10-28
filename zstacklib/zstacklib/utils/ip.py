@@ -1,19 +1,15 @@
-# -*- coding: utf-8 -*-
 '''
 
 @author: yyk
 '''
-from __future__ import annotations
 import re
 import os.path
 import socket
 
-from . import linux
-from . import bash
-from . import lock
+from zstacklib.utils import linux
+from zstacklib.utils import bash
+from zstacklib.utils import lock
 import threading
-
-from .misc import cmp
 
 
 class IpAddress(object):
@@ -27,15 +23,15 @@ class IpAddress(object):
         for item in self.ip_list:
             if not item.isdigit():
                 raise Exception('%s is not digital' % item)
-            if int(item) > 255 or int(item) < 0:
+            if int(item) > 255 or item < 0:
                 raise Exception('%s must be >=0 and <=255' % item)
             self.ips.append(int(item))
 
-    # TODO(py3) test
     def __cmp__(self, ip2):
         index = 0
         while index < 4:
-            cmp_ret = cmp(self.ips[index], ip2.ips[index])
+            # 元素为 int(0-255)，数值全序，语义等价于 py2 的 cmp()
+            cmp_ret = (self.ips[index] > ip2.ips[index]) - (self.ips[index] < ip2.ips[index])
             if cmp_ret > 0:
                 return 1
             elif cmp_ret < 0:
@@ -76,7 +72,7 @@ class IpAddress(object):
         return self.__str__()
 
     def toInt32(self):
-        ip32 = self.ips[0]
+        ip32 = self.ips[0];
         for item in self.ips[1:]:
             ip32 = ip32 << 8
             ip32 += item
@@ -312,7 +308,6 @@ def get_host_physicl_nics():
 
 def find_host_physicl_nics():
     global CURRENT_HOST_PHYSICAL_NICS
-    #dpdk-devbind.py --bind=vfio-pci enp101s0f0 绑定vfio驱动后，find /sys/class/net -type l 查不到网卡信息
     nic_all_physical = bash.bash_o("find /sys/class/net -type l -not \( -lname '*virtual*' -or -lname '*usb*' \) -printf '%f\\n'").splitlines()
     if not nic_all_physical:
         return []

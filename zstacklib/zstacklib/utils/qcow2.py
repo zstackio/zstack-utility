@@ -1,9 +1,8 @@
-from __future__ import annotations
-from . import log
-from . import plugin
-from . import traceable_shell
-from . import report
-from . import linux
+from zstacklib.utils import log
+from zstacklib.utils import plugin
+from zstacklib.utils import traceable_shell
+from zstacklib.utils import report
+from zstacklib.utils import linux
 import tempfile
 
 logger = log.get_logger(__name__)

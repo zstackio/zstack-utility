@@ -4,6 +4,7 @@ from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
 from zstacklib.utils import log
 from zstacklib.utils import iproute
+from zstacklib.utils import pycompat
 from zstacklib.utils.bash import *
 
 logger = log.get_logger(__name__)
@@ -96,7 +97,7 @@ class VipQos(kvmagent.KvmAgent):
     @in_bash
     def _find_ns_name(self, vip):
         vip = vip.replace('.', '_')
-        nslist = [x for x in iproute.query_all_namespaces() if x.find(vip) >= 0]
+        nslist = list(filter(lambda x: x.find(vip) >= 0, iproute.query_all_namespaces()))
         return nslist[0] if nslist else ""
 
     @in_bash
@@ -132,7 +133,7 @@ class VipQos(kvmagent.KvmAgent):
 
         classId = 0
         for index in range(2, 0xFFF + 1):
-            if (str(index) in classMap) == False:
+            if pycompat.has_key(classMap, str(index)) == False:
                 classId = index
                 break
 

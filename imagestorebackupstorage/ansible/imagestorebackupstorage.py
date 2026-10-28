@@ -105,20 +105,18 @@ else :
 zstacklib = ZstackLib(zstacklib_args)
 
 if host_info.distro in RPM_BASED_OS:
-    if releasever in ('ky11swan25', 'ky10sp3.2403'):
-        qemu_pkg = "nmap tar net-tools blktrace sg3_utils nvme-cli nettle open-iscsi python3-pyparted"
-    else:
-        qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace sg3_utils nvme-cli"
+    qemu_pkg = "fuse-sshfs nmap collectd tar net-tools blktrace sg3_utils nvme-cli"
 
-    if releasever not in ('ky11swan25', 'ky10sp3.2403'):
-        releasever_mapping = {
-            'h84r': ' collectd-disk pyparted iscsi-initiator-utils',
-            'h2203sp1o': ' collectd-disk iscsi-initiator-utils python2-pyparted',
-        }
+    releasever_mapping = {
+        'h84r': ' collectd-disk pyparted iscsi-initiator-utils',
+        'h2203sp1o': ' collectd-disk iscsi-initiator-utils python2-pyparted',
+        'oe2309': ' nettle iscsi-initiator-utils python3-pyparted',
+        'ol9': ' nettle iscsi-initiator-utils python3-pyparted',
+    }
 
-        for k in kylin:
-            releasever_mapping[k] = ' python2-pyparted nettle open-iscsi'
-        qemu_pkg += releasever_mapping.get(releasever, ' pyparted iscsi-initiator-utils')
+    for k in kylin:
+        releasever_mapping[k] = ' python2-pyparted nettle open-iscsi'
+    qemu_pkg += releasever_mapping.get(releasever, ' pyparted iscsi-initiator-utils')
 
     if not remote_bin_installed(host_post_info, "qemu-img", return_status=True):
         qemu_pkg += ' qemu-img'

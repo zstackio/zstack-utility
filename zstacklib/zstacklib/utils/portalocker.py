@@ -49,7 +49,6 @@ Author: Jonathan Feinberg <jdf@pobox.com>,
 Version: 0.3
 URL:  https://github.com/WoLpH/portalocker
 """
-from __future__ import annotations
 
 __all__ = [
     "lock",

@@ -1,16 +1,15 @@
 
-from __future__ import annotations
-from . import bash
+from zstacklib.utils import bash
 import os
-import string
-from . import log
-from . import jsonobject
-from . import shell
-from .linux import get_vm_pid, get_process_start_time, HOST_ARCH
+from zstacklib.utils import log
+from zstacklib.utils import jsonobject
+from zstacklib.utils import shell
+import json
+import re
+from zstacklib.utils.linux import get_vm_pid, HOST_ARCH
+from distutils.version import LooseVersion
 
 logger = log.get_logger(__name__)
-
-
 
 def get_colo_path():
     return '/var/lib/zstack/colo/qemu-system-x86_64'
@@ -47,13 +46,26 @@ def get_version():
 
     return version
 
-def get_exact_version():
-    return get_version_from_exe_file(get_path())
 
-def get_install_date():
-    r, o, e = bash.bash_roe("rpm -q --queryformat '%{INSTALLTIME}' qemu-kvm")
+def get_running_version(vm_uuid):
+    pid = get_vm_pid(vm_uuid)
+    if pid:
+        exe = "/proc/%s/exe" % pid
+        r = get_version_from_exe_file(exe)
+        if r:
+            return r
+
+    r, o, e = bash.bash_roe("""virsh qemu-monitor-command %s '{"execute":"query-version"}'""" % vm_uuid)
     if r == 0:
-        return int(o.strip())
+        ret = jsonobject.loads(o.strip())
+        if ret["return"].package:
+            return _parse_version(ret["return"].package)
+        else:
+            qv = ret["return"].qemu
+            return "%d.%d.%d" % (qv.major, qv.minor, qv.micro)
+
+    logger.debug("cannot get vm[uuid:%s] version from qmp: %s" % (vm_uuid, e))
+    return get_version_from_exe_file(get_path())
 
 # QEMU emulator version 2.12.0 (qemu-kvm-ev-2.12.0-44.1.el7_9.1)
 # return qemu-kvm-ev-2.12.0-44.1.el7_9.1
@@ -99,73 +111,11 @@ def _parse_version(version_output):
     else:
         full_ver = ver_line
 
-    return "-".join([s for s in full_ver.split("-") if s[0].isdigit()])
+    return "-".join(filter(lambda s: s[0].isdigit(), full_ver.split("-")))
 
-# QEMU emulator version 2.9.0(qemu-kvm-ev-2.9.0-16.el7_4.14.1)
 # QEMU emulator version 2.12.0 (qemu-kvm-ev-2.12.0-44.1.el7_9.1)
 # QEMU emulator version 4.2.0 (qemu-kvm-4.2.0-640.g70d8f25.el7)
 # return 2.12.0
 def _parse_version2(version_output):
-    return version_output.splitlines()[0].strip().split(" ")[3].split("(")[0]
-
-QEMU_INSTALL_DATE = get_install_date()
-QEMU_VERSION = get_version()                     # e.g. 6.2.0
-QEMU_EXACT_VERSION = get_exact_version()         # e.g. 6.2.0-232.g09252161d1.ky10
-
-def get_running_version(vm_uuid):
-    pid = get_vm_pid(vm_uuid)
-    if pid:
-        if get_process_start_time(pid) > QEMU_INSTALL_DATE:
-            return QEMU_EXACT_VERSION
-        exe = "/proc/%s/exe" % pid
-        r = get_version_from_exe_file(exe)
-        if r:
-            return r
-
-    r, o, e = bash.bash_roe("""virsh qemu-monitor-command %s '{"execute":"query-version"}'""" % vm_uuid)
-    if r == 0:
-        ret = jsonobject.loads(o.strip())
-        if ret["return"].package:
-            return _parse_version(ret["return"].package)
-        else:
-            qv = ret["return"].qemu
-            return "%d.%d.%d" % (qv.major, qv.minor, qv.micro)
-
-    logger.debug("cannot get vm[uuid:%s] version from qmp: %s" % (vm_uuid, e))
-    return QEMU_EXACT_VERSION
-
-"""
-read image content with qemu-io read command, which only support -v option.
-so we should analyze the output to get the content.
-e.g.
-00000000:  31 31 31 31 31 31 31 31 0a 31 31 31 31 31 31 31  11111111.1111111
-00000010:  31 0a 31 31 31 31 31 31 31 31 0a 31 31 31 31 31  1.11111111.11111
-00000020:  31 31 31 0a 31 31 31 31 31 31 31 31 0a 31 31 31  111.11111111.111
-00000030:  31 31 31 31 31 0a 31 31 31 31 31 31 31 31 0a 31  11111.11111111.1
-00000040:  31 31 31 31 31 31 31 0a 31 31 31 31 31 31 31 31  1111111.11111111
-00000050:  0a 31 31 31 31 31 31 31 31 0a 31 31 31 31 31 31  .11111111.111111
-00000060:  31 31 0a 31 11 11 11 11 11 11 11 11 11 11 11 11  11.1............
-00000070:  11 11 11 11 11 11 11 11 11 11 11 11 11 11 11 11  ................
-read 128/128 bytes at offset 0
-128 bytes, 1 ops; 00.04 sec (3.405 KiB/sec and 27.2394 ops/sec)
-
-"""
-
-def read_image_content(image_path, offset, length, format):
-    l = (length + 15) & ~15  # align to 16 bytes
-    cmd = "qemu-io -c 'read -v %s %s' -f %s %s" % (offset, l, format, image_path)
-    o = shell.call(cmd)
-
-    content = ""
-    for line in o.splitlines():
-        h = line.split(":", 1)[0].strip()
-        if set(h).issubset(string.hexdigits):
-            # encode hex str to ascii
-            content += "".join(chr(int(x, 16)) for x in line.split()[1:17])
-
-    return content[0:length]
-
-
-
-
+    return version_output.splitlines()[0].strip().split(" ")[3]
 

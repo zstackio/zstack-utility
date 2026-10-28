@@ -2,7 +2,6 @@
 
 @author: frank
 '''
-from __future__ import annotations
 import os
 import subprocess
 from zstacklib.utils import log
@@ -19,12 +18,15 @@ subprocess.Popen._close_fds = _linux_close_fds
 
 @lock.lock("subprocess.popen")
 def get_process(cmd, shell=None, workdir=None, pipe=None, executable=None):
+    # universal_newlines=True: py2.7/py3 双模合法。py3 的 Popen 默认字节模式，
+    # communicate() 返回 bytes，而本库全部下游按 str 处理（且 bash_roe 会把 str
+    # 喂给 communicate() 直接 TypeError）。py2 下行为不变（仅换行翻译）。
     if pipe:
         return subprocess.Popen(cmd, shell=shell, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                close_fds=True, executable=executable, cwd=workdir)
+                                close_fds=True, executable=executable, cwd=workdir, universal_newlines=True)
     else:
         return subprocess.Popen(cmd, shell=shell, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                close_fds=True, executable=executable, cwd=workdir)
+                                close_fds=True, executable=executable, cwd=workdir, universal_newlines=True)
 
 
 class ShellError(Exception):
@@ -34,6 +36,7 @@ class ShellCmd(object):
     '''
     classdocs
     '''
+    stdout = None  # type: str
 
     def __init__(self, cmd, workdir=None, pipe=True):
         '''
@@ -46,13 +49,8 @@ class ShellCmd(object):
         self.stderr = None
         self.return_code = None
 
-    def raise_error(self, err=()):
-        """
-        :param err: extend error message
-        :return:
-        """
-        if err is ():
-            err = []
+    def raise_error(self):
+        err = []
         err.append('failed to execute shell command: %s' % self.cmd.split(' ', 1)[0])
         err.append('return code: %s' % self.process.returncode)
         err.append('stdout: %s' % self.stdout)
@@ -64,8 +62,6 @@ class ShellCmd(object):
             log.get_logger(__name__).debug(self.cmd)
             
         (self.stdout, self.stderr) = self.process.communicate()
-        self.stdout = self.stdout.decode() if self.stdout else ''
-        self.stderr = self.stderr.decode() if self.stderr else ''
         if is_exception and self.process.returncode != 0:
             self.raise_error()
 

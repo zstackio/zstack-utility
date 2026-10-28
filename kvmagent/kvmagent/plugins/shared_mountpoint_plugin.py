@@ -1,4 +1,5 @@
 import os.path
+import traceback
 
 from zstacklib.utils import lock
 
@@ -15,6 +16,7 @@ from zstacklib.utils import qcow2
 import zstacklib.utils.uuidhelper as uuidhelper
 from zstacklib.utils.plugin import completetask
 from zstacklib.utils import secret
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 
@@ -580,7 +582,7 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
                 linux.link(backing_file, dst_file)
                 linux.qcow2_rebase_no_check(dst_file, f)
 
-        for src_file, dst_file in src_dst_dict.items():
+        for src_file, dst_file in pycompat.iteritems(src_dst_dict):
             linux.link(src_file, dst_file)
 
     @kvmagent.replyerror

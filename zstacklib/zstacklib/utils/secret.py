@@ -1,17 +1,23 @@
 '''
 @author: qiuyu
 '''
-from __future__ import annotations
 
-import subprocess
+import os
+import base64
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 
 from zstacklib.utils import log
+from zstacklib.utils import shell
+from zstacklib.utils import qemu_img
 
 logger = log.get_logger(__name__)
 
 
 def get_image_hash(img_path):
-    (status, output) = subprocess.getstatusoutput("md5sum %s | cut -d ' ' -f 1" % img_path)
+    (status, output) = commands.getstatusoutput("md5sum %s | cut -d ' ' -f 1" % img_path)
     if status != 0:
         raise Exception('get image %s hash failed: %s' % (img_path, output))
     return output

@@ -1,4 +1,3 @@
-from __future__ import annotations
 from zstacklib.utils import log
 
 logger = log.get_logger(__name__)

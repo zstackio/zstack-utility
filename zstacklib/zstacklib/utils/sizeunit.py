@@ -2,7 +2,6 @@
 
 @author: frank
 '''
-from __future__ import annotations
 
 import os
 import re
@@ -22,16 +21,16 @@ class Byte(object):
         return s
     @staticmethod
     def toKiloByte(s):
-        return (s // ( k // b))
+        return (s//(k//b))
     @staticmethod
     def toMegaByte(s):
-        return (s // (m // b))
+        return (s//(m//b))
     @staticmethod
     def toGigaByte(s):
-        return (s // (g // b))
+        return (s//(g//b))
     @staticmethod
     def toTeraByte(s):
-        return (s // (t // b))
+        return (s//(t//b))
 
 class KiloByte(object):
     '''
@@ -39,19 +38,19 @@ class KiloByte(object):
     '''
     @staticmethod
     def toByte(s):
-        return (s * (k // b))
+        return (s*(k//b))
     @staticmethod
     def toKiloByte(s):
         return s
     @staticmethod
     def toMegaByte(s):
-        return (s // (m // k))
+        return (s//(m//k))
     @staticmethod
     def toGigaByte(s):
-        return (s // (g // k))
+        return (s//(g//k))
     @staticmethod
     def toTeraByte(s):
-        return (s // (t // k))
+        return (s//(t//k))
     
 class MegaByte(object):
     '''
@@ -59,19 +58,19 @@ class MegaByte(object):
     '''
     @staticmethod
     def toByte(s):
-        return (s * (m // b))
+        return (s*(m//b))
     @staticmethod
     def toKiloByte(s):
-        return (s * (m // k))
+        return (s*(m//k))
     @staticmethod
     def toMegaByte(s):
         return s
     @staticmethod
     def toGigaByte(s):
-        return (s // (g // m))
+        return (s//(g//m))
     @staticmethod
     def toTeraByte(s):
-        return (s // (t // m))
+        return (s//(t//m))
 
 class GigaByte(object):
     '''
@@ -79,19 +78,19 @@ class GigaByte(object):
     '''
     @staticmethod
     def toByte(s):
-        return (s * (g // b))
+        return (s*(g//b))
     @staticmethod
     def toKiloByte(s):
-        return (s * (g // k))
+        return (s*(g//k))
     @staticmethod
     def toMegaByte(s):
-        return (s * (g // m))
+        return (s*(g//m))
     @staticmethod
     def toGigaByte(s):
         return s
     @staticmethod
     def toTeraByte(s):
-        return (s // (t // g))
+        return (s//(t//g))
 
 class TeraByte(object):
     '''
@@ -99,16 +98,16 @@ class TeraByte(object):
     '''
     @staticmethod
     def toByte(s):
-        return (s * (t // b))
+        return (s*(t//b))
     @staticmethod
     def toKiloByte(s):
-        return (s * (t // k))
+        return (s*(t//k))
     @staticmethod
     def toMegaByte(s):
-        return (s * (t // m))
+        return (s*(t//m))
     @staticmethod
     def toGigaByte(s):
-        return (s * (t // g))
+        return (s*(t//g))
     @staticmethod
     def toTeraByte(s):
         return s

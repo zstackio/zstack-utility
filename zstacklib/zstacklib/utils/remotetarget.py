@@ -1,5 +1,7 @@
-from __future__ import annotations
-import urllib.parse
+try:
+    import urlparse
+except ImportError:
+    from urllib import parse as urlparse
 
 from zstacklib.utils import log, linux
 
@@ -35,7 +37,7 @@ class NbdRemoteTarget(RemoteTarget):
 
 
 def get_remote_target_from_uri(uri):
-    u = urllib.parse.urlparse(uri)
+    u = urlparse.urlparse(uri)
     if u.scheme == 'nbd':
         return NbdRemoteTarget(uri)
 

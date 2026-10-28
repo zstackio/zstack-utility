@@ -1,13 +1,15 @@
-from __future__ import annotations
 import glob
 import os
 import re
-import urllib.parse
+try:
+    import urlparse
+except ImportError:
+    from urllib import parse as urlparse
 
-from . import linux
-from . import lock
-from . import shell
-from . import device
+from zstacklib.utils import linux
+from zstacklib.utils import lock
+from zstacklib.utils import shell
+from zstacklib.utils import device
 
 
 # only support single ip
@@ -18,7 +20,7 @@ def get_device_path_by_wwn(disk_id):
             continue
         link_path = os.path.join('/dev/disk/by-id/', fname)
         wwid = device.get_device_wwid(os.path.basename(os.readlink(link_path)))
-        if disk_id in wwid:
+        if id in wwid:
             return link_path
 
 
@@ -57,7 +59,7 @@ def get_device_path_by_serial(id):
 class IscsiLogin(object):
     def __init__(self, url=None):
         if url:
-            u = urllib.parse.urlparse(url)
+            u = urlparse.urlparse(url)
             self.server_hostname = u.hostname
             self.server_port = u.port
             self.target = u.path.split('/')[1]
@@ -169,7 +171,7 @@ def config_iscsi_startup_if_needed():
 # e.g. iscsi://172.27.15.189,172.27.12.27:3260/iqn.2024-01.com.sds.wds:662ba14b7316/6001405042040000b7f0d8a20da2a2c9
 def connect_iscsi_target(url, connect_all=False):
     login = None
-    u = urllib.parse.urlparse(url)
+    u = urlparse.urlparse(url)
     server_hostnames = sorted(u.hostname.split(','))
     errs = []
     for server_hostname in server_hostnames:

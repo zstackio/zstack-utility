@@ -1,13 +1,10 @@
-from __future__ import annotations
 import os
-import errno
 import socket
 import pyroute2
-import pyroute2.netns
-from pyroute2.netlink.rtnl import ifinfmsg
 from zstacklib.utils import log, lock
 from zstacklib.utils import shell
 from zstacklib.utils import jsonobject
+from zstacklib.utils import pycompat
 
 logger = log.get_logger(__name__)
 
@@ -101,13 +98,13 @@ class NamespaceAlreadyExists(RuntimeError):
 
 class InvalidScope(RuntimeError):
     def __init__(self, scope):
-        super(InvalidScope, self).__init__("Scope : %(scope)s is invalid." % {'scope': scope})
+        super(NoSuchScope, self).__init__("Scope : %(scope)s is invalid." % {'scope': scope})
         self.scope = scope
 
 
 class InvalidIpVersion(RuntimeError):
     def __init__(self, ip_version):
-        super(InvalidIpVersion, self).__init__("IpVersion : %(ip_version)s is invalid." % {'ip_version': ip_version})
+        super(NoSuchScope, self).__init__("IpVersion : %(ip_version)s is invalid." % {'ip_version': ip_version})
         self.ip_version = ip_version
 
 
@@ -160,8 +157,8 @@ class IpLink:
         self.qlen = chunk.get_attr('IFLA_TXQLEN')  # type: int
         self.state = chunk.get_attr('IFLA_OPERSTATE')  # type: str
         self.qdisc = chunk.get_attr('IFLA_QDISC')  # type: tuple
-        self.alias = chunk.get_attr('IFLA_IFALIAS')  # type: tuple
-        self.allmulticast = bool(chunk['flags'] & ifinfmsg.IFF_ALLMULTI)  # type: bool
+        self.alias = chunk.get_attr('IFLA_IFALIAS')  # type: tuple. if no alias, self.alias = (None,)
+        self.allmulticast = bool(chunk['flags'] & pyroute2.netlink.rtnl.ifinfmsg.IFF_ALLMULTI)  # type: tuple
         self.device_type = chunk.get_nested('IFLA_LINKINFO', 'IFLA_INFO_KIND')
         self.broadcast = chunk.get_attr('IFLA_BROADCAST')  # type: str
         self.group = chunk.get_attr('IFLA_GROUP')  # type: int
@@ -186,7 +183,7 @@ class IpRoute:
         '''
             :return IpAddr[]
         '''
-        return query_addresses(index=self.device_index, namespace=namespace)
+        return query_addresses(index=self.devIndex, namespace=namespace)
 
     def get_related_link_device(self, namespace=None):
         '''
@@ -201,7 +198,7 @@ def _get_device_index(ifname_or_index, iproute, exception_if_wrong=True):
     '''
     if isinstance(ifname_or_index, int):
         return ifname_or_index
-    elif isinstance(ifname_or_index, str):
+    elif isinstance(ifname_or_index, (str, unicode)):
         ret = _query_index_by_ifname(ifname_or_index, iproute)
         if ret or not exception_if_wrong:
             return ret
@@ -310,19 +307,19 @@ def query_addresses(namespace=None, **kwargs):
     with get_iproute(namespace) as ipr:
         if kwargs is not None:
             # ifname is not supported in pyroute2.IPRoute, unless use index
-            if 'ifname' in kwargs:
+            if pycompat.has_key(kwargs, 'ifname'):
                 device_index = _check_index_and_ifname(kwargs['ifname'], kwargs.get('index'), ipr, False)
                 if device_index == 0:
                     return []
                 kwargs['index'] = device_index
                 del kwargs['ifname']
             # scope should convert to int type
-            if 'scope' in kwargs and isinstance(kwargs['scope'], str):
+            if pycompat.has_key(kwargs, 'scope') and isinstance(kwargs['scope'], (str, unicode)):
                 kwargs['scope'] = _get_scope_name(kwargs['scope'], True)
-            if 'ip' in kwargs and isinstance(kwargs['ip'], str):
+            if pycompat.has_key(kwargs, 'ip') and isinstance(kwargs['ip'], (str, unicode)):
                 kwargs['address'] = kwargs['ip']
                 del kwargs['ip']
-            if 'ip_version' in kwargs:
+            if pycompat.has_key(kwargs, 'ip_version'):
                 kwargs['family'] = _check_ip_version(kwargs['ip_version'])
                 del kwargs['ip_version']
         return [IpAddr(chunk, ipr) for chunk in ipr.get_addr(**kwargs)]
@@ -458,7 +455,7 @@ def query_links_use_namespace(namespace, *argv):
     for item in argv:
         if isinstance(item, int) and item != 0:
             indexes.add(item)
-        elif isinstance(item, str):
+        elif isinstance(item, (str, unicode)):
             ifnames.add(item)
         else:
             raise Exception('Argument %s in method query_links is invalid.' % item)
@@ -586,12 +583,12 @@ def set_link_attribute(ifname_or_index, namespace=None, **attributes):
     with get_iproute(namespace) as ipr:
         index = _get_device_index(ifname_or_index, ipr)
         if attributes:
-            if 'master' in attributes:
+            if pycompat.has_key(attributes, 'master'):
                 attributes['master'] = _get_device_index(attributes['master'], ipr)
-            if 'netns' in attributes:  # ip link set ${dev} netns ${namespace}
+            if pycompat.has_key(attributes, 'netns'):  # ip link set ${dev} netns ${namespace}
                 attributes['net_ns_fd'] = attributes['netns']
                 del attributes['netns']
-            if 'alias' in attributes:
+            if pycompat.has_key(attributes, 'alias'):
                 attributes['IFLA_IFALIAS'] = attributes['alias']
                 del attributes['alias']
         ipr.link('set', index=index, **attributes)
@@ -658,7 +655,7 @@ def get_routes(ifname=None, ip_version=None, table=None, namespace=None, **kwarg
     kwargs.update(_make_pyroute2_route_args(
         namespace, ip_version, None, ifname, None, table, None, None, None))
     with get_iproute(namespace) as ipr:
-        return [IpRoute(chunk) for chunk in ipr.route('get', **kwargs)]
+        return list(map(lambda chunk: IpRoute(chunk), ipr.route('get', **kwargs)))
 
 
 def show_routes(ifname=None, ip_version=4, table=None, namespace=None, **kwargs):
@@ -669,7 +666,7 @@ def show_routes(ifname=None, ip_version=4, table=None, namespace=None, **kwargs)
     kwargs.update(_make_pyroute2_route_args(
         namespace, ip_version, None, ifname, None, table, None, None, None))
     with get_iproute(namespace) as ipr:
-        return [IpRoute(chunk) for chunk in ipr.route('show', **kwargs)]
+        return map(lambda chunk: IpRoute(chunk), ipr.route('show', **kwargs))
 
 
 def add_route(ip, ip_version, ifname=None, via=None,
@@ -739,7 +736,7 @@ def add_namespace(namespace):
     try:
         pyroute2.netns.create(namespace)
     except OSError as e:
-        if e.errno == errno.EEXIST:  # namespace already exists
+        if e.errno == os.errno.EEXIST:  # namespace already exists
             raise NamespaceAlreadyExists(namespace)
         raise
 
@@ -762,7 +759,7 @@ def delete_namespace(namespace):
     try:
         pyroute2.netns.remove(namespace)
     except OSError as e:
-        if e.errno == errno.ENOENT:  # no namespace found
+        if e.errno == os.errno.ENOENT:  # no namespace found
             raise NoSuchNamespace(namespace)
         raise
 

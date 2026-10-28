@@ -2,6 +2,7 @@
 
 @author: frank
 '''
+import copy
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
 from zstacklib.utils import http
@@ -16,6 +17,7 @@ from zstacklib.utils import ovs
 from jinja2 import Template
 import os
 import traceback
+import netaddr
 import subprocess
 import json
 
@@ -310,7 +312,7 @@ class GetLldpInfoResponse(kvmagent.AgentResponse):
 class ApplyLldpConfigCmd(kvmagent.AgentCommand):
     def __init__(self):
         super(ApplyLldpConfigCmd, self).__init__()
-        self.lldpConfig = None # type: list[HostNetworkLldpConfigStruct]
+        self.lldpConfig = None # type: list[HostNetworkLldpConfigureStruct]
 
 class ApplyLldpConfigResponse(kvmagent.AgentResponse):
     def __init__(self):
@@ -450,14 +452,6 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
     def _configure_bridge_learning(self, bridgeName, interf, learning='on'):
         shell.call("bridge link set dev %s learning %s" % (interf, learning), False)
-
-    def _enable_bridge_igmp_snooping(self, bridgeName, igmpVersion, mldVersion):
-        shell.call("echo 1 >  /sys/class/net/%s/bridge/multicast_querier" % bridgeName, False)
-        shell.call("echo 1 >  /sys/class/net/%s/bridge/multicast_snooping" % bridgeName, False)
-        #if igmpVersion != 0:
-        #    shell.call("echo %d >  /sys/class/net/%s/bridge/multicast_igmp_version" % (igmpVersion, bridgeName), False)
-        #if mldVersion != 0:
-        #    shell.call("echo %d >  /sys/class/net/%s/bridge/multicast_mld_version" % (mldVersion, bridgeName), False)
 
     def _configure_isolated(self, vlan_interface):
         isolated_br = "isolated_%s" % vlan_interface
@@ -861,7 +855,7 @@ configure lldp status rx-only \n
         interface_lldp_info = HostNetworkInterfaceLldpStruct()
         # Chassis information
         chassis_data = interface_data.get("chassis", {})
-        for chassis_key, chassis_value in list(chassis_data.items()):
+        for chassis_key, chassis_value in chassis_data.items():
             interface_lldp_info.chassisId = chassis_value.get("id", {}).get("value")
             # no mgmt-ip field for H3C
             mgmt_ip = chassis_value.get('mgmt-ip')
@@ -1001,7 +995,7 @@ configure lldp status rx-only \n
             if cmd.peers:
                 linux.populate_vxlan_fdbs([new_vxlan_interface], cmd.peers)
             logger.debug('successfully update bridge[%s] vxlan interface from device[%s] to device[%s]'
-                % (cmd.bridgeName, old_vxlan_interface, new_vxlan_interface))
+                % (cmd.bridgeName, cmd.oldVlanInterface, cmd.newVlanInterface))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = ('unable to update bridge[%s] vxlan interface from device[%s] to device[%s], because %s'
@@ -1031,7 +1025,7 @@ configure lldp status rx-only \n
             if cmd.newVlan and not cmd.oldVlan:
                 linux.move_dev_route(cmd.bridgeName, cmd.physicalInterfaceName)
             logger.debug('successfully update bridge[%s] vlan interface from device[%s] to device[%s]'
-                % (cmd.bridgeName, old_vlan_interface, new_vlan_interface))
+                % (cmd.bridgeName, cmd.oldVlanInterface, cmd.newVlanInterface))
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = ('unable to update bridge[%s] vlan interface from device[%s] to device[%s], because %s'
@@ -1062,14 +1056,11 @@ configure lldp status rx-only \n
             mtu = oldMtu
 
         try:
-            igmpVersion = getattr(cmd, 'igmpVersion', 0)
-            mldVersion = getattr(cmd, 'mldVersion', 0)
             linux.create_bridge(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias(cmd.physicalInterfaceName, cmd.l2NetworkUuid)
             self._configure_bridge(cmd.disableIptables)
             self._configure_bridge_mtu(cmd.bridgeName, cmd.physicalInterfaceName, mtu)
             self._configure_bridge_learning(cmd.bridgeName, cmd.physicalInterfaceName)
-            self._enable_bridge_igmp_snooping(cmd.bridgeName, igmpVersion, mldVersion)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
             logger.debug(
                 'successfully realize bridge[%s] from device[%s]' % (cmd.bridgeName, cmd.physicalInterfaceName))
@@ -1105,13 +1096,10 @@ configure lldp status rx-only \n
         pvlan = getattr(cmd, 'pvlan', None)
         isolated = getattr(cmd, 'isolated', False)
         try:
-            igmpVersion = getattr(cmd, 'igmpVersion', 0)
-            mldVersion = getattr(cmd, 'mldVersion', 0)
             linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
             self._configure_bridge(cmd.disableIptables)
             self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, mtu)
             self._configure_bridge_learning(cmd.bridgeName, vlanInterfName)
-            self._enable_bridge_igmp_snooping(cmd.bridgeName, igmpVersion, mldVersion)
             linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
             linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
             # if pvlan:
@@ -1200,12 +1188,12 @@ configure lldp status rx-only \n
 
             if interf:
                 for nic in nics:
-                    if interf in list(nic.keys()):
+                    if interf in nic.keys():
                         valid_nics.append(nic)
 
             if requireIp:
                 for nic in nics:
-                    if requireIp in list(nic.values()):
+                    if requireIp in nic.values():
                         valid_nics.append(nic)
 
             return valid_nics
@@ -1290,9 +1278,6 @@ configure lldp status rx-only \n
         if oldMtu > cmd.mtu:
             mtu = oldMtu
 
-        igmpVersion = getattr(cmd, 'igmpVersion', 0)
-        mldVersion = getattr(cmd, 'mldVersion', 0)
-
         if cmd.dstport == None:
             cmd.dstport = VXLAN_DEFAULT_PORT
         linux.create_vxlan_interface(cmd.vni, cmd.vtepIp, cmd.dstport)
@@ -1300,7 +1285,6 @@ configure lldp status rx-only \n
         linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
         linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
         self._configure_bridge_mtu(cmd.bridgeName, interf, mtu)
-        self._enable_bridge_igmp_snooping(cmd.bridgeName, igmpVersion, mldVersion)
 
     @lock.lock('bridge')
     @kvmagent.replyerror
@@ -1511,7 +1495,7 @@ configure lldp status rx-only \n
             l2_mac_dict = cmd.l2MacMap.__dict__
             interface_dict = cmd.interfaceMap.__dict__
             vlan_dict = cmd.vlanMap.__dict__
-            for l2, mac_list in list(l2_mac_dict.items()):
+            for l2, mac_list in l2_mac_dict.items():
                 for mac in mac_list:
                     shell.call('ipset add isolated_%s.%s %s'
                                % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)
@@ -1527,7 +1511,7 @@ configure lldp status rx-only \n
             l2_mac_dict = cmd.l2MacMap.__dict__
             interface_dict = cmd.interfaceMap.__dict__
             vlan_dict = cmd.vlanMap.__dict__
-            for l2, mac_list in list(l2_mac_dict.items()):
+            for l2, mac_list in l2_mac_dict.items():
                 for mac in mac_list:
                     shell.call('ipset del isolated_%s.%s %s'
                                % (interface_dict.get(l2), vlan_dict.get(l2), mac), exception=False)
@@ -1546,7 +1530,7 @@ configure lldp status rx-only \n
             l2_mac_dict = cmd.l2MacMap.__dict__
             interface_dict = cmd.interfaceMap.__dict__
             vlan_dict = cmd.vlanMap.__dict__
-            for l2, mac_list in list(l2_mac_dict.items()):
+            for l2, mac_list in l2_mac_dict.items():
                 isolated_br = 'isolated_%s.%s' % (interface_dict.get(l2), vlan_dict.get(l2))
                 physdev_in = '%s.%s' % (interface_dict.get(l2), vlan_dict.get(l2))
                 ipset_list = shell.ShellCmd("ipset list %s" % isolated_br)

@@ -1,8 +1,9 @@
 # encoding: utf-8
 
-from __future__ import annotations
 import copy
 import simplejson as json
+
+from zstacklib.utils import pycompat
 
 
 class LogTree(object):
@@ -46,12 +47,12 @@ class LogTree(object):
             self.branch_root = up_log
 
     def get_curr_log(self):
-        for k in list(self.logs.keys()):
+        for k in self.logs.keys():
             if self.logs[k] is self.curr_log:
                 return k
 
     def clean_up(self, r=0):
-        keys = list(self.logs.keys())
+        keys = self.logs.keys()
         logs = self.get_all_logs()
         for k in keys:
             if k not in logs:
@@ -62,7 +63,7 @@ class LogTree(object):
                 f_count = self.fork.count(f)
                 for _ in range(f_count):
                     self.fork.remove(f)
-        depth_keys = list(self._depth.keys())
+        depth_keys = self._depth.keys()
         for dk in depth_keys:
             if dk not in logs:
                 self._depth.pop(dk)
@@ -71,7 +72,7 @@ class LogTree(object):
             self.clean_up(r)
 
     def get_all_logs(self):
-        vals = list(self.logs.values())
+        vals = self.logs.values()
         logs = [n for log in vals for n in log]
         if self.root in self.logs:
             logs.append(self.root)
@@ -80,7 +81,7 @@ class LogTree(object):
     def parent(self, log):
         if log == self.root:
             return None
-        for k, v in self.logs.items():
+        for k, v in pycompat.iteritems(self.logs):
             if log in v:
                 return k
 
@@ -95,10 +96,10 @@ class LogTree(object):
 
     def dump_logs(self):
         logs = copy.deepcopy(self.logs)
-        for k, v in list(self.logs.items()):
+        for k, v in self.logs.items():
             if not v:
                 logs.pop(k)
-        print((json.dumps(logs, indent=4)))
+        print(json.dumps(logs, indent=4))
 
     def write_log(self, fpath=None):
         if not self.logs:
@@ -121,13 +122,13 @@ class LogTree(object):
 
         def link_branch(ubr, rendtr):
             nd = ubr.pop()
-            nd_ascii = [x for x in nd if x and ord(x[0]) < 127 and not x.isspace()]
+            nd_ascii = list(filter(lambda x: x and ord(x[0]) < 127 and not x.isspace(), nd))
             starter = 0 if self.compact else 1
             upbr = rendtr[starter:rendtr.index(nd)]
             upbr.reverse()
 
             for g in upbr:
-                g_ascii = [x for x in g if x and ord(x[0]) < 127 and not x.isspace()]
+                g_ascii = list(filter(lambda x: x and ord(x[0]) < 127 and not x.isspace(), g))
                 if not g_ascii:
                     continue
 

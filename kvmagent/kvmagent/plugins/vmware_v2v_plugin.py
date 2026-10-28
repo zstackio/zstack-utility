@@ -3,10 +3,14 @@
 
 import os
 import json
-import subprocess
+try:
+    import commands
+except ImportError:
+    import subprocess as commands
 import platform
 import string
 import re
+import tempfile
 
 from kvmagent import kvmagent
 from zstacklib.utils import jsonobject
@@ -96,10 +100,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentRsp()
 
-        from zstacklib.utils import linux
-        os_info = linux.get_freedesktop_os_release()
-        os_dist, os_version = os_info['ID'], re.sub(r'[a-zA-Z]+$', '', os_info['VERSION_ID'])
-
+        os_dist, os_version, _ = platform.dist()
         versions = os_version.split('.')
         # check if os is centos 7.2
         if len(versions) > 2 and versions[0] == '7' and versions[1] == '2':
@@ -375,7 +376,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
         def get_v2v_cmd(cmd, rsp):
             extra_params = ""
             if cmd.extraParams:
-                for k, v in list(cmd.extraParams.__dict__.items()):
+                for k, v in cmd.extraParams.__dict__.items():
                     extra_params = ' '.join((extra_params, ("--%s" % k), v))
 
             # if source virtual machine is dual-boot or multi boot
@@ -542,7 +543,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
             return jsonobject.dumps(rsp)
 
-        root_vol = f"{storage_dir}/{cmd.srcVmName}-sda"
+        root_vol = (r"%s/%s-sda" % (storage_dir, cmd.srcVmName)).encode('utf-8')
         logger.debug(root_vol)
         if not os.path.exists(root_vol):
             rsp.success = False
@@ -556,7 +557,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
 
         rsp.dataVolumeInfos = []
         for dev in 'bcdefghijklmnopqrstuvwxyz':
-            data_vol = f"{storage_dir}/{cmd.srcVmName}-sd{dev}"
+            data_vol = (r"%s/%s-sd%c" % (storage_dir, cmd.srcVmName, dev)).encode('utf-8')
             if os.path.exists(data_vol):
                 aSize, vSize = self._get_qcow2_sizes(data_vol)
                 rsp.dataVolumeInfos.append({"installPath": data_vol,
@@ -566,7 +567,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
             else:
                 break
 
-        xml = f"{storage_dir}/{cmd.srcVmName}.xml"
+        xml = (r"%s/%s.xml" % (storage_dir, cmd.srcVmName)).encode('utf-8')
         if self._check_str_in_file(xml, "<nvram "):
             rsp.bootMode = 'UEFI'
 
@@ -609,7 +610,7 @@ class VMwareV2VPlugin(kvmagent.KvmAgent):
     @in_bash
     def _get_qcow2_sizes(self, path):
         cmd = "%s --output=json '%s'" % (qemu_img.subcmd('info'), path)
-        _, output = subprocess.getstatusoutput(cmd)
+        _, output = commands.getstatusoutput(cmd)
         return int(json.loads(output)['actual-size']), int(json.loads(output)['virtual-size'])
 
     def clean_dnat(self, host_name, convert_ip):

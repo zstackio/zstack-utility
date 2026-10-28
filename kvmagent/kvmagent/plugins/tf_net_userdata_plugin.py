@@ -1,6 +1,9 @@
 __author__ = 'Wave'
 
-from io import StringIO
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 from email import message_from_file
 from email.mime.multipart import MIMEMultipart
 import os

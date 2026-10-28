@@ -1,8 +1,7 @@
-from __future__ import annotations
-import io
-
 import simplejson
 import types
+
+from zstacklib.utils import pycompat
 
 
 class NoneSupportedTypeError(Exception):
@@ -98,7 +97,7 @@ def _parse_list(lst):
 
 def _parse_dict(d):
     dobj = JsonObject()
-    for key in list(d.keys()):
+    for key in d.keys():
         val = d[key]
         if _is_unsupported_type(val):
             raise NoneSupportedTypeError("Cannot parse object: %s, type: %s, dict dump: %s" % (val, type(val), d))
@@ -140,17 +139,40 @@ def nj():
     return _new_json_object()
 
 
+def _get_unsupported_types():
+    '''py2/py3 语义等价的“不可 JSON 序列化类型”集合（按解释器各取合法名字）。
+
+    py2 独有名 → py3 对应：ComplexType→complex、TupleType→tuple、FileType→io.IOBase、
+    XRangeType→range、DictProxyType→types.MappingProxyType；
+    UnboundMethodType 在 py3 无对应（方法统一为 MethodType，已被覆盖）。
+    '''
+    if pycompat.PY2:
+        return (types.ComplexType, types.TupleType, types.FunctionType, types.LambdaType,
+                types.GeneratorType, types.MethodType, types.UnboundMethodType, types.BuiltinFunctionType,
+                types.BuiltinMethodType, types.FileType,
+                types.XRangeType, types.TracebackType, types.FrameType, types.DictProxyType,
+                types.NotImplementedType, types.GetSetDescriptorType,
+                types.MemberDescriptorType)
+    import io
+    return (complex, tuple, types.FunctionType, types.LambdaType,
+            types.GeneratorType, types.MethodType, types.BuiltinFunctionType,
+            types.BuiltinMethodType, io.IOBase,
+            range, types.TracebackType, types.FrameType, types.MappingProxyType,
+            types.NotImplementedType, types.GetSetDescriptorType,
+            types.MemberDescriptorType)
+
+
+_UNSUPPORTED_TYPES = _get_unsupported_types()
+
+
 def _is_unsupported_type(obj):
-    return isinstance(obj, (complex, tuple, types.FunctionType, types.LambdaType,
-                            types.GeneratorType, types.MethodType, types.BuiltinFunctionType,
-                            types.BuiltinMethodType, io.IOBase,
-                            range, types.TracebackType, types.FrameType, types.MappingProxyType,
-                            type(NotImplemented), types.GetSetDescriptorType,
-                            types.MemberDescriptorType))
+    return isinstance(obj, _UNSUPPORTED_TYPES)
 
 
 def _is_primitive_types(obj):
-    return isinstance(obj, (bool, int, float, bytes, str))
+    # py2: (bool,float,int,long,unicode,str) 与原 (BooleanType,LongType,IntType,FloatType,StringType,UnicodeType) 完全一致；
+    # py3: str/bytes 分别承接 py2 的 unicode/str，接受集合语义不变
+    return isinstance(obj, (bool, float) + pycompat.integer_types + (pycompat.text_type, pycompat.binary_type))
 
 
 def _dump_list(lst):
@@ -179,7 +201,7 @@ def _dump(obj, include_protected_attr=False):
     if _is_primitive_types(obj): return simplejson.dumps(obj, ensure_ascii=True)
 
     ret = {}
-    items = iter(obj.items()) if isinstance(obj, dict) else iter(obj.__dict__.items())
+    items = pycompat.iteritems(obj) if isinstance(obj, dict) else pycompat.iteritems(obj.__dict__)
     for key, val in items:
         if key.startswith('_') and not include_protected_attr: continue
         if _is_unsupported_type(obj):
@@ -213,6 +235,7 @@ def dumps(obj, pretty=False, include_protected_attr=False):
         return simplejson.dumps(jsonmap, ensure_ascii=True)
 
 
-def from_dict(obj, include_protected_attr=False):
-    # type: (dict, bool) -> JsonObject
-    return loads(dumps(obj, include_protected_attr=include_protected_attr))
+def from_dict(obj):
+    # type: (dict) -> JsonObject
+
+    return loads(dumps(obj))
