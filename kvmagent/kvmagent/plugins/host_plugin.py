@@ -11,6 +11,7 @@ import platform
 import re
 import tempfile
 import time
+from pipes import quote as shell_quote
 import uuid
 import string
 import socket
@@ -21,7 +22,7 @@ from zstacklib.utils.compat import subprocess
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http, lvm, ceph, pci
+from zstacklib.utils import http, lvm, ceph, pci, cpu_frequency
 from zstacklib.utils import qemu
 from zstacklib.utils import linux
 from zstacklib.utils import iptables
@@ -873,6 +874,7 @@ class UpdateConfigration(object):
         bash_o("modprobe vfio && modprobe vfio-pci")
 
 logger = log.get_logger(__name__)
+IPMI_COMMAND = "timeout -k 5s 30s ipmitool"
 
 def _get_memory(word):
     out = shell.call("grep '%s' /proc/meminfo" % word)
@@ -1644,23 +1646,7 @@ class HostPlugin(kvmagent.KvmAgent):
                 libvirtCapabilitiesList.append("blockcopynetworktarget")
             rsp.libvirtCapabilities = libvirtCapabilitiesList
 
-        bmc_version = shell.call("ipmitool mc info | grep 'Firmware Revision' | awk -F ':' '{print $2}'").strip()
-        rsp.bmcVersion = bmc_version if bmc_version else 'unknown'
-
-        # To see which lan the BMC is listening on, try the following (1-11), https://wiki.docking.org/index.php/Configuring_IPMI
-        for channel in range(1, 12):
-            '''     
-            example:
-            except result:         IP Address              : xxx.xxx.xxx.xxx 
-            set ipmi_address "None" when got results unexpected or happened some errors   
-            '''
-            ret, out, err = bash_roe("ipmitool lan print %s | grep -w 'IP Address'| grep -v 'Source'" % channel)
-            if ret == 0 and out != "":
-                rsp.ipmiAddress = out.split(":")[1].strip()
-                break
-            else:
-                rsp.ipmiAddress = 'None'
-                logger.debug("failed to get ipmi address from BMC lan channel [%s], because %s" % (channel, err))
+        self._collect_ipmi_info(rsp)
 
         if IS_AARCH64:
             # FIXME how to check vt of aarch64?
@@ -1728,9 +1714,10 @@ class HostPlugin(kvmagent.KvmAgent):
             host_cpu_model_name = host_cpu_info[0]
             rsp.hostCpuModelName = host_cpu_model_name
 
-            transient_cpuGHz = '%.2f' % (float(host_cpu_info[1]) / 1000)
-            static_cpuGHz_re = re.search('[0-9.]*GHz', host_cpu_model_name)
-            rsp.cpuGHz = static_cpuGHz_re.group(0)[:-3] if static_cpuGHz_re else transient_cpuGHz
+            processor_frequencies = shell.call(
+                "dmidecode -s processor-frequency", exception=False)
+            rsp.cpuGHz = cpu_frequency.get_static_cpu_ghz(
+                host_cpu_model_name, processor_frequencies)
 
             cpu_cores_per_socket = shell.call("lscpu | awk -F':' '/per socket/{print $NF}'")
             # On openeuler, lscpu otuputs 'per cluster' instead of 'per socket'
@@ -2419,10 +2406,41 @@ done
         return jsonobject.dumps(rsp)
 
 
+    def _collect_ipmi_info(self, rsp):
+        deadline = linux.monotime() + 30
+
+        def collect(arguments):
+            remaining = deadline - linux.monotime()
+            if remaining <= 0:
+                return 124, '', 'IPMI discovery budget exhausted'
+            return bash_roe("timeout -k 5s %.3fs ipmitool %s" % (max(0.001, remaining), arguments))
+
+        ret, info, _ = collect("mc info")
+        version = re.search(r'(?m)^\s*Firmware Revision\s*:\s*(\S+)', info) if ret == 0 else None
+        rsp.bmcVersion = version.group(1) if version else 'unknown'
+        rsp.ipmiAddress = 'None'
+        if ret in (124, 137):
+            return
+
+        for channel in range(1, 12):
+            ret, out, err = collect("lan print %s" % channel)
+            address = re.search(r'(?m)^\s*IP Address\s*:\s*(\S+)', out) if ret == 0 else None
+            if address:
+                rsp.ipmiAddress = address.group(1)
+                break
+            logger.debug("failed to get ipmi address from BMC lan channel [%s], because %s" % (channel, err))
+            if ret in (124, 137):
+                break
+
     def identify_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
-        sc = shell.ShellCmd("ipmitool chassis identify %s" % cmd.interval)
+        interval = str(cmd.interval)
+        if not re.match(r'\A[0-9]{1,3}\Z', interval) or not 0 <= int(interval) <= 255:
+            rsp.success = False
+            rsp.error = "identify interval must be an integer between 0 and 255"
+            return jsonobject.dumps(rsp)
+        sc = shell.ShellCmd(IPMI_COMMAND + " chassis identify %s" % shell_quote(str(int(interval))))
         sc(True)
         return jsonobject.dumps(rsp)
 
