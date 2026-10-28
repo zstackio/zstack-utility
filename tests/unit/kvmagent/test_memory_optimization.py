@@ -100,6 +100,8 @@ def host(tmp_path, monkeypatch):
     monkeypatch.setattr(plugin, '_converge_ksm', lambda ksm, control: world.setdefault('ksm', []).append((ksm, control)))
     monkeypatch.setattr(plugin, '_receipt', lambda kind: dict(service.receipts[kind]))
     monkeypatch.setattr(plugin, '_current_boot_id', lambda: 'boot')
+    (tmp_path / 'swappiness').write_text('60\n')
+    monkeypatch.setattr(plugin, 'SWAPPINESS_PATH', str(tmp_path / 'swappiness'))
 
     def run_executor(unit, argument, request=None):
         world['started'].append((unit, argument, request))
@@ -163,6 +165,19 @@ def test_enabling_zram_writes_capacity_tuning_then_opens_reclaim(host):
     assert service.actions() == ['capacity', 'tuning', 'host-cpu']
     assert service.efficiency is True and service.writeback is True
     assert service.capacity['logical_capacity'] == {'bytes': 8 << 30}
+
+
+@pytest.mark.parametrize('current, expected', [('0\n', '60'), ('30\n', '30\n')])
+def test_zram_needs_a_swappiness_above_zero(host, tmp_path, monkeypatch, current, expected):
+    plugin, service, world = host
+    swappiness, conf = tmp_path / 'swappiness', tmp_path / '99-zstack-zram.conf'
+    swappiness.write_text(current)
+    monkeypatch.setattr(plugin, 'SWAPPINESS_PATH', str(swappiness))
+    monkeypatch.setattr(plugin, 'SWAPPINESS_CONF', str(conf))
+    assert apply(plugin, 3, desired())['status'] == 'Succeeded'
+    assert swappiness.read_text() == expected
+    # A value above zero is the administrator's; only a zero is raised and kept across reboots.
+    assert conf.exists() is (current == '0\n')
 
 
 def test_resending_the_applied_configuration_changes_nothing(host):
