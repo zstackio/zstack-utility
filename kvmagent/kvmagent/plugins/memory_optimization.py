@@ -1350,9 +1350,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         lifecycle = status.get('lifecycle') or {}
         pool_generation = (status.get('host_zram') or {}).get('pool_generation')
         cpu = self._service('host-cpu-state')
-        efficiency = bool(zram['enabled'] or writeback['enabled'])
-        # Unmanaged ZRAM and writeback (none on the MN) leave reclaim as it is, like an unmanaged KSM.
-        managed = zram['enabled'] is not None or writeback['enabled'] is not None
+        # Reclaim belongs to ZRAM: an unmanaged one (none on the MN) keeps reclaim as it was, like an unmanaged KSM.
+        managed = zram['enabled'] is not None
+        efficiency = bool(zram['enabled'] or writeback['enabled']) if managed else cpu.get('efficiency_enabled') is True
         changes = self._service_changes(zram, writeback, efficiency, cpu)
         if changes and cpu.get('efficiency_enabled') is True:
             # Stop reclaim while the pool, tuning or VM scope change underneath it.
@@ -1363,14 +1363,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 'physical_memory_limit': self._capacity_value(zram['ramLimitBytes'])})
         if 'tuning' in changes:
             self._set_writeback(writeback['enabled'] is True)
-        if efficiency:
+        if managed and efficiency:
             capacity = self._service('capacity-state')
             if capacity.get('apply_state') not in (None, 'APPLIED') and pool_generation:
                 # A live pool takes a new capacity only through drain and rebuild.
                 self._drain(generation)
                 raise Converging('CAPACITY_MAINTENANCE')
-        if managed:
-            self._set_efficiency(cpu, efficiency)
+        self._set_efficiency(cpu, efficiency)
         if control == 'paused':
             if lifecycle.get('paused') is not True:
                 self._service('lifecycle-pause', {'action': 'pause'})
