@@ -15,6 +15,9 @@
 
     <target name="build-zstack-zram-rpm" if="zstackzram.enabled">
         <checkFile file="${zstackzram.go}" />
+        <!-- The metadata and RPM scripts refuse existing outputs; a rerun replaces only what this target wrote. -->
+        <delete dir="${zstackzram.snapshot.dir}" quiet="true" />
+        <delete file="${zstackzram.metadata.file}" quiet="true" />
         <exec executable="/bin/python" failonerror="true">
             <env key="GO" value="${zstackzram.go}" />
             <env key="GOROOT" value="" />
@@ -40,6 +43,7 @@
         <checkProperty property="zstackzram.buildEnvironmentId" />
         <checkFile file="${zstackzram.frozenSource}/packaging/build-rpm.sh" />
         <checkFile file="${zstackzram.sourceSnapshotManifest}" />
+        <delete dir="${zstackzram.rpm.output}" quiet="true" />
         <!-- build-rpm.sh verifies the pinned manifest itself before packaging. -->
         <exec executable="${zstackzram.frozenSource}/packaging/build-rpm.sh"
               dir="${zstackzram.frozenSource}" failonerror="true">

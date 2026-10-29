@@ -56,6 +56,8 @@ nvme_serial_numbers_record = None
 MEMORY_ACCOUNTING_SOCKET = '/run/zram-efficiency-admission/control.sock'
 MEMORY_ACCOUNTING_TIMEOUT_SECONDS = 2
 MEMORY_ACCOUNTING_RESPONSE_BYTES = 16 * 1024 * 1024
+# The service builds its accounting report on request; an older one is not this scrape's.
+MEMORY_ACCOUNTING_REPORT_MAX_AGE_SECONDS = 60
 
 
 class _MemoryServiceUnixHTTPConnection(stdlib_http.HTTPConnection):
@@ -1826,6 +1828,20 @@ def collect_memory_optimization_vm_accounting(report):
     return list(metrics.values())
 
 
+def _writeback_report_current(report, devices, now):
+    """Committed writeback bytes count only from a complete report of this boot's ZRAM device, made now."""
+    if report.get('quality') not in ('atomic_inventory_identity_checked', 'partial_vm_attribution'):
+        return False
+    boot = (linux.read_file('/proc/sys/kernel/random/boot_id') or '').strip()
+    device = report.get('device')
+    observed = _memory_observation_seconds(report.get('observed_at'))
+    name = os.path.basename(device) if isinstance(device, str) else None
+    # A device reset since the report holds none of the bytes it counted.
+    return (bool(boot) and report.get('host_boot_id') == boot and name in devices and
+            (_read_memory_optimization_int('/sys/block/%s/disksize' % name) or 0) > 0 and
+            observed is not None and -5 <= now - observed <= MEMORY_ACCOUNTING_REPORT_MAX_AGE_SECONDS)
+
+
 def _memory_observation_seconds(value):
     # Go time.Time is RFC3339Nano and may retain its local offset. Do not renew
     # an old observation at scrape; normalize a valid RFC3339 offset to UTC.
@@ -1969,7 +1985,8 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
             vm_accounting_report.get('schema_version') == 2 and
             isinstance(vm_accounting_report.get('inventory'), dict) and
             vm_accounting_report.get('inventory', {}).get('schema_version') == 2 and
-            isinstance(vm_accounting_report.get('total'), dict)):
+            isinstance(vm_accounting_report.get('total'), dict) and
+            _writeback_report_current(vm_accounting_report, zram_devices, time.time())):
         candidate = vm_accounting_report['total'].get('backend_committed_original_bytes')
         if (isinstance(candidate, (int, float)) and not isinstance(candidate, bool)
                 and candidate >= 0 and candidate <= 9223372036854775807):
