@@ -1504,7 +1504,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """
         pool = self._receipt('pool')
         receipt = pool if pool.get('stage') == 'APPLIED' else self._receipt('backend')
-        return receipt.get('stage') == 'APPLIED' and bool(receipt.get('pool_generation'))
+        boot = receipt.get('host_boot_id')
+        # The service activates only preparations of the current boot; an earlier one's device is gone.
+        return (receipt.get('stage') == 'APPLIED' and bool(receipt.get('pool_generation')) and
+                (not boot or boot == self._current_boot_id()))
 
     def _activate_after_maintenance(self, generation):
         pool = self._receipt('pool')
