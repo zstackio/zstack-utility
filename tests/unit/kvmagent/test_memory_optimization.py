@@ -508,6 +508,19 @@ def _reboot_reclaim_host(plugin, service, world, monkeypatch, capacity, receipt_
     return built
 
 
+def test_a_stopped_service_is_not_started_while_an_executor_holds_its_state(host):
+    plugin, service, world = host
+    world['unit'] = 'failed'
+    # A preparation executor finishing after a reboot still holds the service state.
+    world['drained'] = {'error': 'state directory already in use: resource temporarily unavailable'}
+    result = apply(plugin, 7, desired())
+    assert result['status'] == 'Converging' and result['reasonCode'] == 'HOST_OPERATION_IN_PROGRESS', result
+    assert world['unit'] == 'failed'
+    world['drained'] = None
+    apply(plugin, 7, desired())
+    assert world['unit'] == 'active'
+
+
 def test_a_rebooted_writeback_host_prepares_the_same_disk_again(host, monkeypatch):
     plugin, service, world = host
     built = _reboot_reclaim_host(plugin, service, world, monkeypatch, 1 << 30)

@@ -1758,7 +1758,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     def _backend_reclaim_required(self):
         native = self._drain_check() or {}
-        return str(native.get('error') or '').startswith('BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT')
+        error = str(native.get('error') or '')
+        if error.startswith('state directory already in use'):
+            # An executor finishing a maintenance still holds the service state; the service cannot start yet.
+            raise Converging('HOST_OPERATION_IN_PROGRESS')
+        return error.startswith('BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT')
 
     def _reboot_backend_request(self, generation):
         """Prepare again the configured disk the last preparation claimed, while it is still eligible.
