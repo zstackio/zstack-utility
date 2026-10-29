@@ -17,6 +17,7 @@ import stat
 import subprocess
 import tempfile
 import time
+import traceback
 import errno
 import fcntl
 import shutil
@@ -812,10 +813,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                               candidate.get('reason_code') or 'UNSUPPORTED_RECLAIM_KERNEL')
                     if not candidate['supported'] and reason == 'SUPPORTED':
                         reason = 'UNSUPPORTED_RECLAIM_KERNEL'
-            except Exception:
+            except Exception as exc:
                 # Missing/old/unreachable service must not invent ZRAM support
                 # or hide the independently usable KSM interface.
-                pass
+                logger.warn('the memory service did not report its reclaim qualification: %s' % exc)
         zram = bool(interfaces.get('zram_mm_stat') and interfaces.get('cgroupv2') and
                     interfaces.get('memory_reclaim') and qualification.get('supported') is True)
         # An installed but inactive service is started by the first ZRAM apply;
@@ -1092,8 +1093,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 receipt = self._service(action, {})
                 if receipt.get('stage'):
                     return receipt
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warn('reading the %s maintenance receipt from the running service failed, reading it offline: %s'
+                            % (kind, exc))
         argument = {'pool': '--zram-pool-preparation-status', 'backend': '--backend-maintenance-status'}[kind]
         try:
             receipt = json.loads(self._bounded_command_output(
@@ -1190,9 +1192,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 response = self.service_call('vm-identities', {'vm_uuids': batch})
                 identities = dict((_product_vm_uuid(key), value) for key, value in
                                   (response.get('identities') or {}).items())
-            except Exception:
+            except Exception as exc:
                 # Present but unresolvable is not absent and is not an old
                 # generation. MN must refuse lifecycle changes for that VM.
+                logger.warn('the memory service did not resolve the identities of %d VMs: %s' % (len(batch), exc))
                 continue
             for key in batch:
                 identity = identities.get(key)
@@ -1713,6 +1716,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 receipt = self._receipt('backend')
                 request_id = 'backend-%d-%s' % (generation, str(command.get('candidateId', ''))[-16:])
                 if receipt.get('request_id') == request_id and receipt.get('stage') == 'APPLIED':
+                    if not self._same_backend_preparation(receipt, command):
+                        # The same request id on another boot, disk or capacity: its success is not this one.
+                        raise Rejected('BACKEND_MAINTENANCE_REQUEST_CONFLICT')
                     reply.update({'success': True, 'status': 'Succeeded', 'state': {'maintenance': receipt}})
                 else:
                     inventory = self._writeback_inventory(command['hostUuid'])
@@ -1736,10 +1742,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             reply.update({'success': False, 'status': 'Failed',
                           'reasonCode': exc.reason if isinstance(exc, Rejected) else str(exc)})
         except Exception as exc:
-            logger.warn('writeback backend preparation did not complete: %s' % exc)
+            logger.error('writeback backend preparation did not complete: %s\n%s' % (exc, traceback.format_exc()))
             reply.update({'success': False, 'status': 'Failed', 'reasonCode': 'BACKEND_MAINTENANCE_FAILED',
                           'reason': str(exc)})
         return reply
+
+    def _same_backend_preparation(self, receipt, command):
+        target = receipt.get('target_identity') or {}
+        return (receipt.get('candidate_id') == command.get('candidateId') and
+                receipt.get('host_boot_id') == (command.get('expectedHostBootId') or self._current_boot_id()) and
+                target.get('capacity_bytes') == command.get('backendCapacityBytes'))
 
     def _stop_service_without_pool(self, inventory):
         """A service without a pool holds no VM memory; stop it for the offline step, as a drain does."""

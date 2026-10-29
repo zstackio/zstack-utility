@@ -14,9 +14,11 @@ import pytest
 def installer():
     path = Path(__file__).resolve().parents[3] / 'kvmagent/ansible/kvm.py'
     tree = ast.parse(path.read_text())
-    function = next(node for node in tree.body
-                    if isinstance(node, ast.FunctionDef)
-                    and node.name == 'check_alinux_zram_driver')
+    # The check and the warning helper it reports through, with the helper's list.
+    nodes = [node for node in tree.body
+             if isinstance(node, ast.FunctionDef) and node.name in ('check_alinux_zram_driver', '_memory_optimization_warning')
+             or isinstance(node, ast.Assign) and any(getattr(target, 'id', None) == 'memory_optimization_warnings'
+                                                     for target in node.targets)]
     messages = []
     calls = []
     responses = {
@@ -51,7 +53,7 @@ def installer():
         virtenv_path='/opt/zstack/virtualenv', shlex=shlex, os=os, re=re,
         run_remote_command=run, host_post_info={}, zstack_repo='zstack-local',
         handle_ansible_info=lambda *args: messages.append(args), json=json)
-    module = ast.Module(body=[function], type_ignores=[])
+    module = ast.Module(body=nodes, type_ignores=[])
     exec(compile(ast.fix_missing_locations(module), str(path), 'exec'), scope)
     return scope['check_alinux_zram_driver'], calls, messages
 
@@ -110,6 +112,8 @@ def test_rejects_kmod_without_exact_installed_kernel_requirement(
     check()
     assert not any(' install ' in command for command in calls)
     assert messages
+    # The deploy keeps going and summarizes what memory optimization lacks at its end.
+    assert check.__globals__['memory_optimization_warnings'] == [message[0] for message in messages]
 
 
 def test_rejects_ambiguous_repo_builds_before_install(installer):

@@ -728,11 +728,34 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
     assert built[0]['requestId'] == request_id
     assert world['started'][0][:2] == ('zstack-memory-backend-' + request_id, '--prepare-backend-maintenance')
     assert prepare()['reasonCode'] == 'BACKEND_PREPARING'
-    service.receipts['backend'] = {'stage': 'APPLIED', 'request_id': request_id, 'pool_generation': POOL,
-                                   'backend_resource_uuid': 'f' * 32}
+    service.receipts['backend'] = applied_backend_receipt(request_id)
     done = prepare()
     assert done['status'] == 'Succeeded' and done['state']['maintenance']['backend_resource_uuid'] == 'f' * 32
     assert len(world['started']) == 1
+
+
+def applied_backend_receipt(request_id, **changes):
+    receipt = {'stage': 'APPLIED', 'request_id': request_id, 'pool_generation': POOL,
+               'backend_resource_uuid': 'f' * 32, 'candidate_id': 'candidate:' + 'd' * 64, 'host_boot_id': 'boot',
+               'target_identity': {'canonical_device': '/dev/vdb', 'capacity_bytes': 1 << 30}}
+    receipt.update(changes)
+    return receipt
+
+
+@pytest.mark.parametrize('changes', [{'host_boot_id': 'earlier-boot'},
+                                     {'target_identity': {'canonical_device': '/dev/vdb', 'capacity_bytes': 2 << 30}},
+                                     {'candidate_id': 'candidate:' + 'e' * 48 + 'd' * 16}])
+def test_an_applied_preparation_answers_only_the_same_request(host, changes):
+    plugin, service, world = host
+    request_id = 'backend-20-' + 'd' * 16
+    service.receipts['backend'] = applied_backend_receipt(request_id, **changes)
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': POOL, 'backendCapacityBytes': 1 << 30,
+               'resetConfirmed': True}
+    # The same request id on another boot, disk or capacity is not this request's success.
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'BACKEND_MAINTENANCE_REQUEST_CONFLICT', result
+    assert world['started'] == []
 
 
 def test_a_host_without_a_pool_stops_its_service_to_prepare_a_backend(host, monkeypatch):

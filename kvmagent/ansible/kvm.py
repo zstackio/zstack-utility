@@ -1380,6 +1380,15 @@ def _install_memory_optimization_rpm(rpm_input):
     return None
 
 
+memory_optimization_warnings = []
+
+
+def _memory_optimization_warning(message):
+    """Memory optimization is optional: warn and keep deploying, then summarize what is unavailable."""
+    memory_optimization_warnings.append(message)
+    handle_ansible_info(message, host_post_info, 'WARNING')
+
+
 def check_alinux_zram_driver():
     """Install the repo kmod that owns the running kernel's exact module path.
 
@@ -1396,15 +1405,13 @@ def check_alinux_zram_driver():
         output = output.decode('utf-8', 'replace')
     kernel = output.strip() if status and isinstance(output, str) else ''
     if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._+-]{0,254}', kernel):
-        handle_ansible_info('ZRAM driver cannot identify the running kernel',
-                            host_post_info, 'WARNING')
+        _memory_optimization_warning('ZRAM driver cannot identify the running kernel')
         return
     repo_options = ''
     if zstack_repo and zstack_repo != 'false':
         selected_repo = zstack_repo.strip('"')
         if not selected_repo or re.search(r'[\r\n]', selected_repo):
-            handle_ansible_info('ZRAM driver repository configuration is invalid',
-                                host_post_info, 'WARNING')
+            _memory_optimization_warning('ZRAM driver repository configuration is invalid')
             return
         repo_options = '--disablerepo="*" --enablerepo=%s ' % shlex.quote(selected_repo)
     module_path = '/lib/modules/%s/updates/zstack-zram/zram.ko' % kernel
@@ -1500,16 +1507,13 @@ def check_alinux_zram_driver():
         install = ('yum -y %s--exclude="kernel*" --setopt=install_weak_deps=False install %s' %
                    (repo_options, shlex.quote(package)))
     except ValueError as exc:
-        handle_ansible_info('ZRAM driver package is unavailable for the running kernel: %s' % exc,
-                            host_post_info, 'WARNING')
+        _memory_optimization_warning('ZRAM driver package is unavailable for the running kernel: %s' % exc)
         return
     try:
         if not run_remote_command(install, host_post_info, return_status=True):
-            handle_ansible_info('ZRAM driver exact package unavailable; KSM remains independent',
-                                host_post_info, 'WARNING')
-    except Exception:
-        handle_ansible_info('ZRAM driver installation failed; KSM remains independent',
-                            host_post_info, 'WARNING')
+            _memory_optimization_warning('ZRAM driver exact package unavailable; KSM remains independent')
+    except Exception as exc:
+        _memory_optimization_warning('ZRAM driver installation failed; KSM remains independent: %s' % exc)
     status, output = run_remote_command(command, host_post_info,
                                         return_status=True, return_output=True)
     try:
@@ -1521,11 +1525,9 @@ def check_alinux_zram_driver():
             reason = report.get('reasonCode', 'ZRAM_DRIVER_OBSERVATION_FAILED')
             if not isinstance(reason, str) or not re.fullmatch(r'[A-Z_]+', reason):
                 reason = 'ZRAM_DRIVER_OBSERVATION_FAILED'
-            handle_ansible_info('ZRAM driver is not active/qualified: %s; no module was unloaded' % reason,
-                                host_post_info, 'WARNING')
+            _memory_optimization_warning('ZRAM driver is not active/qualified: %s; no module was unloaded' % reason)
     except (ValueError, TypeError, AttributeError):
-        handle_ansible_info('ZRAM driver observation failed; capability remains unavailable',
-                            host_post_info, 'WARNING')
+        _memory_optimization_warning('ZRAM driver observation failed; capability remains unavailable')
 
 
 def install_memory_optimization_materials():
@@ -1546,14 +1548,12 @@ def install_memory_optimization_materials():
         '/usr/lib/systemd/system/ksmtuned.service >/dev/null',
         host_post_info, return_status=True)
     if not ksm_ready:
-        handle_ansible_info('native KSM tools unavailable; memory optimization materials skipped',
-                            host_post_info, 'WARNING')
+        _memory_optimization_warning('native KSM tools unavailable; memory optimization materials skipped')
         return
     try:
         rpm_input = _memory_optimization_rpm_input()
     except RuntimeError as exc:
-        handle_ansible_info('memory optimization RPM skipped: %s' % exc,
-                            host_post_info, 'WARNING')
+        _memory_optimization_warning('memory optimization RPM skipped: %s' % exc)
         return
     if rpm_input is None:
         return
@@ -1561,9 +1561,7 @@ def install_memory_optimization_materials():
     # package-manager transaction has no scriptlets and does not activate it.
     failure = _install_memory_optimization_rpm(rpm_input)
     if failure:
-        handle_ansible_info(
-            'optional memory optimization RPM deployment did not complete: %s' % failure,
-            host_post_info, 'WARNING')
+        _memory_optimization_warning('optional memory optimization RPM deployment did not complete: %s' % failure)
 
 
 def do_auditd_config():
@@ -1698,6 +1696,9 @@ do_systemd_config()
 # this check itself never replaces a module already loaded in memory.
 check_alinux_zram_driver()
 install_memory_optimization_materials()
+if memory_optimization_warnings:
+    handle_ansible_info('memory optimization is unavailable or partial on this host: %s'
+                        % '; '.join(memory_optimization_warnings), host_post_info, 'WARNING')
 do_ksm_config()
 modprobe_usb_module()
 modprobe_mpci_module()
