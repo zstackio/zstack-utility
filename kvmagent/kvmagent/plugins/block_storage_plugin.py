@@ -467,7 +467,7 @@ class BlockStoragePlugin(kvmagent.KvmAgent):
 
         self.imagestore_client.image_info(cmd.hostname, cmd.backupStorageInstallPath)
         self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
-                                                        cmd.primaryStorageInstallPath, cmd.concurrency)
+                                                        cmd.primaryStorageInstallPath, cmd.concurrency, task_spec=cmd)
         bash.bash_o("sync")
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)

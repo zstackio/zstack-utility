@@ -824,7 +824,7 @@ class MiniStoragePlugin(kvmagent.KvmAgent):
             lvm.create_lv_from_cmd(self.convertInstallPathToAbsolute(cmd.primaryStorageInstallPath), cmd.size, cmd,
                                    "%s::%s::%s" % (IMAGE_TAG, cmd.hostUuid, time.time()), False)
             lvm.active_lv(self.convertInstallPathToAbsolute(cmd.primaryStorageInstallPath))
-        self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.concurrency)
+        self.imagestore_client.download_from_imagestore(cmd.mountPoint, cmd.hostname, cmd.backupStorageInstallPath, cmd.primaryStorageInstallPath, cmd.concurrency, task_spec=cmd)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
 
