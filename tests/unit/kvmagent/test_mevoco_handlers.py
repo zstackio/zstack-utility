@@ -1298,6 +1298,287 @@ class TestMevocoApplyUserdataInternals:
             assert fd.read() == "#cloud-config\nhostname: 测试虚机\n"
         with open(windows_user_data_path, encoding="utf-8") as fd:
             assert fd.read() == "#cloud-config\nhostname: 测试虚机\n"
+        macs_index_path = os.path.join(userdata_root, "meta-data", "network", "interfaces", "macs", "index.html")
+        with open(macs_index_path, encoding="utf-8") as fd:
+            assert fd.read() == "fa:16:3e:00:00:01/\n"
+
+    def test_lighttpd_rewrite_rules_reject_arbitrary_ip_and_default_paths(self, tmp_path: object):
+        import re
+
+        def _render_lighttpd_template(tpl: str, ctx: dict[str, object]) -> str:
+            def _expand_for(m: re.Match[str]) -> str:
+                var_name, list_name, body = m.group(1), m.group(2), m.group(3)
+                items = cast(list[object], ctx.get(list_name, []))
+                return "".join(body.replace("{{" + var_name + "}}", str(item)) for item in items)
+
+            out = re.sub(
+                r"\{%\s*for\s+(\w+)\s+in\s+(\w+)\s*-%\}(.*?)\{%\s*endfor\s*-%\}",
+                _expand_for,
+                tpl,
+                flags=re.DOTALL,
+            )
+            for k, v in ctx.items():
+                out = out.replace("{{" + k + "}}", str(v))
+            return out
+
+        def _template_factory(text: object) -> object:
+            class _Template:
+                def __init__(self, value: object) -> None:
+                    self._value = str(value)
+
+                def render(self, context: object | None = None, **kwargs: object) -> str:
+                    data = dict(cast(dict[str, object], context or {}))
+                    data.update(kwargs)
+                    return _render_lighttpd_template(self._value, data)
+
+            return _Template(text)
+
+        def _extract_rewrite_blocks(conf_text: str) -> list[list[tuple[str, str]]]:
+            blocks: list[list[tuple[str, str]]] = []
+            for block_match in re.finditer(r"url\.rewrite-once\s*=\s*\((.*?)\n\s*\)", conf_text, re.DOTALL):
+                rules: list[tuple[str, str]] = []
+                for line in block_match.group(1).splitlines():
+                    m = re.search(r'"([^"]+)"\s*=>\s*"([^"]+)"', line)
+                    if m:
+                        rules.append((m.group(1), m.group(2)))
+                blocks.append(rules)
+            return blocks
+
+        def _apply_rewrite_once(rules: list[tuple[str, str]], uri: str) -> str:
+            for pattern, target in rules:
+                m = re.match(pattern, uri)
+                if m:
+                    out = target
+                    for idx in range(len(m.groups()), 0, -1):
+                        out = out.replace(f"${idx}", m.group(idx) or "")
+                    return out
+            return uri
+
+        plugin = _make_plugin()
+        _ensure_http()
+        plugin.USERDATA_ROOT = str(tmp_path)
+        plugin.userData_vms = {}
+
+        linux = cast(MagicMock, importlib.import_module("zstacklib.utils.linux"))
+        linux.is_network_device_existing = MagicMock(return_value=False)
+        linux.MAX_MTU_OF_VNIC = 1500
+        linux.mkdir = MagicMock(
+            side_effect=lambda p, _m=None: None if str(p).startswith("/var/") else os.makedirs(str(p), exist_ok=True)
+        )
+        linux.rm_file_force = MagicMock()
+
+        iproute = cast(MagicMock, importlib.import_module("zstacklib.utils.iproute"))
+        iproute.IpNetnsShell.list_netns = MagicMock(return_value=[])
+        iproute.IpNetnsShell.return_value.get_mac = MagicMock(return_value="aa:bb:cc:dd:ee:ff")
+        iproute.IpNetnsShell.return_value.get_userdata_ip_address = MagicMock(return_value="169.254.169.254")
+        iproute.IpNetnsShell.return_value.get_ip_address = MagicMock(return_value="169.254.64.6")
+        iproute.IpNetnsShell.return_value.set_link_up = MagicMock()
+        iproute.set_link_up = MagicMock()
+        iproute.add_address = MagicMock()
+        iproute.query_addresses = MagicMock(return_value=["169.254.64.1"])
+
+        ip_mod = cast(MagicMock, importlib.import_module("zstacklib.utils.ip"))
+        ip_mod.get_namespace_id = MagicMock(return_value="5")
+        ip_mod.removeZeroFromMacAddress = MagicMock(side_effect=lambda x: x)
+        ip_mod.IpAddress = MagicMock(return_value=MagicMock(toCidr=lambda _: "10.0.0.0/24"))
+
+        setattr(mevoco, "bash_errorout", MagicMock(return_value=""))
+        setattr(mevoco, "bash_r", MagicMock(return_value=0))
+        setattr(mevoco, "bash_ro", MagicMock(return_value=(0, "1")))
+        setattr(mevoco, "bash_roe", MagicMock(return_value=(0, "ebtables 1.8.4 (legacy)", "")))
+
+        to = _Obj(
+            bridgeName="br0",
+            namespaceName="ns-userdata",
+            vlanId="vlan10",
+            l3NetworkUuid="l3-uuid",
+            vmIp="10.0.0.2",
+            netmask="255.255.255.0",
+            port=80,
+        )
+
+        real_exists = os.path.exists
+
+        def _exists(path: str) -> bool:
+            if str(path).startswith("/var/lib/zstack/kvm/"):
+                return True
+            return real_exists(path)
+
+        with patch("os.path.exists", side_effect=_exists), patch("os.path.islink", return_value=True), \
+                patch.object(mevoco, "Template", side_effect=_template_factory), \
+                patch.object(mevoco, "EBTABLES_CMD", "ebtables", create=True):
+            plugin._apply_userdata_xtables(to)
+
+        conf_path = os.path.join(str(tmp_path), "ns-userdata", "lighttpd.conf")
+        with open(conf_path, encoding="utf-8") as fd:
+            conf_text = fd.read()
+
+        blocks = _extract_rewrite_blocks(conf_text)
+        assert len(blocks) == 2
+        vm_rules, default_rules = blocks[0], blocks[1]
+
+        # Valid EC2 & OpenStack & ZWatch paths for known VM IP
+        assert 'dir-listing.activate = "disable"' in conf_text
+        assert _apply_rewrite_once(vm_rules, "/latest/user-data") == "/10.0.0.2/user-data"
+        assert _apply_rewrite_once(vm_rules, "/2009-04-04/user-data") == "/10.0.0.2/user-data"
+        assert _apply_rewrite_once(vm_rules, "/2021-03-23/meta-data/instance-id") == "/10.0.0.2/meta-data/instance-id"
+        assert _apply_rewrite_once(vm_rules, "/latest/meta-data") == "/10.0.0.2/meta-data/index.html"
+        assert _apply_rewrite_once(vm_rules, "/latest/meta-data/") == "/10.0.0.2/meta-data/index.html"
+        assert _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network") == "/10.0.0.2/meta-data/network/index.html"
+        assert _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/") == "/10.0.0.2/meta-data/network/index.html"
+        assert _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/interfaces") == "/10.0.0.2/meta-data/network/interfaces/index.html"
+        assert _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/interfaces/") == "/10.0.0.2/meta-data/network/interfaces/index.html"
+        assert _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/interfaces/macs") == "/10.0.0.2/meta-data/network/interfaces/macs/index.html"
+        assert _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/interfaces/macs/") == "/10.0.0.2/meta-data/network/interfaces/macs/index.html"
+        assert (
+            _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00")
+            == "/10.0.0.2/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00/index.html"
+        )
+        assert (
+            _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00/")
+            == "/10.0.0.2/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00/index.html"
+        )
+        assert (
+            _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/interfaces/macs/fa%3A61%3A30%3A7c%3Af7%3A00/")
+            == "/10.0.0.2/meta-data/network/interfaces/macs/fa%3A61%3A30%3A7c%3Af7%3A00/index.html"
+        )
+        assert (
+            _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00/local-ipv4s")
+            == "/10.0.0.2/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00/local-ipv4s"
+        )
+        assert _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/dns-conf") == "/10.0.0.2/meta-data/dns-conf/index.html"
+        assert _apply_rewrite_once(vm_rules, "/2018-09-24/meta-data/dns-conf/") == "/10.0.0.2/meta-data/dns-conf/index.html"
+        assert _apply_rewrite_once(vm_rules, "/openstack/latest/meta_data.json") == "/10.0.0.2/meta_data.json"
+        assert _apply_rewrite_once(vm_rules, "/openstack/2012-08-10/user_data") == "/10.0.0.2/user_data"
+        assert _apply_rewrite_once(vm_rules, "/openstack/latest/password") == "/10.0.0.2/password"
+        assert _apply_rewrite_once(vm_rules, "/zwatch-vm-agent.linux-amd64.bin") == "/zwatch-vm-agent"
+        assert _apply_rewrite_once(vm_rules, "/zwatch-vm-agent") == "/zwatch-vm-agent"
+        assert _apply_rewrite_once(vm_rules, "/zwatch-vm-agent_freebsd_amd64") == "/zwatch-vm-agent_freebsd_amd64"
+        assert _apply_rewrite_once(vm_rules, "/agent-tools-update.sh") == "/vm-tools.sh"
+        assert _apply_rewrite_once(vm_rules, "/vm-tools.sh") == "/vm-tools.sh"
+        assert _apply_rewrite_once(vm_rules, "/agent_version") == "/agent_version"
+
+        # Default branch rewrite targets must start with '/' (lighttpd >= 1.4.50)
+        assert _apply_rewrite_once(default_rules, "/latest/user-data") == "/zstack-default/user-data"
+        assert _apply_rewrite_once(default_rules, "/2021-03-23/meta-data/instance-id") == "/zstack-default/meta-data/instance-id"
+        assert _apply_rewrite_once(default_rules, "/latest/meta-data") == "/zstack-default/meta-data/index.html"
+        assert _apply_rewrite_once(default_rules, "/latest/meta-data/") == "/zstack-default/meta-data/index.html"
+        assert (
+            _apply_rewrite_once(default_rules, "/2018-09-24/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00")
+            == "/zstack-default/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00/index.html"
+        )
+        assert _apply_rewrite_once(default_rules, "/openstack/latest/meta_data.json") == "/zstack-default/meta_data.json"
+        assert _apply_rewrite_once(default_rules, "/openstack/2012-08-10/user_data") == "/zstack-default/user_data"
+        assert _apply_rewrite_once(default_rules, "/openstack/latest/password") == "/zstack-default/password"
+
+        # Root, bare version directories, arbitrary IP / zstack-default / unknown prefix MUST be rewritten to /__404__
+        for forbidden_uri in [
+            "/",
+            "/latest",
+            "/latest/",
+            "/2009-04-04",
+            "/2009-04-04/",
+            "/openstack",
+            "/openstack/",
+            "/openstack/latest",
+            "/openstack/latest/",
+            "/10.191.5.1/user-data",
+            "/10.191.5.254/user-data",
+            "/10.0.0.2/user-data",
+            "/10.191.5.11/meta-data/instance-id",
+            "/10.191.5.11/meta-data/network/interfaces/macs/fa%3A61%3A30%3A7c%3Af7%3A00/",
+            "/zstack-default/user-data",
+            "/zstack-default/meta-data/instance-id",
+            "/foo/user_data",
+            "/foo/meta_data.json",
+            "/foo/password",
+            "/10.191.5.11/",
+            "/10.191.5.11",
+        ]:
+            assert _apply_rewrite_once(vm_rules, forbidden_uri) == "/__404__", forbidden_uri
+            assert _apply_rewrite_once(default_rules, forbidden_uri) == "/__404__", forbidden_uri
+
+        # Also verify tf_net_userdata_plugin LIGHTTPD_CONF template
+        tf_mod = importlib.import_module("kvmagent.plugins.tf_net_userdata_plugin")
+        tf_conf = _render_lighttpd_template(
+            str(getattr(tf_mod, "LIGHTTPD_CONF")),
+            {
+                "http_root": "/var/lib/zstack/tf_userdata/html",
+                "port": 80,
+                "userdata_vm_uuid": ["8c766113-567a-482d-bf3c-beafa7beda89"],
+                "pushgateway_ip": "0.0.0.0",
+                "pushgateway_port": "9092",
+            },
+        )
+        assert 'dir-listing.activate = "disable"' in tf_conf
+        tf_blocks = _extract_rewrite_blocks(tf_conf)
+        assert len(tf_blocks) == 2
+        tf_vm_rules, tf_default_rules = tf_blocks[0], tf_blocks[1]
+        assert _apply_rewrite_once(tf_vm_rules, "/latest/user-data") == "/8c766113-567a-482d-bf3c-beafa7beda89/user-data"
+        assert _apply_rewrite_once(tf_vm_rules, "/2009-04-04/meta-data/instance-id") == "/8c766113-567a-482d-bf3c-beafa7beda89/meta-data/instance-id"
+        assert _apply_rewrite_once(tf_vm_rules, "/latest/meta-data") == "/8c766113-567a-482d-bf3c-beafa7beda89/meta-data/index.html"
+        assert _apply_rewrite_once(tf_vm_rules, "/latest/meta-data/") == "/8c766113-567a-482d-bf3c-beafa7beda89/meta-data/index.html"
+        assert (
+            _apply_rewrite_once(tf_vm_rules, "/2018-09-24/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00")
+            == "/8c766113-567a-482d-bf3c-beafa7beda89/meta-data/network/interfaces/macs/fa:61:30:7c:f7:00/index.html"
+        )
+        assert _apply_rewrite_once(tf_vm_rules, "/") == "/__404__"
+        assert _apply_rewrite_once(tf_vm_rules, "/10.191.5.1/user-data") == "/__404__"
+        assert _apply_rewrite_once(tf_vm_rules, "/zstack-default/user-data") == "/__404__"
+        assert _apply_rewrite_once(tf_default_rules, "/") == "/__404__"
+        assert _apply_rewrite_once(tf_default_rules, "/10.191.5.1/user-data") == "/__404__"
+        assert _apply_rewrite_once(tf_default_rules, "/zstack-default/user-data") == "/__404__"
+
+        # Verify that re-applying with empty userdataList removes stale user-data files
+        linux.rm_file_force = MagicMock(side_effect=lambda p: os.remove(p) if os.path.exists(p) else None)
+        vm_to_with_userdata = _Obj(
+            namespaceName="ns-userdata",
+            vmIp="10.0.0.2",
+            metadata=_Obj(
+                vmUuid="vm-1",
+                vmHostname="vm1.local",
+                regionName=None,
+                mac="aa:bb:cc:dd:ee:ff",
+                vpcId=None,
+                dnsServersIp=None,
+            ),
+            networkInterfaces=[],
+            userdataList=["#cloud-config\nruncmd:\n  - echo hi\n"],
+            agentConfig=None,
+        )
+        with patch.object(mevoco, "Template", side_effect=_template_factory):
+            plugin._apply_userdata_vmdata(vm_to_with_userdata)
+
+        vm_root = os.path.join(str(tmp_path), "ns-userdata", "html", "10.0.0.2")
+        assert os.path.exists(os.path.join(vm_root, "user-data"))
+        assert os.path.exists(os.path.join(vm_root, "user_data"))
+        assert os.path.exists(os.path.join(vm_root, "meta_data.json"))
+        assert os.path.exists(os.path.join(vm_root, "password"))
+
+        vm_to_empty_userdata = _Obj(
+            namespaceName="ns-userdata",
+            vmIp="10.0.0.2",
+            metadata=_Obj(
+                vmUuid="vm-1",
+                vmHostname="vm1.local",
+                regionName=None,
+                mac="aa:bb:cc:dd:ee:ff",
+                vpcId=None,
+                dnsServersIp=None,
+            ),
+            networkInterfaces=[],
+            userdataList=[],
+            agentConfig=None,
+        )
+        with patch.object(mevoco, "Template", side_effect=_template_factory):
+            plugin._apply_userdata_vmdata(vm_to_empty_userdata)
+
+        assert not os.path.exists(os.path.join(vm_root, "user-data"))
+        assert not os.path.exists(os.path.join(vm_root, "user_data"))
+        assert not os.path.exists(os.path.join(vm_root, "meta_data.json"))
+        assert not os.path.exists(os.path.join(vm_root, "password"))
+        assert os.path.exists(os.path.join(vm_root, "meta-data", "instance-id"))
+
 
 
 @pytest.mark.kvmagent
