@@ -19,8 +19,6 @@ def _install_import_stubs():
 
     sys.modules.setdefault(
         "bm_instance_agent.common.utils", MagicMock())
-    sys.modules.setdefault(
-        "zstacklib.utils.network_ipv6", MagicMock())
 
 
 _install_import_stubs()

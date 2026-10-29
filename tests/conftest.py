@@ -138,7 +138,7 @@ if 'distutils.version' not in sys.modules:
 # Third-party libraries (not available in test venv)
 _THIRD_PARTY_MOCKS = [
     'netaddr', 'jinja2', 'psutil', 'pyudev', 'rados', 'rbd',
-    'prometheus_client', 'prometheus_client.core',
+    'prometheus_client', 'prometheus_client.core', 'prometheus_client.exposition',
     'xxhash',  # cephbackupstorage
     'cherrypy', 'cherrypy.lib', 'cherrypy.lib.static',  # cephbackupstorage
     'cherrypy._cpreqbody', 'cherrypy._cprequest',  # cephbackupstorage
