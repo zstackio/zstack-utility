@@ -986,9 +986,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _converge_ksm(self, ksm, control):
         """Run KSM through the vendor units; an unmanaged setting is left alone."""
         enabled, zero = ksm.get('enabled'), ksm.get('zeroPagesEnabled')
-        if enabled is None and zero is None:
+        if enabled is None:
+            # The ksmtuned settings belong to KSM; zero pages may still be managed.
             self._release_ksm_config()
-            return
+            if zero is None:
+                return
         if not all(os.path.isfile(path) for path in self.NATIVE_KSM_FILES):
             raise Rejected('KSM_NATIVE_PROFILE_UNSUPPORTED')
         zero_value = self._read_ksm_zero_pages()

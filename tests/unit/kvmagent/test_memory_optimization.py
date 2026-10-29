@@ -151,14 +151,22 @@ def test_ksm_sleep_is_the_nearest_the_vendor_script_can_reach(memtotal_kb):
     assert max(10, native * ksm_native.SLEEP_BASE_KB // memtotal_kb) in (20, 21)
 
 
-def test_unmanaged_ksm_takes_out_only_the_block_the_agent_added(host, tmp_path, monkeypatch):
+@pytest.mark.parametrize('zero', [None, False])
+def test_unmanaged_ksm_takes_out_only_the_block_the_agent_added(host, tmp_path, monkeypatch, zero):
     plugin, service, world = host
     conf = tmp_path / 'ksmtuned.conf'
     conf.write_text(ksm_native.render_config('KSM_MONITOR_INTERVAL=60\n', 1, 2000, 20))
     monkeypatch.setattr(plugin, 'KSM_CONF', str(conf))
     monkeypatch.setattr(plugin, 'KSM_LOCK', str(tmp_path / 'lock' / 'ksm.lock'))
-    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    monkeypatch.setattr(plugin, 'NATIVE_KSM_FILES', [str(conf)])
+    monkeypatch.setattr(plugin, '_native_service_state', lambda unit, default: 'active')
+    monkeypatch.setattr(plugin, '_read_ksm_zero_pages', lambda: '1')
+    written = []
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs', lambda name, value: written.append((name, value)))
+    # Zero pages may still be managed; the ksmtuned settings belong to KSM itself.
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': zero}, 'active')
     assert conf.read_text() == 'KSM_MONITOR_INTERVAL=60\n'
+    assert written == ([] if zero is None else [('use_zero_pages', '0')])
 
 
 def test_a_busy_host_answers_in_progress_within_the_callers_budget(host):
