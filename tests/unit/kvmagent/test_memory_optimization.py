@@ -406,6 +406,19 @@ def test_a_backend_prepared_without_a_pool_resumes_and_waits_for_the_pool(host):
     assert not [action for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
 
 
+def test_a_preparation_of_an_earlier_boot_is_not_activated_again(host):
+    plugin, service, world = host
+    service.pool, service.paused = None, True
+    # Activated in the boot that prepared it; a reboot emptied its device and the service
+    # activates only preparations of the current boot.
+    service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-54-x', 'pool_generation': POOL,
+                                'host_boot_id': 'earlier-boot'}
+    result = apply(plugin, 61, desired())
+    assert result['reasonCode'] == 'WAITING_FOR_POOL', result
+    assert service.paused is False
+    assert 'lifecycle-activate-maintenance' not in service.actions()
+
+
 @pytest.mark.parametrize('reason, expected', [
     ('NO_QUALIFIED_MANAGED_POOL: VM_INVENTORY_EMPTY', 'WAITING_FOR_POOL'),
     ('NO_QUALIFIED_MANAGED_POOL: open /var/lib/zram-efficiency/stock-pool.json: no such file', 'WAITING_FOR_POOL'),
