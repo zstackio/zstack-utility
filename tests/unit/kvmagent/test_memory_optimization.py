@@ -196,13 +196,16 @@ def test_unmanaged_ksm_keeps_the_block_until_ksmtuned_settles(host, tmp_path, mo
     assert commands == [['systemctl', 'restart', plugin.KSM_TUNED_UNIT]]
 
 
-def test_unmanaged_zram_and_writeback_leave_reclaim_as_it_is(host):
+@pytest.mark.parametrize('writeback, running', [(None, False), (False, False), (False, True)])
+def test_unmanaged_zram_leaves_reclaim_as_it_is(host, writeback, running):
     plugin, service, world = host
-    service.efficiency = True
-    # none on the MN: like an unmanaged KSM, the running state stays as it is.
-    result = apply(plugin, 9, desired(zram=None, writeback=None))
+    service.efficiency, service.writeback = True, running
+    # none on the MN: like an unmanaged KSM, the running state stays as it is; writeback off is its own switch.
+    result = apply(plugin, 9, desired(zram=None, writeback=writeback))
     assert result['status'] == 'Succeeded', result
-    assert service.efficiency is True and 'host-cpu' not in service.actions()
+    assert service.efficiency is True and service.writeback is False
+    if not running:
+        assert 'host-cpu' not in service.actions()
 
 
 def test_a_busy_host_answers_in_progress_within_the_callers_budget(host):
