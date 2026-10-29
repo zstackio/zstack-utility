@@ -982,10 +982,11 @@ class TestDeleteEipWithMissingNamespace(unittest.TestCase):
             mock.patch("kvmagent.plugins.deip.iproute"),
             mock.patch("kvmagent.plugins.deip.linux"),
             mock.patch("zstacklib.utils.shell.get_process"),
+            mock.patch("kvmagent.plugins.deip.lock.NamedLock"),
+            mock.patch("kvmagent.plugins.deip.lock.FileLock"),
         ]
-        mock_iproute = patchers[0].start()
-        mock_linux = patchers[1].start()
-        mock_get_process = patchers[2].start()
+        mocks = [patcher.start() for patcher in patchers]
+        mock_iproute, mock_linux, mock_get_process = mocks[:3]
         try:
             mock_linux.is_network_device_existing.return_value = False
             mock_get_process.side_effect = _make_fake_process([])
@@ -995,15 +996,16 @@ class TestDeleteEipWithMissingNamespace(unittest.TestCase):
 
             eip_cmd = Eip()
             method = type(eip_cmd).delete_eip_with_ns
-            method(
-                eip_cmd,
-                ns="br_eth0_192_168_1_100",
-                eip_uuid="abcdef123456789",
-                version=4,
-                nic_name="vnic1.0",
-            )
-
-            mock_iproute.IpNetnsShell.return_value.del_netns.assert_called_once()
+            try:
+                method(
+                    eip_cmd,
+                    ns="br_eth0_192_168_1_100",
+                    eip_uuid="abcdef123456789",
+                    version=4,
+                    nic_name="vnic1.0",
+                )
+            finally:
+                mock_iproute.IpNetnsShell.return_value.del_netns.assert_called_once_with()
         finally:
             for patcher in patchers:
                 patcher.stop()
@@ -1024,13 +1026,13 @@ class TestDeleteEipWithMissingNamespace(unittest.TestCase):
         )
 
     def test_unexpected_namespace_delete_error_is_raised(self):
-        with self.assertRaisesRegexp(Exception, "Permission denied"):
-            self._call_delete_eip_with_ns(
-                del_netns_side_effect=Exception(
-                    'Cannot remove namespace file "/run/netns/br_eth0_192_168_1_100": '
-                    "Permission denied"
-                )
-            )
+        delete_error = Exception(
+            'Cannot remove namespace file "/run/netns/br_eth0_192_168_1_100": '
+            "Permission denied"
+        )
+        with self.assertRaisesRegexp(Exception, "Permission denied") as raised:
+            self._call_delete_eip_with_ns(del_netns_side_effect=delete_error)
+        self.assertIs(raised.exception, delete_error)
 
 
 if __name__ == "__main__":
