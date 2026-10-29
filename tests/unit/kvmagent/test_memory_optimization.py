@@ -196,6 +196,15 @@ def test_unmanaged_ksm_keeps_the_block_until_ksmtuned_settles(host, tmp_path, mo
     assert commands == [['systemctl', 'restart', plugin.KSM_TUNED_UNIT]]
 
 
+def test_unmanaged_zram_and_writeback_leave_reclaim_as_it_is(host):
+    plugin, service, world = host
+    service.efficiency = True
+    # none on the MN: like an unmanaged KSM, the running state stays as it is.
+    result = apply(plugin, 9, desired(zram=None, writeback=None))
+    assert result['status'] == 'Succeeded', result
+    assert service.efficiency is True and 'host-cpu' not in service.actions()
+
+
 def test_a_busy_host_answers_in_progress_within_the_callers_budget(host):
     plugin, service, world = host
     budget = {'communication': {'communicationSeconds': 1}}
