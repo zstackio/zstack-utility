@@ -151,14 +151,49 @@ def test_ksm_sleep_is_the_nearest_the_vendor_script_can_reach(memtotal_kb):
     assert max(10, native * ksm_native.SLEEP_BASE_KB // memtotal_kb) in (20, 21)
 
 
-def test_unmanaged_ksm_takes_out_only_the_block_the_agent_added(host, tmp_path, monkeypatch):
+@pytest.mark.parametrize('zero', [None, False])
+def test_unmanaged_ksm_takes_out_only_the_block_the_agent_added(host, tmp_path, monkeypatch, zero):
     plugin, service, world = host
     conf = tmp_path / 'ksmtuned.conf'
     conf.write_text(ksm_native.render_config('KSM_MONITOR_INTERVAL=60\n', 1, 2000, 20))
     monkeypatch.setattr(plugin, 'KSM_CONF', str(conf))
     monkeypatch.setattr(plugin, 'KSM_LOCK', str(tmp_path / 'lock' / 'ksm.lock'))
+    monkeypatch.setattr(plugin, 'NATIVE_KSM_FILES', [str(conf)])
+    monkeypatch.setattr(plugin, '_native_service_state', lambda unit, default: 'active')
+    monkeypatch.setattr(plugin, '_read_ksm_zero_pages', lambda: '1')
+    written, commands = [], []
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs', lambda name, value: written.append((name, value)))
+    monkeypatch.setattr(module.subprocess, 'check_call', lambda argv: commands.append(argv))
+    # Zero pages may still be managed; the ksmtuned settings belong to KSM itself.
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': zero}, 'active')
+    assert conf.read_text() == 'KSM_MONITOR_INTERVAL=60\n'
+    assert written == ([] if zero is None else [('use_zero_pages', '0')])
+    # A running ksmtuned reads its settings only when it starts; it keeps running.
+    assert commands == [['systemctl', 'restart', plugin.KSM_TUNED_UNIT]]
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': zero}, 'active')
+    assert len(commands) == 1
+
+
+@pytest.mark.parametrize('tuned', ['activating', 'deactivating', None])
+def test_unmanaged_ksm_keeps_the_block_until_ksmtuned_settles(host, tmp_path, monkeypatch, tuned):
+    plugin, service, world = host
+    conf = tmp_path / 'ksmtuned.conf'
+    managed = ksm_native.render_config('KSM_MONITOR_INTERVAL=60\n', 1, 2000, 20)
+    conf.write_text(managed)
+    monkeypatch.setattr(plugin, 'KSM_CONF', str(conf))
+    monkeypatch.setattr(plugin, 'KSM_LOCK', str(tmp_path / 'lock' / 'ksm.lock'))
+    states = {'tuned': tuned}
+    monkeypatch.setattr(plugin, '_native_service_state', lambda unit, default: states['tuned'])
+    commands = []
+    monkeypatch.setattr(module.subprocess, 'check_call', lambda argv: commands.append(argv))
+    # Without a settled state the restart could be missed, and the block would be gone for the next try.
+    with pytest.raises(Converging):
+        MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    assert conf.read_text() == managed and commands == []
+    states['tuned'] = 'active'
     MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
     assert conf.read_text() == 'KSM_MONITOR_INTERVAL=60\n'
+    assert commands == [['systemctl', 'restart', plugin.KSM_TUNED_UNIT]]
 
 
 def test_a_busy_host_answers_in_progress_within_the_callers_budget(host):

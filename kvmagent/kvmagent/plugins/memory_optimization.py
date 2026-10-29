@@ -944,7 +944,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
     def _release_ksm_config(self):
-        """An unmanaged KSM keeps its running state; only the block this Agent added leaves the file."""
+        """An unmanaged KSM keeps its running state; only the block this Agent added leaves the file.
+
+        ksmtuned reads the file only when it starts, so a running ksmtuned is restarted to drop the block."""
         try:
             with open(self.KSM_CONF, 'r') as stream:
                 existing = stream.read()
@@ -954,11 +956,17 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise
         if MANAGED_BEGIN not in existing.splitlines():
             return
+        tuned = self._native_service_state(self.KSM_TUNED_UNIT, 'active')
+        if tuned not in ('active', 'inactive', 'failed'):
+            # Once the block is gone nothing asks for the restart again; wait for a settled ksmtuned.
+            raise Converging('KSM_TUNED_STATE_UNSETTLED')
         try:
             content = remove_config(existing)
         except NativeKsmConfigError as exc:
             raise Rejected(str(exc))
         self._publish_ksm_config(content)
+        if tuned == 'active':
+            subprocess.check_call(['systemctl', 'restart', self.KSM_TUNED_UNIT])
 
     def _publish_ksm_config(self, content):
         mode = stat.S_IMODE(os.stat(self.KSM_CONF).st_mode) if os.path.exists(self.KSM_CONF) else 0o644
@@ -986,9 +994,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _converge_ksm(self, ksm, control):
         """Run KSM through the vendor units; an unmanaged setting is left alone."""
         enabled, zero = ksm.get('enabled'), ksm.get('zeroPagesEnabled')
-        if enabled is None and zero is None:
+        if enabled is None:
+            # The ksmtuned settings belong to KSM; zero pages may still be managed.
             self._release_ksm_config()
-            return
+            if zero is None:
+                return
         if not all(os.path.isfile(path) for path in self.NATIVE_KSM_FILES):
             raise Rejected('KSM_NATIVE_PROFILE_UNSUPPORTED')
         zero_value = self._read_ksm_zero_pages()
