@@ -1581,6 +1581,7 @@ class HostPlugin(kvmagent.KvmAgent):
     UPDATE_HOST_OVS_CPU_PINNING = "/host/ovs/cpu-pin/update"
     CHANGE_PASSWORD = "/host/changepassword"
     GET_HOST_NETWORK_FACTS = "/host/networkfacts"
+    GET_HOST_NETWORK_STATE = "/host/networkstate"
     SET_IP_ON_HOST_NETWORK_INTERFACE = "/host/setip/networkinterface"
     CHECK_INTERFACE_VLAN = "/host/checkvlan/networkinterface"
     GET_INTERFACE_VLAN = "/host/getvlan/networkinterface"
@@ -2974,6 +2975,41 @@ done
         rsp.nics = self.get_host_networking_interfaces(cmd.managementServerIp)
 
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_host_network_state(self, req):
+        rsp = GetHostNetworkBongdingResponse()
+        # MN timeout does not cancel a sysfs read. Keep at most one collector running.
+        with lock.NonBlockNamedLock('host-network-state-collection') as state_lock:
+            if not state_lock.acquired:
+                rsp.success = False
+                rsp.error = 'network state collection is already in progress'
+                return jsonobject.dumps(rsp)
+
+            cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+            def names(values):
+                # Only inspect requested netdevs; do not discover PCI devices or VM NICs.
+                if values is not None and not isinstance(values, list):
+                    raise ValueError('network state targets must be a list')
+                return list(dict.fromkeys(n for n in (values or [])
+                                         if isinstance(n, str) and 0 < len(n) < 16
+                                         and n not in ('.', '..') and '/' not in n
+                                         and '\x00' not in n and not any(c.isspace() for c in n)))
+
+            for name in names(cmd.interfaceNames):
+                carrier = None
+                if not os.path.exists('/sys/class/net/%s/device/physfn' % name):
+                    carrier = linux.read_file_strip('/sys/class/net/%s/carrier' % name)
+                rsp.nics.append({'interfaceName': name,
+                                 'carrierActive': carrier == '1' if carrier in ('0', '1') else None})
+
+            for name in names(cmd.bondingNames):
+                status = linux.read_file_strip('/sys/class/net/%s/bonding/mii_status' % name)
+                rsp.bondings.append({'bondingName': name,
+                                    'miiStatus': status if status in ('up', 'down') else None})
+
+            return jsonobject.dumps(rsp)
 
     def _has_vlan_or_bridge(self, ifname):
         if linux.is_bridge_slave(ifname):
@@ -5184,6 +5220,8 @@ done
             self.CHANGE_PASSWORD, self.change_password, cmd=ChangeHostPasswordCmd())
         http_server.register_async_uri(
             self.GET_HOST_NETWORK_FACTS, self.get_host_network_facts)
+        http_server.register_async_uri(
+            self.GET_HOST_NETWORK_STATE, self.get_host_network_state)
         http_server.register_async_uri(
             self.SET_IP_ON_HOST_NETWORK_INTERFACE, self.set_ip_on_host_network_interface)
 
