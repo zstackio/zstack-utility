@@ -23,7 +23,6 @@ from zstacklib.utils import linux
 from zstacklib.utils import thread
 from zstacklib.utils import sanlock
 from zstacklib.utils import remoteStorage
-from cachetools import TTLCache
 from distutils.version import LooseVersion
 
 from zstacklib.utils.linux import get_fs_type
@@ -55,7 +54,6 @@ LVMLOCKD_VERSION = None
 thinProvisioningInitializeSize = "thinProvisioningInitializeSize"
 PV_DISCARD_MIN_SIZE_IN_BYTES = 1*1024**3
 PV_DISCARD_MAX_SIZE_IN_BYTES = 100*1024**3
-ONE_HOUR_IN_SEC = 60 * 60
 LV_UUID_REFRESH_INTERVAL_IN_SEC = 60 * 30
 LVM_CONFIG_CHANGED_FILE = "/var/run/zstack/lvmConfigChanged"
 '''
@@ -65,7 +63,6 @@ so we need to set a timeout that can tolerate this scenario.
 '''
 lvm_cmd_timeout_with_locking = 210
 
-lv_offset = TTLCache(maxsize=100, ttl=ONE_HOUR_IN_SEC)
 continue_lockspace_track = {}  # type: dict[str, bool]
 lv_uuid_cache = {}  # type: dict[str, str]
 lv_uuid_cache_last_refresh_time = 0
@@ -1073,15 +1070,6 @@ def get_vg_lvm_uuid(vgUuid):
     return bash.bash_o("%s --noheading -ouuid %s" % (subcmd("vgs"), vgUuid)).strip()
 
 
-@linux.retry(5, 0.5)
-def get_running_host_id(vgUuid):
-    cmd = shell.ShellCmd("sanlock client gets | awk -F':' '/%s/{ print $2 }'" % vgUuid)
-    cmd(is_exception=False)
-    if cmd.stdout.strip() == "":
-        raise Exception("can not get running host id for vg %s" % vgUuid)
-    return cmd.stdout.strip()
-
-
 def get_wwid(disk_path):
     cmd = shell.ShellCmd("udevadm info --name=%s | grep 'disk/by-id.*' -m1 -o | awk -F '/' {' print $3 '}" % disk_path)
     cmd(is_exception=False)
@@ -1536,57 +1524,68 @@ def active_lv(path, shared=False):
 
 def _need_retry_active_lv(arg, exception):
     path = arg[0]
-    def check_lv_lock_on_client():
-        LV_UUID = lv_uuid(path)
-        if not LV_UUID:
-            raise Exception("cannot get lv uuid of path[%s]" % path)
-
-        cmd = "sanlock client status | grep %s" % LV_UUID
-        return bash.bash_r(cmd) == 0
-
-    def get_lock_hold_by_us():
-        LV_UUID = lv_uuid(path)
-        if not LV_UUID:
-            logger.warn("cannot get lv uuid of path[%s]" % path)
-            return None
-
-        VG_UUID = get_vg_uuid(path)
-        lockspace = get_lockspace(VG_UUID)
-        if not lockspace:
-            logger.warn("cannot find lockspace of %s" % VG_UUID)
-            return None
-
-        LOCKSPACE_NAME = lockspace.split(":")[0]
-        HOST_ID = lockspace.split(":")[1]
-        LVMLOCK_PATH = lockspace.split(":")[2]
-        LV_START = lv_offset.get(path) if lv_offset.get(path) is not None else "0"
-        LV_END = "1048576" if lv_offset.get(path) is not None else get_lv_size("/dev/%s/lvmlock" % VG_UUID)
-
-        cmd = "sanlock direct dump %s:%s:%s | grep %s -m1 | awk '{print $1,$4,$5}'" % (LVMLOCK_PATH, LV_START, LV_END, LV_UUID)
-        r, o, e = bash.bash_roe(cmd)
-        if r == 0 and o is not None and o.strip() != "":
-            res = o.strip().split()
-            offset = int(res[0])
-            timestamp = int(res[1])
-            host_id = int(res[2])
-            lv_offset.update({path:str(offset)})
-            if timestamp != 0 and host_id == int(HOST_ID):
-                lock = "{}:{}:{}:{}".format(LOCKSPACE_NAME, LV_UUID, LVMLOCK_PATH, offset)
-                return lock
-            else:
-                logger.debug("lv[path:%s] lockd by other host" % path)
-
-        return None
-
-    if "LV locked by other host" not in str(exception) or check_lv_lock_on_client():
+    if "LV locked by other host" not in str(exception):
         return False
 
-    lock = get_lock_hold_by_us()
-    if lock is not None:
+    try:
+        # lv_lockargs records the exact byte offset of this LV lease in lvmlock.
+        lv_attr = get_lv_attr(path, "lv_uuid", "lv_lockargs")
+        lv_uuid = lv_attr.get("lv_uuid")
+        lock_offset = int(lv_attr.get("lv_lockargs").rsplit(":", 1)[-1])
+        vg_uuid = get_vg_uuid(path)
+        lockspace = get_lockspace(vg_uuid)
+        lockspace_name, local_host_id, lvmlock_path = lockspace.split(":")[:3]
+        # The lease is 1 MiB with 512-byte sectors and 8 MiB with 4K sectors.
+        lease_size = sanlock.sector_size_to_align_size(sanlock.get_sector_size(vg_uuid))
+    except Exception as e:
+        logger.warn("cannot get lv[path:%s] lock info: %s" % (path, e))
+        return False
+
+    if not lv_uuid:
+        return False
+
+    r, o, e = sanlock.direct_dump_resource(lvmlock_path, lock_offset, size=lease_size)
+    if r != 0 or not o or not o.strip():
+        return False
+    try:
+        # Resource combines the exclusive leader owner and all shared mode-block owners.
+        resource = sanlock.Resource(o, local_host_id, align_size=lease_size)
+    except Exception as e:
+        logger.warn("cannot parse lv[path:%s] lock resource: %s" % (path, e))
+        return False
+    # Never repair a lock still tracked by the local sanlock client.
+    if getattr(resource, "resource_name", None) != lv_uuid or resource.in_use():
+        return False
+
+    owners = set(resource.owners)
+    if not owners:
+        return True
+    if len(owners) > 1:
+        # A one-shot retry cannot safely recover a shared lease held by multiple hosts.
+        logger.debug("skip retrying active lv[path:%s] held by multiple hosts[%s]" %
+                     (path, ",".join(sorted(owners))))
+        return False
+
+    owner_host_id = int(owners.pop())
+    if owner_host_id == int(local_host_id):
         logger.debug("find lv lock hold by us on lockspace but not on client, directly init lv[path:%s]" % path)
+        lock = "{}:{}:{}:{}".format(lockspace_name, lv_uuid, lvmlock_path, lock_offset)
         return sanlock.direct_init_resource(lock) == 0
 
-    return False
+    try:
+        host_status = sanlock.get_host_status(lockspace_name, owner_host_id)
+        if not host_status:
+            return False
+        # Allow one full renewal interval before waiting for the sole remote owner to become dead.
+        renewal_interval = 2 * host_status.get_io_timeout()
+        if host_status.get_last_check() - host_status.get_last_live() <= renewal_interval:
+            return False
+        logger.info("wait lv[path:%s] lock owner[hostId:%s] heartbeat from last live[%s]" %
+                    (path, owner_host_id, host_status.get_last_live()))
+        return not sanlock.check_host_liveness(vg_uuid, owner_host_id)
+    except Exception as e:
+        logger.warn("stop waiting lv[path:%s] lock owner: %s" % (path, e))
+        return False
 
 @linux.retry_with_check(handler=_need_retry_active_lv)
 def active_lv_with_check(path, shared=False):
@@ -2016,7 +2015,14 @@ class LvLockOperator(object):
 
             after_lock_type = LvmlockdLockType.NULL if len(self.exists_locks) == 0 else max(self.exists_locks)
             if after_lock_type == LvmlockdLockType.NULL:
-                _deactive_lv(self.abs_path, raise_exception=False)
+                try:
+                    _deactive_lv(self.abs_path, raise_exception=False)
+                except Exception as e:
+                    if "in use" not in str(e):
+                        raise
+                    logger.warn("lv [path:%s] in use, skip deactivation: %s" % (self.abs_path, e))
+                    self._init()
+                    after_lock_type = LvmlockdLockType.NULL if len(self.exists_locks) == 0 else max(self.exists_locks)
             elif after_lock_type == LvmlockdLockType.SHARE:
                 _active_lv(self.abs_path, True)
 
@@ -2071,7 +2077,10 @@ class RecursiveOperateLv(object):
         self.target_lock = LvmlockdLockType.EXCLUSIVE if shared is False else LvmlockdLockType.SHARE
         self.backing = None
         self.delete_when_exception = delete_when_exception
-        self.skip_deactivate_tags = skip_deactivate_tags
+        if shared and skip_deactivate_tags is None:
+            self.skip_deactivate_tags = [IMAGE_TAG]
+        else:
+            self.skip_deactivate_tags = skip_deactivate_tags
 
     def __enter__(self):
         self.lock_ref_cnt.lock(self.target_lock)
@@ -2209,7 +2218,7 @@ def fix_vglk(vg_uuid):
     if not vglk:
         return
     hosts_state = sanlock.get_hosts_state("lvm_" + vg_uuid)
-    if hosts_state is not None and hosts_state.get_live_min_hostid() == int(get_running_host_id(vg_uuid)):
+    if hosts_state is not None and hosts_state.get_live_min_hostid() == int(sanlock.get_running_host_id(vg_uuid)):
         sanlock.direct_init_resource("{}:{}:/dev/mapper/{}-lvmlock:{}".format(vglk.lockspace_name, vglk.resource_name, vglk.vg_name, vglk.offset))
 
 

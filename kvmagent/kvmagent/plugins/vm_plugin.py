@@ -2406,6 +2406,22 @@ def get_running_vms():
     return vms
 
 
+def sync_vm_persistent_definitions():
+    for vm in get_running_vms():
+        try:
+            live_xml = vm.domain_xml
+
+            @LibvirtAutoReconnect
+            def define_vm(conn):
+                return conn.defineXML(live_xml)
+
+            define_vm()
+            logger.info('updated persistent definition for vm %s' % vm.uuid)
+        except Exception:
+            logger.warn('failed to update persistent definition for vm %s: %s' %
+                        (vm.uuid, traceback.format_exc()))
+
+
 def get_cpu_memory_used_by_running_vms():
     runnings = get_running_vms()
     used_cpu = 0
@@ -2891,7 +2907,14 @@ class Vm(object):
         def restore_from_file(conn):
             return conn.restoreFlags(path, self.domain_xml)
 
+        # when restoring from a memory snapshot, we directly use the domain_xml built from cmd
+        # therefore, we only need to persist this domain_xml
+        @LibvirtAutoReconnect
+        def define_xml(conn):
+            return conn.defineXML(self.domain_xml)
+
         logger.debug('restoring vm:\n%s' % self.domain_xml)
+        define_xml()
         restore_from_file()
 
     def _patch_cpu_xml_from_saved_image(self, path):
@@ -3480,6 +3503,13 @@ class Vm(object):
                     if not wait_for_attach(None):
                         raise
 
+                try:
+                    if self.domain.isPersistent():
+                        self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                except Exception:
+                    logger.warn('failed to persist attached volume[uuid:%s] for vm[uuid:%s]: %s' %
+                                (volume.volumeUuid, self.uuid, traceback.format_exc()))
+
             attach()
 
         except libvirt.libvirtError as ex:
@@ -3584,6 +3614,13 @@ class Vm(object):
                         self._record_volume_detach_timeout(volume)
                         logger.debug("detach timeout, record volume install path: %s" % volume.installPath)
                         raise
+
+                try:
+                    if self.domain.isPersistent():
+                        self.domain.detachDeviceFlags(xmlstr, libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                except Exception:
+                    logger.warn('failed to remove detached volume[uuid:%s] from persistent definition of vm[uuid:%s]: %s' %
+                                (volume.volumeUuid, self.uuid, traceback.format_exc()))
 
             try:
                 detach()
@@ -4328,7 +4365,8 @@ class Vm(object):
 
         flag = (libvirt.VIR_MIGRATE_LIVE |
                 libvirt.VIR_MIGRATE_PEER2PEER |
-                libvirt.VIR_MIGRATE_UNDEFINE_SOURCE)
+                libvirt.VIR_MIGRATE_UNDEFINE_SOURCE |
+                libvirt.VIR_MIGRATE_PERSIST_DEST)
 
         if cmd.downTime:
             self.domain.migrateSetMaxDowntime(cmd.downTime)
@@ -4356,8 +4394,6 @@ class Vm(object):
             if is_external_shared_storage():
                 flag |= libvirt.VIR_MIGRATE_UNSAFE
 
-        if cmd.useNuma or storage_migration_required:
-            flag |= libvirt.VIR_MIGRATE_PERSIST_DEST
 
         stage = get_task_stage(cmd)
         timeout = get_timeout(cmd)
@@ -12067,6 +12103,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.SET_VM_VF_NIC_STATE, self.set_vf_nic_state)
 
         self.clean_old_sshfs_mount_points()
+        sync_vm_persistent_definitions()
         self.register_libvirt_event()
         self.register_qemu_log_cleaner()
         self.register_vm_console_logrotate_conf()
