@@ -4,6 +4,7 @@ from kvmagent import kvmagent
 from zstacklib.utils import http
 from zstacklib.utils import ip
 from zstacklib.utils import iproute
+from zstacklib.utils.iproute import NoSuchNamespace
 from zstacklib.utils import iptables
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
@@ -202,7 +203,22 @@ class Eip(object):
 
         @bash.in_bash
         def delete_namespace():
-            iproute.IpNetnsShell(NS_NAME).del_netns()
+            def is_missing_namespace_error(err):
+                err_msg = str(err)
+                return (
+                    isinstance(err, NoSuchNamespace) or
+                    "No such file" in err_msg or
+                    "No such file or directory" in err_msg or
+                    "could not be found" in err_msg or
+                    "does not exist" in err_msg
+                )
+
+            try:
+                iproute.IpNetnsShell(NS_NAME).del_netns()
+            except Exception as err:
+                if is_missing_namespace_error(err):
+                    return
+                raise
 
         @bash.in_bash
         def delete_outer_dev():
@@ -217,8 +233,8 @@ class Eip(object):
                 RULE_ARP = "-p ARP -i {{NIC_NAME}} -j {{CHAIN_NAME}}"
                 bash_r(EBTABLES_CMD + " -t nat -D PREROUTING {{RULE_ARP}}")
 
-                bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
-                bash_errorout(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
+                bash_r(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
+                bash_r(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
 
             PRI_ODEV_CHAIN = "eip-{{PRI_ODEV}}-gw"
             if bash_r(EBTABLES_CMD + ' -t nat -L {{PRI_ODEV_CHAIN}} >/dev/null 2>&1') == 0:
@@ -227,8 +243,8 @@ class Eip(object):
                 RULE_ARP = "-p ARP -i {{PRI_ODEV}} -j {{PRI_ODEV_CHAIN}}"
                 bash_r(EBTABLES_CMD + " -t nat -D PREROUTING {{RULE_ARP}}")
 
-                bash_errorout(EBTABLES_CMD + ' -t nat -F {{PRI_ODEV_CHAIN}}')
-                bash_errorout(EBTABLES_CMD + ' -t nat -X {{PRI_ODEV_CHAIN}}')
+                bash_r(EBTABLES_CMD + ' -t nat -F {{PRI_ODEV_CHAIN}}')
+                bash_r(EBTABLES_CMD + ' -t nat -X {{PRI_ODEV_CHAIN}}')
 
             for BLOCK_DEV in [PRI_ODEV, PUB_ODEV, NIC_NAME]:
                 BLOCK_CHAIN_NAME = 'eip-{{BLOCK_DEV}}-arp'
@@ -236,10 +252,10 @@ class Eip(object):
                 if bash_r(EBTABLES_CMD + ' -t nat -L {{BLOCK_CHAIN_NAME}} > /dev/null 2>&1') == 0:
                     RULE = '-p ARP -o {{BLOCK_DEV}} -j {{BLOCK_CHAIN_NAME}}'
                     if bash_r(EBTABLES_CMD + " -t nat -L POSTROUTING | grep -- '{{RULE}}' > /dev/null") == 0:
-                        bash_errorout(EBTABLES_CMD + ' -t nat -D POSTROUTING {{RULE}}')
+                        bash_r(EBTABLES_CMD + ' -t nat -D POSTROUTING {{RULE}}')
 
-                    bash_errorout(EBTABLES_CMD + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
-                    bash_errorout(EBTABLES_CMD + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
+                    bash_r(EBTABLES_CMD + ' -t nat -F {{BLOCK_CHAIN_NAME}}')
+                    bash_r(EBTABLES_CMD + ' -t nat -X {{BLOCK_CHAIN_NAME}}')
 
             # cleanup legacy chain names (without eip- prefix)
             OLD_CHAIN_NAME = '{{NIC_NAME}}-gw'
@@ -273,8 +289,8 @@ class Eip(object):
                 RULE = "-i {{NIC_NAME}} -j {{CHAIN_NAME}}"
                 bash_r(EBTABLES_CMD + ' -t nat -D PREROUTING {{RULE}}')
 
-                bash_errorout(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
-                bash_errorout(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
+                bash_r(EBTABLES_CMD + ' -t nat -F {{CHAIN_NAME}}')
+                bash_r(EBTABLES_CMD + ' -t nat -X {{CHAIN_NAME}}')
             # cleanup legacy chain name (without eip- prefix)
             OLD_CHAIN_NAME = '{{NIC_NAME}}-gw'
             if bash_r(EBTABLES_CMD + ' -t nat -L {{OLD_CHAIN_NAME}} >/dev/null 2>&1') == 0:
