@@ -21,7 +21,7 @@ server.document-root = "{{http_root}}"
 
 server.port = {{port}}
 server.bind = "0.0.0.0"
-dir-listing.activate = "enable"
+dir-listing.activate = "disable"
 index-file.names = ( "index.html" )
 
 server.modules += ("mod_proxy", "mod_rewrite", "mod_access", "mod_accesslog",)
@@ -41,17 +41,21 @@ $REQUEST_HEADER["X-Instance-ID"] =~ "^(.*)$" {
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
             "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
+            "^/zwatch-vm-agent(-freebsd|_aarch64)?$" => "/zwatch-vm-agent$1",
+            "^/collectd_exporter_(mips64el|loongarch64)$" => "/collectd_exporter_$1",
             "^/agent-tools-update.sh$" => "/vm-tools.sh",
-            "^/.*/meta-data/(.+)$" => "/{{inst_uuid}}/meta-data/$1",
-            "^/.*/meta-data$" => "/{{inst_uuid}}/meta-data",
-            "^/.*/meta-data/$" => "/{{inst_uuid}}/meta-data/",
-            "^/.*/user-data$" => "/{{inst_uuid}}/user-data",
-            "^/.*/user_data$" => "/{{inst_uuid}}/user_data",
-            "^/.*/meta_data.json$" => "/{{inst_uuid}}/meta_data.json",
-            "^/.*/password$" => "/{{inst_uuid}}/password",
-            "^/.*/$" => "/{{inst_uuid}}/$1"
+            "^/vm-tools.sh$" => "/vm-tools.sh",
+            "^/agent_version$" => "/agent_version",
+            "^/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/meta-data/(network/interfaces/macs/(?:[0-9a-fA-F]{2}(?::|%3[Aa])){5}[0-9a-fA-F]{2}|network/interfaces/macs|network/interfaces|network|dns-conf)/?$" => "/{{inst_uuid}}/meta-data/$2/index.html",
+            "^/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/meta-data/?$" => "/{{inst_uuid}}/meta-data/index.html",
+            "^/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/meta-data/(.+)$" => "/{{inst_uuid}}/meta-data/$2",
+            "^/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/user-data$" => "/{{inst_uuid}}/user-data",
+            "^/openstack/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/meta_data.json$" => "/{{inst_uuid}}/meta_data.json",
+            "^/openstack/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/user_data$" => "/{{inst_uuid}}/user_data",
+            "^/openstack/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/password$" => "/{{inst_uuid}}/password",
+            "^/.*" => "/__404__"
         )
-        dir-listing.activate = "enable"
+        dir-listing.activate = "disable"
 {% endfor -%}
     } else $REQUEST_HEADER["X-Instance-ID"] =~ "^(.*)$" {
         url.rewrite-once = (
@@ -60,17 +64,21 @@ $REQUEST_HEADER["X-Instance-ID"] =~ "^(.*)$" {
             "^/zwatch-vm-agent.linux-aarch64.bin$" => "/zwatch-vm-agent_aarch64",
             "^/zwatch-vm-agent.linux-mips64el.bin$" => "/collectd_exporter_mips64el",
             "^/zwatch-vm-agent.linux-loongarch64.bin$" => "/collectd_exporter_loongarch64",
+            "^/zwatch-vm-agent(-freebsd|_aarch64)?$" => "/zwatch-vm-agent$1",
+            "^/collectd_exporter_(mips64el|loongarch64)$" => "/collectd_exporter_$1",
             "^/agent-tools-update.sh$" => "/vm-tools.sh",
-            "^/.*/meta-data/(.+)$" => "/zstack-default/meta-data/$1",
-            "^/.*/meta-data$" => "/zstack-default/meta-data",
-            "^/.*/meta-data/$" => "/zstack-default/meta-data/",
-            "^/.*/user-data$" => "/zstack-default/user-data",
-            "^/.*/user_data$" => "/zstack-default/user_data",
-            "^/.*/meta_data.json$" => "/zstack-default/meta_data.json",
-            "^/.*/password$" => "/zstack-default/password",
-            "^/.*/$" => "/zstack-default/$1"
+            "^/vm-tools.sh$" => "/vm-tools.sh",
+            "^/agent_version$" => "/agent_version",
+            "^/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/meta-data/(network/interfaces/macs/(?:[0-9a-fA-F]{2}(?::|%3[Aa])){5}[0-9a-fA-F]{2}|network/interfaces/macs|network/interfaces|network|dns-conf)/?$" => "/zstack-default/meta-data/$2/index.html",
+            "^/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/meta-data/?$" => "/zstack-default/meta-data/index.html",
+            "^/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/meta-data/(.+)$" => "/zstack-default/meta-data/$2",
+            "^/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/user-data$" => "/zstack-default/user-data",
+            "^/openstack/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/meta_data.json$" => "/zstack-default/meta_data.json",
+            "^/openstack/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/user_data$" => "/zstack-default/user_data",
+            "^/openstack/(latest|[0-9]{4}-[0-9]{2}-[0-9]{2})/password$" => "/zstack-default/password",
+            "^/.*" => "/__404__"
         )
-        dir-listing.activate = "enable"
+        dir-listing.activate = "disable"
     }
 }
 
@@ -294,6 +302,9 @@ class TfNetProviderUserdata(kvmagent.KvmAgent):
 
             windows_meta_data_password = os.path.join(root, 'password')
             linux.write_file(windows_meta_data_password, '', True)
+        else:
+            for file_name in ('user-data', 'meta_data.json', 'user_data', 'password'):
+                linux.rm_file_force(os.path.join(root, file_name))
 
         if userdata.agentConfig:
             pvpanic_file_path = os.path.join(meta_root, 'pvpanic')
