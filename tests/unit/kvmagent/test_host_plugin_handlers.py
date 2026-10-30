@@ -956,6 +956,83 @@ class TestHostPluginGetHostNetworkFacts:
 
 
 @pytest.mark.kvmagent
+class TestHostPluginNetworkState:
+    @pytest.fixture
+    def lightweight_plugin(self, monkeypatch):
+        plugin = _make_plugin()
+
+        def forbidden(*args, **kwargs):
+            raise AssertionError('lightweight state collection must not execute commands or full discovery')
+
+        for obj, attr in [(host_plugin, 'HostNetworkInterfaceInventory'),
+                          (host_plugin, 'HostNetworkBondingInventory'),
+                          (host_plugin, 'get_nic_supported_max_speed'),
+                          (host_plugin, 'get_nic_driver_type'),
+                          (host_plugin, 'bash_o'), (host_plugin, 'bash_roe'),
+                          (host_plugin.subprocess, 'check_output'),
+                          (host_plugin.subprocess, 'Popen'),
+                          (host_plugin.shell, 'call'),
+                          (host_plugin.ip, 'get_host_physicl_nics'),
+                          (host_plugin.ovn, 'getAllVfioPciNic'),
+                          (plugin, 'get_host_networking_bonds'),
+                          (plugin, 'get_host_networking_interfaces')]:
+            monkeypatch.setattr(obj, attr, forbidden, raising=False)
+        return plugin
+
+    def test_reads_each_requested_state_once(self, lightweight_plugin):
+        files = {'/sys/class/net/eth0/carrier': '1', '/sys/class/net/eth1/carrier': '0',
+                 '/sys/class/net/bond0/bonding/mii_status': 'up',
+                 '/sys/class/net/bond1/bonding/mii_status': 'down'}
+        with patch.object(host_plugin.linux, 'read_file_strip', side_effect=files.get) as read, \
+             patch.object(host_plugin.os.path, 'exists', return_value=False):
+            rsp = json.loads(lightweight_plugin.get_host_network_state(_make_req({
+                'interfaceNames': ['eth0', 'eth1', 'eth0'],
+                'bondingNames': ['bond0', 'bond1', 'bond0']})))
+        assert rsp['success'] is True
+        assert rsp['nics'] == [{'interfaceName': 'eth0', 'carrierActive': True},
+                               {'interfaceName': 'eth1', 'carrierActive': False}]
+        assert rsp['bondings'] == [{'bondingName': 'bond0', 'miiStatus': 'up'},
+                                   {'bondingName': 'bond1', 'miiStatus': 'down'}]
+        assert sorted(c.args[0] for c in read.call_args_list) == sorted(files)
+
+    @pytest.mark.parametrize('value', [None, '', 'unknown', '2'])
+    def test_unknown_state_is_not_down(self, lightweight_plugin, value):
+        with patch.object(host_plugin.linux, 'read_file_strip', return_value=value), \
+             patch.object(host_plugin.os.path, 'exists', return_value=False):
+            rsp = json.loads(lightweight_plugin.get_host_network_state(_make_req({
+                'interfaceNames': ['eth0'], 'bondingNames': ['bond0']})))
+        assert rsp['success'] is True
+        assert rsp['nics'][0]['carrierActive'] is None
+        assert rsp['bondings'][0]['miiStatus'] is None
+
+    def test_vf_and_missing_netdev_stay_unknown(self, lightweight_plugin):
+        with patch.object(host_plugin.linux, 'read_file_strip', return_value=None) as read, \
+             patch.object(host_plugin.os.path, 'exists',
+                          side_effect=lambda p: p == '/sys/class/net/vf0/device/physfn'):
+            rsp = json.loads(lightweight_plugin.get_host_network_state(_make_req({
+                'interfaceNames': ['vf0', '0000:01:00.0'], 'bondingNames': ['dpdkbond0']})))
+        assert all(n['carrierActive'] is None for n in rsp['nics'])
+        assert rsp['bondings'][0]['miiStatus'] is None
+        assert '/sys/class/net/vf0/carrier' not in [c.args[0] for c in read.call_args_list]
+
+    def test_invalid_names_and_empty_targets_do_not_read(self, lightweight_plugin):
+        invalid = ['', '.', '..', '../eth0', 'eth0/carrier', 'eth 0', 'x' * 16, 123]
+        with patch.object(host_plugin.linux, 'read_file_strip') as read:
+            rsp = json.loads(lightweight_plugin.get_host_network_state(_make_req({
+                'interfaceNames': invalid, 'bondingNames': invalid})))
+            assert rsp['success'] is True
+            assert rsp['nics'] == [] and rsp['bondings'] == []
+            read.assert_not_called()
+
+    def test_non_list_targets_are_rejected(self, lightweight_plugin):
+        with patch.object(host_plugin.linux, 'read_file_strip') as read:
+            rsp = json.loads(lightweight_plugin.get_host_network_state(_make_req({
+                'interfaceNames': 'eth0', 'bondingNames': []})))
+            assert rsp['success'] is False
+            read.assert_not_called()
+
+
+@pytest.mark.kvmagent
 class TestHostPluginSetIpOnHostNetworkInterface:
     def test_set_ip_on_host_network_interface(self):
         plugin = _make_plugin()
