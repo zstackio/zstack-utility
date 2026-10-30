@@ -1261,6 +1261,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         unit = self._service_unit_state()
         if unit == 'starting':
             raise Converging('SERVICE_STARTING')
+        if unit == 'active' and self._drained_while_running():
+            # Started over a drained pool (by hand, or at boot): rebuild it stopped, as any drained pool.
+            self._bounded_command_output(['systemctl', 'stop', self.MANAGED_ZRAM_UNIT], 60)
+            unit = self._service_unit_state()
+            if unit not in ('inactive', 'failed'):
+                raise Converging('SERVICE_STOPPING')
+            if not self._is_drained():
+                raise Rejected('MAINTENANCE_BLOCKS_ACTIVATION')
         if unit in ('inactive', 'failed') and zram_wanted and self._backend_reclaim_required():
             if desired['writeback']['enabled'] is not False:
                 # A reboot left the backend claimed in the earlier boot; prepare the same disk again.
@@ -1291,6 +1299,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _is_drained(self):
         native = self._drain_check()
         return isinstance(native, dict) and native.get('state') == self.DRAINED
+
+    def _drained_while_running(self):
+        """The service waits behind a drain fence no preparation has lifted, with no pool."""
+        if not self._service_available():
+            return False
+        status = self._service('status')
+        return (status.get('maintenance_blocks_activation') is True and
+                not (status.get('host_zram') or {}).get('pool_generation'))
 
     def _ensure_service(self, capabilities):
         if self._managed_service_never_used() or capabilities.get('serviceActivationRequired'):
@@ -1353,7 +1369,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         # Reclaim belongs to ZRAM: an unmanaged one (none on the MN) keeps reclaim as it was, like an unmanaged KSM.
         managed = zram['enabled'] is not None
         efficiency = bool(zram['enabled'] or writeback['enabled']) if managed else cpu.get('efficiency_enabled') is True
-        changes = self._service_changes(zram, writeback, efficiency, cpu)
+        activating = (control != 'paused' and lifecycle.get('paused') is True and not pool_generation and
+                      self._maintenance_prepared())
+        # The service activates a rebuilt pool only with writeback off; the converge after it turns writeback on.
+        tuned = {'enabled': False} if activating else writeback
+        changes = self._service_changes(zram, tuned, efficiency, cpu)
         if changes and cpu.get('efficiency_enabled') is True:
             # Stop reclaim while the pool, tuning or VM scope change underneath it.
             self._set_efficiency(cpu, False)
@@ -1362,7 +1382,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 'logical_capacity': self._capacity_value(zram['logicalCapacityBytes']),
                 'physical_memory_limit': self._capacity_value(zram['ramLimitBytes'])})
         if 'tuning' in changes:
-            self._set_writeback(writeback['enabled'] is True)
+            self._set_writeback(tuned['enabled'] is True)
         if managed and efficiency:
             capacity = self._service('capacity-state')
             if capacity.get('apply_state') not in (None, 'APPLIED') and pool_generation:
@@ -1375,7 +1395,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 self._service('lifecycle-pause', {'action': 'pause'})
             return
         if lifecycle.get('paused') is True:
-            if not pool_generation and self._maintenance_prepared():
+            if activating:
                 # A rebuilt pool opens only through the service's activation checks.
                 self._activate_after_maintenance(generation)
             else:
@@ -1502,23 +1522,26 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             'reset_confirmed': True})
         raise Converging('POOL_PREPARING')
 
+    def _prepared_receipt(self):
+        """The preparation of the current drain: the backend's on a Host with one, else the RAM pool's.
+
+        Each kind keeps only its latest receipt, so the other kind's may be of an earlier drain cycle.
+        """
+        return self._receipt('backend' if self._read_service_config().get('backend') else 'pool')
+
     def _maintenance_prepared(self):
         """A completed preparation left a rebuilt pool for the service to activate.
 
         A backend prepared without a pool (e.g. after a reboot) has none; its pool is created on first use.
         """
-        pool = self._receipt('pool')
-        receipt = pool if pool.get('stage') == 'APPLIED' else self._receipt('backend')
+        receipt = self._prepared_receipt()
         boot = receipt.get('host_boot_id')
         # The service activates only preparations of the current boot; an earlier one's device is gone.
         return (receipt.get('stage') == 'APPLIED' and bool(receipt.get('pool_generation')) and
                 (not boot or boot == self._current_boot_id()))
 
     def _activate_after_maintenance(self, generation):
-        pool = self._receipt('pool')
-        backend = self._receipt('backend')
-        # The service activates a completed pool preparation first, else a completed backend one.
-        receipt = pool if pool.get('stage') == 'APPLIED' else backend
+        receipt = self._prepared_receipt()
         pool_generation = receipt.get('pool_generation')
         if receipt.get('stage') != 'APPLIED' or not pool_generation:
             raise Converging('MAINTENANCE_NOT_FINALIZED')
