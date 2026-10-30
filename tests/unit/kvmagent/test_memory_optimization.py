@@ -27,6 +27,7 @@ class FakeService(object):
         self.writeback = False
         self.receipts = {'pool': {'stage': 'NOT_STARTED'}, 'backend': {'stage': 'NOT_STARTED'}}
         self.activation_error = None
+        self.activated = set()
         self.pool_reason = 'NO_QUALIFIED_MANAGED_POOL: VM_INVENTORY_EMPTY'
 
     def __call__(self, action, payload):
@@ -61,13 +62,19 @@ class FakeService(object):
         if action == 'lifecycle-activate-maintenance':
             if self.activation_error:
                 return {'_http_status': 409, 'error': self.activation_error}
+            if self.writeback:
+                return {'_http_status': 409, 'error': 'MAINTENANCE_ACTIVATION_WRITEBACK_MUST_REMAIN_DISABLED'}
+            if payload['request_id'] in self.activated:
+                # One activation per preparation: a repeated one answers its receipt and changes nothing.
+                return {'receipt': {'stage': 'UNPAUSED'}}
             prepared = self.receipts['pool']
-            # Like the service: a completed pool preparation must be named exactly; a backend one is
-            # checked by its own identity.
-            if prepared.get('stage') == 'APPLIED' and \
-                    prepared.get('expected_control_operation_uuid') != payload['expected_control_operation_uuid']:
+            # Like the service: a completed pool preparation of this generation must be named exactly;
+            # a backend one is checked by its own identity.
+            if prepared.get('stage') == 'APPLIED' and prepared.get('pool_generation') == payload['expected_pool_generation'] \
+                    and prepared.get('expected_control_operation_uuid') != payload['expected_control_operation_uuid']:
                 # The service activates only the exact preparation it recorded.
                 return {'_http_status': 409, 'error': 'MAINTENANCE_ACTIVATION_PREPARATION_MISMATCH'}
+            self.activated.add(payload['request_id'])
             self.paused = False
             return {'receipt': {'stage': 'UNPAUSED'}}
         if action in ('zram-pool-maintenance-finalize', 'backend-maintenance-finalize'):
@@ -422,9 +429,10 @@ def test_resume_after_drain_prepares_finalizes_and_activates_the_pool(host):
     assert apply(plugin, 12, desired())['status'] == 'Succeeded'
 
 
-def test_activation_names_the_preparation_the_service_activates(host):
+def test_activation_names_the_preparation_of_the_current_drain(host, tmp_path):
     plugin, service, world = host
     service.pool, service.paused = None, True
+    # Each kind keeps its latest receipt; the other kind's may be of an earlier drain cycle.
     service.receipts['backend'] = {'stage': 'APPLIED', 'request_id': 'backend-3-x', 'pool_generation': 'b' * 64}
     service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-9-' + POOL[:16], 'pool_generation': POOL,
                                 'expected_control_operation_uuid': 'pool-9-' + POOL[:16]}
@@ -432,15 +440,47 @@ def test_activation_names_the_preparation_the_service_activates(host):
     activation = [payload for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
     assert activation[-1]['expected_pool_generation'] == POOL
     assert activation[-1]['request_id'] == 'activate-pool-9-' + POOL[:16]
-    # Without a completed pool preparation the backend preparation is activated.
+    # A Host with a backend rebuilt its pool by preparing the backend, even after an earlier RAM-only rebuild.
+    config = json.loads((tmp_path / 'config.json').read_text())
+    config['backend'] = {'device': '/dev/vdb'}
+    (tmp_path / 'config.json').write_text(json.dumps(config))
     service.calls[:] = []
     service.paused = True
-    service.receipts['pool'] = {'stage': 'NOT_STARTED'}
+    service.receipts['backend'] = {'stage': 'APPLIED', 'request_id': 'backend-24-x', 'pool_generation': 'b' * 64}
     apply(plugin, 10, desired())
     activation = [payload for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
     assert activation[-1]['expected_pool_generation'] == 'b' * 64
-    assert activation[-1]['request_id'] == 'activate-backend-3-x'
+    assert activation[-1]['request_id'] == 'activate-backend-24-x'
     assert service.paused is False
+
+
+def test_a_writeback_host_activates_its_rebuilt_pool_before_writeback_is_on_again(host):
+    plugin, service, world = host
+    service.pool, service.paused, service.writeback = None, True, True
+    service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-19-' + POOL[:16], 'pool_generation': POOL,
+                                'expected_control_operation_uuid': 'pool-19-' + POOL[:16]}
+    # The service keeps writeback as tuned before the drain, and activates only with it off.
+    first = apply(plugin, 19, desired(writeback=True))
+    assert first['reasonCode'] == 'WAITING_FOR_POOL', first
+    assert service.paused is False and service.writeback is False
+    service.pool = POOL
+    assert apply(plugin, 19, desired(writeback=True))['status'] == 'Succeeded'
+    assert service.writeback is True and service.efficiency is True
+
+
+def test_a_service_started_over_a_drained_pool_rebuilds_the_pool(host):
+    plugin, service, world = host
+    # Started by hand after the drain: paused behind the drain fence, with an earlier cycle's receipt.
+    service.pool, service.paused, service.maintenance = None, True, True
+    service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-23-' + 'e' * 16, 'pool_generation': 'e' * 64,
+                                'expected_control_operation_uuid': 'pool-23-' + 'e' * 16}
+    service.activated.add('activate-pool-23-' + 'e' * 16)
+    world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED, 'pool_generation': POOL}
+    result = apply(plugin, 30, desired())
+    assert result['reasonCode'] == 'POOL_PREPARING', result
+    assert world['unit'] == 'inactive'
+    assert world['started'][-1][:2] == ('zstack-memory-zram-pool-30', '--prepare-zram-pool')
+    assert world['started'][-1][2]['expected_pool_generation'] == POOL
 
 
 def test_a_backend_prepared_without_a_pool_resumes_and_waits_for_the_pool(host):
