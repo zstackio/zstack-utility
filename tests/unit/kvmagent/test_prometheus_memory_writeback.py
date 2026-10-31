@@ -55,3 +55,59 @@ def test_the_writeback_split_ignores_a_report_of_another_pool_or_time(current, c
 def test_the_writeback_split_ignores_a_report_of_a_pool_since_reset(current):
     SIZES['/sys/block/zram0/disksize'] = '0\n'
     assert not current(report(), ['zram0'], time.time())
+
+
+class GaugeMetricFamily(object):
+    def __init__(self, name, documentation, labels=()):
+        self.name, self.labels, self.samples = name, labels, []
+
+    def add_metric(self, values, value):
+        self.samples.append(SimpleNamespace(name=self.name, labels=dict(zip(self.labels, values)), value=value))
+
+
+@pytest.fixture
+def collect():
+    path = Path(__file__).resolve().parents[3] / 'kvmagent/kvmagent/plugins/prometheus.py'
+    tree = ast.parse(path.read_text())
+    nodes = [node for node in tree.body
+             if isinstance(node, ast.FunctionDef) and node.name == 'collect_memory_optimization_statistics']
+    reads = []
+    scope = dict(GaugeMetricFamily=GaugeMetricFamily, PAGE_SIZE=4096, time=time, re=re,
+                 os=SimpleNamespace(listdir=lambda path: ['zram0']),
+                 _read_memory_optimization_int=lambda path: 0,
+                 _memory_optimization_epoch=lambda devices: 'epoch-a',
+                 _read_zram_saved_bytes=lambda path: reads.pop(0),
+                 _writeback_report_current=lambda value, devices, now: True,
+                 collect_memory_optimization_vm_accounting=lambda value: [])
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), 'exec'), scope)
+
+    def run(before, after):
+        reads[:] = [before, after]
+        samples = [s for family in scope['collect_memory_optimization_statistics'](report()) for s in family.samples]
+        return lambda name, **labels: next((s.value for s in samples if s.name == name and
+                                            all(s.labels.get(k) == v for k, v in labels.items())), None)
+    return run
+
+
+def test_a_stable_zram_pool_is_split_by_the_report(collect):
+    value = collect(70 << 30, 70 << 30)
+    assert value('host_memory_saved_estimate_bytes', mechanism='total') == 70 << 30
+    assert value('host_zram_writeback_saved_bytes') == 4096
+    assert value('host_zram_ordinary_saved_bytes') == (70 << 30) - 4096
+
+
+def test_a_zram_pool_that_moved_keeps_its_total_without_the_split(collect):
+    # The pool changed between the reads around the report: the split is not this sample's, the native total is.
+    value = collect(70 << 30, 71 << 30)
+    assert value('host_zram_saved_estimate_bytes') == 71 << 30
+    assert value('host_memory_saved_estimate_bytes', mechanism='zram') == 71 << 30
+    assert value('host_memory_saved_estimate_bytes', mechanism='total') == 71 << 30
+    assert value('host_memory_optimization_metric_quality', metric='zram', quality='observed') == 1
+    assert value('host_zram_writeback_saved_bytes') is None and value('host_zram_ordinary_saved_bytes') is None
+
+
+def test_a_failed_zram_read_gives_no_total(collect):
+    value = collect(None, 71 << 30)
+    assert value('host_zram_saved_estimate_bytes') is None
+    assert value('host_memory_saved_estimate_bytes', mechanism='total') is None
+    assert value('host_memory_optimization_metric_quality', metric='zram', quality='partial') == 0

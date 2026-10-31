@@ -1940,7 +1940,8 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
             vm_accounting_report = None
     # Bracket the service accounting snapshot with native counter reads. A
     # changing pool must not be combined with an independently observed
-    # accounting snapshot; it is reported as a partial/unknown sample.
+    # accounting snapshot: it has no writeback split, while the native total
+    # of the second read stands on its own.
     zram_values_after = []
     for device in zram_devices:
         value = _read_zram_saved_bytes('/sys/block/%s/mm_stat' % device)
@@ -1954,8 +1955,7 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
         zram_quality = 'disabled'
     elif (inventory_known and zram_devices and
           len(zram_values_before) == len(zram_devices) and
-          len(zram_values_after) == len(zram_devices) and
-          zram_values_before == zram_values_after):
+          len(zram_values_after) == len(zram_devices)):
         zram_saved = sum(zram_values)
         zram_quality = 'observed'
     elif zram_values:
@@ -1981,7 +1981,8 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
     # and cumulative-I/O counters and must never be used as a savings value.
     zram_writeback = None
     zram_normal = None
-    if (isinstance(vm_accounting_report, dict) and
+    if (zram_values_before == zram_values_after and
+            isinstance(vm_accounting_report, dict) and
             vm_accounting_report.get('schema_version') == 2 and
             isinstance(vm_accounting_report.get('inventory'), dict) and
             vm_accounting_report.get('inventory', {}).get('schema_version') == 2 and
