@@ -1385,6 +1385,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._set_writeback(tuned['enabled'] is True)
         if managed and efficiency:
             capacity = self._service('capacity-state')
+            if capacity.get('apply_state') == 'RECONCILING' and pool_generation:
+                # The running service reconciles its unknown operations itself and refuses a drain until then.
+                raise Converging(capacity.get('reason') or 'RECONCILING')
             if capacity.get('apply_state') not in (None, 'APPLIED') and pool_generation:
                 # A live pool takes a new capacity only through drain and rebuild.
                 self._drain(generation)
