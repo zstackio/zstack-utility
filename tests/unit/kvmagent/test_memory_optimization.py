@@ -1,4 +1,5 @@
 """Converge the host to the desired memory optimisation through a fake service."""
+import errno
 import json
 import os
 import time
@@ -28,6 +29,7 @@ class FakeService(object):
         self.writeback = False
         self.receipts = {'pool': {'stage': 'NOT_STARTED'}, 'backend': {'stage': 'NOT_STARTED'}}
         self.activation_error = None
+        self.hold_error = None
         self.activated = set()
         self.pool_reason = 'NO_QUALIFIED_MANAGED_POOL: VM_INVENTORY_EMPTY'
 
@@ -84,6 +86,8 @@ class FakeService(object):
             self.receipts[kind] = dict(self.receipts[kind], stage='APPLIED')
             self.maintenance = False
             return self.receipts[kind]
+        if action == 'migration-hold' and self.hold_error:
+            return {'_http_status': 409, 'error': self.hold_error}
         if action in ('vm-policy', 'migration-hold', 'accounting', 'backend-view'):
             return {'claimed': True}
         raise AssertionError('unexpected service call %s' % action)
@@ -230,6 +234,16 @@ def test_a_busy_host_answers_in_progress_within_the_callers_budget(host):
     assert result['status'] == 'Converging' and result['reasonCode'] == 'HOST_OPERATION_IN_PROGRESS'
     # The MN retries a hold that is in progress instead of recording it unknown.
     assert hold['status'] == 'Converging' and hold['reasonCode'] == 'HOST_OPERATION_IN_PROGRESS', hold
+
+
+@pytest.mark.parametrize('error, status, retry', [('MIGRATION_HOLD_WAITING_FOR_IN_FLIGHT', 'Converging', 1),
+                                                  ('POOL_GENERATION_MISMATCH', 'Failed', None)])
+def test_a_hold_waiting_for_a_running_reclaim_is_retried_soon(host, error, status, retry):
+    plugin, service, world = host
+    service.hold_error = error
+    hold = json.loads(plugin.migration_hold({module.http.REQUEST_BODY: json.dumps(dict(
+        hostUuid=HOST, operationUuid='m' * 32, resourceUuid='v' * 32, holdAction='acquire', poolGeneration=POOL))}))
+    assert (hold['status'], hold['reasonCode'], hold.get('retryAfterSeconds')) == (status, error, retry), hold
 
 
 def test_an_older_generation_is_rejected_while_a_newer_one_converges(host):
@@ -533,23 +547,26 @@ def test_waiting_for_the_pool_names_what_blocks_it(host, reason, expected):
     assert apply(plugin, 35, desired())['reasonCode'] == expected
 
 
-def test_an_activation_waiting_for_the_service_to_settle_is_converging(host):
+@pytest.mark.parametrize('error, retry', [('MAINTENANCE_ACTIVATION_NATIVE_NOT_READY', 5),
+                                          ('MAINTENANCE_ACTIVATION_VM_INVENTORY_NOT_READY', 30)])
+def test_an_activation_waiting_for_the_service_to_settle_is_converging(host, error, retry):
     plugin, service, world = host
     service.pool, service.paused = None, True
     service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-9-' + POOL[:16], 'pool_generation': POOL,
                                 'expected_control_operation_uuid': 'pool-9-' + POOL[:16]}
-    service.activation_error = 'MAINTENANCE_ACTIVATION_NATIVE_NOT_READY'
+    service.activation_error = error
     result = apply(plugin, 9, desired())
-    assert result['status'] == 'Converging' and result['reasonCode'] == 'MAINTENANCE_ACTIVATION_NATIVE_NOT_READY'
+    assert (result['status'], result['reasonCode'], result['retryAfterSeconds']) == ('Converging', error, retry)
+    assert service.paused is True
 
 
 def test_a_rejected_activation_keeps_the_pool_drained(host):
     plugin, service, world = host
     service.paused, service.pool = True, None
     service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-12', 'pool_generation': POOL}
-    service.activation_error = 'MAINTENANCE_ACTIVATION_VM_INVENTORY_NOT_READY'
+    service.activation_error = 'MAINTENANCE_ACTIVATION_PREPARATION_MISMATCH'
     result = apply(plugin, 13, desired())
-    assert result['status'] == 'Failed' and result['reasonCode'] == 'MAINTENANCE_ACTIVATION_VM_INVENTORY_NOT_READY'
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'MAINTENANCE_ACTIVATION_PREPARATION_MISMATCH'
     assert service.paused is True
 
 
@@ -685,6 +702,36 @@ def test_only_an_unfinished_preparation_of_this_boot_blocks_a_new_one(host, monk
         'candidates': [{'device': '/dev/vdb', 'eligible': True, 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
     inventory = plugin._writeback_inventory(HOST)
     assert inventory['canPrepare'] is can_prepare, inventory['preparationReasons']
+
+
+@pytest.mark.parametrize('drained, record, generation', [({'error': 'state directory already in use'}, 'kept', None),
+                                                         (None, 'kept', None),
+                                                         ({'error': 'state directory already in use'}, 'unreadable', None),
+                                                         ({'error': 'state directory already in use'}, 'relative', None),
+                                                         ({'error': 'state directory already in use'}, 'absent', 'none')])
+def test_a_stopped_service_has_no_pool_only_when_none_is_recorded(host, tmp_path, monkeypatch,
+                                                                  drained, record, generation):
+    plugin, service, world = host
+    world['unit'], world['drained'] = 'inactive', drained
+    state = tmp_path / 'state'
+    state.mkdir()
+    if record == 'kept':
+        (state / 'stock-pool.json').write_text(json.dumps({'generation': POOL}))
+    if record == 'unreadable':
+        def lstat(path, real=os.lstat):
+            if str(path).startswith(str(state)):
+                raise OSError(errno.EACCES, 'Permission denied', path)
+            return real(path)
+        monkeypatch.setattr(module.os, 'lstat', lstat)
+    state_dir = 'memory-state' if record == 'relative' else str(state)
+    (tmp_path / 'config.json').write_text(json.dumps({'managed': True, 'mode': 'reclaim', 'resource_authorized': True,
+                                                      'device': '/dev/zram0', 'state_dir': state_dir}))
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': [{'device': '/dev/vdb', 'eligible': True, 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+    inventory = plugin._writeback_inventory(HOST)
+    assert inventory['poolGeneration'] == generation, inventory
+    assert inventory['canPrepare'] is (generation == 'none'), inventory['preparationReasons']
 
 
 def test_only_a_possible_candidate_is_probed_for_signatures():

@@ -528,10 +528,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         try:
             self._check_host(command)
             with self._host_lock(self._lock_wait(command)):
-                result = self._service('migration-hold', {
-                    'action': command.get('holdAction', 'acquire'),
-                    'operation_id': command.get('operationUuid'),
-                    'pool_generation': command.get('poolGeneration', '')})
+                try:
+                    result = self._service('migration-hold', {
+                        'action': command.get('holdAction', 'acquire'),
+                        'operation_id': command.get('operationUuid'),
+                        'pool_generation': command.get('poolGeneration', '')})
+                except Rejected as exc:
+                    if exc.reason == 'MIGRATION_HOLD_WAITING_FOR_IN_FLIGHT':
+                        # A reclaim runs for a few seconds; the hold is taken between two of them.
+                        raise Converging(exc.reason, 1)
+                    raise
             reply = {'success': True, 'status': 'Succeeded', 'state': result}
         except Converging as exc:
             reply = {'success': True, 'status': 'Converging', 'reasonCode': exc.reason,
@@ -736,13 +742,27 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """An installed service that never ran has no state."""
         if not self._managed_service_installed() or self._service_available():
             return False
-        try:
-            with open(self.zram_config_path, 'r') as stream:
-                state_dir = json.load(stream).get('state_dir')
-        except (IOError, OSError, ValueError):
+        state_dir = self._service_state_dir()
+        return state_dir is not None and (not os.path.isdir(state_dir) or not os.listdir(state_dir))
+
+    def _no_recorded_pool(self):
+        """The service keeps its pool's record in its state directory until the pool is released."""
+        state_dir = self._service_state_dir()
+        if state_dir is None:
             return False
-        return isinstance(state_dir, STRING_TYPES) and (
-            not os.path.isdir(state_dir) or not os.listdir(state_dir))
+        try:
+            os.lstat(os.path.join(state_dir, 'stock-pool.json'))
+        except OSError as exc:
+            # Only a missing record proves no pool; a directory that cannot be read proves nothing.
+            return exc.errno == errno.ENOENT
+        return False
+
+    def _service_state_dir(self):
+        try:
+            state_dir = self._read_service_config().get('state_dir')
+        except (IOError, OSError, ValueError):
+            return None
+        return state_dir if isinstance(state_dir, STRING_TYPES) and os.path.isabs(state_dir) else None
 
     def _activate_managed_service(self):
         """Start and enable the installed, never used ZRAM service on first use."""
@@ -1558,6 +1578,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         code = result.get('_http_status')
         if isinstance(code, int) and code >= 300:
             error = str(result.get('error') or 'MAINTENANCE_ACTIVATION_FAILED')
+            if error == 'MAINTENANCE_ACTIVATION_VM_INVENTORY_NOT_READY':
+                # No running VM to reclaim yet, as for a new pool; the pool opens once one runs.
+                raise Converging(error, self.WAIT_RETRY_SECONDS)
             if error in self.ACTIVATION_WAIT_REASONS:
                 # A just-started service has no fresh host sample or is still settling; ask again.
                 raise Converging(error)
@@ -1644,7 +1667,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             native = self._drain_check() or {}
             if native.get('state') == self.DRAINED:
                 pool_generation = native.get('pool_generation')
-            elif self._managed_service_never_used() or not native.get('pool_generation'):
+            elif self._no_recorded_pool() or str(native.get('error') or '').startswith(
+                    'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT'):
+                # A check that failed proves nothing: the pool may still be recorded.
                 pool_generation = 'none'
         if not pool_generation:
             reasons.append('POOL_GENERATION_UNKNOWN')
