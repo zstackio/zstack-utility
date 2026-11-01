@@ -24,6 +24,7 @@ class FakeService(object):
         self.efficiency = False
         self.capacity = {'logical_capacity': {}, 'physical_memory_limit': {}}
         self.capacity_state = 'APPLIED'
+        self.capacity_reason = None
         self.writeback = False
         self.receipts = {'pool': {'stage': 'NOT_STARTED'}, 'backend': {'stage': 'NOT_STARTED'}}
         self.activation_error = None
@@ -44,7 +45,8 @@ class FakeService(object):
             self.efficiency = payload['efficiency_enabled']
             return {'revision': 1}
         if action == 'capacity-state':
-            return {'desired': {'configured': dict(self.capacity)}, 'apply_state': self.capacity_state}
+            return {'desired': {'configured': dict(self.capacity)}, 'apply_state': self.capacity_state,
+                    'reason': self.capacity_reason}
         if action == 'capacity':
             self.capacity = {'logical_capacity': payload['logical_capacity'],
                              'physical_memory_limit': payload['physical_memory_limit']}
@@ -346,6 +348,21 @@ def test_a_new_capacity_for_a_live_pool_drains_it_for_rebuild(host):
     assert actions[:2] == ['host-cpu', 'capacity'] and 'lifecycle-pause' in actions
     assert world['unit'] == 'inactive' and world['started'][0][:2] == ('zstack-memory-drain-7', '--drain')
     assert result['appliedGeneration'] is None
+
+
+def test_a_pool_reconciling_unknown_operations_is_not_drained(host):
+    plugin, service, world = host
+    service.efficiency = True
+    service.capacity = {'logical_capacity': {'percent_of_host': 50.0},
+                        'physical_memory_limit': {'percent_of_logical': 50.0}}
+    service.capacity_state, service.capacity_reason = 'RECONCILING', 'UNKNOWN_OPERATION_REQUIRES_RECONCILIATION'
+    result = apply(plugin, 7, desired())
+    # The running service reconciles them itself; a drain is refused until then.
+    assert result['status'] == 'Converging'
+    assert result['reasonCode'] == 'UNKNOWN_OPERATION_REQUIRES_RECONCILIATION'
+    assert world['unit'] == 'active' and world['started'] == [] and service.actions() == []
+    service.capacity_state, service.capacity_reason = 'APPLIED', None
+    assert apply(plugin, 7, desired())['status'] == 'Succeeded'
 
 
 def test_first_enable_authorizes_the_packaged_config_then_waits_for_the_pool(host, tmp_path):
