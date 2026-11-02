@@ -3214,13 +3214,14 @@ class InstallDbCmd(Command):
       register: install_result
 
     - name: install MySQL for RedHat 7/Kylin10/openEuler/UnionTech kongzi/Nfs from local
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 7 and yum_repo != 'false') or ansible_os_family == 'Kylin' \
-            or ansible_os_family == 'Openeuler' or ansible_os_family == 'Nfs' or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')
+      when: ((ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 7) or ansible_os_family == 'Kylin'
+            or ansible_os_family == 'Openeuler' or ansible_os_family == 'Nfs' or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')) and yum_repo != 'false'
       shell: yum clean metadata; yum --disablerepo=* --enablerepo={{yum_repo}} --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
-    - name: install MySQL for RedHat 7/Kylin10 or from local
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 7 and yum_repo == 'false') or (ansible_os_family == 'Kylin' and ansible_distribution_major_version == '10' and yum_repo == 'false')
+    - name: install MySQL for RedHat 7/Kylin10/openEuler/UnionTech kongzi/Nfs from system repos
+      when: ((ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 7) or (ansible_os_family == 'Kylin' and ansible_distribution_major_version | int == 10)
+            or ansible_os_family == 'Openeuler' or ansible_os_family == 'Nfs' or (ansible_os_family == 'UnionTech' and ansible_distribution_release == 'kongzi')) and yum_repo == 'false'
       shell: yum clean metadata; yum --nogpgcheck install -y  mariadb mariadb-server iptables-services
       register: install_result
 
