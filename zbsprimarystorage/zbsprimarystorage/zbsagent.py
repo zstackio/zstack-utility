@@ -419,6 +419,10 @@ class ZbsAgent(plugin.TaskManager):
             logger.info("volume[%s] is a remote volume, skip get clients" % volume)
             return jsonobject.dumps(rsp)
 
+        if not zbsutils.is_volume_exist(logical_pool, volume):
+            logger.info("volume[%s/%s] does not exist, skip get clients" % (logical_pool, volume))
+            return jsonobject.dumps(rsp)
+
         rsp.clients = zbsutils.get_volume_clients(logical_pool, volume)
         return jsonobject.dumps(rsp)
 
