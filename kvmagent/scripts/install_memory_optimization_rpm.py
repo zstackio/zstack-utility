@@ -332,12 +332,22 @@ def _validate_unit_ownership(root, runner):
     return properties, installed
 
 
+class _Descriptor(object):
+    """A file descriptor closed when its with block ends."""
+
+    def __init__(self, path, flags, mode=0o600):
+        self.fd = os.open(path, flags, mode)
+
+    def __enter__(self):
+        return self.fd
+
+    def __exit__(self, *exc):
+        os.close(self.fd)
+
+
 def _sync_path(path):
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    try:
+    with _Descriptor(path, os.O_RDONLY | os.O_NOFOLLOW) as fd:
         os.fsync(fd)
-    finally:
-        os.close(fd)
 
 
 def _rpm_file_digest(runner, path):
@@ -651,28 +661,33 @@ def install(root, inventory_path, rpm_path, runner=subprocess.check_output,
     _validate(root, inventory_path, rpm_path)
     # Also use the existing Agent mutation lock. Reconnect must not restore a
     # stale config backup over a concurrently submitted control/policy request.
-    paths = ('/run/lock/zstack-zram-rpm-upgrade.lock',
-             '/var/lib/zstack/memory-optimization/operations/.host-control.flock')
-    descriptors = []
+    # The Agent's operation directory is private; /run/lock keeps the system's mode.
+    upgrade, control = [_lock_path(root, absolute, mode) for absolute, mode in (
+        ('/run/lock/zstack-zram-rpm-upgrade.lock', 0o777),
+        ('/var/lib/zstack/memory-optimization/operations/.host-control.flock', 0o700))]
+    flags = os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW
+    with _Descriptor(upgrade, flags) as upgrade_fd:
+        _lock_exclusively(upgrade_fd)
+        with _Descriptor(control, flags) as control_fd:
+            _lock_exclusively(control_fd)
+            return _install_locked(root, inventory_path, rpm_path, runner, installer)
+
+
+def _lock_path(root, absolute, mode):
+    lock_path = _path(root, absolute)
+    _makedirs(os.path.dirname(lock_path), mode)
+    return lock_path
+
+
+def _lock_exclusively(fd):
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        raise InstallError('RPM_UPGRADE_LOCK_NOT_REGULAR')
     try:
-        for absolute in paths:
-            lock_path = _path(root, absolute)
-            lock_parent = os.path.dirname(lock_path)
-            _makedirs(lock_parent)
-            fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-            descriptors.append(fd)
-            if not stat.S_ISREG(os.fstat(fd).st_mode):
-                raise InstallError('RPM_UPGRADE_LOCK_NOT_REGULAR')
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except (IOError, OSError) as exc:
-                if exc.errno not in (errno.EACCES, errno.EAGAIN):
-                    raise
-                raise InstallError('RPM_UPGRADE_OR_HOST_CONTROL_ALREADY_RUNNING')
-        return _install_locked(root, inventory_path, rpm_path, runner, installer)
-    finally:
-        for fd in reversed(descriptors):
-            os.close(fd)
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError) as exc:
+        if exc.errno not in (errno.EACCES, errno.EAGAIN):
+            raise
+        raise InstallError('RPM_UPGRADE_OR_HOST_CONTROL_ALREADY_RUNNING')
 
 
 def main():

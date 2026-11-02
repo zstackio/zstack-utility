@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 NAMES = ('_memory_observation_seconds', '_writeback_report_current', '_read_memory_optimization_int',
-         'MEMORY_ACCOUNTING_REPORT_MAX_AGE_SECONDS')
+         '_zram_accounting_generation', 'MEMORY_ACCOUNTING_REPORT_MAX_AGE_SECONDS')
 SIZES = {}
 
 
@@ -22,6 +22,7 @@ def current():
              if isinstance(node, ast.FunctionDef) and node.name in NAMES
              or isinstance(node, ast.Assign) and any(getattr(target, 'id', None) in NAMES for target in node.targets)]
     SIZES.clear(); SIZES['/sys/block/zram0/disksize'] = '8589934592\n'
+    SIZES['/proc/zram0_accounting'] = 'zram_accounting 2\nenabled 1\npage_size 4096\ngeneration 7\nsequence 3\n'
     files = lambda p: 'boot-a\n' if p == '/proc/sys/kernel/random/boot_id' else SIZES.get(p)
     linux = SimpleNamespace(read_file=files)
     scope = dict(re=re, calendar=calendar, time=time, os=os, linux=linux)
@@ -32,7 +33,8 @@ def current():
 def report(**changes):
     value = {'schema_version': 2, 'quality': 'partial_vm_attribution', 'host_boot_id': 'boot-a',
              'device': '/dev/zram0', 'observed_at': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
-             'inventory': {'schema_version': 2}, 'total': {'backend_committed_original_bytes': 4096}}
+             'inventory': {'schema_version': 2, 'pool_generation': 7},
+             'total': {'backend_committed_original_bytes': 4096}}
     value.update(changes)
     return value
 
@@ -55,6 +57,17 @@ def test_the_writeback_split_ignores_a_report_of_another_pool_or_time(current, c
 def test_the_writeback_split_ignores_a_report_of_a_pool_since_reset(current):
     SIZES['/sys/block/zram0/disksize'] = '0\n'
     assert not current(report(), ['zram0'], time.time())
+
+
+@pytest.mark.parametrize('accounting', ['zram_accounting 2\ngeneration 8\n', 'zram_accounting 2\n', None])
+def test_the_writeback_split_ignores_a_report_of_an_earlier_pool_on_the_same_device(current, accounting):
+    # A pool rebuilt on the same device within the report's age has a new kernel generation.
+    if accounting is None:
+        del SIZES['/proc/zram0_accounting']
+    else:
+        SIZES['/proc/zram0_accounting'] = accounting
+    assert not current(report(), ['zram0'], time.time())
+    assert not current(report(inventory={'schema_version': 2}), ['zram0'], time.time())
 
 
 class GaugeMetricFamily(object):

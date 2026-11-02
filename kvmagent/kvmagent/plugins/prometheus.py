@@ -16,6 +16,7 @@ import pyudev  # installed by ansible
 import threading
 import time
 from collections import defaultdict
+from contextlib import closing
 
 import typing
 import re
@@ -1664,9 +1665,8 @@ def _memory_optimization_epoch(devices):
 
 def _read_memory_accounting_report():
     """Read the service's committed report without issuing any operation."""
-    conn = _MemoryServiceUnixHTTPConnection(
-        MEMORY_ACCOUNTING_SOCKET, MEMORY_ACCOUNTING_TIMEOUT_SECONDS)
-    try:
+    with closing(_MemoryServiceUnixHTTPConnection(
+            MEMORY_ACCOUNTING_SOCKET, MEMORY_ACCOUNTING_TIMEOUT_SECONDS)) as conn:
         conn.request('GET', '/v1/memory/accounting',
                      headers={'Host': 'localhost', 'Connection': 'close'})
         response = conn.getresponse()
@@ -1681,8 +1681,6 @@ def _read_memory_accounting_report():
         if not isinstance(report, dict):
             raise ValueError('memory accounting report is not an object')
         return report
-    finally:
-        conn.close()
 
 
 def collect_memory_optimization_vm_accounting(report):
@@ -1836,10 +1834,22 @@ def _writeback_report_current(report, devices, now):
     device = report.get('device')
     observed = _memory_observation_seconds(report.get('observed_at'))
     name = os.path.basename(device) if isinstance(device, str) else None
-    # A device reset since the report holds none of the bytes it counted.
+    generation = (report.get('inventory') or {}).get('pool_generation')
+    # A device reset or a pool rebuilt on it since the report holds none of the bytes it counted.
     return (bool(boot) and report.get('host_boot_id') == boot and name in devices and
             (_read_memory_optimization_int('/sys/block/%s/disksize' % name) or 0) > 0 and
+            isinstance(generation, int) and not isinstance(generation, bool) and
+            generation == _zram_accounting_generation(name) and
             observed is not None and -5 <= now - observed <= MEMORY_ACCOUNTING_REPORT_MAX_AGE_SECONDS)
+
+
+def _zram_accounting_generation(name):
+    """The pool generation in the kernel accounting header of a ZRAM device now, or None."""
+    for line in (linux.read_file('/proc/%s_accounting' % name) or '').splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0] == 'generation' and fields[1].isdigit():
+            return int(fields[1])
+    return None
 
 
 def _memory_observation_seconds(value):
