@@ -143,6 +143,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     ZRAM_SWAPPINESS = 60
     KSM_CONF = '/etc/ksmtuned.conf'
     KSM_LOCK = '/run/zstack/memory-optimization/ksm.writer.lock'
+    KSM_TUNED_RESTART = 'ksmtuned.restart-pending'
     OPERATION_DIR = '/var/lib/zstack/memory-optimization/operations'
     # Shared with the RPM installer, which must not upgrade the service mid-change.
     HOST_LOCK = '.host-control.flock'
@@ -297,10 +298,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     if linux.monotime() >= deadline:
                         raise Converging('HOST_OPERATION_IN_PROGRESS')
                     time.sleep(0.1)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            # Closing the lock file when the with block ends releases the lock.
+            yield
 
     @staticmethod
     def _atomic_write(path, data, mode=0o600):
@@ -959,35 +958,43 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     if exc.errno not in (errno.EAGAIN, errno.EACCES) or linux.monotime() >= deadline:
                         raise RuntimeError('KSM_WRITER_LOCK_UNAVAILABLE')
                     time.sleep(0.05)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            # Closing the lock file when the with block ends releases the lock.
+            yield
 
     def _release_ksm_config(self):
         """An unmanaged KSM keeps its running state; only the block this Agent added leaves the file.
 
-        ksmtuned reads the file only when it starts, so a running ksmtuned is restarted to drop the block."""
+        ksmtuned reads the file only when it starts, so a running ksmtuned is restarted to drop the block.
+        The restart is recorded before the block leaves the file and cleared once it succeeds, so a failed
+        restart is retried on the next pass; the record is under /run, as a reboot starts ksmtuned afresh."""
         try:
             with open(self.KSM_CONF, 'r') as stream:
                 existing = stream.read()
         except IOError as exc:
-            if exc.errno == errno.ENOENT:
-                return
-            raise
-        if MANAGED_BEGIN not in existing.splitlines():
+            if exc.errno != errno.ENOENT:
+                raise
+            existing = ''
+        managed = MANAGED_BEGIN in existing.splitlines()
+        restart = os.path.join(os.path.dirname(self.KSM_LOCK), self.KSM_TUNED_RESTART)
+        if not managed and not os.path.exists(restart):
             return
         tuned = self._native_service_state(self.KSM_TUNED_UNIT, 'active')
         if tuned not in ('active', 'inactive', 'failed'):
-            # Once the block is gone nothing asks for the restart again; wait for a settled ksmtuned.
+            # Without a settled state the restart could be missed; wait for one.
             raise Converging('KSM_TUNED_STATE_UNSETTLED')
-        try:
-            content = remove_config(existing)
-        except NativeKsmConfigError as exc:
-            raise Rejected(str(exc))
-        self._publish_ksm_config(content)
-        if tuned == 'active':
+        if managed:
+            try:
+                content = remove_config(existing)
+            except NativeKsmConfigError as exc:
+                raise Rejected(str(exc))
+            if tuned == 'active':
+                self._atomic_write(restart, b'')
+            self._publish_ksm_config(content)
+        if tuned == 'active' and os.path.exists(restart):
             subprocess.check_call(['systemctl', 'restart', self.KSM_TUNED_UNIT])
+        # A stopped ksmtuned reads the file when it starts.
+        if os.path.exists(restart):
+            os.remove(restart)
 
     def _publish_ksm_config(self, content):
         mode = stat.S_IMODE(os.stat(self.KSM_CONF).st_mode) if os.path.exists(self.KSM_CONF) else 0o644
@@ -1770,8 +1777,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 request_id = 'backend-%d-%s' % (generation, str(command.get('candidateId', ''))[-16:])
                 if receipt.get('request_id') == request_id and receipt.get('stage') == 'APPLIED':
                     if not self._same_backend_preparation(receipt, command):
-                        # The same request id on another boot, disk or capacity: its success is not this one.
+                        # The same request id on another boot, disk, capacity or pool: its success is not this one.
                         raise Rejected('BACKEND_MAINTENANCE_REQUEST_CONFLICT')
+                    if not self._prepared_backend_current(receipt, command['hostUuid']):
+                        raise Rejected('BACKEND_NOT_CURRENT')
                     reply.update({'success': True, 'status': 'Succeeded', 'state': {'maintenance': receipt}})
                 else:
                     inventory = self._writeback_inventory(command['hostUuid'])
@@ -1804,7 +1813,17 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         target = receipt.get('target_identity') or {}
         return (receipt.get('candidate_id') == command.get('candidateId') and
                 receipt.get('host_boot_id') == (command.get('expectedHostBootId') or self._current_boot_id()) and
-                target.get('capacity_bytes') == command.get('backendCapacityBytes'))
+                target.get('capacity_bytes') == command.get('backendCapacityBytes') and
+                (receipt.get('pool_generation') or 'none') == command.get('expectedPoolGeneration') and
+                command.get('resetConfirmed') is True)
+
+    def _prepared_backend_current(self, receipt, host_uuid):
+        """A repeated request succeeds only while the disk it prepared is still a prepared backend."""
+        target = receipt.get('target_identity') or {}
+        device, path = target.get('canonical_device'), target.get('file_path')
+        return any(isinstance(item, dict) and item.get('writebackReady') is True and
+                   ((device and item.get('device') == device) or (path and item.get('path') == path))
+                   for item in self._writeback_inventory(host_uuid).get('candidates') or [])
 
     def _stop_service_without_pool(self, inventory):
         """A service without a pool holds no VM memory; stop it for the offline step, as a drain does."""

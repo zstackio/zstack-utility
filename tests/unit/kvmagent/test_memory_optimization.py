@@ -209,6 +209,29 @@ def test_unmanaged_ksm_keeps_the_block_until_ksmtuned_settles(host, tmp_path, mo
     assert commands == [['systemctl', 'restart', plugin.KSM_TUNED_UNIT]]
 
 
+def test_unmanaged_ksm_restarts_ksmtuned_again_after_a_failed_restart(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    conf = tmp_path / 'ksmtuned.conf'
+    conf.write_text(ksm_native.render_config('KSM_MONITOR_INTERVAL=60\n', 1, 2000, 20))
+    monkeypatch.setattr(plugin, 'KSM_CONF', str(conf))
+    monkeypatch.setattr(plugin, 'KSM_LOCK', str(tmp_path / 'lock' / 'ksm.lock'))
+    monkeypatch.setattr(plugin, '_native_service_state', lambda unit, default: 'active')
+    commands = []
+
+    def restart(argv):
+        commands.append(argv)
+        if len(commands) == 1:
+            raise module.subprocess.CalledProcessError(1, argv)
+    monkeypatch.setattr(module.subprocess, 'check_call', restart)
+    with pytest.raises(module.subprocess.CalledProcessError):
+        MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    # The block is already gone; the next pass still restarts the ksmtuned that kept the old settings.
+    assert conf.read_text() == 'KSM_MONITOR_INTERVAL=60\n'
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    assert commands == [['systemctl', 'restart', plugin.KSM_TUNED_UNIT]] * 2
+
+
 @pytest.mark.parametrize('writeback, running', [(None, False), (False, False), (False, True)])
 def test_unmanaged_zram_leaves_reclaim_as_it_is(host, writeback, running):
     plugin, service, world = host
@@ -827,8 +850,8 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
     plugin, service, world = host
     world['unit'] = 'inactive'
     world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED, 'pool_generation': POOL}
-    monkeypatch.setattr(plugin, '_writeback_inventory',
-                        lambda host_uuid: {'canPrepare': True, 'poolGeneration': POOL})
+    monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {
+        'canPrepare': True, 'poolGeneration': POOL, 'candidates': [{'device': '/dev/vdb', 'writebackReady': True}]})
     built = []
     monkeypatch.setattr(module, 'build_backend_maintenance_request',
                         lambda inventory, preparation: built.append(preparation) or {'request_id': preparation['requestId']})
@@ -858,19 +881,38 @@ def applied_backend_receipt(request_id, **changes):
     return receipt
 
 
-@pytest.mark.parametrize('changes', [{'host_boot_id': 'earlier-boot'},
-                                     {'target_identity': {'canonical_device': '/dev/vdb', 'capacity_bytes': 2 << 30}},
-                                     {'candidate_id': 'candidate:' + 'e' * 48 + 'd' * 16}])
-def test_an_applied_preparation_answers_only_the_same_request(host, changes):
+@pytest.mark.parametrize('changes, request_changes', [
+    ({'host_boot_id': 'earlier-boot'}, {}),
+    ({'target_identity': {'canonical_device': '/dev/vdb', 'capacity_bytes': 2 << 30}}, {}),
+    ({'candidate_id': 'candidate:' + 'e' * 48 + 'd' * 16}, {}),
+    ({'pool_generation': 'e' * 64}, {}),
+    ({}, {'resetConfirmed': False})])
+def test_an_applied_preparation_answers_only_the_same_request(host, changes, request_changes):
     plugin, service, world = host
     request_id = 'backend-20-' + 'd' * 16
     service.receipts['backend'] = applied_backend_receipt(request_id, **changes)
     command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
                'expectedHostBootId': 'boot', 'expectedPoolGeneration': POOL, 'backendCapacityBytes': 1 << 30,
                'resetConfirmed': True}
-    # The same request id on another boot, disk or capacity is not this request's success.
+    command.update(request_changes)
+    # The same request id on another boot, disk, capacity or pool, or unconfirmed, is not this request's success.
     result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
     assert result['status'] == 'Failed' and result['reasonCode'] == 'BACKEND_MAINTENANCE_REQUEST_CONFLICT', result
+    assert world['started'] == []
+
+
+@pytest.mark.parametrize('candidates', [[], [{'device': '/dev/vdb', 'writebackReady': False, 'state': 'DISCONNECTED'}]])
+def test_an_applied_preparation_whose_disk_is_no_longer_the_backend_fails(host, monkeypatch, candidates):
+    plugin, service, world = host
+    request_id = 'backend-20-' + 'd' * 16
+    service.receipts['backend'] = applied_backend_receipt(request_id)
+    monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {'candidates': candidates})
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': POOL, 'backendCapacityBytes': 1 << 30,
+               'resetConfirmed': True}
+    # The earlier success does not hold once its disk is gone or no longer prepared.
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'BACKEND_NOT_CURRENT', result
     assert world['started'] == []
 
 

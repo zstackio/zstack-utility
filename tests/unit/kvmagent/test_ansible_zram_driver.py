@@ -52,7 +52,7 @@ def installer():
         releasever='alinux4', _memory_supported_host=lambda: True,
         virtenv_path='/opt/zstack/virtualenv', shlex=shlex, os=os, re=re,
         run_remote_command=run, host_post_info={}, zstack_repo='zstack-local',
-        handle_ansible_info=lambda *args: messages.append(args), json=json)
+        handle_ansible_info=lambda *args: messages.append(args), json=json, logger=Mock())
     module = ast.Module(body=nodes, type_ignores=[])
     exec(compile(ast.fix_missing_locations(module), str(path), 'exec'), scope)
     return scope['check_alinux_zram_driver'], calls, messages
@@ -132,6 +132,9 @@ def test_rejects_ambiguous_repo_builds_before_install(installer):
     check()
     assert not any(' install ' in command for command in calls)
     assert messages
+    # A failed optional step is an error in the deploy log while the deploy itself goes on.
+    assert all(message[2] == 'ERROR' for message in messages)
+    check.__globals__['logger'].error.assert_called_with(messages[-1][0])
 
 
 def test_accepts_split_kernel_owner_and_exact_provider_with_nonzero_epoch(installer):
