@@ -2005,10 +2005,13 @@ is_install_general_libs_rh(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     # Fix upgrade dependency conflicts
+    local nodejs_version
+    if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" || "$ZSTACK_RELEASE" = "h2203sp1o" || "$ZSTACK_RELEASE" = "alinux4" ]] &&
+       nodejs_version=$(rpm -q --qf '%{VERSION}' nodejs 2>/dev/null) && [ "${nodejs_version%%.*}" -lt 24 ]; then
+        yum remove -y nodejs >>$ZSTACK_INSTALL_LOG 2>&1 || fail "remove old nodejs failed."
+    fi
     if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" ]]; then
-      vercomp "20.16.0" `rpm -q nodejs | awk -F '-' '{print $2}'`
-      [ $? -eq 1 ] && removeable="nodejs" || removeable=""
-      yum remove -y redis5 $removeable >>$ZSTACK_INSTALL_LOG 2>&1
+        yum remove -y redis5 >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     # Just install what is not installed
@@ -2062,7 +2065,7 @@ is_install_general_libs_rh(){
         deps_list="${deps_list} java-21-openjdk-devel"
     fi
 
-    always_update_list="openssh"
+    always_update_list="openssh nodejs"
     if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" ]] && rpm -q keepalived >/dev/null 2>&1; then
         always_update_list="${always_update_list} keepalived"
     fi
