@@ -1152,6 +1152,113 @@ def _memory_supported_host():
         'alibaba cloud linux pro edition 4', 'alibaba openanolis edition 4')
 
 
+def _validate_memory_rpm_inventory(inventory):
+    """The package, installer, runtime binary, file list and Host profile declarations of the inventory."""
+    package = inventory['package']
+    source_pin = inventory['source']
+    filename = package['filename']
+    if (inventory.get('schemaVersion') != 3 or
+            inventory.get('trustModel') != 'content-hash-pinned-not-signed' or
+            package.get('name') != 'zstack-zram' or
+            package.get('architecture') != 'x86_64' or
+            not re.fullmatch(r'[0-9]+(?:\.[0-9]+)*', package.get('version', '')) or
+            not re.fullmatch(r'[A-Za-z0-9._+~-]+', package.get('release', '')) or
+            inventory.get('kernelOrModuleIncluded') is not False or
+            inventory.get('configNoreplace') is not True or
+            inventory.get('scriptletsEmpty') is not True or
+            inventory.get('requiredFiles') != sorted([
+                '/etc/zram-memory/config.json',
+                '/usr/lib/systemd/system/zram-memory.service',
+                '/usr/local/libexec/zram-efficiency',
+                '/usr/local/bin/zram-efficiencyctl',
+                '/usr/local/libexec/zstack-zram/zramctl',
+                '/usr/local/libexec/zstack-zram/bootstrap-config',
+                '/usr/local/libexec/zstack/memory-optimization-bundle/bin/load-zram-module',
+                '/usr/local/libexec/zstack/memory-optimization-bundle/bin/check-qualification',
+                '/usr/share/zstack-zram/config.json']) or
+            not re.fullmatch(r'zstack-zram-[0-9][A-Za-z0-9._+~-]*\.rpm', filename) or
+            not re.fullmatch(r'[0-9a-f]{64}', package.get('sha256', '')) or
+            not isinstance(package.get('bytes'), int) or package['bytes'] <= 0 or
+            not re.fullmatch(r'[0-9a-f]{40}', source_pin.get('sourceRevision', '')) or
+            not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('dirtyPatchSha256', '')) or
+            not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('sourceSnapshotSha256', '')) or
+            not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('buildManifestSha256', '')) or
+            not re.fullmatch(r'[0-9a-f]{64}', inventory.get('systemdUnitSha256', ''))):
+        raise ValueError('RPM_INVENTORY_INVALID')
+    installer = inventory.get('installer')
+    if (not isinstance(installer, dict) or
+            installer.get('filename') != 'install_memory_optimization_rpm.py' or
+            not isinstance(installer.get('bytes'), int) or installer['bytes'] <= 0 or
+            not re.fullmatch(r'[0-9a-f]{64}', installer.get('sha256', ''))):
+        raise ValueError('RPM_INSTALLER_INVENTORY_INVALID')
+    runtime_binaries = inventory.get('runtimeBinaries')
+    required_runtime_binaries = {
+        '/usr/local/libexec/zram-efficiency',
+        '/usr/local/bin/zram-efficiencyctl',
+    }
+    if (not isinstance(runtime_binaries, dict) or
+            set(runtime_binaries) != required_runtime_binaries or
+            any(not isinstance(item, dict) or
+                not isinstance(item.get('bytes'), int) or item['bytes'] <= 0 or
+                not re.fullmatch(r'[0-9a-f]{64}', item.get('sha256', ''))
+                for item in runtime_binaries.values())):
+        raise ValueError('RPM_RUNTIME_BINARY_INVENTORY_INVALID')
+    rpm_files = inventory.get('rpmFiles')
+    rpm_files_sha = inventory.get('rpmFilesSha256')
+    if (not isinstance(rpm_files, list) or not rpm_files or
+            any(not isinstance(path, str) or not path.startswith('/') or
+                '\n' in path or '\r' in path or '/..' in path.split('/')
+                for path in rpm_files) or
+            rpm_files != sorted(set(rpm_files)) or
+            not set(inventory['requiredFiles']).issubset(set(rpm_files)) or
+            not required_runtime_binaries.issubset(set(rpm_files)) or
+            not re.fullmatch(r'[0-9a-f]{64}', rpm_files_sha or '') or
+            hashlib.sha256((''.join(path + '\n' for path in rpm_files)).encode()).hexdigest() != rpm_files_sha):
+        raise ValueError('RPM_FILE_INVENTORY_INVALID')
+    profiles = inventory.get('supportedHostProfiles')
+    if not isinstance(profiles, list) or not profiles or len(set(profiles)) != len(profiles):
+        raise ValueError('RPM_HOST_PROFILE_INVENTORY_INVALID')
+    if any(not isinstance(item, str) or
+           not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', item) for item in profiles):
+        raise ValueError('RPM_HOST_PROFILE_INVENTORY_INVALID')
+
+
+def _validate_memory_rpm_build_manifest(inventory, build_manifest, build_manifest_sha):
+    """The BUILD-MANIFEST must be the one the inventory pins, for the same package and service unit."""
+    package = inventory['package']
+    source_pin = inventory['source']
+    if (build_manifest_sha != source_pin['buildManifestSha256'] or
+            build_manifest.get('schemaVersion') != 1 or
+            build_manifest.get('package') != 'zstack-zram' or
+            build_manifest.get('rpmVersion') != package['version'] or
+            not (build_manifest.get('rpmRelease') == package['release'] or
+                 package['release'].startswith(build_manifest.get('rpmRelease', '') + '.')) or
+            build_manifest.get('sourceRevision') != source_pin['sourceRevision'] or
+            build_manifest.get('sourceSnapshotSha256') != source_pin['sourceSnapshotSha256'] or
+            build_manifest.get('dirtyPatchSha256') != source_pin['dirtyPatchSha256']):
+        raise ValueError('BUILD_MANIFEST_PIN_MISMATCH')
+    unit_records = [item for item in build_manifest.get('sourceFiles', [])
+                    if item.get('path') == 'service/packaging/systemd/zram-memory.service']
+    if len(unit_records) != 1 or unit_records[0].get('sha256') != inventory['systemdUnitSha256']:
+        raise ValueError('RPM_UNIT_SOURCE_PIN_MISMATCH')
+
+
+def _validate_memory_rpm_installer(source, installer):
+    """The bundled installer must match the size and hash the inventory declares; returns its path."""
+    installer_path = os.path.join(source, installer['filename'])
+    if os.path.islink(installer_path) or not os.path.isfile(installer_path):
+        raise ValueError('RPM_INSTALLER_MISSING_OR_SYMLINK')
+    if os.path.getsize(installer_path) != installer['bytes']:
+        raise ValueError('RPM_INSTALLER_SIZE_MISMATCH')
+    installer_digest = hashlib.sha256()
+    with open(installer_path, 'rb') as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b''):
+            installer_digest.update(block)
+    if installer_digest.hexdigest() != installer['sha256']:
+        raise ValueError('RPM_INSTALLER_SHA256_MISMATCH')
+    return installer_path
+
+
 def _memory_optimization_rpm_input():
     """Validate the service RPM declaration before any Host repository install."""
     source = memory_optimization_bundle
@@ -1171,105 +1278,20 @@ def _memory_optimization_rpm_input():
             raise ValueError('BUILD_MANIFEST_MISSING_OR_SYMLINK')
         with open(build_manifest_path) as stream:
             build_manifest = json.load(stream)
-        package = inventory['package']
-        source_pin = inventory['source']
-        filename = package['filename']
-        if (inventory.get('schemaVersion') != 3 or
-                inventory.get('trustModel') != 'content-hash-pinned-not-signed' or
-                package.get('name') != 'zstack-zram' or
-                package.get('architecture') != 'x86_64' or
-                not re.fullmatch(r'[0-9]+(?:\.[0-9]+)*', package.get('version', '')) or
-                not re.fullmatch(r'[A-Za-z0-9._+~-]+', package.get('release', '')) or
-                inventory.get('kernelOrModuleIncluded') is not False or
-                inventory.get('configNoreplace') is not True or
-                inventory.get('scriptletsEmpty') is not True or
-                inventory.get('requiredFiles') != sorted([
-                    '/etc/zram-memory/config.json',
-                    '/usr/lib/systemd/system/zram-memory.service',
-                    '/usr/local/libexec/zram-efficiency',
-                    '/usr/local/bin/zram-efficiencyctl',
-                    '/usr/local/libexec/zstack-zram/zramctl',
-                    '/usr/local/libexec/zstack-zram/bootstrap-config',
-                    '/usr/local/libexec/zstack/memory-optimization-bundle/bin/load-zram-module',
-                    '/usr/local/libexec/zstack/memory-optimization-bundle/bin/check-qualification',
-                    '/usr/share/zstack-zram/config.json']) or
-                not re.fullmatch(r'zstack-zram-[0-9][A-Za-z0-9._+~-]*\.rpm', filename) or
-                not re.fullmatch(r'[0-9a-f]{64}', package.get('sha256', '')) or
-                not isinstance(package.get('bytes'), int) or package['bytes'] <= 0 or
-                not re.fullmatch(r'[0-9a-f]{40}', source_pin.get('sourceRevision', '')) or
-                not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('dirtyPatchSha256', '')) or
-                not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('sourceSnapshotSha256', '')) or
-                not re.fullmatch(r'[0-9a-f]{64}', source_pin.get('buildManifestSha256', '')) or
-                not re.fullmatch(r'[0-9a-f]{64}', inventory.get('systemdUnitSha256', ''))):
-            raise ValueError('RPM_INVENTORY_INVALID')
-        installer = inventory.get('installer')
-        if (not isinstance(installer, dict) or
-                installer.get('filename') != 'install_memory_optimization_rpm.py' or
-                not isinstance(installer.get('bytes'), int) or installer['bytes'] <= 0 or
-                not re.fullmatch(r'[0-9a-f]{64}', installer.get('sha256', ''))):
-            raise ValueError('RPM_INSTALLER_INVENTORY_INVALID')
-        runtime_binaries = inventory.get('runtimeBinaries')
-        required_runtime_binaries = {
-            '/usr/local/libexec/zram-efficiency',
-            '/usr/local/bin/zram-efficiencyctl',
-        }
-        if (not isinstance(runtime_binaries, dict) or
-                set(runtime_binaries) != required_runtime_binaries or
-                any(not isinstance(item, dict) or
-                    not isinstance(item.get('bytes'), int) or item['bytes'] <= 0 or
-                    not re.fullmatch(r'[0-9a-f]{64}', item.get('sha256', ''))
-                    for item in runtime_binaries.values())):
-            raise ValueError('RPM_RUNTIME_BINARY_INVENTORY_INVALID')
-        rpm_files = inventory.get('rpmFiles')
-        rpm_files_sha = inventory.get('rpmFilesSha256')
-        if (not isinstance(rpm_files, list) or not rpm_files or
-                any(not isinstance(path, str) or not path.startswith('/') or
-                    '\n' in path or '\r' in path or '/..' in path.split('/')
-                    for path in rpm_files) or
-                rpm_files != sorted(set(rpm_files)) or
-                not set(inventory['requiredFiles']).issubset(set(rpm_files)) or
-                not required_runtime_binaries.issubset(set(rpm_files)) or
-                not re.fullmatch(r'[0-9a-f]{64}', rpm_files_sha or '') or
-                hashlib.sha256((''.join(path + '\n' for path in rpm_files)).encode()).hexdigest() != rpm_files_sha):
-            raise ValueError('RPM_FILE_INVENTORY_INVALID')
-        profiles = inventory.get('supportedHostProfiles')
-        if not isinstance(profiles, list) or not profiles or len(set(profiles)) != len(profiles):
-            raise ValueError('RPM_HOST_PROFILE_INVENTORY_INVALID')
-        if any(not isinstance(item, str) or
-               not re.fullmatch(r'[a-z0-9][a-z0-9._-]*', item) for item in profiles):
-            raise ValueError('RPM_HOST_PROFILE_INVENTORY_INVALID')
+        _validate_memory_rpm_inventory(inventory)
         with open(build_manifest_path, 'rb') as stream:
             build_manifest_sha = hashlib.sha256(stream.read()).hexdigest()
-        if (build_manifest_sha != source_pin['buildManifestSha256'] or
-                build_manifest.get('schemaVersion') != 1 or
-                build_manifest.get('package') != 'zstack-zram' or
-                build_manifest.get('rpmVersion') != package['version'] or
-                not (build_manifest.get('rpmRelease') == package['release'] or
-                     package['release'].startswith(build_manifest.get('rpmRelease', '') + '.')) or
-                build_manifest.get('sourceRevision') != source_pin['sourceRevision'] or
-                build_manifest.get('sourceSnapshotSha256') != source_pin['sourceSnapshotSha256'] or
-                build_manifest.get('dirtyPatchSha256') != source_pin['dirtyPatchSha256']):
-            raise ValueError('BUILD_MANIFEST_PIN_MISMATCH')
-        unit_records = [item for item in build_manifest.get('sourceFiles', [])
-                        if item.get('path') == 'service/packaging/systemd/zram-memory.service']
-        if len(unit_records) != 1 or unit_records[0].get('sha256') != inventory['systemdUnitSha256']:
-            raise ValueError('RPM_UNIT_SOURCE_PIN_MISMATCH')
+        _validate_memory_rpm_build_manifest(inventory, build_manifest, build_manifest_sha)
+        package = inventory['package']
+        filename = package['filename']
+        profiles = inventory['supportedHostProfiles']
+        installer = inventory['installer']
         profile = releasever
         if (host_info.host_arch != package['architecture'] or
                 not _memory_supported_host() or profile not in profiles):
             raise ValueError('RPM_HOST_ABI_PROFILE_UNSUPPORTED:%s:%s' %
                              (getattr(host_info, 'host_arch', ''), profile))
-        installer_path = os.path.join(source, installer['filename'])
-        if os.path.islink(installer_path) or not os.path.isfile(installer_path):
-            raise ValueError('RPM_INSTALLER_MISSING_OR_SYMLINK')
-        if os.path.getsize(installer_path) != installer['bytes']:
-            raise ValueError('RPM_INSTALLER_SIZE_MISMATCH')
-        installer_digest = hashlib.sha256()
-        with open(installer_path, 'rb') as stream:
-            for block in iter(lambda: stream.read(1024 * 1024), b''):
-                installer_digest.update(block)
-        if installer_digest.hexdigest() != installer['sha256']:
-            raise ValueError('RPM_INSTALLER_SHA256_MISMATCH')
+        installer_path = _validate_memory_rpm_installer(source, installer)
         if filename != '%s-%s-%s.%s.rpm' % (package['name'], package['version'],
                                            package['release'], package['architecture']):
             raise ValueError('RPM_FILENAME_IDENTITY_MISMATCH')
