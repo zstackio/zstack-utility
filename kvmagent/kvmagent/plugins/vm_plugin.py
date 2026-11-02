@@ -3660,8 +3660,25 @@ class Vm(object):
         def restore_from_file(conn):
             return conn.restoreFlags(path, self.domain_xml)
 
+        @LibvirtAutoReconnect
+        def define_xml(conn):
+            return conn.defineXML(self.domain_xml)
+
+        @LibvirtAutoReconnect
+        def destroy_domain(conn):
+            conn.lookupByName(self.uuid).destroy()
+
         logger.debug('restoring vm:\n%s' % self.domain_xml)
         restore_from_file()
+        try:
+            define_xml()
+        except Exception as e:
+            logger.warn('failed to define restored vm[uuid:%s], destroy it: %s' % (self.uuid, e))
+            try:
+                destroy_domain()
+            except Exception as destroy_error:
+                logger.warn('failed to destroy restored vm[uuid:%s]: %s' % (self.uuid, destroy_error))
+            raise
 
     def _patch_cpu_xml_from_saved_image(self, path):
         """Patch CPU XML for host-model VMs restoring from memory snapshot.
@@ -10498,6 +10515,25 @@ class VmPlugin(kvmagent.KvmAgent):
             valid = check_install_path_by_qmp(vmUuid, d.alias.name_, target_install_path)
             return (True, None) if valid else (False, "fail to find disk[install_path=%s] in VM[uuid=%s] by qemu-monitor-command" % (target_install_path, vmUuid))
 
+        def abort_unfinished_copy_job(domain):
+            job = domain.blockJobInfo(disk_name, 0)
+            if not job or job.get('type') != libvirt.VIR_DOMAIN_BLOCK_JOB_TYPE_COPY:
+                return False
+
+            logger.warn("abort unfinished block copy job of vm[uuid:%s] disk[%s]: %s" % (vmUuid, disk_name, job))
+            domain.blockJobAbort(disk_name, 0)
+            if not linux.wait_callback_success(lambda _: not domain.blockJobInfo(disk_name, 0), timeout=60):
+                raise kvmagent.KvmError("block copy job of vm[uuid:%s] disk[%s] still exists after abort"
+                                        % (vmUuid, disk_name))
+            return True
+
+        def pivoted_to_new_volume():
+            try:
+                return check_volume()[0]
+            except Exception as e:
+                logger.warn("failed to check volume of vm[uuid:%s] disk[%s]: %s" % (vmUuid, disk_name, e))
+                return False
+
         job_over = False
         @thread.AsyncThread
         @linux.retry(times=10, sleep_time=0.5)
@@ -10515,7 +10551,8 @@ class VmPlugin(kvmagent.KvmAgent):
             _touch_qmp_socket()
 
         logger.info("start copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
-        with BlockCopyDaemon(task_spec, get_vm_by_uuid(vmUuid).domain, disk_name):
+        domain = get_vm_by_uuid(vmUuid).domain
+        with BlockCopyDaemon(task_spec, domain, disk_name):
             bandwidth = ' --bandwidth {}'.format(task_spec.bandwidth) if task_spec.bandwidth > 0 else ''
             cmd = 'virsh blockcopy --domain {} {} --xml {} --pivot --wait --transient-job --reuse-external{}'.format(
                 vmUuid, disk_name, disk_xml, bandwidth)
@@ -10531,11 +10568,24 @@ class VmPlugin(kvmagent.KvmAgent):
                 elif "Unknown driver 'rbd'" in shell_cmd.stderr:
                     shell_cmd.stderr = 'the qemu version running on the vm is later than that on the host,' \
                                        ' upgrade the qemu running on the virtual machine and try again.'
-                logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, shell_cmd.stderr))
-                return False, shell_cmd.stderr
-            valid, errText = check_volume()
-            if not valid:
-                return False, errText
+                error = shell_cmd.stderr.strip()
+                if not error:
+                    rc = shell_cmd.return_code
+                    error = 'virsh blockcopy was killed by signal %d' % -rc if rc < 0 \
+                        else 'virsh blockcopy exited with return code %d' % rc
+                logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, error))
+                try:
+                    aborted = abort_unfinished_copy_job(domain)
+                except Exception as e:
+                    return False, '%s; %s' % (error, e)
+                if aborted or not pivoted_to_new_volume():
+                    return False, error
+                logger.warn("virsh blockcopy failed after vm[uuid:%s] disk[%s] pivoted to %s, treat it as success"
+                            % (vmUuid, disk_name, task_spec.newVolume.installPath))
+            else:
+                valid, errText = check_volume()
+                if not valid:
+                    return False, errText
 
         logger.info("completed copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
         return True, None
@@ -10699,10 +10749,17 @@ class VmPlugin(kvmagent.KvmAgent):
             return previous_install_path, new_volume_path, get_size(install_path)
 
         vm = get_vm_by_uuid(cmd.snapshotJobs[0].vmInstanceUuid, exception_if_not_existing=False)
+        vm_host_file_backup_jobs = getattr(cmd, 'vmHostFileBackupJobs', None)
+        # host files and disks must be captured at the same guest instant
+        pause_vm = bool(vm_host_file_backup_jobs) and vm is not None and vm.state == Vm.VM_STATE_RUNNING \
+            and not any(job.memory for job in cmd.snapshotJobs)
         try:
+            if pause_vm:
+                vm.pause()
+
             # backup vm host files (NvRam, TpmState, etc.) alongside snapshot
             try:
-                vm_host_file.backup_vm_host_files(getattr(cmd, 'vmHostFileBackupJobs', None))
+                vm_host_file.backup_vm_host_files(vm_host_file_backup_jobs)
             except Exception as e:
                 raise kvmagent.KvmError("failed to backup vm host files: %s" % str(e))
 
@@ -10734,6 +10791,13 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(error)
             rsp.success = False
+        finally:
+            if pause_vm:
+                try:
+                    vm.resume()
+                except Exception as e:
+                    logger.error('failed to resume vm[uuid:%s] after taking snapshots, the vm may stay paused '
+                                 'and needs to be resumed manually: %s' % (vm.uuid, e))
 
         touchQmpSocketWhenExists(cmd.snapshotJobs[0].vmInstanceUuid)
         return jsonobject.dumps(rsp)

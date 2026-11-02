@@ -5,7 +5,7 @@ import pipes
 import shutil
 import time
 
-from kvmagent.plugins.nvram import nvram_common, nvram_sblk, nvram_local
+from kvmagent.plugins.nvram import nvram_common, nvram_sblk, nvram_local, nvram_secure_boot
 from kvmagent.plugins.vms import vm_host_file
 
 from zstacklib.utils import bash
@@ -132,10 +132,14 @@ class NvRamHostFile(object):
         # If file size > 10KB, use read_vm_host_file_targz, else read_vm_host_file_base64
         try:
             file_size = os.path.getsize(result.path)
+            nvram_secure_boot.check_firmware_volume(result.path)
             if file_size > 10 * 1024:  # 10KB
                 vm_host_file.read_vm_host_file_targz(result)
             else:
                 vm_host_file.read_vm_host_file_base64(result)
+        except nvram_secure_boot.InvalidFirmwareVolumeError as e:
+            result.error = 'invalid nvram file %s: %s' % (result.path, e)
+            logger.warning(result.error)
         except OSError as e:
             result.error = 'failed to read nvram file: ' + str(e)
             logger.warning('failed to read nvram file %s: %s' % (result.path, str(e)))
