@@ -209,6 +209,32 @@ def test_invalid_var_store_fails_only_when_secure_boot_is_requested(paths):
     assert not os.path.exists(nvram)
 
 
+@pytest.mark.parametrize('secure_boot', [True, False])
+def test_corrupted_existing_nvram_fails_the_start_and_keeps_file(paths, secure_boot):
+    template, nvram = paths
+    with open(nvram, 'wb') as fd:
+        fd.write(b'not an ovmf variable store\n')
+
+    with pytest.raises(Exception, match='invalid OVMF variable store %s' % nvram):
+        sb.prepare_secure_boot_nvram(nvram, template, secure_boot)
+    assert read_file(nvram) == b'not an ovmf variable store\n'
+
+
+def test_firmware_volume_check(paths):
+    template, nvram = paths
+    sb.check_firmware_volume(template)
+
+    with open(nvram, 'wb') as fd:
+        fd.write(b'x' * 53)
+    with pytest.raises(Exception, match='not an OVMF firmware volume'):
+        sb.check_firmware_volume(nvram)
+
+    with open(nvram, 'wb') as fd:
+        fd.write(read_file(template)[:0x1000])
+    with pytest.raises(Exception, match='truncated'):
+        sb.check_firmware_volume(nvram)
+
+
 def test_full_nvram_without_keys_refuses_secure_boot_and_keeps_file(paths):
     template, nvram = paths
     store = sb.OvmfVariableStore(build_blank_var_store())

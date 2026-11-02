@@ -21,6 +21,7 @@ EFI_CERT_SHA256_GUID = 'c1c41626-504c-4092-aca9-41f936934328'
 MICROSOFT_SIGNATURE_OWNER_GUID = '77fa9abd-0359-4d32-bd60-28f4e78f784b'
 ZSTACK_SIGNATURE_OWNER_GUID = 'c936afa6-f055-43ef-bd6e-73c3ae49fa94'
 
+FV_LENGTH_OFFSET = 32
 FV_SIGNATURE = b'_FVH'
 FV_SIGNATURE_OFFSET = 40
 FV_HEADER_LENGTH_OFFSET = 48
@@ -45,6 +46,10 @@ SECURE_BOOT_DISABLE = 0
 
 
 class VariableStoreFullError(Exception):
+    pass
+
+
+class InvalidFirmwareVolumeError(Exception):
     pass
 
 
@@ -221,12 +226,28 @@ class OvmfVariableStore(object):
             raise
 
 
+def check_firmware_volume(path):
+    # type: (str) -> None
+    size = os.path.getsize(path)
+    with open(path, 'rb') as fd:
+        header = fd.read(FV_HEADER_LENGTH_OFFSET)
+    if len(header) < FV_HEADER_LENGTH_OFFSET or header[FV_SIGNATURE_OFFSET:FV_SIGNATURE_OFFSET + 4] != FV_SIGNATURE:
+        raise InvalidFirmwareVolumeError('not an OVMF firmware volume')
+    fv_length = struct.unpack_from('<Q', header, FV_LENGTH_OFFSET)[0]
+    if fv_length > size:
+        raise InvalidFirmwareVolumeError('truncated firmware volume: %d bytes expected, %d bytes found'
+                                         % (fv_length, size))
+
+
 def prepare_secure_boot_nvram(nvram_path, template_path, secure_boot):
     # type: (str, str, bool) -> None
-    source_path = nvram_path if os.path.exists(nvram_path) else template_path
+    nvram_exists = os.path.exists(nvram_path)
+    source_path = nvram_path if nvram_exists else template_path
     try:
         store = OvmfVariableStore.load(source_path)
     except Exception as e:
+        if nvram_exists:
+            raise Exception('invalid OVMF variable store %s: %s' % (nvram_path, e))
         if secure_boot:
             raise Exception('cannot enable UEFI secure boot, invalid OVMF variable store %s: %s' % (source_path, e))
         logger.warn('skip preparing secure boot state of nvram %s: %s' % (source_path, e))

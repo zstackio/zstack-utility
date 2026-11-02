@@ -3872,9 +3872,21 @@ class Vm(object):
         def define_xml(conn):
             return conn.defineXML(self.domain_xml)
 
+        @LibvirtAutoReconnect
+        def destroy_domain(conn):
+            conn.lookupByName(self.uuid).destroy()
+
         logger.debug('restoring vm:\n%s' % self.domain_xml)
-        define_xml()
         restore_from_file()
+        try:
+            define_xml()
+        except Exception as e:
+            logger.warn('failed to define restored vm[uuid:%s], destroy it: %s' % (self.uuid, e))
+            try:
+                destroy_domain()
+            except Exception as destroy_error:
+                logger.warn('failed to destroy restored vm[uuid:%s]: %s' % (self.uuid, destroy_error))
+            raise
 
     def _remove_legacy_virtio_blk_discard_if_absent_in_saved_image(self, path):
         qemu_namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
@@ -11556,10 +11568,17 @@ class VmPlugin(kvmagent.KvmAgent):
             return previous_install_path, new_volume_path, get_size(install_path)
 
         vm = get_vm_by_uuid(cmd.snapshotJobs[0].vmInstanceUuid, exception_if_not_existing=False)
+        vm_host_file_backup_jobs = getattr(cmd, 'vmHostFileBackupJobs', None)
+        # host files and disks must be captured at the same guest instant
+        pause_vm = bool(vm_host_file_backup_jobs) and vm is not None and vm.state == Vm.VM_STATE_RUNNING \
+            and not any(job.memory for job in cmd.snapshotJobs)
         try:
+            if pause_vm:
+                vm.pause()
+
             # backup vm host files (NvRam, TpmState, etc.) alongside snapshot
             try:
-                vm_host_file.backup_vm_host_files(getattr(cmd, 'vmHostFileBackupJobs', None))
+                vm_host_file.backup_vm_host_files(vm_host_file_backup_jobs)
             except Exception as e:
                 raise kvmagent.KvmError("failed to backup vm host files: %s" % str(e))
 
@@ -11591,6 +11610,13 @@ class VmPlugin(kvmagent.KvmAgent):
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(error)
             rsp.success = False
+        finally:
+            if pause_vm:
+                try:
+                    vm.resume()
+                except Exception as e:
+                    logger.error('failed to resume vm[uuid:%s] after taking snapshots, the vm may stay paused '
+                                 'and needs to be resumed manually: %s' % (vm.uuid, e))
 
         touchQmpSocketWhenExists(cmd.snapshotJobs[0].vmInstanceUuid)
         return jsonobject.dumps(rsp)
