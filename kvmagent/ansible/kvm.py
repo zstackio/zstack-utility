@@ -131,16 +131,16 @@ def check_nested_kvm(host_post_info):
     modprobe_arg = ModProbeArg()
     if 'intel' in host_info.cpu_info or 'zhaoxin' in host_info.cpu_info:
         # reload kvm_intel for enable nested kvm
+        command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_intel nested=1' >  /etc/modprobe.d/kvm-nested.conf"
+        run_remote_command(command, host_post_info)
         if enabled_nested_flag is False:
-            command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_intel nested=1' >  /etc/modprobe.d/kvm-nested.conf"
-            run_remote_command(command, host_post_info)
             command = "modprobe -r kvm_intel"
             run_remote_command(command, host_post_info, return_status=True)
         modprobe_arg.name = 'kvm_intel'
     elif 'amd' in host_info.cpu_info or 'hygon' in host_info.cpu_info:
+        command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_amd nested=1' >  /etc/modprobe.d/kvm-nested.conf"
+        run_remote_command(command, host_post_info)
         if enabled_nested_flag is False:
-            command = "mkdir -p /etc/modprobe.d/ && echo 'options kvm_amd nested=1' >  /etc/modprobe.d/kvm-nested.conf"
-            run_remote_command(command, host_post_info)
             command = "modprobe -r kvm_amd"
             run_remote_command(command, host_post_info, return_status=True)
         modprobe_arg.name = 'kvm_amd'
