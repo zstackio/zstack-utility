@@ -647,6 +647,7 @@ class VolumeCacheCancelCase(unittest.TestCase):
         with patch.object(volume_cache_plugin.CacheProcessor, "is_instantiated", new_callable=PropertyMock, return_value=True), \
                 patch.object(volume_cache_plugin.CacheProcessor, "install_path", new_callable=PropertyMock, return_value="/cache/volume.qcow2"), \
                 patch.object(volume_cache_plugin.qemu_img, "get_qcow2_bitmaps", return_value=[{"name": "block-cache"}]), \
+                patch.object(volume_cache_plugin.qemu_img, "QemuImgOutputFormat", side_effect=lambda fmt: _Obj(value=fmt)), \
                 patch.object(volume_cache_plugin.lvm, "RecursiveOperateLv", return_value=_LvSession(), create=True) as operate_lv, \
                 patch.object(volume_cache_plugin.qemu_img, "get_check_result", return_value=_Obj(image_end_offset=100)), \
                 patch.object(volume_cache_plugin.linux, "qcow2_get_cluster_size", return_value=131072), \
