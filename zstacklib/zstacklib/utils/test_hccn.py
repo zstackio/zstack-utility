@@ -1,4 +1,5 @@
 import subprocess
+import threading
 
 import pytest
 
@@ -88,3 +89,41 @@ def test_link_query_failure_keeps_the_survey_and_marks_status_unknown():
 
     assert hccn.collect_devices(_single_card(fail))[0]["linkStatus"] == "UNKNOWN"
     assert hccn.collect_devices(_single_card(lambda command: "unexpected\n"))[0]["linkStatus"] == "UNKNOWN"
+
+
+def test_only_up_and_down_are_reported_as_link_states():
+    # The control plane only trusts UP; any other word must not look like a known state.
+    assert hccn.collect_devices(_single_card(lambda command: "link status: ERROR\n"))[0]["linkStatus"] == "UNKNOWN"
+
+
+def test_link_tool_that_cannot_start_does_not_abort_the_survey():
+    def missing(command):
+        raise FileNotFoundError(command[0])
+
+    assert hccn.collect_devices(_single_card(missing))[0]["linkStatus"] == "UNKNOWN"
+
+
+def test_link_queries_run_together_so_slow_cards_do_not_add_up():
+    # The capacity page surveys on every change; one timeout per card in sequence would stall it.
+    ids = ["0", "1", "2", "3"]
+    together = threading.Barrier(len(ids), timeout=5)
+
+    def output(*command):
+        if command == ("npu-smi", "info", "-l"):
+            return "".join("NPU ID: %s\n" % i for i in ids)
+        if command[0] == "npu-smi":
+            return "Serial Number : card-%s\nPCIe Bus Info : 0000:0%s:00.0\n" % (command[-1], command[-1])
+        if command[3] == "-link":
+            together.wait()
+            return "link status: UP\n"
+        return "ipaddr:172.20.9.%s\nnetmask:255.255.0.0\n" % (60 + int(command[2]))
+
+    assert [d["linkStatus"] for d in hccn.collect_devices(output)] == ["UP"] * len(ids)
+
+
+def test_unreadable_npu_list_keeps_the_driver_message():
+    def output(*command):
+        raise subprocess.CalledProcessError(191, command, output="dcmi module initialize failed. ret is -8001\n")
+
+    with pytest.raises(RuntimeError, match="191: dcmi module initialize failed"):
+        hccn.collect_devices(output)
