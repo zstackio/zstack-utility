@@ -112,3 +112,16 @@ def test_missing_writeback_interfaces_do_not_disable_base_driver(monkeypatch):
     assert result['supported'] is True
     assert result['accountingSupported'] is True
     assert result['writebackSupported'] is False
+
+
+def test_a_failed_observation_names_the_step_without_its_output(monkeypatch):
+    def run(argv):
+        raise zram_driver.subprocess.CalledProcessError(2, argv, output='secret output')
+
+    monkeypatch.setattr(zram_driver, '_read', lambda path: 'ID=alinux\nVERSION_ID="4.0"\n')
+    monkeypatch.setattr(zram_driver, '_run', run)
+    monkeypatch.setattr(zram_driver.os.path, 'exists', lambda path: False)
+    result = zram_driver.inspect(kernel=KERNEL, architecture='x86_64')
+    assert result['reasonCode'] == 'ZRAM_DRIVER_OBSERVATION_FAILED'
+    assert result['observationError'] == 'CalledProcessError modinfo', result
+    assert 'secret' not in repr(result)

@@ -168,11 +168,25 @@ def inspect(release=None, architecture=None, kernel=None, read=None, run=None,
         result['writebackSupported'] = all(
             exists('/sys/block/zram0/' + name) for name in writeback_interfaces)
         result.update(supported=True, reasonCode='SUPPORTED')
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
         # Preserve already collected disk/loaded facts, never raw command
         # output or an exception string that might contain unrelated data.
-        result.update(supported=False, safeToLoad=False, reasonCode='ZRAM_DRIVER_OBSERVATION_FAILED')
+        result.update(supported=False, safeToLoad=False, reasonCode='ZRAM_DRIVER_OBSERVATION_FAILED',
+                      observationError=_observation_error(exc))
     return result
+
+
+def _observation_error(exc):
+    """The failed step and exception type, without command output: the command name or file of the step."""
+    if isinstance(exc, subprocess.SubprocessError):
+        argv = getattr(exc, 'cmd', None) or ['']
+        step = os.path.basename(argv[0] if isinstance(argv, (list, tuple)) else str(argv).split()[0])
+        return '%s %s' % (type(exc).__name__, step)
+    if isinstance(exc, OSError):
+        return '%s %s' % (type(exc).__name__, exc.filename or '')
+    # Only this module's own reason codes; a parse error could carry read data.
+    message = str(exc)
+    return 'ValueError %s' % (message if re.fullmatch(r'[A-Z_]+', message) else '')
 
 
 def main():

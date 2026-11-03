@@ -108,7 +108,8 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
         raise ValueError('HOST_PROFILE_INVALID')
 
     try:
-        build = json.load(open(build_manifest_path))
+        with open(build_manifest_path) as stream:
+            build = json.load(stream)
     except (IOError, OSError, ValueError):
         raise ValueError('BUILD_MANIFEST_INVALID')
     if snapshot_sha is None:
@@ -190,9 +191,9 @@ def stage(rpm_path, build_manifest_path, output, snapshot_sha, dirty_patch_sha,
         'configNoreplace': True,
         'scriptletsEmpty': True,
     }
-    open(os.path.join(output, 'rpm-inventory.json'), 'w').write(
-        json.dumps(inventory, sort_keys=True, indent=2,
-                   separators=(',', ': ')) + '\n')
+    with open(os.path.join(output, 'rpm-inventory.json'), 'w') as stream:
+        stream.write(json.dumps(inventory, sort_keys=True, indent=2,
+                                separators=(',', ': ')) + '\n')
     return inventory
 
 
