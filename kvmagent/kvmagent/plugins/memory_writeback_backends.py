@@ -23,6 +23,9 @@ SHARED_TRANSPORTS = ('iscsi', 'fc', 'fibre', 'fibrechannel', 'mpath',
                      'nvmeof', 'nvme-o-f', 'nvme-fc', 'nvme-tcp', 'nvme-rdma',
                      'tcp', 'rdma')
 LAYERED_TYPES = ('crypt', 'lvm', 'mpath', 'raid', 'raid0', 'raid1', 'raid10', 'raid5', 'raid6')
+# A candidate's state alone says whether it can back writeback and whether it already does.
+ELIGIBLE_STATES = ('NEEDS_OFFLINE_PREPARATION', 'PREPARED', 'ACTIVE')
+WRITEBACK_READY_STATES = ('PREPARED', 'ACTIVE')
 
 
 class _LocalFilesystem(object):
@@ -44,6 +47,16 @@ class _LocalFilesystem(object):
 
     def lstat(self, path):
         return os.lstat(path)
+
+
+def eligible(candidate):
+    """Whether the disk is fit to back writeback: blank and safe, or already prepared."""
+    return isinstance(candidate, dict) and candidate.get('state') in ELIGIBLE_STATES
+
+
+def writeback_ready(candidate):
+    """Whether the disk is prepared for the service to write back to."""
+    return isinstance(candidate, dict) and candidate.get('state') in WRITEBACK_READY_STATES
 
 
 def _run_command(argv, timeout=5):
@@ -474,8 +487,7 @@ def _prepared_file_candidate(prepared, fs, boot_id, now):
             'type': 'file', 'path': file_path, 'device': prepared.get('device'),
             'resource_uuid': prepared['resource_uuid'],
             'fingerprint': prepared['fingerprint'], 'capacity_bytes': prepared['capacity_bytes'],
-            'eligible': False, 'writeback_ready': False, 'state': 'DISCONNECTED',
-            'reasons': ['PREPARED_BACKEND_FILE_DISCONNECTED'], 'by_id_path': '',
+            'state': 'DISCONNECTED', 'reasons': ['PREPARED_BACKEND_FILE_DISCONNECTED'], 'by_id_path': '',
         }
     if canonical != file_path or stat.S_ISLNK(file_stat.st_mode):
         reasons.append('PREPARED_FILE_PATH_CHANGED')
@@ -499,16 +511,14 @@ def _prepared_file_candidate(prepared, fs, boot_id, now):
             'type': 'file', 'path': file_path, 'device': prepared.get('device'),
             'resource_uuid': prepared['resource_uuid'],
             'fingerprint': prepared['fingerprint'], 'capacity_bytes': prepared['capacity_bytes'],
-            'eligible': False, 'writeback_ready': False, 'state': 'IDENTITY_MISMATCH',
-            'reasons': sorted(set(reasons)), 'by_id_path': '',
+            'state': 'IDENTITY_MISMATCH', 'reasons': sorted(set(reasons)), 'by_id_path': '',
         }
     return {
         'type': 'file', 'path': file_path, 'device': prepared.get('device'),
         'resource_uuid': prepared['resource_uuid'],
         'fingerprint': prepared['fingerprint'], 'capacity_bytes': prepared['capacity_bytes'],
-        'eligible': True, 'writeback_ready': True, 'state': prepared['state'],
-        'reasons': [], 'by_id_path': '', 'identity': prepared['fingerprint'],
-        'active': prepared['active'], 'host_boot_id': boot_id,
+        'state': prepared['state'], 'reasons': [], 'by_id_path': '', 'identity': prepared['fingerprint'],
+        'host_boot_id': boot_id,
     }
 
 
@@ -566,7 +576,6 @@ def probe_writeback_backends(host_uuid=None, service_backend=None, service_confi
                 'path': prepared.get('file_path') or prepared['device'],
                 'device': prepared['device'], 'by_id_path': '',
                 'capacity_bytes': prepared['capacity_bytes'],
-                'eligible': False, 'writeback_ready': False,
                 'state': 'DISCONNECTED',
                 'reasons': ['PREPARED_BACKEND_NOT_FOUND'],
             })
@@ -672,8 +681,6 @@ def probe_writeback_backends(host_uuid=None, service_backend=None, service_confi
             'by_id_path': by_id_path,
             'capacity_bytes': row.get('size', 0),
             'host_boot_id': boot_id,
-            'eligible': not reasons,
-            'writeback_ready': False,
             'state': 'NEEDS_OFFLINE_PREPARATION' if not reasons else 'INELIGIBLE',
             'reasons': reasons if reasons else ['NEEDS_OFFLINE_PREPARATION'],
             'transport': str(row.get('tran') or '').strip().lower(),
@@ -709,21 +716,16 @@ def probe_writeback_backends(host_uuid=None, service_backend=None, service_confi
                     'identity': prepared['fingerprint'],
                     'fingerprint': prepared['fingerprint'],
                     'resource_uuid': prepared['resource_uuid'],
-                    'eligible': True,
-                    'writeback_ready': True,
                     'state': prepared['state'],
                     'reasons': [],
-                    'active': prepared['active'],
                 })
             else:
-                candidate['eligible'] = False
-                candidate['writeback_ready'] = False
                 candidate['state'] = 'IDENTITY_MISMATCH'
                 candidate['reasons'] = sorted(local_risks | set(
                     [] if matches else ['PREPARED_BACKEND_IDENTITY_MISMATCH']))
         if not (prepared and prepared.get('file_path') and
                 prepared.get('device') == local_identity['device'] and
-                candidate.get('writeback_ready')):
+                writeback_ready(candidate)):
             response['candidates'].append(candidate)
 
     if prepared and prepared.get('invalid'):
@@ -738,7 +740,6 @@ def probe_writeback_backends(host_uuid=None, service_backend=None, service_confi
                     'device': prepared['device'], 'resource_uuid': prepared['resource_uuid'],
                     'fingerprint': prepared['fingerprint'],
                     'capacity_bytes': prepared['capacity_bytes'],
-                    'eligible': False, 'writeback_ready': False,
                     'state': 'DISCONNECTED', 'by_id_path': '',
                     'reasons': ['PREPARED_BACKEND_NOT_FOUND'],
                 })
@@ -746,12 +747,10 @@ def probe_writeback_backends(host_uuid=None, service_backend=None, service_confi
         if prepared_file_device_ready:
             response['candidates'].append(prepared_file)
         else:
-            prepared_file['eligible'] = False
-            prepared_file['writeback_ready'] = False
             prepared_file['state'] = 'IDENTITY_MISMATCH'
             prepared_file['reasons'] = ['PREPARED_BACKEND_DEVICE_NOT_READY']
             response['candidates'].append(prepared_file)
     response['candidates'].sort(key=lambda candidate: (
-        0 if candidate.get('writeback_ready') else 1,
+        0 if writeback_ready(candidate) else 1,
         str(candidate.get('path') or '')))
     return _camelize(response)

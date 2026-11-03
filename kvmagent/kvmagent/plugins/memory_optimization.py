@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - Python 2 deployment baseline
     import httplib as stdlib_http
 
 from kvmagent import kvmagent
-from kvmagent.plugins.memory_writeback_backends import probe_writeback_backends
+from kvmagent.plugins.memory_writeback_backends import eligible, probe_writeback_backends, writeback_ready
 from kvmagent.plugins.memory_writeback_maintenance import (
     build_backend_maintenance_request, read_backend_maintenance_status)
 from kvmagent.plugins.memory_optimization_ksm_native import (
@@ -1691,10 +1691,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     candidate.get('reasons') == ['ACTIVE_BLOCK_HOLDERS'] and
                     self._held_only_by_zram(candidate)):
                 # The drained pool's own backend: the service re-verifies its identity.
-                candidate.update({'eligible': True, 'state': 'NEEDS_OFFLINE_PREPARATION',
+                candidate.update({'state': 'NEEDS_OFFLINE_PREPARATION',
                                   'reasons': ['NEEDS_OFFLINE_PREPARATION']})
-        if not any(isinstance(item, dict) and item.get('eligible') is True and
-                   item.get('state') == 'NEEDS_OFFLINE_PREPARATION'
+        if not any(isinstance(item, dict) and item.get('state') == 'NEEDS_OFFLINE_PREPARATION'
                    for item in inventory.get('candidates') or []):
             reasons.append('NO_ELIGIBLE_WRITEBACK_CANDIDATE')
         if observation_error:
@@ -1821,7 +1820,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """A repeated request succeeds only while the disk it prepared is still a prepared backend."""
         target = receipt.get('target_identity') or {}
         device, path = target.get('canonical_device'), target.get('file_path')
-        return any(isinstance(item, dict) and item.get('writebackReady') is True and
+        return any(writeback_ready(item) and
                    ((device and item.get('device') == device) or (path and item.get('path') == path))
                    for item in self._writeback_inventory(host_uuid).get('candidates') or [])
 
@@ -1840,8 +1839,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         inventory = self._writeback_inventory(self._load_host_uuid())
         previous = (config.get('backend') or {}).get('device')
         candidate = next((item for item in inventory.get('candidates') or []
-                          if isinstance(item, dict) and item.get('device') == previous and
-                          item.get('eligible') is True), None)
+                          if eligible(item) and item.get('device') == previous), None)
         if candidate is None or inventory.get('canPrepare') is not True:
             reasons = inventory.get('preparationReasons') or []
             raise Rejected(reasons[0] if reasons else 'DRAINED_BACKEND_NOT_ELIGIBLE')
@@ -1882,7 +1880,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                           if isinstance(item, dict) and device and item.get('device') == device and
                           item.get('device') == target.get('canonical_device') and
                           item.get('capacityBytes', item.get('capacity_bytes')) == target.get('capacity_bytes') and
-                          item.get('eligible') is True and self._same_backend_disk(item, recorded)), None)
+                          eligible(item) and self._same_backend_disk(item, recorded)), None)
         if candidate is None:
             raise Rejected('REBOOT_BACKEND_NOT_ELIGIBLE')
         if inventory.get('canPrepare') is not True:
