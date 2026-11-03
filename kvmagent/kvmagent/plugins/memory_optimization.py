@@ -21,7 +21,7 @@ import traceback
 import errno
 import fcntl
 import shutil
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 try:
     import http.client as stdlib_http
 except ImportError:  # pragma: no cover - Python 2 deployment baseline
@@ -90,6 +90,16 @@ def _accounting_wire_identity(value):
         else:
             result[key] = _accounting_wire_identity(item)
     return result
+
+
+@contextmanager
+def _opened(path, flags):
+    """A descriptor from os.open, closed when the block ends."""
+    descriptor = os.open(path, flags)
+    try:
+        yield descriptor
+    finally:
+        os.close(descriptor)
 
 
 def _product_vm_uuid(value):
@@ -314,11 +324,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 stream.flush()
                 os.fsync(stream.fileno())
             os.rename(temporary, path)
-            directory_fd = os.open(directory, os.O_RDONLY)
-            try:
+            with _opened(directory, os.O_RDONLY) as directory_fd:
                 os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
         except Exception:
             if os.path.exists(temporary):
                 os.unlink(temporary)
@@ -457,6 +464,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         return self._reply({'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid,
                             'state': self._observe()})
 
+    @kvmagent.replyerror
     def apply_request(self, req):
         return self._reply(self.apply(self._request_body(req)))
 
@@ -644,9 +652,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         data = b'' if method == 'GET' else json.dumps(command).encode('utf-8')
         if len(data) > self.request_bytes:
             raise IOError('memory service request too large')
-        conn = _UnixHTTPConnection(self.socket_path if control else self.monitor_socket_path,
-                                   timeout=self.communication_seconds)
-        try:
+        with closing(_UnixHTTPConnection(self.socket_path if control else self.monitor_socket_path,
+                                         timeout=self.communication_seconds)) as conn:
             conn.request(method, path, body=data,
                          headers={'Host': 'localhost', 'Content-Type': 'application/json',
                                   'Connection': 'close'})
@@ -658,8 +665,6 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if isinstance(result, dict):
                 result['_http_status'] = response.status
             return result
-        finally:
-            conn.close()
 
     def _service_raw(self, action, payload=None, resource=None):
         payload = dict(payload or {})
@@ -835,7 +840,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             except Exception as exc:
                 # Missing/old/unreachable service must not invent ZRAM support
                 # or hide the independently usable KSM interface.
-                logger.warn('the memory service did not report its reclaim qualification: %s' % exc)
+                logger.error('Host[%s] memory service did not report its reclaim qualification; ZRAM is not offered: %s\n%s'
+                             % (self._load_host_uuid(), exc, traceback.format_exc()))
         zram = bool(interfaces.get('zram_mm_stat') and interfaces.get('cgroupv2') and
                     interfaces.get('memory_reclaim') and qualification.get('supported') is True)
         # An installed but inactive service is started by the first ZRAM apply;
@@ -853,6 +859,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if driver.get('supported') is not True:
                 zram = False
                 reason = driver.get('reasonCode') or 'ZRAM_DRIVER_UNKNOWN'
+                if driver.get('observationError'):
+                    logger.error('Host[%s] ZRAM driver observation failed for kernel %s: %s'
+                                 % (self._load_host_uuid(), kernel, driver['observationError']))
         # Report the first missing host precondition; the later ones would hide it.
         missing = next((code for name, code in (('cgroupv2', 'UNSUPPORTED_CGROUP_MEMORY'),
                                                 ('memory_reclaim', 'UNSUPPORTED_MEMORY_RECLAIM'),
@@ -1121,8 +1130,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 if receipt.get('stage'):
                     return receipt
             except Exception as exc:
-                logger.warn('reading the %s maintenance receipt from the running service failed, reading it offline: %s'
-                            % (kind, exc))
+                logger.error('Host[%s] reading the %s maintenance receipt from the running service failed, '
+                             'reading it offline: %s\n%s' % (self._load_host_uuid(), kind, exc, traceback.format_exc()))
         argument = {'pool': '--zram-pool-preparation-status', 'backend': '--backend-maintenance-status'}[kind]
         try:
             receipt = json.loads(self._bounded_command_output(
@@ -1214,6 +1223,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             size += extra
         if batch:
             batches.append(batch)
+        unresolved = {}
         for batch in batches:
             try:
                 response = self.service_call('vm-identities', {'vm_uuids': batch})
@@ -1222,14 +1232,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             except Exception as exc:
                 # Present but unresolvable is not absent and is not an old
                 # generation. MN must refuse lifecycle changes for that VM.
-                logger.warn('the memory service did not resolve the identities of %d VMs: %s' % (len(batch), exc))
+                unresolved.update((key, str(exc)) for key in batch)
                 continue
             for key in batch:
                 identity = identities.get(key)
                 if not isinstance(identity, dict) or _product_vm_uuid(identity.get('uuid')) != key:
+                    unresolved[key] = 'no identity reported'
                     continue
                 generation = identity.get('instance_generation')
                 if not isinstance(generation, STRING_TYPES) or not generation:
+                    unresolved[key] = 'no instance generation reported'
                     continue
                 previous = native_vms.get(key) or {}
                 previous_identity = (previous.get('stats') or {}).get('identity') or {}
@@ -1238,6 +1250,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 item['instanceGeneration'] = generation
                 item['identity'] = _accounting_wire_identity(identity)
                 inventory[key] = item
+        if unresolved:
+            logger.error('Host[%s] memory service did not resolve the identities of %d of %d VMs (%s): %s'
+                         % (self._load_host_uuid(), len(unresolved), sum(len(batch) for batch in batches),
+                            ', '.join(sorted(unresolved)[:10]), '; '.join(sorted(set(unresolved.values())))))
         return inventory, True
 
     @staticmethod
@@ -1245,16 +1261,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """Running domains; the identity of each is resolved by the service."""
         try:
             import libvirt
-            conn = libvirt.openReadOnly(None)
-            try:
+            with closing(libvirt.openReadOnly(None)) as conn:
                 result = {}
                 for domain in conn.listAllDomains(0):
                     if domain.isActive():
                         vm_uuid = _product_vm_uuid(domain.UUIDString())
                         result[vm_uuid] = {'instanceGeneration': '%s:%s' % (vm_uuid, domain.ID())}
                 return result, True
-            finally:
-                conn.close()
         except Exception:
             return {}, False
 
@@ -1706,7 +1719,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._remember_backend_identity(inventory)
         except (IOError, OSError) as exc:
             # Without a record a reboot does not reset the disk; the query itself still answers.
-            logger.warn('unable to record the writeback backend identity: %s' % exc)
+            active = [item.get('device') for item in inventory.get('candidates') or []
+                      if isinstance(item, dict) and item.get('state') == 'ACTIVE']
+            logger.error('Host[%s] unable to record the identity of writeback backend %s: %s\n%s'
+                         % (self._load_host_uuid(), active, exc, traceback.format_exc()))
         return inventory
 
     def _remember_backend_identity(self, inventory):
@@ -1817,12 +1833,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 command.get('resetConfirmed') is True)
 
     def _prepared_backend_current(self, receipt, host_uuid):
-        """A repeated request succeeds only while the disk it prepared is still a prepared backend."""
+        """A repeated request succeeds only while the disk it prepared is still the backend resource it prepared."""
         target = receipt.get('target_identity') or {}
         device, path = target.get('canonical_device'), target.get('file_path')
-        return any(writeback_ready(item) and
-                   ((device and item.get('device') == device) or (path and item.get('path') == path))
-                   for item in self._writeback_inventory(host_uuid).get('candidates') or [])
+        resource_uuid = receipt.get('backend_resource_uuid')
+        return bool(resource_uuid) and any(
+            writeback_ready(item) and item.get('resourceUuid') == resource_uuid and
+            ((device and item.get('device') == device) or (path and item.get('path') == path))
+            for item in self._writeback_inventory(host_uuid).get('candidates') or [])
 
     def _stop_service_without_pool(self, inventory):
         """A service without a pool holds no VM memory; stop it for the offline step, as a drain does."""

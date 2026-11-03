@@ -853,7 +853,8 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
     world['unit'] = 'inactive'
     world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED, 'pool_generation': POOL}
     monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {
-        'canPrepare': True, 'poolGeneration': POOL, 'candidates': [{'device': '/dev/vdb', 'state': 'PREPARED'}]})
+        'canPrepare': True, 'poolGeneration': POOL,
+        'candidates': [{'device': '/dev/vdb', 'state': 'PREPARED', 'resourceUuid': 'f' * 32}]})
     built = []
     monkeypatch.setattr(module, 'build_backend_maintenance_request',
                         lambda inventory, preparation: built.append(preparation) or {'request_id': preparation['requestId']})
@@ -873,6 +874,12 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
     done = prepare()
     assert done['status'] == 'Succeeded' and done['state']['maintenance']['backend_resource_uuid'] == 'f' * 32
     assert len(world['started']) == 1
+
+
+def test_an_apply_request_that_is_not_json_is_answered_as_failed(host):
+    plugin, service, world = host
+    result = json.loads(plugin.apply_request({module.http.REQUEST_BODY: '{broken'}))
+    assert result['success'] is False, result
 
 
 def applied_backend_receipt(request_id, **changes):
@@ -903,7 +910,9 @@ def test_an_applied_preparation_answers_only_the_same_request(host, changes, req
     assert world['started'] == []
 
 
-@pytest.mark.parametrize('candidates', [[], [{'device': '/dev/vdb', 'state': 'DISCONNECTED'}]])
+@pytest.mark.parametrize('candidates', [[], [{'device': '/dev/vdb', 'state': 'DISCONNECTED'}],
+                                        # The same disk prepared again by another maintenance is another resource.
+                                        [{'device': '/dev/vdb', 'state': 'PREPARED', 'resourceUuid': 'e' * 32}]])
 def test_an_applied_preparation_whose_disk_is_no_longer_the_backend_fails(host, monkeypatch, candidates):
     plugin, service, world = host
     request_id = 'backend-20-' + 'd' * 16

@@ -111,7 +111,8 @@ def _version(path, runner=subprocess.check_output):
 
 def _validate(root, inventory_path, rpm_path):
     try:
-        inventory = json.load(open(inventory_path))
+        with open(inventory_path) as stream:
+            inventory = json.load(stream)
     except (IOError, OSError, ValueError):
         raise InstallError('RPM_INVENTORY_INVALID')
     package = inventory.get('package', {})
@@ -197,7 +198,8 @@ def _require_empty_systemd_exec_action(property_name, runner):
 def _proc_starttime(root, pid):
     path = os.path.join(root, 'proc', str(pid), 'stat')
     try:
-        data = open(path).read()
+        with open(path) as stream:
+            data = stream.read()
     except (IOError, OSError):
         raise InstallError('ACTIVE_PROCESS_IDENTITY_UNVERIFIABLE')
     # comm is parenthesized and may contain spaces or ')'; split after its last
@@ -242,7 +244,8 @@ def _verify_active(root, inventory, runner):
     unit = _path(root, UNIT_PATH)
     if fragment != UNIT_PATH or not os.path.isfile(unit) or _hash(unit) != inventory['systemdUnitSha256']:
         raise InstallError('MEMORY_OPTIMIZATION_MAINTENANCE_REQUIRED:ACTIVE_UNIT_MISMATCH')
-    contents = open(unit).read()
+    with open(unit) as stream:
+        contents = stream.read()
     if EXPECTED_EXECSTART not in contents or EXPECTED_EXECSTARTPRE not in contents:
         raise InstallError('MEMORY_OPTIMIZATION_MAINTENANCE_REQUIRED:ACTIVE_UNIT_CONTENT_MISMATCH')
     _verify_runtime_binaries(root, inventory, expected,
@@ -289,7 +292,8 @@ def _factory_observe_config(root):
             return False
         if _hash(config) != _hash(template):
             return False
-        data = json.load(open(config))
+        with open(config) as stream:
+            data = json.load(stream)
         if (not isinstance(data, dict) or data.get('managed') is not True or
                 data.get('mode') != 'observe' or
                 data.get('resource_authorized') is not False or
@@ -376,7 +380,8 @@ def _old_controller_identity(root, runner, properties=None):
     unit_sha = _hash(unit)
     if _rpm_file_digest(runner, UNIT_PATH) != unit_sha:
         raise InstallError('UPGRADE_CONTROLLER_UNIT_UNKNOWN')
-    contents = open(unit).read()
+    with open(unit) as stream:
+        contents = stream.read()
     if ('KillMode=process' not in contents or 'Restart=no' not in contents or
             EXPECTED_EXECSTART not in contents or
             any(line.strip().startswith(('ExecStop=', 'ExecStopPost='))
@@ -450,7 +455,8 @@ def _graceful_old_controller_exit(root, runner, timeout=75, sleep=time.sleep,
 
 
 def _boot_id(root):
-    value = open(_path(root, '/proc/sys/kernel/random/boot_id')).read().strip()
+    with open(_path(root, '/proc/sys/kernel/random/boot_id')) as stream:
+        value = stream.read().strip()
     if not re.match(r'[0-9a-f-]{36}\Z', value):
         raise InstallError('UPGRADE_BOOT_ID_UNVERIFIABLE')
     return value
@@ -468,7 +474,8 @@ def _read_recovery(root, package):
             metadata.st_uid != os.geteuid() or metadata.st_mode & 0o077):
         raise InstallError('UPGRADE_RECOVERY_NOT_REGULAR')
     try:
-        data = json.load(open(path))
+        with open(path) as stream:
+            data = json.load(stream)
         if not isinstance(data, dict) or set(data) != {
                 'schemaVersion', 'restart', 'rpmSha256', 'bootId',
                 'previousController', 'configSha256'}:
@@ -611,7 +618,8 @@ def _install_locked(root, inventory_path, rpm_path, runner=subprocess.check_outp
         unit = _path(root, UNIT_PATH)
         if fragment != UNIT_PATH or not os.path.isfile(unit) or _hash(unit) != inventory['systemdUnitSha256']:
             raise InstallError('RPM_UNIT_NOT_EFFECTIVE')
-        contents = open(unit).read()
+        with open(unit) as stream:
+            contents = stream.read()
         if EXPECTED_EXECSTART not in contents or EXPECTED_EXECSTARTPRE not in contents:
             raise InstallError('RPM_UNIT_CONTENT_INVALID')
         if _installed_identity(runner) != package['version'] + '-' + package['release']:
