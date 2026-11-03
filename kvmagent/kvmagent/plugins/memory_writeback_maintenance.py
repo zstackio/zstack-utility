@@ -65,9 +65,7 @@ def _canonical_candidate(inventory, candidate_id):
     if len(matches) != 1:
         raise ValueError('WRITEBACK_CANDIDATE_NOT_UNIQUE')
     candidate = matches[0]
-    if (candidate.get('type') != 'block' or not candidate.get('eligible') or
-            _pick(candidate, 'writeback_ready', 'writebackReady') or
-            candidate.get('state') != 'NEEDS_OFFLINE_PREPARATION'):
+    if candidate.get('type') != 'block' or candidate.get('state') != 'NEEDS_OFFLINE_PREPARATION':
         raise ValueError('WRITEBACK_CANDIDATE_NOT_PREPARABLE')
     identity = _pick(candidate, 'stable_identity', 'stableIdentity')
     required = ('boot_id', 'device', 'major_minor', 'capacity_bytes',

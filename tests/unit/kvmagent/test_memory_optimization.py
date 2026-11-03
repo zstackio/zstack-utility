@@ -9,6 +9,8 @@ import pytest
 from kvmagent.plugins import memory_optimization as module
 from kvmagent.plugins import memory_optimization_ksm_native as ksm_native
 from kvmagent.plugins.memory_optimization import Converging, MemoryOptimizationPlugin, Rejected
+from kvmagent.plugins import memory_writeback_backends as backends
+from kvmagent.plugins import memory_writeback_maintenance as maintenance
 
 HOST = '1' * 32
 POOL = 'a' * 64
@@ -656,7 +658,7 @@ def _reboot_reclaim_host(plugin, service, world, monkeypatch, capacity, receipt_
     scans = world.setdefault('scans', [])
     monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: scans.append(host_uuid) or {
         'canPrepare': True, 'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
-                                            'eligible': True, 'capacityBytes': capacity, 'stableIdentity': {
+                                            'state': 'NEEDS_OFFLINE_PREPARATION', 'capacityBytes': capacity, 'stableIdentity': {
                                                 'serial': serial, 'wwn': '',
                                                 'byIdPath': '/dev/disk/by-id/virtio-' + serial}}]})
     built = []
@@ -722,7 +724,7 @@ def test_only_an_unfinished_preparation_of_this_boot_blocks_a_new_one(host, monk
     service.receipts['backend'] = {'stage': 'AWAITING_SERVICE_READBACK', 'host_boot_id': receipt_boot}
     monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
     monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
-        'candidates': [{'device': '/dev/vdb', 'eligible': True, 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+        'candidates': [{'device': '/dev/vdb', 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
     inventory = plugin._writeback_inventory(HOST)
     assert inventory['canPrepare'] is can_prepare, inventory['preparationReasons']
 
@@ -751,7 +753,7 @@ def test_a_stopped_service_has_no_pool_only_when_none_is_recorded(host, tmp_path
                                                       'device': '/dev/zram0', 'state_dir': state_dir}))
     monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
     monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
-        'candidates': [{'device': '/dev/vdb', 'eligible': True, 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+        'candidates': [{'device': '/dev/vdb', 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
     inventory = plugin._writeback_inventory(HOST)
     assert inventory['poolGeneration'] == generation, inventory
     assert inventory['canPrepare'] is (generation == 'none'), inventory['preparationReasons']
@@ -800,7 +802,7 @@ def test_the_active_backend_disk_is_recorded_by_its_persistent_identity(host, mo
     plugin, service, world = host
     monkeypatch.setattr(plugin, '_previous_backend_device', lambda: '/dev/vdb')
     monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
-        'candidates': [{'device': '/dev/vdb', 'state': 'ACTIVE', 'eligible': True, 'stableIdentity': {
+        'candidates': [{'device': '/dev/vdb', 'state': 'ACTIVE', 'stableIdentity': {
             'serial': 'disk-a', 'wwn': '', 'byIdPath': '/dev/disk/by-id/virtio-disk-a', 'rdev': 64784}}]})
     plugin._writeback_inventory(HOST)
     assert plugin._backend_identity() == {'device': '/dev/vdb', 'serial': 'disk-a', 'wwn': '',
@@ -851,7 +853,7 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
     world['unit'] = 'inactive'
     world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED, 'pool_generation': POOL}
     monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {
-        'canPrepare': True, 'poolGeneration': POOL, 'candidates': [{'device': '/dev/vdb', 'writebackReady': True}]})
+        'canPrepare': True, 'poolGeneration': POOL, 'candidates': [{'device': '/dev/vdb', 'state': 'PREPARED'}]})
     built = []
     monkeypatch.setattr(module, 'build_backend_maintenance_request',
                         lambda inventory, preparation: built.append(preparation) or {'request_id': preparation['requestId']})
@@ -901,7 +903,7 @@ def test_an_applied_preparation_answers_only_the_same_request(host, changes, req
     assert world['started'] == []
 
 
-@pytest.mark.parametrize('candidates', [[], [{'device': '/dev/vdb', 'writebackReady': False, 'state': 'DISCONNECTED'}]])
+@pytest.mark.parametrize('candidates', [[], [{'device': '/dev/vdb', 'state': 'DISCONNECTED'}]])
 def test_an_applied_preparation_whose_disk_is_no_longer_the_backend_fails(host, monkeypatch, candidates):
     plugin, service, world = host
     request_id = 'backend-20-' + 'd' * 16
@@ -921,7 +923,7 @@ def test_a_host_without_a_pool_stops_its_service_to_prepare_a_backend(host, monk
     service.pool, service.efficiency = None, True
     monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
     monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
-        'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb', 'eligible': True,
+        'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
                         'state': 'NEEDS_OFFLINE_PREPARATION'}]})
     monkeypatch.setattr(module, 'build_backend_maintenance_request',
                         lambda inventory, preparation: {'request_id': preparation['requestId']})
@@ -965,3 +967,18 @@ def test_a_journal_that_cannot_be_moved_aside_does_not_stop_the_agent(tmp_path, 
         raise OSError(30, 'Read-only file system')
     monkeypatch.setattr(module.shutil, 'move', refuse)
     plugin._retire_legacy_records()
+
+
+@pytest.mark.parametrize('state, can_back, prepared', [
+    ('NEEDS_OFFLINE_PREPARATION', True, False), ('PREPARED', True, True), ('ACTIVE', True, True),
+    ('INELIGIBLE', False, False), ('DISCONNECTED', False, False), ('IDENTITY_MISMATCH', False, False)])
+def test_a_candidate_state_alone_decides_whether_it_backs_writeback(state, can_back, prepared):
+    candidate = {'device': '/dev/vdb', 'state': state}
+    assert backends.eligible(candidate) is can_back
+    assert backends.writeback_ready(candidate) is prepared
+    if state == 'NEEDS_OFFLINE_PREPARATION':
+        return
+    inventory = {'observedAt': time.time(), 'candidates': [dict(candidate, identity='candidate:x', type='block')]}
+    with pytest.raises(ValueError) as rejected:
+        maintenance._canonical_candidate(inventory, 'candidate:x')
+    assert str(rejected.value) == 'WRITEBACK_CANDIDATE_NOT_PREPARABLE'
