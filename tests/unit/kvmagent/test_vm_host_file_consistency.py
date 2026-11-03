@@ -2,6 +2,7 @@
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -70,6 +71,43 @@ class TestMemorySnapshotRestore:
 
         libvirt_conn.lookupByName.assert_called_once_with(VM_UUID)
         libvirt_conn.lookupByName.return_value.destroy.assert_called_once_with()
+
+    @pytest.mark.parametrize('saved_models, current_models', [
+        (['virtio'], ['ramfb', 'virtio']),
+        (['ramfb', 'virtio'], ['ramfb', 'virtio']),
+        (['ramfb', 'virtio'], ['virtio']),
+    ])
+    def test_restore_preserves_saved_video_topology(self, monkeypatch, libvirt_conn,
+                                                  saved_models, current_models):
+        vm = self._vm(monkeypatch)
+        def domain(models):
+            root = ET.fromstring('<domain><devices><disk type="file"/></devices></domain>')
+            for i, model in enumerate(models):
+                video = ET.SubElement(root.find('devices'), 'video')
+                ET.SubElement(video, 'model', {'type': model})
+                ET.SubElement(video, 'alias', {'name': 'video%s' % i})
+            return ET.tostring(root, encoding='unicode')
+        vm.domain_xml = domain(current_models)
+        libvirt_conn.saveImageGetXMLDesc.return_value = domain(saved_models)
+
+        vm.restore('/memory/snapshot')
+
+        restored_xml = libvirt_conn.restoreFlags.call_args[0][1]
+        root = ET.fromstring(restored_xml)
+        assert [el.get('type') for el in root.findall('devices/video/model')] == saved_models
+        assert [el.get('name') for el in root.findall('devices/video/alias')] == [
+            'video%s' % i for i in range(len(saved_models))]
+        assert root.find('devices/disk').get('type') == 'file'
+
+    def test_restore_does_not_guess_video_when_saved_xml_unavailable(self, monkeypatch, libvirt_conn):
+        vm = self._vm(monkeypatch)
+        vm.domain_xml = '<domain><devices><video><model type="virtio"/></video></devices></domain>'
+        libvirt_conn.saveImageGetXMLDesc.side_effect = Exception('saved XML unavailable')
+
+        with pytest.raises(Exception, match='saved XML unavailable'):
+            vm.restore('/memory/snapshot')
+
+        libvirt_conn.restoreFlags.assert_not_called()
 
 
 class TestTakeVolumesSnapshotsWithHostFiles:
