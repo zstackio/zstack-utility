@@ -12,6 +12,15 @@ def _field(output, name):
     return match.group(1) if match else None
 
 
+def _link_status(command_output, device_id):
+    try:
+        output = command_output("/usr/local/Ascend/driver/tools/hccn_tool", "-i", device_id, "-link", "-g")
+    except subprocess.SubprocessError:
+        return "UNKNOWN"
+    match = re.search(r"^\s*link status\s*:\s*(\S+)\s*$", output, re.MULTILINE | re.IGNORECASE)
+    return match.group(1).upper() if match else "UNKNOWN"
+
+
 def collect_devices(command_output=_command_output):
     """Read device IPs while the host driver still owns the NPUs."""
     output = command_output("npu-smi", "info", "-l")
@@ -52,7 +61,8 @@ def collect_devices(command_output=_command_output):
             if netmask == "0.0.0.0":
                 raise ValueError("host NPU has no usable HCCN netmask")
         devices.append({"pciDeviceAddress": pci_address, "serialNumber": serial,
-                        "address": address, "netmask": netmask})
+                        "address": address, "netmask": netmask,
+                        "linkStatus": _link_status(command_output, device_id)})
     configured = [device["address"] for device in devices if device["address"]]
     if len(configured) != len(set(configured)):
         raise ValueError("duplicate host NPU HCCN address")
