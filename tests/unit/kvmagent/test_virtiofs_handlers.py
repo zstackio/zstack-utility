@@ -479,16 +479,18 @@ class TestVirtiofsAttachHandler:
         # Should return error response
         assert rsp.get('success') is False or rsp.get('error') is not None
 
+    @patch('kvmagent.plugins.virtiofs_plugin.check_guest_virtiofs_support', return_value=(True, None))
     @patch('kvmagent.plugins.virtiofs_plugin.get_virtiofsd_path', return_value='/usr/libexec/virtiofsd')
     @patch('kvmagent.plugins.virtiofs_plugin.mount_virtiofs_in_vm', return_value=(False, 'QGA not connected'))
     @patch('kvmagent.plugins.virtiofs_plugin.check_vm_memory_backing', return_value=(True, None))
     @patch('kvmagent.plugins.virtiofs_plugin.get_vm_domain')
     @patch('kvmagent.plugins.virtiofs_plugin._ensure_source_for_attach')
-    def test_attach_qga_failure_is_best_effort(self, mock_ensure_source, mock_get_domain,
+    def test_attach_qga_failure_returns_error_without_rollback(self, mock_ensure_source, mock_get_domain,
                                                mock_memory_backing, mock_mount_qga,
-                                               mock_get_virtiofsd_path):
+                                               mock_get_virtiofsd_path, mock_check_guest):
         mock_ensure_source.return_value = MagicMock(path='/var/lib/zstack/aios/vm-views/vm-uuid')
         mock_domain = MagicMock()
+        mock_domain.XMLDesc.return_value = '<domain><devices/></domain>'
         mock_conn = MagicMock()
         mock_get_domain.return_value = (mock_domain, mock_conn)
 
@@ -505,7 +507,8 @@ class TestVirtiofsAttachHandler:
         result = plugin.attach_virtiofs(req)
         rsp = json.loads(result)
 
-        assert rsp.get('success') is True
+        assert rsp.get('success') is False
+        assert rsp.get('error') == 'QGA not connected'
         assert rsp.get('qgaMountAttempted') is True
         assert rsp.get('qgaMountSuccess') is False
         assert rsp.get('qgaMountError') == 'QGA not connected'
@@ -515,6 +518,7 @@ class TestVirtiofsAttachHandler:
         assert "queue='2048'" in xml_str
         assert "<cache mode='none'/>" in xml_str
 
+    @patch('kvmagent.plugins.virtiofs_plugin.check_guest_virtiofs_support', return_value=(True, None))
     @patch('kvmagent.plugins.virtiofs_plugin.get_virtiofsd_path', return_value='/usr/libexec/virtiofsd')
     @patch('kvmagent.plugins.virtiofs_plugin.mount_virtiofs_in_vm', return_value=(True, None))
     @patch('kvmagent.plugins.virtiofs_plugin.check_vm_memory_backing', return_value=(True, None))
@@ -522,9 +526,10 @@ class TestVirtiofsAttachHandler:
     @patch('kvmagent.plugins.virtiofs_plugin._ensure_source_for_attach')
     def test_attach_uses_default_cache_and_queue(self, mock_ensure_source, mock_get_domain,
                                                  mock_memory_backing, mock_mount_qga,
-                                                 mock_get_virtiofsd_path):
+                                                 mock_get_virtiofsd_path, mock_check_guest):
         mock_ensure_source.return_value = MagicMock(path='/var/lib/zstack/aios/vm-views/vm-uuid')
         mock_domain = MagicMock()
+        mock_domain.XMLDesc.return_value = '<domain><devices/></domain>'
         mock_conn = MagicMock()
         mock_get_domain.return_value = (mock_domain, mock_conn)
 
