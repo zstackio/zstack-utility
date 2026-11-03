@@ -66,7 +66,7 @@ class TestMemorySnapshotXmlPatch(unittest.TestCase):
         self.conn.restoreFlags.side_effect = restore_flags
         vm = self.vm()
         vm.domain_xml = current
-        vm._patch_cpu_xml_from_saved_image = Mock()
+        vm._patch_xml_from_saved_image = Mock()
         vm.restore('/snapshot')
         self.conn.restoreFlags.assert_called_once_with('/snapshot', vm.domain_xml)
         self.conn.defineXML.assert_called_once_with(vm.domain_xml)
@@ -189,7 +189,7 @@ class TestMemorySnapshotXmlPatch(unittest.TestCase):
         vm = self.vm()
         vm.domain_xml = self.xml([self.disk('disk', 'vda', 'root')])
         original = vm.domain_xml
-        vm._patch_cpu_xml_from_saved_image = Mock()
+        vm._patch_xml_from_saved_image = Mock()
         self.conn.saveImageGetXMLDesc.side_effect = RuntimeError('read failed')
         self.conn.restoreFlags.side_effect = RuntimeError('original restore error')
         with self.assertRaisesRegex(RuntimeError, 'original restore error'):
