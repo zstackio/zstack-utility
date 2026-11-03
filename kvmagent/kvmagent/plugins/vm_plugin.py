@@ -3830,6 +3830,7 @@ class Vm(object):
         self.start(cmd.timeout)
 
     def restore(self, path):
+        self._patch_video_xml_from_saved_image(path)
         self._patch_disk_xml_order_from_saved_image(path)
         self._patch_xml_from_saved_image(path)
         self._remove_legacy_virtio_blk_discard_if_absent_in_saved_image(path)
@@ -3887,6 +3888,27 @@ class Vm(object):
             except Exception as destroy_error:
                 logger.warn('failed to destroy restored vm[uuid:%s]: %s' % (self.uuid, destroy_error))
             raise
+
+    def _patch_video_xml_from_saved_image(self, path):
+        # Memory snapshots must retain the video devices, aliases and PCI
+        # addresses from the saved QEMU state, including pre-ramfb snapshots.
+        root = etree.fromstring(self.domain_xml)
+        if not any(model.get('type') == 'virtio' for model in root.findall('devices/video/model')):
+            return
+
+        @LibvirtAutoReconnect
+        def get_saved_xml(conn):
+            return conn.saveImageGetXMLDesc(path, 0)
+
+        saved = etree.fromstring(get_saved_xml())
+        videos = saved.findall('devices/video')
+        if not videos:
+            raise kvmagent.KvmError('saved image has no video XML for vm[%s]' % self.uuid)
+        devices = root.find('devices')
+        for video in devices.findall('video'):
+            devices.remove(video)
+        devices.extend(videos)
+        self.domain_xml = etree.tostring(root, encoding='unicode')
 
     def _remove_legacy_virtio_blk_discard_if_absent_in_saved_image(self, path):
         qemu_namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
@@ -8620,6 +8642,12 @@ class Vm(object):
 
         def make_video():
             devices = elements['devices']
+            if HOST_ARCH == 'x86_64' and cmd.bootMode == 'UEFI' and cmd.secureBoot and cmd.videoType == 'virtio':
+                # The installed CSM firmware cannot drive VGA under Secure Boot.
+                # Ramfb provides the linear GOP framebuffer Windows requires;
+                # libvirt selects non-VGA virtio for the secondary GPU.
+                video = e(devices, 'video')
+                e(video, 'model', attrib={'type': 'ramfb', 'primary': 'yes'})
             if cmd.videoType != "qxl":
                 video = e(devices, 'video')
                 e(video, 'model', None, {'type': str(cmd.videoType)})
