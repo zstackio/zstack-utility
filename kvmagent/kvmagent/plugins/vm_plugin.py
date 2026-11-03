@@ -3809,7 +3809,13 @@ class Vm(object):
                 pass
 
             try:
-                return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
+                # Wait for VIR_DOMAIN_SHUTOFF (raw=5, domain no longer active) rather than
+                # VM_STATE_SHUTDOWN which also matches VIR_DOMAIN_SHUTDOWN (raw=4, still active).
+                # Undefining while the domain is still active (raw=4) can cause libvirt to
+                # clean up the swtpm state directory even when KEEP_TPM is passed, because the
+                # domain has no persistent_state at that point.
+                (raw_state, _, _, _, _) = self.domain.info()
+                return raw_state == self.VIR_DOMAIN_SHUTOFF
             except libvirt.libvirtError as ex:
                 error_code = ex.get_error_code()
                 if error_code == libvirt.VIR_ERR_NO_DOMAIN:
@@ -3867,7 +3873,8 @@ class Vm(object):
                 pass
 
             try:
-                return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
+                (raw_state, _, _, _, _) = self.domain.info()
+                return raw_state == self.VIR_DOMAIN_SHUTOFF
             except libvirt.libvirtError as ex:
                 error_code = ex.get_error_code()
                 if error_code == libvirt.VIR_ERR_NO_DOMAIN:
