@@ -23,11 +23,16 @@ def _link_status(command_output, device_id):
     return status if status in ("UP", "DOWN") else "UNKNOWN"
 
 
+class _DriverCommandError(subprocess.CalledProcessError):
+    def __str__(self):
+        return "%s: %s" % (super().__str__(), str(self.output or "").strip()[:200])
+
+
 def _list_npus(command_output):
     try:
         return command_output("npu-smi", "info", "-l")
     except subprocess.CalledProcessError as error:
-        raise RuntimeError("npu-smi info -l exited %s: %s" % (error.returncode, str(error.output or "").strip()[:200]))
+        raise _DriverCommandError(error.returncode, error.cmd, error.output, error.stderr) from error
 
 
 def collect_devices(command_output=_command_output):
