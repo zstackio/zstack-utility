@@ -126,7 +126,7 @@ def test_unreadable_npu_list_keeps_the_driver_message():
         raise subprocess.CalledProcessError(191, command, output="dcmi module initialize failed. ret is -8001\n")
 
     # Callers may still catch CalledProcessError and read its fields; only the message gains the driver text.
-    with pytest.raises(subprocess.CalledProcessError, match="191.*dcmi module initialize failed") as raised:
+    with pytest.raises(subprocess.CalledProcessError, match=r"191.*dcmi module initialize failed") as raised:
         hccn.collect_devices(output)
     assert raised.value.returncode == 191
     assert raised.value.output.startswith("dcmi module initialize failed")
