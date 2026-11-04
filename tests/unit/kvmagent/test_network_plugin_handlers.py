@@ -3440,3 +3440,187 @@ class TestNetworkPluginCreateVlanBridgesBatch:
 
         assert linux.create_vxlan_interface.call_count == 500
         assert linux.get_vxlan_interfaces_vtep_map.call_count == 5
+
+    def test_read_compare_repair_skips_unchanged_and_heals_drift_on_real_linux(self):
+        from tests.unit.zstacklib.real_linux import load_real_linux
+
+        real_linux = load_real_linux()
+        shell_calls: list[str] = []
+        shell_cmds: list[str] = []
+        written_files: list[tuple[str, str]] = []
+        link_up_calls: list[str] = []
+
+        class _FakeShellCmd:
+            def __init__(self, cmd_str: str):
+                self.cmd_str = cmd_str
+                self.return_code = 0
+                self.stdout = ""
+
+            def __call__(self, is_exception: bool = True) -> str:
+                shell_cmds.append(self.cmd_str)
+                return self.stdout
+
+        real_linux.shell.ShellCmd = _FakeShellCmd
+        real_linux.shell.call = MagicMock(side_effect=lambda cmd, *a, **kw: shell_calls.append(cmd) or "")
+        real_linux.iproute.set_link_up = MagicMock(side_effect=lambda dev: link_up_calls.append(dev))
+
+        sysfs_state: dict[str, str] = {
+            "/sys/class/net/eth0": "dir",
+            "/sys/class/net/eth0.100": "dir",
+            "/sys/class/net/eth0.100/flags": "0x1003",
+            "/sys/class/net/eth0.100/address": "52:54:00:11:22:33",
+            "/sys/class/net/eth0.100/ifalias": "uuid: vlan-100-uuid",
+            "/sys/class/net/eth0.100/brport": "dir",
+            "/sys/class/net/eth0.100/master/uevent": "INTERFACE=br_eth0_100\n",
+            "/sys/class/net/br_eth0_100": "dir",
+            "/sys/class/net/br_eth0_100/bridge": "dir",
+            "/sys/class/net/br_eth0_100/brif": "dir",
+            "/sys/class/net/br_eth0_100/brif/eth0.100": "dir",
+            "/sys/class/net/br_eth0_100/flags": "0x1003",
+            "/sys/class/net/br_eth0_100/address": "52:54:00:11:22:33",
+            "/sys/class/net/br_eth0_100/ifalias": "phy_nic: eth0",
+            "/sys/class/net/br_eth0_100/bridge/stp_state": "0",
+            "/sys/class/net/br_eth0_100/bridge/forward_delay": "0",
+            "/sys/class/net/vxlan100": "dir",
+            "/sys/class/net/vxlan100/flags": "0x1003",
+            "/sys/class/net/vxlan100/address": "aa:bb:cc:dd:ee:ff",
+            "/sys/class/net/vxlan100/ifalias": "uuid: vx-100-uuid",
+            "/sys/class/net/br_vx_100": "dir",
+            "/sys/class/net/br_vx_100/bridge": "dir",
+            "/sys/class/net/br_vx_100/brif": "dir",
+            "/sys/class/net/br_vx_100/brif/vxlan100": "dir",
+            "/sys/class/net/br_vx_100/flags": "0x1003",
+            "/sys/class/net/br_vx_100/address": "aa:bb:cc:dd:ee:ff",
+            "/sys/class/net/br_vx_100/bridge/stp_state": "0",
+            "/sys/class/net/br_vx_100/bridge/forward_delay": "0",
+        }
+
+        real_linux.read_file_strip = MagicMock(side_effect=lambda p: sysfs_state.get(p))
+        real_linux.read_file_lines = MagicMock(side_effect=lambda p: sysfs_state[p].splitlines() if p in sysfs_state else [])
+
+        def _write_file(p: str, content: object, *_a: object, **_kw: object) -> str:
+            val = str(content).strip()
+            sysfs_state[p] = val
+            written_files.append((p, val))
+            return p
+
+        real_linux.write_file = MagicMock(side_effect=_write_file)
+
+        with patch.object(real_linux.os.path, "exists", side_effect=lambda p: p in sysfs_state), \
+             patch.object(real_linux.os.path, "isdir", side_effect=lambda p: p == "/sys/class/net" or sysfs_state.get(p) == "dir"), \
+             patch.object(real_linux.os, "listdir", side_effect=lambda p: ["eth0", "eth0.100", "br_eth0_100", "vxlan100", "br_vx_100"] if p == "/sys/class/net" else []):
+            # 1. All VLAN and VXLAN states match desired state -> 0 shell calls, 0 link_up calls, 0 sysfs writes
+            stats = real_linux.new_bridge_stage_stats()
+            real_linux.set_active_bridge_stage_stats(stats)
+            real_linux.create_vlan_bridge("br_eth0_100", "eth0", 100, move_route=False)
+            real_linux.set_bridge_alias_using_phy_nic_name("br_eth0_100", "eth0")
+            real_linux.set_device_uuid_alias("eth0.100", "vlan-100-uuid")
+            real_linux.create_vxlan_interface(100, "10.0.0.1", 8472, existing_vxlan_vteps={"vxlan100": "10.0.0.1"})
+            real_linux.create_vxlan_bridge("vxlan100", "br_vx_100", None)
+            real_linux.set_device_uuid_alias("vxlan100", "vx-100-uuid")
+            assert real_linux.get_interfs_from_uuids(["vx-100-uuid"]) == ["vxlan100"]
+            real_linux.set_active_bridge_stage_stats(None)
+
+            assert shell_calls == []
+            assert shell_cmds == []
+            assert written_files == []
+            assert link_up_calls == []
+            assert stats["ip_link"]["calls"] == 0
+            assert stats["ip_link"]["skipped"] >= 4
+            assert stats["bridge_params"]["calls"] == 0
+            assert stats["bridge_params"]["skipped"] == 4
+            assert stats["alias"]["calls"] == 0
+            assert stats["alias"]["skipped"] == 3
+
+            # 2. Drift injection: VLAN & VXLAN devices DOWN, MAC drifted, STP=1, forward_delay=200, alias drifted, master detached
+            sysfs_state["/sys/class/net/eth0.100/flags"] = "0x1002"
+            sysfs_state["/sys/class/net/br_eth0_100/flags"] = "0x1002"
+            sysfs_state["/sys/class/net/br_eth0_100/address"] = "00:11:22:33:44:55"
+            sysfs_state["/sys/class/net/br_eth0_100/bridge/stp_state"] = "1"
+            sysfs_state["/sys/class/net/br_eth0_100/bridge/forward_delay"] = "200"
+            sysfs_state["/sys/class/net/br_eth0_100/ifalias"] = "phy_nic: wrong"
+            sysfs_state["/sys/class/net/vxlan100/flags"] = "0x1002"
+            sysfs_state["/sys/class/net/br_vx_100/flags"] = "0x1002"
+            sysfs_state["/sys/class/net/br_vx_100/address"] = "00:11:22:33:44:55"
+            sysfs_state["/sys/class/net/br_vx_100/bridge/stp_state"] = "1"
+            sysfs_state["/sys/class/net/br_vx_100/bridge/forward_delay"] = "200"
+            sysfs_state["/sys/class/net/vxlan100/ifalias"] = "uuid: wrong"
+            del sysfs_state["/sys/class/net/br_vx_100/brif/vxlan100"]
+            real_linux.ip_link_set_net_device_master = MagicMock()
+
+            drift_stats = real_linux.new_bridge_stage_stats()
+            real_linux.set_active_bridge_stage_stats(drift_stats)
+            real_linux.create_vlan_bridge("br_eth0_100", "eth0", 100, move_route=False)
+            real_linux.set_bridge_alias_using_phy_nic_name("br_eth0_100", "eth0")
+            real_linux.create_vxlan_interface(100, "10.0.0.1", 8472, existing_vxlan_vteps={"vxlan100": "10.0.0.1"})
+            real_linux.create_vxlan_bridge("vxlan100", "br_vx_100", None)
+            real_linux.set_device_uuid_alias("vxlan100", "vx-100-uuid")
+            real_linux.set_active_bridge_stage_stats(None)
+
+        assert link_up_calls == ["eth0.100"]
+        assert "ip link set br_eth0_100 up" in shell_calls
+        assert "ip link set br_eth0_100 address 52:54:00:11:22:33" in shell_calls
+        assert "ip link set vxlan100 up" in shell_cmds
+        assert "ip link set br_vx_100 up" in shell_calls
+        assert "ip link set br_vx_100 address aa:bb:cc:dd:ee:ff" in shell_calls
+        real_linux.ip_link_set_net_device_master.assert_called_once_with("vxlan100", "br_vx_100")
+        assert ("/sys/class/net/br_eth0_100/bridge/stp_state", "0") in written_files
+        assert ("/sys/class/net/br_eth0_100/bridge/forward_delay", "0") in written_files
+        assert ("/sys/class/net/br_vx_100/bridge/stp_state", "0") in written_files
+        assert ("/sys/class/net/br_vx_100/bridge/forward_delay", "0") in written_files
+        assert ("/sys/class/net/br_eth0_100/ifalias", "phy_nic: eth0") in written_files
+        assert ("/sys/class/net/vxlan100/ifalias", "uuid: vx-100-uuid") in written_files
+
+    def test_network_plugin_sysfs_mtu_learning_multicast_skip_and_repair(self):
+        plugin = _make_plugin()
+        linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
+        iproute_mod = importlib.import_module("zstacklib.utils.iproute")
+        os_mod = importlib.import_module("os")
+
+        sysfs_values = {
+            "/sys/class/net/eth0.100/mtu": "1500",
+            "/sys/class/net/eth0.100/brport/learning": "1",
+            "/sys/class/net/br_eth0_100/bridge/multicast_snooping": "1",
+            "/sys/class/net/br_eth0_100/bridge/multicast_querier": "1",
+        }
+        os_mod.path.exists = MagicMock(side_effect=lambda p: p in sysfs_values)
+        linux.read_file_strip = MagicMock(side_effect=lambda p: sysfs_values.get(p))
+        linux.write_file = MagicMock(return_value=True)
+        iproute_mod.query_link = MagicMock()
+        iproute_mod.set_link_attribute = MagicMock()
+
+        stats = plugin._begin_bridge_stage_stats()
+        assert plugin._get_interface_mtu("eth0.100") == 1500
+        plugin._configure_bridge_mtu("br_eth0_100", "eth0.100", 1500)
+        plugin._configure_bridge_learning("br_eth0_100", "eth0.100", "on")
+        plugin._configure_bridge_multicast(SimpleNamespace(
+            bridgeName="br_eth0_100",
+            enableMulticastSnooping=True,
+            enableMulticastQuerier=True,
+        ))
+        plugin._end_bridge_stage_stats()
+
+        # When sysfs already matches, query_link, set_link_attribute, and write_file are skipped
+        iproute_mod.query_link.assert_not_called()
+        iproute_mod.set_link_attribute.assert_not_called()
+        linux.write_file.assert_not_called()
+        assert stats["mtu"]["skipped"] == 1
+        assert stats["bridge_params"]["skipped"] == 1
+        assert stats["multicast"]["skipped"] == 2
+
+        # Drift MTU, learning, and multicast -> repaired via set_link_attribute and write_file
+        sysfs_values["/sys/class/net/eth0.100/mtu"] = "1400"
+        sysfs_values["/sys/class/net/eth0.100/brport/learning"] = "0"
+        sysfs_values["/sys/class/net/br_eth0_100/bridge/multicast_querier"] = "0"
+        plugin._configure_bridge_mtu("br_eth0_100", "eth0.100", 1500)
+        plugin._configure_bridge_learning("br_eth0_100", "eth0.100", "on")
+        plugin._configure_bridge_multicast(SimpleNamespace(
+            bridgeName="br_eth0_100",
+            enableMulticastSnooping=True,
+            enableMulticastQuerier=True,
+        ))
+        iproute_mod.set_link_attribute.assert_called_once_with("eth0.100", mtu=1500)
+        assert linux.write_file.call_args_list == [
+            call("/sys/class/net/eth0.100/brport/learning", "1"),
+            call("/sys/class/net/br_eth0_100/bridge/multicast_querier", "1"),
+        ]

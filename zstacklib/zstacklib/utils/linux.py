@@ -448,9 +448,11 @@ def get_ethernet_info():
 def set_bridge_alias_using_phy_nic_name(bridge_name, nic_name):
     alias_path = "/sys/class/net/%s/ifalias" % bridge_name
     if os.path.exists(alias_path):
-        write_file(alias_path, "phy_nic: %s" % nic_name)
+        write_sysfs_if_changed(alias_path, "phy_nic: %s" % nic_name, stage='alias')
         return
+    t0 = time.time()
     shell.call("ip link set %s alias 'phy_nic: %s'" % (bridge_name, nic_name))
+    record_bridge_stage('alias', time.time() - t0, calls=1)
 
 def get_bridge_phy_nic_name_from_alias(bridge_name):
     return shell.call("ip link show %s | awk '/alias/{ print $NF; exit }'" % bridge_name).strip()
@@ -1531,8 +1533,93 @@ def is_ip_existing(ip):
     cmd(is_exception=False)
     return cmd.return_code == 0
 
+_BRIDGE_STAGE_KEYS = (
+    'state_read',
+    'create_repair',
+    'ip_link',
+    'mtu',
+    'bridge_params',
+    'alias',
+    'multicast',
+    'fdb',
+)
+_bridge_stats_local = threading.local()
+
+
+def new_bridge_stage_stats():
+    stats = {}
+    for k in _BRIDGE_STAGE_KEYS:
+        stats[k] = {'ms': 0.0, 'calls': 0, 'skipped': 0}
+    return stats
+
+
+def set_active_bridge_stage_stats(stats):
+    _bridge_stats_local.stats = stats
+
+
+def get_active_bridge_stage_stats():
+    return getattr(_bridge_stats_local, 'stats', None)
+
+
+def record_bridge_stage(stage, elapsed_sec=0.0, calls=0, skipped=0):
+    stats = getattr(_bridge_stats_local, 'stats', None)
+    if not isinstance(stats, dict):
+        return
+    entry = stats.get(stage)
+    if entry is None:
+        return
+    entry['ms'] += elapsed_sec * 1000.0
+    entry['calls'] += calls
+    entry['skipped'] += skipped
+
+
+def format_bridge_stage_stats(stats):
+    if not isinstance(stats, dict):
+        return ""
+    parts = []
+    for k in _BRIDGE_STAGE_KEYS:
+        entry = stats.get(k)
+        if not entry:
+            continue
+        parts.append("%s=%.1fms(calls=%d,skip=%d)" % (
+            k, entry['ms'], entry['calls'], entry['skipped']))
+    return ", ".join(parts)
+
+
 def is_network_device_existing(dev):
     return os.path.exists("/sys/class/net/%s" % dev)
+
+
+def is_network_device_up(dev):
+    flags_path = "/sys/class/net/%s/flags" % dev
+    t0 = time.time()
+    if not os.path.exists(flags_path):
+        record_bridge_stage('state_read', time.time() - t0, calls=1)
+        return False
+    flags_str = read_file_strip(flags_path)
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
+    if not isinstance(flags_str, (str, type(u''))):
+        return False
+    try:
+        return (int(flags_str, 16) & 0x1) != 0
+    except ValueError:
+        return False
+
+
+def write_sysfs_if_changed(path, content, stage=None):
+    target = str(content).strip()
+    t0 = time.time()
+    current = read_file_strip(path)
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
+    if isinstance(current, (str, type(u''))) and current == target:
+        if stage:
+            record_bridge_stage(stage, 0.0, skipped=1)
+        return path
+    t1 = time.time()
+    ret = write_file(path, content)
+    if stage:
+        record_bridge_stage(stage, time.time() - t1, calls=1)
+    return ret
 
 def is_network_ip_using(interface):
     if not is_network_device_existing(interface):
@@ -1813,53 +1900,89 @@ def delete_novlan_bridge(bridge_name, interface, move_route=True):
 
 
 def create_bridge(bridge_name, interface, move_route=True):
-    if not is_network_device_existing(interface):
+    t0 = time.time()
+    interf_exists = is_network_device_existing(interface)
+    interf_is_bridge = is_bridge(interface) if interf_exists else False
+    br_name = find_bridge_having_physical_interface(interface) if interf_exists and not interf_is_bridge else None
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
+    if not interf_exists:
         raise LinuxError("network device[%s] is not existing" % interface)
-    if is_bridge(interface):
+    if interf_is_bridge:
         raise Exception('interface %s is bridge' % interface)
 
-    br_name = find_bridge_having_physical_interface(interface)
     if br_name and br_name != bridge_name:
         raise Exception('failed to create bridge[{0}], physical interface[{1}] has been occupied by bridge[{2}]'.format(bridge_name, interface, br_name))
 
+    t_route = time.time()
     route_info = _get_dev_route_info(interface) if move_route else None
+    if move_route:
+        record_bridge_stage('state_read', time.time() - t_route, calls=1)
 
-    if not is_bridge(bridge_name):
+    t_br = time.time()
+    bridge_exists = is_bridge(bridge_name)
+    record_bridge_stage('state_read', time.time() - t_br, calls=1)
+    if not bridge_exists:
+        t1 = time.time()
         shell.call("brctl addbr %s" % bridge_name)
+        record_bridge_stage('create_repair', time.time() - t1, calls=1)
     else:
+        record_bridge_stage('create_repair', 0.0, skipped=1)
         logger.debug('%s is a bridge device, no need to create bridge' % bridge_name)
 
     stp_path = "/sys/class/net/%s/bridge/stp_state" % bridge_name
     if os.path.exists(stp_path):
-        write_file(stp_path, "0")
+        write_sysfs_if_changed(stp_path, "0", stage='bridge_params')
     else:
+        t1 = time.time()
         shell.call("brctl stp %s off" % bridge_name)
+        record_bridge_stage('bridge_params', time.time() - t1, calls=1)
 
     fd_path = "/sys/class/net/%s/bridge/forward_delay" % bridge_name
     if os.path.exists(fd_path):
-        write_file(fd_path, "0")
+        write_sysfs_if_changed(fd_path, "0", stage='bridge_params')
     else:
+        t1 = time.time()
         shell.call("brctl setfd %s 0" % bridge_name)
+        record_bridge_stage('bridge_params', time.time() - t1, calls=1)
 
-    shell.call("ip link set %s up" % bridge_name)
+    if bridge_exists and is_network_device_up(bridge_name):
+        record_bridge_stage('ip_link', 0.0, skipped=1)
+    else:
+        t1 = time.time()
+        shell.call("ip link set %s up" % bridge_name)
+        record_bridge_stage('ip_link', time.time() - t1, calls=1)
 
     def modify_device_state_in_networkmanager(device_name, state):
         shell.call("nmcli device set %s managed %s" % (device_name, state), exception=False)
 
     if br_name == bridge_name:
+        record_bridge_stage('create_repair', 0.0, skipped=1)
         logger.debug('%s is a bridge device. Interface %s is attached to bridge. No need to create bridge or attach device interface' % (bridge_name, interface))
     else:
+        t1 = time.time()
         ip_link_set_net_device_master(interface, bridge_name)
+        record_bridge_stage('create_repair', time.time() - t1, calls=1)
 
     #Set bridge MAC address as network device MAC address. It will avoid of
     # bridge MAC address is reset to other new added dummy network device's 
     # MAC address.
     mac_path = "/sys/class/net/%s/address" % interface
+    br_mac_path = "/sys/class/net/%s/address" % bridge_name
+    t_mac = time.time()
     mac = read_file_strip(mac_path) if os.path.exists(mac_path) else None
-    if mac:
-        shell.call("ip link set %s address %s" % (bridge_name, mac))
+    br_mac = read_file_strip(br_mac_path) if os.path.exists(br_mac_path) else None
+    record_bridge_stage('state_read', time.time() - t_mac, calls=1)
+    if isinstance(mac, (str, type(u''))) and mac:
+        if isinstance(br_mac, (str, type(u''))) and br_mac.lower() == mac.lower():
+            record_bridge_stage('ip_link', 0.0, skipped=1)
+        else:
+            t1 = time.time()
+            shell.call("ip link set %s address %s" % (bridge_name, mac))
+            record_bridge_stage('ip_link', time.time() - t1, calls=1)
     else:
+        t1 = time.time()
         shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
+        record_bridge_stage('ip_link', time.time() - t1, calls=1)
 
     if move_route and route_info is not None:
         try:
@@ -2477,22 +2600,42 @@ def make_vlan_eth_name(ethname, vlan):
 
 def create_vlan_eth(ethname, vlan, ip=None, netmask=None):
     vlan = int(vlan)
-    if not is_network_device_existing(ethname):
+    t0 = time.time()
+    eth_exists = is_network_device_existing(ethname)
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
+    if not eth_exists:
         raise LinuxError('cannot find ethernet device %s' % ethname)
 
     vlan_dev_name = make_vlan_eth_name(ethname, vlan)
-    if not is_network_device_existing(vlan_dev_name):
+    t0 = time.time()
+    vlan_exists = is_network_device_existing(vlan_dev_name)
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
+    created_or_recreated = False
+    if not vlan_exists:
+        t1 = time.time()
         shell.call('ip link add link %s name %s type vlan id %s' % (ethname, vlan_dev_name, vlan))
         if ip:
             iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
+        record_bridge_stage('create_repair', time.time() - t1, calls=1)
+        created_or_recreated = True
     else:
         if ip is not None and ip.strip() != "" and get_device_ip(vlan_dev_name) != ip:
             # recreate device and configure ip
+            t1 = time.time()
             delete_vlan_eth(vlan_dev_name)
             shell.call('ip link add link %s name %s.%s type vlan id %s' % (ethname, ethname, vlan, vlan))
             iproute.add_address(ip, netmask_to_cidr(netmask), 4, vlan_dev_name, broadcast=netmask_to_broadcast(ip, netmask))
+            record_bridge_stage('create_repair', time.time() - t1, calls=1)
+            created_or_recreated = True
+        else:
+            record_bridge_stage('create_repair', 0.0, skipped=1)
 
-    iproute.set_link_up(vlan_dev_name)
+    if created_or_recreated or not is_network_device_up(vlan_dev_name):
+        t1 = time.time()
+        iproute.set_link_up(vlan_dev_name)
+        record_bridge_stage('ip_link', time.time() - t1, calls=1)
+    else:
+        record_bridge_stage('ip_link', 0.0, skipped=1)
     return vlan_dev_name
 
 
@@ -2516,7 +2659,9 @@ def delete_vlan_bridge(bridge_name, vlan_interface):
 
 
 def get_devices_with_ip():
+    t0 = time.time()
     out = shell.call("ip -o addr show", exception=False)
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
     if not out:
         return None
     devs = set()
@@ -3169,8 +3314,10 @@ def change_vxlan_interface(old_vni, new_vni):
 
 
 def get_vxlan_interfaces_vtep_map():
+    t0 = time.time()
     cmd = shell.ShellCmd("ip -d -o link show type vxlan")
     cmd(is_exception=False)
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
     if cmd.return_code != 0:
         return None
     vxlan_vteps = {}
@@ -3194,10 +3341,13 @@ def create_vxlan_interface(vni, vtepIp, dstport, existing_vxlan_vteps=None):
     if existing_vxlan_vteps is not None:
         need_recreate = existing_vxlan_vteps.get(ifname) != vtepIp
     else:
+        t0 = time.time()
         cmd = shell.ShellCmd("ip -d -o link show dev {name} | grep -w {ip} ".format(**{"name": ifname, "ip": vtepIp}))
         cmd(is_exception=False)
+        record_bridge_stage('state_read', time.time() - t0, calls=1)
         need_recreate = (cmd.return_code != 0)
     if need_recreate:
+        t1 = time.time()
         cmd = shell.ShellCmd("ip link del {name}".format(**{"name": ifname}))
         cmd(is_exception=False)
 
@@ -3205,30 +3355,80 @@ def create_vxlan_interface(vni, vtepIp, dstport, existing_vxlan_vteps=None):
             **{"name": ifname, "id": vni, "dstport":dstport,"ip": vtepIp}))
 
         cmd(is_exception=False)
+        record_bridge_stage('create_repair', time.time() - t1, calls=1)
+        if isinstance(existing_vxlan_vteps, dict) and cmd.return_code == 0:
+            existing_vxlan_vteps[ifname] = vtepIp
+    else:
+        record_bridge_stage('create_repair', 0.0, skipped=1)
 
+    if not need_recreate and is_network_device_up(ifname):
+        record_bridge_stage('ip_link', 0.0, skipped=1)
+        return True
+
+    t1 = time.time()
     cmd = shell.ShellCmd("ip link set %s up" % ifname)
     cmd(is_exception=False)
+    record_bridge_stage('ip_link', time.time() - t1, calls=1)
     return cmd.return_code == 0
 
 def create_vxlan_bridge(interf, bridgeName, ips):
-    if not is_bridge(bridgeName):
+    t0 = time.time()
+    bridge_exists = is_bridge(bridgeName)
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
+    if not bridge_exists:
         create_bridge(bridgeName, interf, False)
-    elif is_vif_on_bridge(bridgeName, interf) is None:
-        ip_link_set_net_device_master(interf, bridgeName)
+    else:
+        t_vif = time.time()
+        vif_on_br = is_vif_on_bridge(bridgeName, interf)
+        record_bridge_stage('state_read', time.time() - t_vif, calls=1)
+        if vif_on_br is None:
+            t1 = time.time()
+            ip_link_set_net_device_master(interf, bridgeName)
+            record_bridge_stage('create_repair', time.time() - t1, calls=1)
+        else:
+            record_bridge_stage('create_repair', 0.0, skipped=1)
+
+        flags_path = "/sys/class/net/%s/flags" % bridgeName
+        if os.path.exists(flags_path):
+            if is_network_device_up(bridgeName):
+                record_bridge_stage('ip_link', 0.0, skipped=1)
+            else:
+                t1 = time.time()
+                shell.call("ip link set %s up" % bridgeName)
+                record_bridge_stage('ip_link', time.time() - t1, calls=1)
+
+        mac_path = "/sys/class/net/%s/address" % interf
+        br_mac_path = "/sys/class/net/%s/address" % bridgeName
+        if os.path.exists(mac_path) and os.path.exists(br_mac_path):
+            t_mac = time.time()
+            mac = read_file_strip(mac_path)
+            br_mac = read_file_strip(br_mac_path)
+            record_bridge_stage('state_read', time.time() - t_mac, calls=1)
+            if isinstance(mac, (str, type(u''))) and mac and isinstance(br_mac, (str, type(u''))):
+                if br_mac.lower() == mac.lower():
+                    record_bridge_stage('ip_link', 0.0, skipped=1)
+                else:
+                    t1 = time.time()
+                    shell.call("ip link set %s address %s" % (bridgeName, mac))
+                    record_bridge_stage('ip_link', time.time() - t1, calls=1)
 
     # Fix ZSTAC-54704. It is expected that the bridge to be reset when the host reconnects. However, the above code
     # does not necessarily execute create_bridge(), and additional testing is required if it must be executed.
     stp_path = "/sys/class/net/%s/bridge/stp_state" % bridgeName
     if os.path.exists(stp_path):
-        write_file(stp_path, "0")
+        write_sysfs_if_changed(stp_path, "0", stage='bridge_params')
     else:
+        t1 = time.time()
         shell.call("brctl stp %s off" % bridgeName)
+        record_bridge_stage('bridge_params', time.time() - t1, calls=1)
 
     fd_path = "/sys/class/net/%s/bridge/forward_delay" % bridgeName
     if os.path.exists(fd_path):
-        write_file(fd_path, "0")
+        write_sysfs_if_changed(fd_path, "0", stage='bridge_params')
     else:
+        t1 = time.time()
         shell.call("brctl setfd %s 0" % bridgeName)
+        record_bridge_stage('bridge_params', time.time() - t1, calls=1)
 
     if ips is not None:
         populate_vxlan_fdbs([interf], ips)
@@ -3253,9 +3453,12 @@ def delete_vxlan_bridge(bridge_name, vxlan_interface):
 
 
 def populate_vxlan_fdbs(interf, ips):
+    t0 = time.time()
     try:
         iproute.batch_populate_vxlan_fdbs(interf, "00:00:00:00:00:00", ips)
+        record_bridge_stage('fdb', time.time() - t0, calls=len(interf) * len(ips) if interf and ips else 1)
     except Exception as e:
+        record_bridge_stage('fdb', time.time() - t0, calls=1)
         logger.debug(e)
         return False
 
@@ -3276,8 +3479,31 @@ def bridge_fdb_has_self_rule(mac, dev):
 def get_interfs_from_uuids(uuids):
     if uuids:
         uuid_set = set(uuids)
+        net_dir = "/sys/class/net"
+        if os.path.isdir(net_dir):
+            t0 = time.time()
+            try:
+                entries = os.listdir(net_dir)
+            except OSError:
+                entries = []
+            interfs = []
+            for entry in entries:
+                if not entry.startswith("vxlan"):
+                    continue
+                alias = read_file_strip(os.path.join(net_dir, entry, "ifalias"))
+                if not isinstance(alias, (str, type(u''))) or "uuid:" not in alias:
+                    continue
+                alias_uuid = alias.split("uuid:", 1)[1].strip()
+                if alias_uuid in uuid_set or any(u in alias for u in uuid_set):
+                    interfs.append(entry)
+            record_bridge_stage('state_read', time.time() - t0, calls=1)
+            if interfs:
+                return interfs
+
+        t0 = time.time()
         cmd = shell.ShellCmd("ip -o link show")
         o = cmd(is_exception=False)
+        record_bridge_stage('state_read', time.time() - t0, calls=1)
         if o:
             interfs = []
             for line in o.splitlines():
@@ -3297,8 +3523,10 @@ def get_interfs_from_uuids(uuids):
 
     strUuids = "\|".join(uuids)
 
+    t0 = time.time()
     cmd = shell.ShellCmd("ip link | grep '%s' -B2 | awk '/vxlan/{ print $2}' | tr ':' ' '" % strUuids)
     o = cmd(is_exception=False)
+    record_bridge_stage('state_read', time.time() - t0, calls=1)
 
     if o == "":
         return []
@@ -3318,10 +3546,12 @@ def timeout_isdir(path):
 def set_device_uuid_alias(interf, l2NetworkUuid):
     alias_path = "/sys/class/net/%s/ifalias" % interf
     if os.path.exists(alias_path):
-        write_file(alias_path, "uuid: %s" % l2NetworkUuid)
+        write_sysfs_if_changed(alias_path, "uuid: %s" % l2NetworkUuid, stage='alias')
         return
+    t0 = time.time()
     cmd = shell.ShellCmd("ip link set dev %s alias \"uuid: %s\"" % (interf, l2NetworkUuid))
     cmd(is_exception=False)
+    record_bridge_stage('alias', time.time() - t0, calls=1)
 
 def is_zstack_vm(vmUuid):
     cmd = shell.ShellCmd("virsh metadata %s --uri http://zstack.org | grep zstack" % vmUuid)
