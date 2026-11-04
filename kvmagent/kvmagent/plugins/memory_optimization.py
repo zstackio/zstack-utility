@@ -1716,30 +1716,39 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         inventory.update({'poolGeneration': pool_generation, 'maintenance': receipt,
                           'canPrepare': not reasons, 'preparationReasons': reasons})
         try:
-            self._remember_backend_identity(inventory)
+            recorded = self._remember_backend_identity(inventory)
         except (IOError, OSError) as exc:
-            # Without a record a reboot does not reset the disk; the query itself still answers.
             active = [item.get('device') for item in inventory.get('candidates') or []
                       if isinstance(item, dict) and item.get('state') == 'ACTIVE']
             logger.error('Host[%s] unable to record the identity of writeback backend %s: %s\n%s'
                          % (self._load_host_uuid(), active, exc, traceback.format_exc()))
+            recorded = False
+        if not recorded:
+            # Without a record a reboot does not reset the disk; the query itself still answers.
+            inventory.setdefault('reasons', []).append('BACKEND_IDENTITY_NOT_RECORDED')
         return inventory
 
     def _remember_backend_identity(self, inventory):
-        """Keep the persistent identifiers of the active backend disk; a reboot changes all the others."""
+        """Keep the persistent identifiers of the active backend disk; a reboot changes all the others.
+
+        Returns False when an active backend disk is left without that record: its configured device
+        is unknown or another one, or the disk has no persistent identifier."""
         device = self._previous_backend_device()
-        for candidate in inventory.get('candidates') or []:
-            if not (device and isinstance(candidate, dict) and candidate.get('device') == device and
-                    candidate.get('state') == 'ACTIVE'):
+        active = [candidate for candidate in inventory.get('candidates') or []
+                  if isinstance(candidate, dict) and candidate.get('state') == 'ACTIVE']
+        for candidate in active:
+            if not (device and candidate.get('device') == device):
                 continue
             stable = candidate.get('stableIdentity') or {}
             identity = dict((key, stable.get(key) or '') for key in ('serial', 'wwn', 'byIdPath'))
-            if any(identity.values()):
-                identity['device'] = device
-                if identity != self._backend_identity():
-                    self._atomic_write(os.path.join(self.operation_dir, self.BACKEND_IDENTITY),
-                                       json.dumps(identity, sort_keys=True).encode('utf-8'))
-            return
+            if not any(identity.values()):
+                return False
+            identity['device'] = device
+            if identity != self._backend_identity():
+                self._atomic_write(os.path.join(self.operation_dir, self.BACKEND_IDENTITY),
+                                   json.dumps(identity, sort_keys=True).encode('utf-8'))
+            return True
+        return not active
 
     def _backend_identity(self):
         try:
