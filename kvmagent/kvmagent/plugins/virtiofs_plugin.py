@@ -9,6 +9,7 @@ import libvirt
 from kvmagent import kvmagent
 from kvmagent.plugins import virtiofs_device
 from kvmagent.plugins import virtiofs_source
+from kvmagent.plugins import hccn_bootstrap
 from zstacklib.utils import log, shell, http, jsonobject
 from zstacklib.utils.qga import VmQga, is_qga_connected
 
@@ -115,6 +116,12 @@ class VirtiofsStatusResponse(jsonobject.JsonObject):
     """Response for virtiofs status check"""
     libvirtVersion = str
     virtiofsHotplugSupported = bool
+
+
+class ProbeHccnBootstrapReleaseCmd(object):
+    @log.sensitive_fields("storageUrl")
+    def __init__(self):
+        pass
 
 
 class PrepareHostModelCacheCmd(object):
@@ -504,6 +511,7 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
     STATUS_VIRTIOFS_PATH = "/virtiofs/status"
     HOST_MODEL_CACHE_REPORT_PATH = "/virtiofs/host-model-cache/report"
     HOST_MODEL_CACHE_PREPARE_PATH = "/virtiofs/host-model-cache/prepare"
+    HCCN_RELEASE_PROBE_PATH = "/host/model-cache/hccn-release/probe"
     HOST_MODEL_CACHE_CLEANUP_PATH = "/virtiofs/host-model-cache/cleanup"
 
     def start(self):
@@ -520,6 +528,8 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
             self.prepare_host_model_cache,
             cmd=PrepareHostModelCacheCmd())
         http_server.register_async_uri(self.HOST_MODEL_CACHE_CLEANUP_PATH, self.cleanup_host_model_cache)
+        http_server.register_async_uri(self.HCCN_RELEASE_PROBE_PATH, self.probe_hccn_bootstrap_release,
+                                       cmd=ProbeHccnBootstrapReleaseCmd())
 
     def stop(self):
         """No-op; virtiofs plugin has no background resources to clean up."""
@@ -713,6 +723,19 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
             logger.warning("Failed to report host model cache: %s" % str(e))
             rsp.error = str(e)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def probe_hccn_bootstrap_release(self, req):
+        started = time.monotonic()
+        try:
+            command = hccn_bootstrap.parse_json(req[http.REQUEST_BODY])
+        except Exception as exc:
+            reason = str(exc)[:4096] if isinstance(exc, hccn_bootstrap.BootstrapError) else 'invalid release probe JSON'
+            return hccn_bootstrap.serialize_response({'success': False, 'error': reason,
+                'hccnBootstrapRelease': None, 'errorCount': 1,
+                'errors': [{'stage': 'release-probe', 'reason': reason}],
+                'cleanupIncomplete': False, 'residualMountPath': None})
+        return hccn_bootstrap.serialize_response(virtiofs_source.probe_hccn_bootstrap_release(command, started))
 
     @kvmagent.replyerror
     def prepare_host_model_cache(self, req):

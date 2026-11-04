@@ -103,10 +103,11 @@ Total DDR Capacity(MB) : 131072
     qga.os = "centos"
     qga.os_version = "7"
 
-    def guest_command(command):
+    def guest_command(command, exception=True):
         if command == "npu-smi info -l":
             return "NPU ID : 2"
         if command == "command -v npu-smi":
+            assert exception is False
             return "/usr/bin/npu-smi"
         if command == "/usr/bin/npu-smi info":
             return summary_output
@@ -193,3 +194,38 @@ Total DDR Capacity(MB) : 131072
     assert [item["physicalId"] for item in response["gpuInfos"]] == [
         "4", "5"]
     assert all(item["isDriverLoaded"] for item in response["gpuInfos"])
+
+
+def test_strict_host_probe_runs_real_dispatch_before_vm_lookup():
+    plugin = vm_config.VmConfigPlugin.__new__(vm_config.VmConfigPlugin)
+    raw = json.dumps({'hccnBootstrap': {'schemaVersion': 1, 'operation': 'capability', 'capabilityScope': 'host'}})
+    with patch.object(vm_config, 'get_virt_domain', side_effect=AssertionError('host has no VM')):
+        result = json.loads(plugin.vm_gpu_info_sync({http.REQUEST_BODY: raw}))
+    assert result['success'] is True
+    assert result['hccnBootstrap']['exitCode'] is None
+    assert result['hccnBootstrap']['result']['releaseProbeVersion'] == 1
+    assert result['gpuInfos'] == []
+
+
+def test_strict_invalid_version_never_falls_through_to_legacy():
+    plugin = vm_config.VmConfigPlugin.__new__(vm_config.VmConfigPlugin)
+    raw = json.dumps({'hccnBootstrap': {'schemaVersion': 2, 'operation': 'capability', 'capabilityScope': 'host'}})
+    with patch.object(vm_config, 'get_virt_domain', side_effect=AssertionError('invalid strict is not legacy')):
+        result = json.loads(plugin.vm_gpu_info_sync({http.REQUEST_BODY: raw}))
+    assert result['success'] is False
+    assert result['hccnBootstrap']['errorCount'] == 1
+
+
+def test_legacy_nvidia_empty_result_uses_original_collector_without_new_gate():
+    plugin = vm_config.VmConfigPlugin.__new__(vm_config.VmConfigPlugin)
+    domain = MagicMock()
+    domain.isActive.return_value = True
+    raw = json.dumps({'vmUuid': 'legacy-vm', 'vendors': ['NVIDIA']})
+    with patch.object(vm_config, 'get_virt_domain', return_value=domain), \
+            patch.object(plugin, 'get_vm_gpu_info_by_guesttool', return_value=(0, [])) as collector, \
+            patch.object(vm_config.hccn_bootstrap, 'dispatch', side_effect=AssertionError('legacy must not run strict')):
+        result = json.loads(plugin.vm_gpu_info_sync({http.REQUEST_BODY: raw}))
+    collector.assert_called_once_with(domain, ['NVIDIA'])
+    assert result['success'] is True
+    assert result['gpuInfos'] == []
+    assert 'hccnBootstrap' not in result

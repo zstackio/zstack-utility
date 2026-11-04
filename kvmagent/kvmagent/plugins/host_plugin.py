@@ -3924,7 +3924,12 @@ done
     @kvmagent.replyerror
     def get_hccn_devices(self, req):
         rsp = GetHccnDevicesResponse()
-        rsp.devices = hccn.collect_devices()
+        try:
+            rsp.devices = hccn.collect_devices()
+        except (ValueError, OSError, subprocess.SubprocessError) as error:
+            rsp.success = False
+            rsp.error = str(error)
+            rsp.nativeFailureKind = 'invalid' if isinstance(error, ValueError) else 'unobservable'
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

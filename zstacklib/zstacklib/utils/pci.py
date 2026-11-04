@@ -450,10 +450,42 @@ def parse_resources(device_path):
     return resources
 
 
-def _query_pci_info_by_qmp(vm_uuid):
+def _query_pci_info_by_qmp(vm_uuid, timeout=None):
     """Execute QEMU monitor command and return output."""
-    cmd = "virsh qemu-monitor-command {} --hmp \"info pci\"".format(vm_uuid)
-    return bash_roe(cmd)
+    if timeout is None:
+        cmd = 'virsh qemu-monitor-command {} --hmp "info pci"'.format(vm_uuid)
+        return bash_roe(cmd)
+    if type(timeout) is not int or timeout != 5:
+        raise ValueError('strict QMP timeout must be exactly five seconds')
+    import signal
+    import subprocess
+    from zstacklib.utils import shell
+    deadline = time.monotonic() + timeout
+    process = shell.get_process(['/usr/bin/timeout', '--signal=KILL', '5s', 'virsh',
+                                 'qemu-monitor-command', vm_uuid, '--hmp', 'info pci'])
+    try:
+        output, error = process.communicate(timeout=max(0, deadline - time.monotonic() - 0.1))
+        return process.returncode, output.decode('utf-8', 'replace'), error.decode('utf-8', 'replace')
+    except subprocess.TimeoutExpired as exc:
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        try:
+            process.wait(timeout=max(0, deadline - time.monotonic()))
+        except subprocess.TimeoutExpired:
+            pass
+        output = exc.output or b''
+        return process.returncode, output.decode('utf-8', 'replace'), \
+            'strict QMP deadline exceeded; process pid=%s exitCode=%s' % (process.pid, process.returncode)
+    finally:
+        for stream in (process.stdout, process.stderr):
+            if stream is not None:
+                stream.close()
 
 
 def _parse_pci_info_by_qmp_output(qemu_output, aliases, alias_to_host, mapping_builder):
@@ -542,6 +574,87 @@ def _query_vm_pci_address_mapping(vm_uuid, aliases, alias_to_host, mapping_build
     logger.warn("Failed to get PCI mapping for VM {} after {} attempts".format(
         vm_uuid, max_retries))
     return {}
+
+
+
+def normalize_strict_pci_address(value):
+    if not isinstance(value, str) or not re.fullmatch(r'[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]', value):
+        raise ValueError('invalid complete PCI BDF')
+    domain, bus, slot, function = re.split(r'[:.]', value)
+    if int(slot, 16) > 31:
+        raise ValueError('PCI slot out of range')
+    return '%04x:%02x:%02x.%x' % (int(domain, 16), int(bus, 16), int(slot, 16), int(function, 16))
+
+
+def _strict_xml_pci_address(element):
+    if element is None:
+        raise ValueError('missing active XML PCI address')
+    fields = []
+    for key, maximum in (('domain', 65535), ('bus', 255), ('slot', 31), ('function', 7)):
+        value = element.get(key)
+        if not isinstance(value, str) or not re.fullmatch(r'0x[0-9a-fA-F]+', value):
+            raise ValueError('invalid active XML PCI address field')
+        number = int(value, 16)
+        if number > maximum:
+            raise ValueError('active XML PCI address out of range')
+        fields.append(number)
+    return '%04x:%02x:%02x.%x' % tuple(fields)
+
+
+def get_strict_pci_passthrough_observation(vm_dom):
+    if not vm_dom.isActive() or type(vm_dom.ID()) is not int or vm_dom.ID() < 0:
+        raise ValueError('strict PCI observation requires active runtime')
+    xml = vm_dom.XMLDesc()
+    if not isinstance(xml, str) or len(xml.encode('utf-8')) > 1048576:
+        raise ValueError('invalid/oversized active domain XML')
+    tree = ET.fromstring(xml)
+    expected, hosts, guests = {}, set(), set()
+    for device in tree.findall('./devices/hostdev'):
+        if device.get('type') != 'pci':
+            raise ValueError('unsupported non-PCI hostdev in strict allocation')
+        alias_element = device.find('alias')
+        alias = None if alias_element is None else alias_element.get('name')
+        if not alias:
+            raise ValueError('missing PCI hostdev alias')
+        host = _strict_xml_pci_address(device.find('source/address'))
+        guest = _strict_xml_pci_address(device.find('address'))
+        if alias in expected or host in hosts or guest in guests:
+            raise ValueError('duplicate active XML alias/PCI BDF')
+        expected[alias] = {'alias': alias, 'hostPciAddress': host, 'guestPciAddress': guest}
+        hosts.add(host)
+        guests.add(guest)
+    if not expected:
+        raise ValueError('strict PCI observation has no hostdev devices')
+    runtime_id, vm_uuid, vm_name = vm_dom.ID(), vm_dom.UUIDString(), vm_dom.name()
+    # One complete observation: never merge partial mappings across retries.
+    rc, output, error = _query_pci_info_by_qmp(vm_uuid, timeout=5)
+    if rc != 0 or not isinstance(output, str) or len(output.encode('utf-8')) > 1048576:
+        raise ValueError('strict QMP query failed: rc=%s %s' % (rc, str(error)[:4096]))
+    observed, addresses, current = {}, set(), None
+    for line in output.splitlines():
+        match = re.match(r'^\s*Bus\s+(\d+),\s+device\s+(\d+),\s+function\s+(\d+):', line)
+        if match:
+            bus, slot, function = [int(value) for value in match.groups()]
+            if bus > 255 or slot > 31 or function > 7:
+                raise ValueError('QMP PCI address out of range')
+            current = '0000:%02x:%02x.%x' % (bus, slot, function)
+        alias_match = re.search(r'\bid\s+"([^"]+)"', line)
+        if alias_match and alias_match.group(1) in expected:
+            alias = alias_match.group(1)
+            if current is None:
+                raise ValueError('QMP alias missing guest address')
+            if alias in observed or current in addresses:
+                raise ValueError('duplicate raw QMP alias/guest BDF')
+            if expected[alias]['guestPciAddress'] != current:
+                raise ValueError('QMP guest address differs from active XML')
+            observed[alias] = expected[alias]
+            addresses.add(current)
+    if set(observed) != set(expected):
+        raise ValueError('incomplete single QMP observation')
+    if not vm_dom.isActive() or (vm_dom.ID(), vm_dom.UUIDString(), vm_dom.name()) != (runtime_id, vm_uuid, vm_name):
+        raise ValueError('active runtime changed during QMP observation')
+    return {'vmUuid': vm_uuid, 'name': vm_name, 'runtimeId': runtime_id,
+            'devices': sorted(observed.values(), key=lambda item: item['alias'])}
 
 
 def get_pci_passthrough_mapping(vm_dom):

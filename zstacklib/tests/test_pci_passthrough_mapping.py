@@ -438,3 +438,103 @@ class TestMultiAliasCompletionCheck:
         assert mock_qmp.call_count == 1
         mock_sleep.assert_not_called()
         assert len(result) == 1
+
+
+class TestStrictPciObservation:
+    def domain(self, xml=VM_XML_WITH_PCI_PASSTHROUGH):
+        domain = MagicMock()
+        domain.name.return_value = 'a' * 32
+        domain.UUIDString.return_value = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+        domain.ID.return_value = 7
+        domain.isActive.return_value = True
+        domain.XMLDesc.return_value = xml
+        return domain
+
+    def test_single_complete_observation_retains_actual_identity(self):
+        output = 'Bus 5, device 0, function 0:\n  id "hostdev0"\n'
+        with patch.object(pci, '_query_pci_info_by_qmp', return_value=(0, output, '')) as query:
+            result = pci.get_strict_pci_passthrough_observation(self.domain())
+        assert result['devices'] == [{'alias': 'hostdev0', 'hostPciAddress': '0000:3b:00.0',
+                                      'guestPciAddress': '0000:05:00.0'}]
+        assert result['runtimeId'] == 7
+        query.assert_called_once_with('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', timeout=5)
+
+    def test_partial_observation_does_not_retry_or_accumulate(self):
+        import pytest
+        with patch.object(pci, '_query_pci_info_by_qmp', side_effect=[(0, '', ''),
+                          (0, 'Bus 5, device 0, function 0:\n id "hostdev0"', '')]) as query:
+            with pytest.raises(ValueError, match='incomplete'):
+                pci.get_strict_pci_passthrough_observation(self.domain())
+        assert query.call_count == 1
+
+    def test_duplicate_alias_in_raw_qmp_is_not_lost_to_dict(self):
+        import pytest
+        block = 'Bus 5, device 0, function 0:\n id "hostdev0"\n'
+        with patch.object(pci, '_query_pci_info_by_qmp', return_value=(0, block * 2, '')):
+            with pytest.raises(ValueError, match='duplicate'):
+                pci.get_strict_pci_passthrough_observation(self.domain())
+
+    def test_qmp_guest_reorder_conflicts_with_active_xml(self):
+        import pytest
+        with patch.object(pci, '_query_pci_info_by_qmp', return_value=(0, 'Bus 6, device 0, function 0:\n id "hostdev0"', '')):
+            with pytest.raises(ValueError, match='guest address'):
+                pci.get_strict_pci_passthrough_observation(self.domain())
+
+    def test_duplicate_xml_alias_is_rejected_before_query(self):
+        import pytest
+        xml = VM_XML_WITH_PCI_PASSTHROUGH.replace('</devices>',
+              VM_XML_WITH_PCI_PASSTHROUGH.split('<hostdev')[1].split('</hostdev>')[0].join(['<hostdev', '</hostdev></devices>']))
+        with patch.object(pci, '_query_pci_info_by_qmp') as query:
+            with pytest.raises(ValueError, match='duplicate'):
+                pci.get_strict_pci_passthrough_observation(self.domain(xml))
+        query.assert_not_called()
+
+    def test_strict_bdf_does_not_accept_substring_or_out_of_range(self):
+        import pytest
+        for value in ('junk0000:3b:00.0', '0000:3b:20.0', '0000:3b:00.8', '10000:00:00.0', None, 1):
+            with pytest.raises(ValueError):
+                pci.normalize_strict_pci_address(value)
+        assert pci.normalize_strict_pci_address('0000:AB:1F.7') == '0000:ab:1f.7'
+
+
+def test_strict_qmp_query_bounds_real_blocking_process(tmp_path, monkeypatch):
+    import os
+    import pathlib
+    import subprocess
+    import sys
+    import time
+    from zstacklib.utils import shell
+    executable = tmp_path / 'virsh'
+    pid_file = tmp_path / 'virsh-pid'
+    executable.write_text('#!' + sys.executable + '\nimport os,pathlib,time\npathlib.Path(%r).write_text(str(os.getpid()))\ntime.sleep(30)\n' % str(pid_file))
+    executable.chmod(0o700)
+    monkeypatch.setenv('PATH', str(tmp_path) + os.pathsep + '/usr/bin:/bin')
+    calls = []
+    def actual_process(args, **kwargs):
+        calls.append(args)
+        return subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    monkeypatch.setattr(shell, 'get_process', actual_process)
+    started = time.monotonic()
+    rc, output, error = pci._query_pci_info_by_qmp('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', timeout=5)
+    assert time.monotonic() - started < 7
+    assert rc != 0
+    assert calls == [['/usr/bin/timeout', '--signal=KILL', '5s', 'virsh', 'qemu-monitor-command',
+                      'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '--hmp', 'info pci']]
+    assert isinstance(output, str) and isinstance(error, str)
+    status = pathlib.Path('/proc/%s/stat' % int(pid_file.read_text()))
+    terminated = False
+    while time.monotonic() < started + 7:
+        try:
+            terminated = status.read_text().split()[2] == 'Z'
+        except FileNotFoundError:
+            terminated = True
+        if terminated:
+            break
+        time.sleep(min(0.005, max(0, started + 7 - time.monotonic())))
+    assert terminated, 'SIGKILL terminal state was not observed within the original budget'
+
+
+def test_default_qmp_helper_retains_original_call_without_timeout_wrapper():
+    with patch.object(pci, 'bash_roe', return_value=(0, 'legacy', '')) as query:
+        assert pci._query_pci_info_by_qmp('legacy-vm') == (0, 'legacy', '')
+    query.assert_called_once_with('virsh qemu-monitor-command legacy-vm --hmp "info pci"')
