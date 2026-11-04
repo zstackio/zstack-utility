@@ -203,6 +203,9 @@ def get_pci_passthrough_mapping(vm_dom):
     pci_mapping = {}
     xml_tree = ET.fromstring(vm_dom.XMLDesc())
     for hostdev in xml_tree.find('devices').findall('hostdev'):
+        if hostdev.get('type') != 'pci':
+            continue
+
         source_address = hostdev.find('source/address')
         host_domain = source_address.get('domain').replace('0x', '')
         host_bus = source_address.get('bus').replace('0x', '')
