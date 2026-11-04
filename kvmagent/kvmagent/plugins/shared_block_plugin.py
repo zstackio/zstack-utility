@@ -627,7 +627,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 "issue_discards": 0,
                 "reserved_stack": 256,
                 "reserved_memory": 131072,
-                "use_lvmetad": 1 if enableLvmetad else 0
+                "use_lvmetad": 1 if enableLvmetad else 0,
+                "notify_dbus": 0
             })
             if kvmagent.get_host_os_type() == "debian":
                 config.modify({"udev_rules": 0, "udev_sync": 0})
