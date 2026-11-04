@@ -3698,7 +3698,34 @@ class Vm(object):
 
     def restore(self, path):
         self._patch_disk_xml_order_from_saved_image(path)
-        self._patch_cpu_xml_from_saved_image(path)
+        self._patch_xml_from_saved_image(path)
+
+        tree = etree.fromstring(self.domain_xml)
+        vcpu = tree.find('vcpu')
+        vcpus = tree.findall('vcpus/vcpu')
+        if vcpu is not None:
+            maximum = int(vcpu.text)
+            for cpu in vcpus:
+                vcpu_id = int(cpu.get('id'))
+                if vcpu_id < 0 or vcpu_id >= maximum:
+                    raise kvmagent.KvmError('saved vCPU id[%s] is outside configured capacity[%s]' %
+                                           (vcpu_id, maximum))
+            for cell in tree.findall('cpu/numa/cell'):
+                numa_cpus = set()
+                for cpu_range in (cell.get('cpus') or '').split(','):
+                    cpu_range = cpu_range.strip()
+                    if not cpu_range:
+                        continue
+                    bounds = cpu_range.lstrip('^').split('-')
+                    cpu_ids = range(int(bounds[0]), int(bounds[-1]) + 1)
+                    if cpu_range.startswith('^'):
+                        numa_cpus.difference_update(cpu_ids)
+                    else:
+                        numa_cpus.update(cpu_ids)
+                if numa_cpus and max(numa_cpus) >= maximum:
+                    raise kvmagent.KvmError('saved NUMA CPU id[%s] is outside configured capacity[%s]; '
+                                           'restore the original NUMA/CPU configuration before retrying' %
+                                           (max(numa_cpus), maximum))
 
         @LibvirtAutoReconnect
         def restore_from_file(conn):
@@ -3802,32 +3829,44 @@ class Vm(object):
             logger.warn('failed to patch disk xml order from saved image, '
                         'falling back to original xml: %s' % str(ex))
 
-    def _patch_cpu_xml_from_saved_image(self, path):
-        """Use the saved CPU ABI for host-model and custom memory restores."""
+    def _patch_xml_from_saved_image(self, path):
+        """Restore the saved CPU ABI and hotplug layout."""
         try:
-            current_tree = etree.fromstring(self.domain_xml)
-            current_cpu = current_tree.find('cpu')
-            if current_cpu is None:
-                return
-            current_mode = current_cpu.get('mode') or 'custom'
-            if current_mode not in ('host-model', 'custom'):
-                return
-
             @LibvirtAutoReconnect
             def get_saved_xml(conn):
                 return conn.saveImageGetXMLDesc(path, 0)
 
-            saved_xml = get_saved_xml()
-            saved_tree = etree.fromstring(saved_xml)
-            saved_cpu = saved_tree.find('cpu')
+            saved_tree = etree.fromstring(get_saved_xml())
+            current_tree = etree.fromstring(self.domain_xml)
 
-            if saved_cpu is None:
+            patched = []
+            if self._patch_cpu_from_saved_image(current_tree, saved_tree):
+                patched.append('cpu')
+            if self._patch_vcpus_from_saved_image(current_tree, saved_tree):
+                patched.append('vcpus')
+            if self._patch_memory_devices_from_saved_image(current_tree, saved_tree):
+                patched.append('memory devices')
+
+            if not patched:
                 return
 
-            if current_mode == 'custom' and (
-                    (saved_cpu.get('mode') or 'custom') != 'custom' or saved_cpu.get('check') != 'full'):
-                return
+            self.domain_xml = etree.tostring(current_tree, encoding='unicode')
+            logger.debug('patched %s from saved image for memory snapshot restore' % ', '.join(patched))
+        except Exception as ex:
+            logger.warn('failed to patch xml from saved image, '
+                        'falling back to original xml: %s' % str(ex))
 
+    @staticmethod
+    def _patch_cpu_from_saved_image(current_tree, saved_tree):
+        current_cpu = current_tree.find('cpu')
+        saved_cpu = saved_tree.find('cpu')
+        if current_cpu is None or saved_cpu is None:
+            return False
+
+        current_mode = current_cpu.get('mode') or 'custom'
+        if current_mode == 'host-model' or (
+                current_mode == 'custom' and
+                (saved_cpu.get('mode') or 'custom') == 'custom' and saved_cpu.get('check') == 'full'):
             logger.debug('patching CPU xml for memory snapshot restore, '
                          'saved cpu mode=%s, agent cpu mode=%s'
                          % (saved_cpu.get('mode'), current_cpu.get('mode')))
@@ -3835,21 +3874,83 @@ class Vm(object):
             # preserve topology and numa from agent-built xml if not in saved xml
             for tag in ('topology', 'numa'):
                 agent_elem = current_cpu.find(tag)
-                saved_elem = saved_cpu.find(tag)
-                if agent_elem is not None and saved_elem is None:
+                if agent_elem is not None and saved_cpu.find(tag) is None:
                     saved_cpu.append(agent_elem)
 
             # cpu is a direct child of the root <domain> element
-            root = current_tree
-            cpu_index = list(root).index(current_cpu)
-            root.remove(current_cpu)
-            root.insert(cpu_index, saved_cpu)
-            self.domain_xml = etree.tostring(root, encoding='unicode')
+            cpu_index = list(current_tree).index(current_cpu)
+            current_tree.remove(current_cpu)
+            current_tree.insert(cpu_index, saved_cpu)
+            return True
 
-            logger.debug('patched CPU xml from saved image for memory snapshot restore')
-        except Exception as ex:
-            logger.warn('failed to patch CPU xml from saved image, '
-                        'falling back to original xml: %s' % str(ex))
+        # the agent sizes the numa cell with the total memory, while the saved
+        # image keeps the boot memory in the cell and the rest in dimm devices
+        current_numa = current_cpu.find('numa')
+        saved_numa = saved_cpu.find('numa')
+        if current_numa is None or saved_numa is None:
+            return False
+
+        def numa_layout(node):
+            return (node.tag, sorted(node.attrib.items()), (node.text or '').strip(),
+                    [numa_layout(child) for child in node])
+
+        if numa_layout(current_numa) == numa_layout(saved_numa):
+            return False
+
+        numa_index = list(current_cpu).index(current_numa)
+        current_cpu.remove(current_numa)
+        current_cpu.insert(numa_index, saved_numa)
+        return True
+
+    @staticmethod
+    def _patch_vcpus_from_saved_image(current_tree, saved_tree):
+        saved_vcpus = saved_tree.find('vcpus')
+        if saved_vcpus is None:
+            return False
+
+        current_vcpus = current_tree.find('vcpus')
+        if current_vcpus is not None:
+            if (current_vcpus.attrib == saved_vcpus.attrib and
+                    [v.attrib for v in current_vcpus] == [v.attrib for v in saved_vcpus]):
+                return False
+            index = list(current_tree).index(current_vcpus)
+            current_tree.remove(current_vcpus)
+        else:
+            vcpu = current_tree.find('vcpu')
+            index = list(current_tree).index(vcpu) + 1 if vcpu is not None else len(current_tree)
+        current_tree.insert(index, saved_vcpus)
+        return True
+
+    @staticmethod
+    def _patch_memory_devices_from_saved_image(current_tree, saved_tree):
+        saved_memory_devices = [device for device in saved_tree.findall('devices/memory')
+                                if device.get('model') in ('dimm', 'nvdimm')]
+        devices = current_tree.find('devices')
+        if not saved_memory_devices or devices is None:
+            return False
+
+        for device in devices.findall('memory'):
+            if device.get('model') in ('dimm', 'nvdimm'):
+                devices.remove(device)
+        for device in saved_memory_devices:
+            devices.append(device)
+
+        saved_max_memory = saved_tree.find('maxMemory')
+        if current_tree.find('maxMemory') is None and saved_max_memory is not None:
+            current_tree.insert(0, saved_max_memory)
+
+        current_cpu = current_tree.find('cpu')
+        saved_numa = saved_tree.find('cpu/numa')
+        if current_cpu is not None and current_cpu.find('numa') is None and saved_numa is not None:
+            current_cpu.append(saved_numa)
+
+        current_memory = current_tree.find('currentMemory')
+        saved_current_memory = saved_tree.find('currentMemory')
+        if current_memory is not None and saved_current_memory is not None:
+            index = list(current_tree).index(current_memory)
+            current_tree.remove(current_memory)
+            current_tree.insert(index, saved_current_memory)
+        return True
 
     def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
