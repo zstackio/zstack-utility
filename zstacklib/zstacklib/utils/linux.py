@@ -446,6 +446,10 @@ def get_ethernet_info():
 
 # only for novlan and vlan networks
 def set_bridge_alias_using_phy_nic_name(bridge_name, nic_name):
+    alias_path = "/sys/class/net/%s/ifalias" % bridge_name
+    if os.path.exists(alias_path):
+        write_file(alias_path, "phy_nic: %s" % nic_name)
+        return
     shell.call("ip link set %s alias 'phy_nic: %s'" % (bridge_name, nic_name))
 
 def get_bridge_phy_nic_name_from_alias(bridge_name):
@@ -1548,6 +1552,11 @@ def is_bridge_slave(dev):
 
 
 def is_vif_on_bridge(bridge_name, interface):
+    brif_dir = "/sys/class/net/%s/brif" % bridge_name
+    if os.path.exists(brif_dir):
+        if os.path.exists(os.path.join(brif_dir, interface)):
+            return True
+        return None
     vifs = get_all_bridge_interface(bridge_name)
     if interface in vifs:
         return True
@@ -1678,6 +1687,9 @@ def update_bridge_interface_configuration(old_interface, new_interface, bridge_n
 
 def find_bridge_having_physical_interface(ifname):
     if is_bridge_slave(ifname):
+        uevent_path = "/sys/class/net/%s/master/uevent" % ifname
+        if os.path.exists(uevent_path):
+            return get_interface_master_device(ifname)
         br_name = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % ifname)
         if br_name == "":
             return None
@@ -1761,7 +1773,11 @@ def ip_link_set_net_device_master(net_device, master):
     shell.call("ip link set %s master %s" % (net_device, master))
 
     # double check, because sometimes the master is not set successfully, see jira: ZSTAC-54905, ZSV-3260
-    actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % net_device).strip('\n')
+    uevent_path = "/sys/class/net/%s/master/uevent" % net_device
+    if os.path.exists(uevent_path):
+        actual_result = get_interface_master_device(net_device)
+    else:
+        actual_result = shell.call("cat /sys/class/net/%s/master/uevent | grep 'INTERFACE' | awk -F '=' '{printf $2}'" % net_device).strip('\n')
     if not actual_result or actual_result != master:
         raise Exception("set net device[%s] master to [%s] failed, try again now" % (net_device, master))
 
@@ -1813,8 +1829,18 @@ def create_bridge(bridge_name, interface, move_route=True):
     else:
         logger.debug('%s is a bridge device, no need to create bridge' % bridge_name)
 
-    shell.call("brctl stp %s off" % bridge_name)
-    shell.call("brctl setfd %s 0" % bridge_name)
+    stp_path = "/sys/class/net/%s/bridge/stp_state" % bridge_name
+    if os.path.exists(stp_path):
+        write_file(stp_path, "0")
+    else:
+        shell.call("brctl stp %s off" % bridge_name)
+
+    fd_path = "/sys/class/net/%s/bridge/forward_delay" % bridge_name
+    if os.path.exists(fd_path):
+        write_file(fd_path, "0")
+    else:
+        shell.call("brctl setfd %s 0" % bridge_name)
+
     shell.call("ip link set %s up" % bridge_name)
 
     def modify_device_state_in_networkmanager(device_name, state):
@@ -1828,7 +1854,12 @@ def create_bridge(bridge_name, interface, move_route=True):
     #Set bridge MAC address as network device MAC address. It will avoid of
     # bridge MAC address is reset to other new added dummy network device's 
     # MAC address.
-    shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
+    mac_path = "/sys/class/net/%s/address" % interface
+    mac = read_file_strip(mac_path) if os.path.exists(mac_path) else None
+    if mac:
+        shell.call("ip link set %s address %s" % (bridge_name, mac))
+    else:
+        shell.call("ip link set %s address `cat /sys/class/net/%s/address`" % (bridge_name, interface))
 
     if move_route and route_info is not None:
         try:
@@ -2484,10 +2515,23 @@ def delete_vlan_bridge(bridge_name, vlan_interface):
 
 
 
-def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None):
+def get_devices_with_ip():
+    devs = set()
+    out = shell.call("ip -o addr show", exception=False)
+    if not out:
+        return devs
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        if parts[2] == 'inet' or (parts[2] == 'inet6' and 'scope link' not in line and not parts[3].startswith('fe80:')):
+            devs.add(parts[1].split('@')[0])
+    return devs
+
+
+def create_vlan_bridge(bridgename, ethname, vlan, ip=None, netmask=None, move_route=True):
     vlan = int(vlan)
     vlan_dev_name = create_vlan_eth(ethname, vlan, ip, netmask)
-    move_route = True
     create_bridge(bridgename, vlan_dev_name, move_route)
 
 def enable_process_coredump(pid):
@@ -3124,20 +3168,43 @@ def change_vxlan_interface(old_vni, new_vni):
     logger.debug("Successfully changed VXLAN interface from {old} to {new}.".format(old=old_vxlan, new=new_vxlan))
 
 
-def create_vxlan_interface(vni, vtepIp,dstport):
-    vni = str(vni)
-    cmd = shell.ShellCmd("ip -d -o link show dev {name} | grep -w {ip} ".format(**{"name": "vxlan" + vni, "ip": vtepIp}))
+def get_vxlan_interfaces_vtep_map():
+    vxlan_vteps = {}
+    cmd = shell.ShellCmd("ip -d -o link show type vxlan")
     cmd(is_exception=False)
-    if cmd.return_code != 0:
-        cmd = shell.ShellCmd("ip link del {name}".format(**{"name": "vxlan" + vni}))
+    if cmd.return_code != 0 or not cmd.stdout:
+        return vxlan_vteps
+    for line in cmd.stdout.splitlines():
+        parts = line.split(": ")
+        if len(parts) < 2:
+            continue
+        ifname = parts[1].split("@")[0].strip()
+        if " local " in line:
+            vxlan_vteps[ifname] = line.split(" local ")[1].split()[0].strip()
+        else:
+            vxlan_vteps[ifname] = ""
+    return vxlan_vteps
+
+
+def create_vxlan_interface(vni, vtepIp, dstport, existing_vxlan_vteps=None):
+    vni = str(vni)
+    ifname = "vxlan" + vni
+    if existing_vxlan_vteps is not None:
+        need_recreate = existing_vxlan_vteps.get(ifname) != vtepIp
+    else:
+        cmd = shell.ShellCmd("ip -d -o link show dev {name} | grep -w {ip} ".format(**{"name": ifname, "ip": vtepIp}))
+        cmd(is_exception=False)
+        need_recreate = (cmd.return_code != 0)
+    if need_recreate:
+        cmd = shell.ShellCmd("ip link del {name}".format(**{"name": ifname}))
         cmd(is_exception=False)
 
         cmd = shell.ShellCmd("ip link add {name} type vxlan id {id} dstport {dstport} local {ip} learning noproxy nol2miss nol3miss".format(
-            **{"name": "vxlan" + vni, "id": vni, "dstport":dstport,"ip": vtepIp}))
+            **{"name": ifname, "id": vni, "dstport":dstport,"ip": vtepIp}))
 
         cmd(is_exception=False)
 
-    cmd = shell.ShellCmd("ip link set %s up" % ("vxlan" + vni))
+    cmd = shell.ShellCmd("ip link set %s up" % ifname)
     cmd(is_exception=False)
     return cmd.return_code == 0
 
@@ -3149,8 +3216,18 @@ def create_vxlan_bridge(interf, bridgeName, ips):
 
     # Fix ZSTAC-54704. It is expected that the bridge to be reset when the host reconnects. However, the above code
     # does not necessarily execute create_bridge(), and additional testing is required if it must be executed.
-    shell.call("brctl stp %s off" % bridgeName)
-    shell.call("brctl setfd %s 0" % bridgeName)
+    stp_path = "/sys/class/net/%s/bridge/stp_state" % bridgeName
+    if os.path.exists(stp_path):
+        write_file(stp_path, "0")
+    else:
+        shell.call("brctl stp %s off" % bridgeName)
+
+    fd_path = "/sys/class/net/%s/bridge/forward_delay" % bridgeName
+    if os.path.exists(fd_path):
+        write_file(fd_path, "0")
+    else:
+        shell.call("brctl setfd %s 0" % bridgeName)
+
     if ips is not None:
         populate_vxlan_fdbs([interf], ips)
 
@@ -3195,6 +3272,28 @@ def bridge_fdb_has_self_rule(mac, dev):
     return shell.run("bridge fdb show dev %s | grep -m 1 '%s dev %s self permanent'" % (dev, mac, dev)) == 0
 
 def get_interfs_from_uuids(uuids):
+    if not uuids:
+        return []
+    uuid_set = set(uuids)
+    cmd = shell.ShellCmd("ip -o link show")
+    o = cmd(is_exception=False)
+    if o:
+        interfs = []
+        for line in o.splitlines():
+            if "vxlan" not in line or "uuid:" not in line:
+                continue
+            parts = line.split("alias ")
+            if len(parts) < 2:
+                continue
+            alias_part = parts[1].strip()
+            for u in uuid_set:
+                if u in alias_part:
+                    ifname = line.split(":")[1].strip().split("@")[0]
+                    interfs.append(ifname)
+                    break
+        if interfs:
+            return interfs
+
     strUuids = "\|".join(uuids)
 
     cmd = shell.ShellCmd("ip link | grep '%s' -B2 | awk '/vxlan/{ print $2}' | tr ':' ' '" % strUuids)
@@ -3216,6 +3315,10 @@ def timeout_isdir(path):
         return True
 
 def set_device_uuid_alias(interf, l2NetworkUuid):
+    alias_path = "/sys/class/net/%s/ifalias" % interf
+    if os.path.exists(alias_path):
+        write_file(alias_path, "uuid: %s" % l2NetworkUuid)
+        return
     cmd = shell.ShellCmd("ip link set dev %s alias \"uuid: %s\"" % (interf, l2NetworkUuid))
     cmd(is_exception=False)
 
