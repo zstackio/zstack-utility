@@ -1078,3 +1078,76 @@ def test_release_probe_bad_key_diagnostics_stay_within_wire_limit():
     response = virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release({http.REQUEST_BODY: raw})
     assert len(response.encode()) <= 1048576
     assert json.loads(response)['success'] is False
+
+
+@pytest.mark.parametrize('addons', [{}, {'standardExtension': {'enabled': True}}])
+def test_release_probe_real_handler_accepts_kvm_transport_metadata(tmp_path, monkeypatch, addons):
+    import base64
+    import hashlib
+    import pathlib
+    import shutil
+    source = virtiofs_plugin.virtiofs_source
+    payload = b'{"schemaVersion":1}\n'
+    monkeypatch.setattr(source, 'MODEL_CENTER_PROVIDER_ROOT', str(tmp_path / 'mounts'))
+
+    def mount(_url, mount_path, subdir):
+        assert subdir == 'services'
+        target = pathlib.Path(mount_path) / 'service/llama-factory_0.9.5'
+        target.mkdir(parents=True)
+        (target / source.HCCN_RELEASE_FILE).write_bytes(payload)
+
+    def unmount(mount_path):
+        for child in pathlib.Path(mount_path).iterdir():
+            shutil.rmtree(str(child))
+
+    monkeypatch.setattr(source, '_mount_model_center', mount)
+    monkeypatch.setattr(source, '_unmount_model_center', unmount)
+    monkeypatch.setattr(source, 'prepare_model_center_cache',
+                        lambda *args: pytest.fail('release probe must not prepare the package'))
+    request = dict(schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private',
+                   storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5',
+                   contentVersion='v1', kvmHostAddons=addons)
+    result = json.loads(virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release(
+        {http.REQUEST_BODY: json.dumps(request)}))
+    assert result['success'] is True, result
+    assert base64.b64decode(result['hccnBootstrapRelease']['contentBase64']) == payload
+    assert result['hccnBootstrapRelease']['sha256'] == hashlib.sha256(payload).hexdigest()
+    assert result['errorCount'] == 0
+    assert result['errors'] == []
+    assert result['cleanupIncomplete'] is False
+    assert result['residualMountPath'] is None
+
+
+@pytest.mark.parametrize('extra', [
+    {'kvmHostAddons': None}, {'kvmHostAddons': False}, {'kvmHostAddons': []},
+    {'kvmHostAddons': 1}, {'kvmHostAddons': 'invalid'},
+    {'kvmHostAddons': {}, 'unexpectedSourceField': 'forbidden'},
+    {'kvmHostAddons': {}, 'schemaVersion': True},
+])
+def test_release_probe_metadata_does_not_relax_source_or_type_validation(tmp_path, monkeypatch, extra):
+    source = virtiofs_plugin.virtiofs_source
+    mount_root = tmp_path / 'must-not-mount'
+    monkeypatch.setattr(source, 'MODEL_CENTER_PROVIDER_ROOT', str(mount_root))
+    request = dict(schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private',
+                   storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5',
+                   contentVersion='v1')
+    request.update(extra)
+    result = json.loads(virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release(
+        {http.REQUEST_BODY: json.dumps(request)}))
+    assert result['success'] is False
+    assert result['errorCount'] == 1
+    assert result['error'] == result['errors'][0]['reason']
+    assert result['errors'][0]['stage'] == 'release-probe'
+    assert result['hccnBootstrapRelease'] is None
+    assert result['cleanupIncomplete'] is False
+    assert not mount_root.exists()
+
+
+def test_release_source_helper_still_rejects_transport_metadata_directly():
+    result = virtiofs_plugin.virtiofs_source.probe_hccn_bootstrap_release(dict(
+        schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private',
+        storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5',
+        contentVersion='v1', kvmHostAddons={}))
+    assert result['success'] is False
+    assert result['errorCount'] == 1
+    assert result['error'] == 'release probe requires exactly the fixed source fields'

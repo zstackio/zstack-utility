@@ -729,6 +729,10 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
         started = time.monotonic()
         try:
             command = hccn_bootstrap.parse_json(req[http.REQUEST_BODY])
+            if isinstance(command, dict) and 'kvmHostAddons' in command:
+                if not isinstance(command['kvmHostAddons'], dict):
+                    raise hccn_bootstrap.BootstrapError('invalid kvmHostAddons transport metadata')
+                command.pop('kvmHostAddons')
         except Exception as exc:
             reason = str(exc)[:4096] if isinstance(exc, hccn_bootstrap.BootstrapError) else 'invalid release probe JSON'
             return hccn_bootstrap.serialize_response({'success': False, 'error': reason,
