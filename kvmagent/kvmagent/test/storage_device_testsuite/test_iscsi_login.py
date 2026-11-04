@@ -52,8 +52,16 @@ class TestSharedBlockPlugin(TestCase, StorageDevicePluginTestStub):
         rsp = storage_device_utils.enable_multipath(blacklist=[{"wwid":blockUuid}])
         self.assertEqual(rsp.success, True, rsp.error)
 
+        r = bash.bash_r("grep -F 'wwid \"%s\"' /etc/multipath.conf" % blockUuid)
+        self.assertEqual(r, 0, "[check] multipath blacklist should contain wwid %s" % blockUuid)
+
+        rsp = storage_device_utils.enable_multipath(blacklist=[])
+        self.assertEqual(rsp.success, True, rsp.error)
+
+        r = bash.bash_r("grep -F 'wwid \"%s\"' /etc/multipath.conf" % blockUuid)
+        self.assertNotEqual(r, 0, "[check] multipath blacklist should remove wwid %s" % blockUuid)
+
         r, o = bash.bash_ro("ls /dev/disk/by-id | grep scsi")
         self.assertEqual(r, 0, "[check] login to iscsi failed")
 
         self.logout(interf_ip,"3260")
-

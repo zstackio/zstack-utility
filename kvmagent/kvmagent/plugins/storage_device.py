@@ -1201,7 +1201,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         default_config_changed = False
         with multipath.MultipathConfigUpdater("/etc/multipath.conf") as updater:
             default_config_changed =  updater.set_default_config()
-            if cmd_dict.get("blacklist", None):
+            if cmd_dict.get("blacklist", None) is not None:
                 updater.config_section("blacklist", cmd_dict["blacklist"])
 
         if updater.modified:
