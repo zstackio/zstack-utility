@@ -133,7 +133,7 @@ def _get_dpdk_bound_network_devices():
     Scans /sys/bus/pci/drivers/{vfio-pci,uio_pci_generic} for PCI devices
     whose class is 0x02xxxx (Network controller).
 
-    Unlike ovn.getAllVfioPciNic() which parses dpdk-devbind.py output with
+    Unlike pci.getAllVfioPciNic() which parses dpdk-devbind.py output with
     ``grep drv=`` (and misses devices listed under "Other Network devices"
     that lack a ``drv=`` field), this function reads sysfs directly and is
     reliable regardless of dpdk-devbind.py output format.

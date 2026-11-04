@@ -45,7 +45,6 @@ from zstacklib.utils.ip import get_nic_driver_type
 from zstacklib.utils.libvirt_singleton import LibvirtSingleton
 from zstacklib.gpu.base import VendorEnum
 from zstacklib.utils.report import Report
-from zstacklib.utils import ovn
 import zstacklib.utils.ip as ip
 import zstacklib.utils.plugin as plugin
 from zstacklib.utils.sizeunit import get_size
@@ -3219,7 +3218,8 @@ done
         if len(nic_names) == 0:
             return nics
 
-        vfioNics = ovn.getAllVfioPciNic()
+        nic_names = ip.exclude_ipoib_interfaces(nic_names)
+        vfioNics = pci.getAllVfioPciNic()
         nics = [None] * (len(nic_names) + len(vfioNics))
         for index, nic in enumerate(nic_names, start=0):
             interfaceName = nic.strip()
@@ -3599,7 +3599,7 @@ done
         # Device-type-specific type refinement (e.g., GPU_Video_Controller) is
         # handled by GPU processor; context is used to skip overwriting type for
         # devices already identified as GPU in gpu_info_map (no hardcoded GPU class list).
-        self._set_generic_pci_device_type(to, pci_device_mapper, context)
+        self._set_generic_pci_device_type(to, pci_device_mapper, context, ids.get('Class'))
 
         return to
 
@@ -3875,7 +3875,7 @@ done
             mdev_mapping.update(mapping)
         return mdev_mapping
 
-    def _set_generic_pci_device_type(self, to, pci_device_mapper, context=None):
+    def _set_generic_pci_device_type(self, to, pci_device_mapper, context=None, pci_class=None):
         """
         Set generic PCI device type (non-GPU types only).
 
@@ -3889,9 +3889,15 @@ done
                 getattr(to, 'pciDeviceAddress', None) or '')
             if normalized and normalized in context.gpu_info_map:
                 return
-        if 'Ethernet controller' in to.type or (pci_device_mapper.get('Ethernet controller') is not None
+        # Numeric class is independent of the local pci.ids display name.
+        if pci_class == '%04x' % pci.PCI_CLASS_INFINIBAND:
+            to.type = "IB_Controller"
+        elif 'Ethernet controller' in to.type or (pci_device_mapper.get('Ethernet controller') is not None
                                                 and pci_device_mapper.get('Ethernet controller') in to.type):
             to.type = "Ethernet_Controller"
+        elif 'Infiniband controller' in to.type or (pci_device_mapper.get('Infiniband controller')
+                                                  and pci_device_mapper.get('Infiniband controller') in to.type):
+            to.type = "IB_Controller"
         elif 'Audio device' in to.type or (pci_device_mapper.get('Audio device') is not None
                                            and pci_device_mapper.get('Audio device') in to.type):
             to.type = "Audio_Controller"

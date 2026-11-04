@@ -300,6 +300,22 @@ def get_smart_nic_representors():
     return nic_representors
 
 
+def netdev_type(name, sysfs='/sys'):
+    """Read the Linux interface hardware type; return None when unavailable."""
+    try:
+        with open(os.path.join(sysfs, 'class/net', name, 'type')) as stream:
+            return int(stream.read().strip())
+    except (IOError, OSError, ValueError):
+        return None
+
+
+def exclude_ipoib_interfaces(names, sysfs='/sys'):
+    """Exclude confirmed IPoIB interfaces; leave unknown types to existing collection."""
+    ARPHRD_INFINIBAND = 32  # Linux UAPI: include/uapi/linux/if_arp.h
+    return [name for name in names
+            if netdev_type(name, sysfs) != ARPHRD_INFINIBAND]
+
+
 CURRENT_HOST_PHYSICAL_NICS = []
 
 @lock.lock('get_host_physicl_nics')
