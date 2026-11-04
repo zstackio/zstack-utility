@@ -162,6 +162,10 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
             if current_time - last_time < self.ALARM_WAITING_TIME:
                 continue
 
+            if self._is_veth(nic):
+                self._forget_nic(nic)
+                continue
+
             if len(events) % 2 == 0:
                 status = events[-2].status
                 self.send_to_mn(self.get_nic_info(nic, status))

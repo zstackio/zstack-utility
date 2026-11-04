@@ -200,8 +200,8 @@ def test_delayed_callback_is_dropped_after_veth_disappears(monitor):
     monitor_module.http.json_dump_post.assert_not_called()
 
 
-@pytest.mark.parametrize('veth', [False, True])
-def test_queued_down_and_up_are_filtered_at_dispatch(monitor, monkeypatch, veth):
+@pytest.mark.parametrize('veth,missing', [(False, False), (False, True), (True, False)])
+def test_queued_down_and_up_are_filtered_at_dispatch(monitor, monkeypatch, veth, missing):
     name = '43499419d_o' if veth else 'eth0'
     monitor.history_nics = [name]
     events = [monitor_module.NicStatusChangeEvent(status) for status in ('down', 'up')]
@@ -209,6 +209,8 @@ def test_queued_down_and_up_are_filtered_at_dispatch(monitor, monkeypatch, veth)
         event.change_time -= monitor.ALARM_WAITING_TIME + 1
     monitor.alarms_to_send[name] = events
     monitor_module.iproute.query_link.return_value.device_type = 'veth' if veth else None
+    if missing:
+        monitor_module.iproute.query_link.side_effect = Exception('device disappeared')
     monkeypatch.setattr(monitor, 'get_nic_info', Mock(side_effect=lambda nic, status:
                         SimpleNamespace(nic=nic, status=status)))
     callbacks = []
@@ -222,6 +224,38 @@ def test_queued_down_and_up_are_filtered_at_dispatch(monitor, monkeypatch, veth)
 
     sent = monitor_module.http.json_dump_post.call_args_list
     assert [call.args[1].status for call in sent] == ([] if veth else ['down', 'up'])
+
+
+@pytest.mark.parametrize('statuses', [('down', 'up'), ('up', 'down'), ('down',)])
+def test_dispatch_forgets_veth_before_it_disappears(monitor, monkeypatch, statuses):
+    name = '43499419d_o'
+    monitor.history_nics = [name]
+    monitor.nic_info[name] = 'up'
+    monitor.bond_info[name] = 'stale-bond'
+    monitor.ip_info[name] = '192.0.2.1'
+    events = [monitor_module.NicStatusChangeEvent(status) for status in statuses]
+    for event in events:
+        event.change_time -= monitor.ALARM_WAITING_TIME + 1
+    monitor.alarms_to_send[name] = events
+    monitor_module.iproute.query_link.return_value.device_type = 'veth'
+    monkeypatch.setattr(monitor, 'get_nic_info', Mock(side_effect=lambda nic, status:
+                        SimpleNamespace(nic=nic, status=status)))
+    callbacks = []
+    monkeypatch.setattr(monitor_module.thread, 'timer',
+                        lambda delay, callback, args: SimpleNamespace(
+                            start=lambda: callbacks.append((callback, args))))
+
+    monitor.send_alarms(monitor.time_lock)
+    monitor_module.iproute.query_link.side_effect = Exception('device disappeared')
+    for callback, args in callbacks:
+        callback(*args)
+
+    monitor_module.http.json_dump_post.assert_not_called()
+    assert not callbacks
+    assert name not in monitor.history_nics
+    for cache in (monitor.nic_info, monitor.bond_info, monitor.ip_info,
+                  monitor.alarms_to_send):
+        assert name not in cache
 
 
 def test_monitor_instances_do_not_share_nic_state():
