@@ -169,6 +169,44 @@ def test_raw_bytes_sha_and_original_stdin_reach_fixed_cli(raw_qga):
     assert not raw_qga.handles
 
 
+@pytest.mark.parametrize('number', ['1e400', '-1e400'])
+@pytest.mark.parametrize('nested', [False, True])
+def test_overflow_guest_json_returns_serializable_failure(raw_qga, number, nested):
+    extra = '{"items":[' + number + ']}' if nested else number
+    stdout = (json.dumps(dict(success=True, schemaVersion=1, context=context(), phase='pending'))[:-1]
+              + ',"extra":' + extra + '}').encode()
+    raw_qga.status_override = dict(exited=True, exitcode=0,
+                                  **{'out-data': base64.b64encode(stdout).decode(), 'err-data': ''})
+
+    response = bootstrap.dispatch(request(raw_qga), lambda _: Domain())
+
+    assert response['success'] is False
+    envelope = response['hccnBootstrap']
+    assert envelope['operation'] == 'begin'
+    assert envelope['exitCode'] == 0
+    assert envelope['result'] is None
+    assert envelope['errorCount'] == len(envelope['errors']) == 1
+    assert 'non-finite JSON' in envelope['errors'][0]['reason']
+    assert response['error'] == envelope['errors'][0]['reason']
+    assert json.loads(bootstrap.serialize_response(response)) == response
+    assert raw_qga.count('guest-exec') == raw_qga.count('guest-exec-status') == 1
+
+
+@pytest.mark.parametrize('number', ['1.7976931348623157e308', '-1.7976931348623157e308', '1e-400'])
+def test_finite_guest_json_remains_successful(raw_qga, number):
+    stdout = (json.dumps(dict(success=True, schemaVersion=1, context=context(), phase='pending'))[:-1]
+              + ',"extra":{"items":[' + number + ']}}').encode()
+    raw_qga.status_override = dict(exited=True, exitcode=0,
+                                  **{'out-data': base64.b64encode(stdout).decode(), 'err-data': ''})
+
+    response = bootstrap.dispatch(request(raw_qga), lambda _: Domain())
+
+    assert response['success'] is True
+    assert response['hccnBootstrap']['result']['extra']['items'] == [float(number)]
+    assert response['hccnBootstrap']['errorCount'] == 0
+    assert json.loads(bootstrap.serialize_response(response)) == response
+
+
 def test_guest_capability_obtains_first_boot_without_existing_context(raw_qga):
     result = bootstrap.dispatch(request(raw_qga, 'capability'), lambda _: Domain())
     assert result['success'] is True, result

@@ -46,6 +46,13 @@ def _pairs(items):
     return result
 
 
+def _finite_float(raw):
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ValueError('non-finite JSON')
+    return value
+
+
 def parse_json(raw, limit=LIMIT):
     if isinstance(raw, str):
         raw = raw.encode('utf-8')
@@ -55,7 +62,7 @@ def parse_json(raw, limit=LIMIT):
         error.truncated = True
         raise error
     try:
-        return json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs,
+        return json.loads(raw.decode('utf-8'), object_pairs_hook=_pairs, parse_float=_finite_float,
                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError('non-finite JSON')))
     except (ValueError, UnicodeError) as exc:
         raise BootstrapError('invalid complete JSON: %s' % exc)
