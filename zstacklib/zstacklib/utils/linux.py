@@ -2516,10 +2516,10 @@ def delete_vlan_bridge(bridge_name, vlan_interface):
 
 
 def get_devices_with_ip():
-    devs = set()
     out = shell.call("ip -o addr show", exception=False)
     if not out:
-        return devs
+        return None
+    devs = set()
     for line in out.splitlines():
         parts = line.split()
         if len(parts) < 4:
@@ -3169,10 +3169,12 @@ def change_vxlan_interface(old_vni, new_vni):
 
 
 def get_vxlan_interfaces_vtep_map():
-    vxlan_vteps = {}
     cmd = shell.ShellCmd("ip -d -o link show type vxlan")
     cmd(is_exception=False)
-    if cmd.return_code != 0 or not cmd.stdout:
+    if cmd.return_code != 0:
+        return None
+    vxlan_vteps = {}
+    if not cmd.stdout:
         return vxlan_vteps
     for line in cmd.stdout.splitlines():
         parts = line.split(": ")
@@ -3272,27 +3274,26 @@ def bridge_fdb_has_self_rule(mac, dev):
     return shell.run("bridge fdb show dev %s | grep -m 1 '%s dev %s self permanent'" % (dev, mac, dev)) == 0
 
 def get_interfs_from_uuids(uuids):
-    if not uuids:
-        return []
-    uuid_set = set(uuids)
-    cmd = shell.ShellCmd("ip -o link show")
-    o = cmd(is_exception=False)
-    if o:
-        interfs = []
-        for line in o.splitlines():
-            if "vxlan" not in line or "uuid:" not in line:
-                continue
-            parts = line.split("alias ")
-            if len(parts) < 2:
-                continue
-            alias_part = parts[1].strip()
-            for u in uuid_set:
-                if u in alias_part:
-                    ifname = line.split(":")[1].strip().split("@")[0]
-                    interfs.append(ifname)
-                    break
-        if interfs:
-            return interfs
+    if uuids:
+        uuid_set = set(uuids)
+        cmd = shell.ShellCmd("ip -o link show")
+        o = cmd(is_exception=False)
+        if o:
+            interfs = []
+            for line in o.splitlines():
+                if "vxlan" not in line or "uuid:" not in line:
+                    continue
+                parts = line.split("alias ")
+                if len(parts) < 2:
+                    continue
+                alias_part = parts[1].strip()
+                for u in uuid_set:
+                    if u in alias_part:
+                        ifname = line.split(":")[1].strip().split("@")[0]
+                        interfs.append(ifname)
+                        break
+            if interfs:
+                return interfs
 
     strUuids = "\|".join(uuids)
 

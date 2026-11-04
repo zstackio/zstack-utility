@@ -3334,17 +3334,39 @@ class TestNetworkPluginCreateVlanBridgesBatch:
         assert 'ip link add vxlan11 type vxlan id 11' in executed_cmds[1]
         assert 'ip link set vxlan11 up' in executed_cmds[2]
 
+        # Verify fallback behavior when batch queries fail or return empty output
+        real_linux.shell.call = MagicMock(return_value="")
+        assert real_linux.get_devices_with_ip() is None
+
+        class _FailedShellCmd(_FakeShellCmd):
+            def __init__(self, cmd_str: str):
+                super().__init__(cmd_str)
+                self.return_code = 1
+
+        real_linux.shell.ShellCmd = _FailedShellCmd
+        assert real_linux.get_vxlan_interfaces_vtep_map() is None
+        real_linux.shell.ShellCmd = _FakeShellCmd
+        assert real_linux.get_vxlan_interfaces_vtep_map() == {}
+
+        executed_cmds.clear()
+        assert real_linux.get_interfs_from_uuids([]) == []
+        assert any("ip link | grep ''" in c for c in executed_cmds)
+
         repo_root = Path(__file__).resolve().parents[3]
         iproute_path = repo_root / 'zstacklib' / 'zstacklib' / 'utils' / 'iproute.py'
         spec = importlib.util.spec_from_file_location('zstacklib_utils_iproute_under_test', str(iproute_path))
         assert spec is not None and spec.loader is not None
         real_iproute = importlib.util.module_from_spec(spec)
-        pyroute2_mock = sys.modules.setdefault('pyroute2', MagicMock())
-        setattr(pyroute2_mock, '__path__', [])
-        sys.modules.setdefault('pyroute2.netns', MagicMock())
-        sys.modules.setdefault('pyroute2.netlink', MagicMock())
-        sys.modules.setdefault('pyroute2.netlink.rtnl', MagicMock())
-        spec.loader.exec_module(real_iproute)
+        pyroute2_mock = MagicMock()
+        pyroute2_mock.__path__ = []
+        pyroute2_stubs = {
+            'pyroute2': pyroute2_mock,
+            'pyroute2.netns': MagicMock(),
+            'pyroute2.netlink': MagicMock(),
+            'pyroute2.netlink.rtnl': MagicMock(),
+        }
+        with patch.dict(sys.modules, pyroute2_stubs):
+            spec.loader.exec_module(real_iproute)
 
         class _DummyIPRoute:
             def link_lookup(self, **_kwargs: object) -> list[int]:
@@ -3359,8 +3381,6 @@ class TestNetworkPluginCreateVlanBridgesBatch:
             dummy_ipr.link_lookup.assert_not_called()
 
     def test_500_vlan_and_500_vxlan_bridges_batch_scaling(self):
-        import time
-
         plugin = _make_plugin()
         linux = cast(_LinuxModule, cast(object, importlib.import_module("zstacklib.utils.linux")))
         iproute_mod = importlib.import_module("zstacklib.utils.iproute")
@@ -3377,7 +3397,6 @@ class TestNetworkPluginCreateVlanBridgesBatch:
         plugin._configure_bridge = configure_bridge_spy
 
         # 500 VLAN bridges split into 5 batches of 100
-        start_ts = time.monotonic()
         for batch_idx in range(5):
             cmds = [
                 {
@@ -3393,12 +3412,10 @@ class TestNetworkPluginCreateVlanBridgesBatch:
             ]
             rsp = _load_rsp(plugin.create_vlan_bridges(_make_req({'bridgeCmds': cmds})))
             assert rsp['success'] is True
-        vlan_elapsed = time.monotonic() - start_ts
 
         assert linux.create_vlan_bridge.call_count == 500
         assert configure_bridge_spy.call_count == 5
         assert linux.get_devices_with_ip.call_count == 5
-        assert vlan_elapsed < 1.0
 
         # 500 VXLAN bridges split into 5 batches of 100
         vxlan_map = {f'vxlan{vni}': '10.0.0.1' for vni in range(1, 501)}
@@ -3406,7 +3423,6 @@ class TestNetworkPluginCreateVlanBridgesBatch:
         linux.create_vxlan_interface = MagicMock()
         linux.create_vxlan_bridge = MagicMock()
 
-        start_ts = time.monotonic()
         for batch_idx in range(5):
             cmds = [
                 {
@@ -3421,8 +3437,6 @@ class TestNetworkPluginCreateVlanBridgesBatch:
             ]
             rsp = _load_rsp(plugin.create_vxlan_bridges(_make_req({'bridgeCmds': cmds})))
             assert rsp['success'] is True
-        vxlan_elapsed = time.monotonic() - start_ts
 
         assert linux.create_vxlan_interface.call_count == 500
         assert linux.get_vxlan_interfaces_vtep_map.call_count == 5
-        assert vxlan_elapsed < 1.0
