@@ -9720,6 +9720,67 @@ class StartDashboardCmd(Command):
         with open('/var/run/zstack/zstack-dashboard.port', 'w') as fd:
             fd.write(args.port)
 
+def gen_default_ui_ssl_keystore():
+    key = OpenSSL.crypto.PKey()
+    key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+    cert = OpenSSL.crypto.X509()
+    cert.set_serial_number(0)
+    cert.get_subject().CN = "localhost"
+    cert.set_issuer(cert.get_subject())
+    cert.gmtime_adj_notBefore(0)
+    cert.gmtime_adj_notAfter(10*365*24*60*60)
+    cert.set_pubkey(key)
+    cert.sign(key, 'sha256')
+    p12 = OpenSSL.crypto.PKCS12()
+    p12.set_privatekey(key)
+    p12.set_certificate(cert)
+    p12.set_friendlyname('zstackui')
+    with open(ctl.ZSTACK_UI_KEYSTORE, 'w') as f:
+        f.write(p12.export(b'password'))
+
+
+def gen_ui_ssl_keystore_pem_from_pkcs12(ssl_keystore, ssl_keystore_password):
+    try:
+        p12 = OpenSSL.crypto.load_pkcs12(file(ssl_keystore, 'rb').read(), ssl_keystore_password)
+    except Exception as e:
+        raise CtlError('failed to convert %s to %s because %s' % (ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_PEM, str(e)))
+    cert_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, p12.get_certificate())
+    pkey_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, p12.get_privatekey())
+    with open(ctl.ZSTACK_UI_KEYSTORE_PEM, 'w') as f:
+        f.write(cert_pem + pkey_pem)
+
+
+def prepare_ui_ssl_cert(ssl_keystore_type, ssl_keystore=None, ssl_keystore_password=None,
+                        require_pem_for_non_pkcs12=False):
+    if not ssl_keystore:
+        ssl_keystore = ctl.ZSTACK_UI_KEYSTORE
+    if not ssl_keystore_password:
+        ssl_keystore_password = 'password'
+
+    if not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
+        gen_default_ui_ssl_keystore()
+
+    if not os.path.exists(ssl_keystore):
+        raise CtlError('%s not found.' % ssl_keystore)
+
+    if ssl_keystore != ctl.ZSTACK_UI_KEYSTORE and ssl_keystore != ctl.ZSTACK_UI_KEYSTORE_CP:
+        copyfile(ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
+        ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
+
+    if ssl_keystore_type != 'PKCS12':
+        if require_pem_for_non_pkcs12 and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
+            raise CtlError('%s not found.' % ctl.ZSTACK_UI_KEYSTORE_PEM)
+        return ssl_keystore
+
+    if not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
+        gen_ui_ssl_keystore_pem_from_pkcs12(ssl_keystore, ssl_keystore_password)
+
+    if not ctl.read_property('consoleProxyCertFile'):
+        ctl.write_property('consoleProxyCertFile', ctl.ZSTACK_UI_KEYSTORE_PEM)
+
+    return ssl_keystore
+
+
 # For UI 2.0
 class StartUiCmd(Command):
     PORT_FILE = '/var/run/zstack/zstack-ui.port'
@@ -9790,32 +9851,10 @@ class StartUiCmd(Command):
         return True
 
     def _gen_default_ssl_keystore(self):
-        key = OpenSSL.crypto.PKey()
-        key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
-        cert = OpenSSL.crypto.X509()
-        cert.set_serial_number(0)
-        cert.get_subject().CN = "localhost"
-        cert.set_issuer(cert.get_subject())
-        cert.gmtime_adj_notBefore(0)
-        cert.gmtime_adj_notAfter(10*365*24*60*60)
-        cert.set_pubkey(key)
-        cert.sign(key, 'sha256')
-        p12 = OpenSSL.crypto.PKCS12()
-        p12.set_privatekey(key)
-        p12.set_certificate(cert)
-        p12.set_friendlyname('zstackui')
-        with open(ctl.ZSTACK_UI_KEYSTORE, 'w') as f:
-            f.write(p12.export(b'password'))
+        gen_default_ui_ssl_keystore()
 
     def _gen_ssl_keystore_pem_from_pkcs12(self, ssl_keystore, ssl_keystore_password):
-        try:
-            p12 = OpenSSL.crypto.load_pkcs12(file(ssl_keystore, 'rb').read(), ssl_keystore_password)
-        except Exception as e:
-            raise CtlError('failed to convert %s to %s because %s' % (ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_PEM, str(e)))
-        cert_pem = OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, p12.get_certificate())
-        pkey_pem = OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, p12.get_privatekey())
-        with open(ctl.ZSTACK_UI_KEYSTORE_PEM, 'w') as f:
-            f.write(cert_pem + pkey_pem)
+        gen_ui_ssl_keystore_pem_from_pkcs12(ssl_keystore, ssl_keystore_password)
 
     def _get_db_info(self):
         # get default db_url, db_username, db_password etc.
@@ -9903,10 +9942,6 @@ class StartUiCmd(Command):
             args.catalina_opts = cfg_catalina_opts
         args.catalina_opts = ' '.join(args.catalina_opts.split(','))
 
-        # create default ssl keystore anyway
-        if not os.path.exists(ctl.ZSTACK_UI_KEYSTORE):
-            self._gen_default_ssl_keystore()
-
         # server_port default value is 5443 if enable_ssl is True
         # if args.enable_ssl and args.webhook_port == '5000':
         #     args.webhook_port = '5443'
@@ -9935,24 +9970,12 @@ class StartUiCmd(Command):
         sns_cmd.systemTopicHttpEndpointURL = system_webhook_url
         self._report_sns_global_property_updated(sns_cmd)
 
-        if not os.path.exists(args.ssl_keystore):
-            raise CtlError('%s not found.' % args.ssl_keystore)
-        # copy args.ssl_keystore to ctl.ZSTACK_UI_KEYSTORE_CP
-        if args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE and args.ssl_keystore != ctl.ZSTACK_UI_KEYSTORE_CP:
-            copyfile(args.ssl_keystore, ctl.ZSTACK_UI_KEYSTORE_CP)
-            args.ssl_keystore = ctl.ZSTACK_UI_KEYSTORE_CP
-
-        # convert args.ssl_keystore to .pem
-        #if args.ssl_keystore_type == 'PKCS12' and os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
-        #    (status, output) = commands.getstatusoutput('mv %s ' % ctl.ZSTACK_UI_KEYSTORE_PEM_OLD)
-        if args.ssl_keystore_type != 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
-            raise CtlError('%s not found.' % ctl.ZSTACK_UI_KEYSTORE_PEM)
-        if args.ssl_keystore_type == 'PKCS12' and not os.path.exists(ctl.ZSTACK_UI_KEYSTORE_PEM):
-            self._gen_ssl_keystore_pem_from_pkcs12(args.ssl_keystore, args.ssl_keystore_password)
-
-        # auto configure consoleProxyCertFile if not configured already
-        if args.ssl_keystore_type == 'PKCS12' and not ctl.read_property('consoleProxyCertFile'):
-            ctl.write_property('consoleProxyCertFile', ctl.ZSTACK_UI_KEYSTORE_PEM)
+        args.ssl_keystore = prepare_ui_ssl_cert(
+            args.ssl_keystore_type,
+            args.ssl_keystore,
+            args.ssl_keystore_password,
+            require_pem_for_non_pkcs12=True
+        )
 
         # ui_db use encrypted db_password in args
         self._get_db_info()
@@ -10080,6 +10103,28 @@ class StartUiCmd(Command):
             self.run_zstack_ui(args)
         else :
             raise CtlError("Unknown ui_mode {}, please make sure your configuration is correct.".format(ui_mode))
+
+
+class PrepareUiSslCertCmd(Command):
+    def __init__(self):
+        super(PrepareUiSslCertCmd, self).__init__()
+        self.name = "prepare_ui_ssl_cert"
+        self.description = "prepare ZStack UI PKCS12 pem file for console proxy"
+        ctl.register_command(self)
+
+    def run(self, args):
+        ctl.internal_run('config_ui', '--init')
+
+        ssl_keystore_type = ctl.read_ui_property("ssl_keystore_type")
+        if ssl_keystore_type != 'PKCS12':
+            return
+
+        prepare_ui_ssl_cert(
+            ssl_keystore_type,
+            ctl.read_ui_property("ssl_keystore"),
+            ctl.read_ui_property("ssl_keystore_password")
+        )
+
 
 # For UI 2.0
 class ConfigUiCmd(Command):
@@ -11036,6 +11081,7 @@ def main():
     ctl.locate_zstack_home()
     InstallZstackUiCmd()
     StartUiCmd()
+    PrepareUiSslCertCmd()
     StopUiCmd()
     UiStatusCmd()
     ConfigUiCmd()

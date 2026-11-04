@@ -1522,8 +1522,7 @@ upgrade_zstack(){
     [ $? -eq 0 ] && show_spinner iz_upgrade_zsphere_tools
 
     # update consoleProxyCertFile if necessary
-    certfile=`zstack-ctl show_configuration | grep consoleProxyCertFile | grep /usr/local/zstack/zstack-ui/ | awk -F '=' '{ print $NF }'`
-    [ x"$certfile" != x"" ] && zstack-ctl configure consoleProxyCertFile=`echo $certfile | sed "s~/usr/local/zstack/~$ZSTACK_INSTALL_ROOT/~g"`
+    update_console_proxy_cert_file
 
     #When using -i option, will not upgrade kariosdb and not start zstack
     if [ -z $ONLY_INSTALL_ZSTACK ]; then
@@ -3043,10 +3042,34 @@ check_zstack_server(){
     return $?
 }
 
+update_console_proxy_cert_file(){
+    local zstack_home=`eval echo "~zstack"`
+    [ x"$zstack_home" = x"~zstack" ] && zstack_home="$ZSTACK_INSTALL_ROOT"
+    local certfile
+    if certfile=`zstack-ctl get_configuration consoleProxyCertFile 2>/dev/null`; then
+        echo "$certfile" | grep /usr/local/zstack/zstack-ui/ >/dev/null 2>&1
+        [ $? -eq 0 ] && zstack-ctl configure consoleProxyCertFile=`echo $certfile | sed "s~/usr/local/zstack/~$zstack_home/~g"`
+        return
+    fi
+
+    local ui_mode
+    ui_mode=`zstack-ctl get_configuration ui_mode 2>/dev/null`
+    [ $? -ne 0 ] && return
+
+    [ ! -d "$zstack_home/zstack-ui" ] && return
+
+    if [ x"$ui_mode" = x"zstack" ]; then
+        zstack-ctl prepare_ui_ssl_cert
+    fi
+}
+
 start_zstack(){
     echo_title "Start ${PRODUCT_NAME} Server"
     echo ""
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    # update consoleProxyCertFile if necessary
+    update_console_proxy_cert_file
+
     show_spinner sz_start_zstack
 }
 
