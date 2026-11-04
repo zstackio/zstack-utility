@@ -27,6 +27,7 @@ ATTACH_NIC_TO_BONDING_PATH = '/network/bonding/attachnic'
 DETACH_NIC_FROM_BONDING_PATH = '/network/bonding/detachnic'
 KVM_REALIZE_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/createbridge"
 KVM_REALIZE_L2VLAN_NETWORK_PATH = "/network/l2vlan/createbridge"
+KVM_REALIZE_L2VLAN_NETWORKS_PATH = "/network/l2vlan/createbridges"
 KVM_CHECK_L2NOVLAN_NETWORK_PATH = "/network/l2novlan/checkbridge"
 KVM_CHECK_L2VLAN_NETWORK_PATH = "/network/l2vlan/checkbridge"
 KVM_CHECK_L2VXLAN_NETWORK_PATH = "/network/l2vxlan/checkcidr"
@@ -134,6 +135,11 @@ class CheckVlanBridgeResponse(kvmagent.AgentResponse):
 class CreateVlanBridgeResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(CreateVlanBridgeResponse, self).__init__()
+
+
+class CreateVlanBridgesResponse(kvmagent.AgentResponse):
+    def __init__(self):
+        super(CreateVlanBridgesResponse, self).__init__()
 
 
 class CheckVxlanCidrResponse(kvmagent.AgentResponse):
@@ -342,6 +348,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
         linux.write_file('/proc/sys/net/ipv6/conf/default/forwarding', '1')
 
     def _get_interface_mtu(self, interf):
+        mtu_path = "/sys/class/net/%s/mtu" % interf
+        if os.path.exists(mtu_path):
+            mtu_str = linux.read_file_strip(mtu_path)
+            if isinstance(mtu_str, (str, type(u''))) and mtu_str.isdigit():
+                return int(mtu_str)
         try:
             link = iproute.query_link(interf)
             return link.mtu
@@ -352,6 +363,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
     @in_bash
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
         if mtu is not None:
+            mtu_path = "/sys/class/net/%s/mtu" % interf
+            if os.path.exists(mtu_path):
+                current_mtu = linux.read_file_strip(mtu_path)
+                if isinstance(current_mtu, (str, type(u''))) and current_mtu.isdigit() and int(current_mtu) == int(mtu):
+                    return
             try:
                 iproute.set_link_attribute(interf, mtu=mtu)
             except Exception as e:
@@ -363,11 +379,26 @@ class NetworkPlugin(kvmagent.KvmAgent):
             #    shell.call("ip link set mtu %d dev %s" % (mtu, bridgeName))
 
     def _configure_bridge_learning(self, bridgeName, interf, learning='on'):
+        learning_path = "/sys/class/net/%s/brport/learning" % interf
+        target = "1" if learning == 'on' else "0"
+        if os.path.exists(learning_path):
+            current = linux.read_file_strip(learning_path)
+            if isinstance(current, (str, type(u''))) and current == target:
+                return
+            linux.write_file(learning_path, target)
+            return
         shell.call("bridge link set dev %s learning %s" % (interf, learning), False)
 
     def _enable_bridge_igmp_snooping(self, bridgeName):
-        shell.call("echo 1 >  /sys/class/net/%s/bridge/multicast_querier" % bridgeName, False)
-        shell.call("echo 1 >  /sys/class/net/%s/bridge/multicast_snooping" % bridgeName, False)
+        for attr in ('multicast_querier', 'multicast_snooping'):
+            path = "/sys/class/net/%s/bridge/%s" % (bridgeName, attr)
+            if os.path.exists(path):
+                current = linux.read_file_strip(path)
+                if isinstance(current, (str, type(u''))) and current == "1":
+                    continue
+                linux.write_file(path, "1")
+            else:
+                shell.call("echo 1 >  /sys/class/net/%s/bridge/%s" % (bridgeName, attr), False)
 
     @kvmagent.replyerror
     def check_physical_network_interface(self, req):
@@ -642,6 +673,29 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
+    def _realize_single_vlan_bridge(self, cmd, configure_global_bridge=True, devs_with_ip=None):
+        vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
+
+        oldMtu = self._get_interface_mtu(vlanInterfName)
+        mtu = cmd.mtu
+        if mtu is None or oldMtu > mtu:
+            mtu = oldMtu
+        move_route = True if devs_with_ip is None else (vlanInterfName in devs_with_ip)
+
+        if move_route:
+            linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
+        else:
+            linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan, move_route=False)
+        if configure_global_bridge:
+            self._configure_bridge(cmd.disableIptables)
+        self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, mtu)
+        self._configure_bridge_learning(cmd.bridgeName, vlanInterfName)
+        self._enable_bridge_igmp_snooping(cmd.bridgeName)
+        linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
+        linux.set_device_uuid_alias(vlanInterfName, cmd.l2NetworkUuid)
+        logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (
+            cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
+
     @lock.lock('bridge')
     @kvmagent.replyerror
     def create_vlan_bridge(self, req):
@@ -657,27 +711,59 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 rsp.success = False
             return jsonobject.dumps(rsp)
 
-        vlanInterfName = '%s.%s' % (cmd.physicalInterfaceName, cmd.vlan)
-
-        oldMtu = self._get_interface_mtu(vlanInterfName)
-        mtu = cmd.mtu
-        if oldMtu > cmd.mtu:
-            mtu = oldMtu
         try:
-            linux.create_vlan_bridge(cmd.bridgeName, cmd.physicalInterfaceName, cmd.vlan)
-            self._configure_bridge(cmd.disableIptables)
-            self._configure_bridge_mtu(cmd.bridgeName, vlanInterfName, mtu)
-            self._configure_bridge_learning(cmd.bridgeName, vlanInterfName)
-            self._enable_bridge_igmp_snooping(cmd.bridgeName)
-            linux.set_bridge_alias_using_phy_nic_name(cmd.bridgeName, cmd.physicalInterfaceName)
-            linux.set_device_uuid_alias('%s.%s' % (cmd.physicalInterfaceName, cmd.vlan), cmd.l2NetworkUuid)
-            logger.debug('successfully realize vlan bridge[name:%s, vlan:%s] from device[%s]' % (
-            cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName))
+            self._realize_single_vlan_bridge(cmd)
         except Exception as e:
             logger.warning(traceback.format_exc())
             rsp.error = 'unable to create vlan bridge[name:%s, vlan:%s] from device[%s], because %s' % (
             cmd.bridgeName, cmd.vlan, cmd.physicalInterfaceName, str(e))
             rsp.success = False
+
+        return jsonobject.dumps(rsp)
+
+    @lock.lock('bridge')
+    @kvmagent.replyerror
+    def create_vlan_bridges(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CreateVlanBridgesResponse()
+        if not cmd.bridgeCmds:
+            return jsonobject.dumps(rsp)
+
+        has_nonzero_vlan = any(getattr(b, 'vlan', 0) != 0 for b in cmd.bridgeCmds)
+        if has_nonzero_vlan:
+            disable_iptables = any(getattr(b, 'disableIptables', False) for b in cmd.bridgeCmds)
+            self._configure_bridge(disable_iptables)
+            devs_with_ip = linux.get_devices_with_ip()
+        else:
+            devs_with_ip = set()
+
+        for bcmd in cmd.bridgeCmds:
+            if bcmd.vlan == 0:
+                sub_rsp = CreateBridgeResponse()
+                try:
+                    self.create_novlan_bridge(bcmd, sub_rsp)
+                except Exception as e:
+                    logger.warning(traceback.format_exc())
+                    rsp.error = 'unable to create bridge[%s] from device[%s], because %s' % (
+                        bcmd.bridgeName, bcmd.physicalInterfaceName, str(e))
+                    rsp.success = False
+                    break
+                if not sub_rsp.success:
+                    rsp.error = sub_rsp.error
+                    rsp.success = False
+                    break
+            else:
+                try:
+                    self._realize_single_vlan_bridge(
+                        bcmd,
+                        configure_global_bridge=False,
+                        devs_with_ip=devs_with_ip)
+                except Exception as e:
+                    logger.warning(traceback.format_exc())
+                    rsp.error = 'unable to create vlan bridge[name:%s, vlan:%s] from device[%s], because %s' % (
+                        bcmd.bridgeName, bcmd.vlan, bcmd.physicalInterfaceName, str(e))
+                    rsp.success = False
+                    break
 
         return jsonobject.dumps(rsp)
 
@@ -835,7 +921,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         return jsonobject.dumps(rsp)
 
-    def create_single_vxlan_bridge(self, cmd):
+    def create_single_vxlan_bridge(self, cmd, existing_vxlan_vteps=None):
         interf = "vxlan" + str(cmd.vni)
         oldMtu = self._get_interface_mtu(interf)
         mtu = cmd.mtu
@@ -844,7 +930,10 @@ class NetworkPlugin(kvmagent.KvmAgent):
 
         if cmd.dstport == None:
             cmd.dstport = VXLAN_DEFAULT_PORT
-        linux.create_vxlan_interface(cmd.vni, cmd.vtepIp, cmd.dstport)
+        if existing_vxlan_vteps is not None:
+            linux.create_vxlan_interface(cmd.vni, cmd.vtepIp, cmd.dstport, existing_vxlan_vteps=existing_vxlan_vteps)
+        else:
+            linux.create_vxlan_interface(cmd.vni, cmd.vtepIp, cmd.dstport)
 
         linux.create_vxlan_bridge(interf, cmd.bridgeName, cmd.peers)
         linux.set_device_uuid_alias(interf, cmd.l2NetworkUuid)
@@ -879,8 +968,9 @@ class NetworkPlugin(kvmagent.KvmAgent):
                 rsp.success = False
                 return jsonobject.dumps(rsp)
 
+        existing_vxlan_vteps = linux.get_vxlan_interfaces_vtep_map()
         for bridgeCmd in cmd.bridgeCmds:
-            self.create_single_vxlan_bridge(bridgeCmd)
+            self.create_single_vxlan_bridge(bridgeCmd, existing_vxlan_vteps=existing_vxlan_vteps)
 
         return jsonobject.dumps(rsp)
 
@@ -1067,6 +1157,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(DETACH_NIC_FROM_BONDING_PATH, self.detach_nic_from_bonding)
         http_server.register_async_uri(KVM_REALIZE_L2NOVLAN_NETWORK_PATH, self.create_bridge)
         http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORK_PATH, self.create_vlan_bridge)
+        http_server.register_async_uri(KVM_REALIZE_L2VLAN_NETWORKS_PATH, self.create_vlan_bridges)
         http_server.register_async_uri(KVM_REALIZE_MACVLAN_L2VLAN_NETWORK_PATH, self.create_mac_vlan_eth)
         http_server.register_async_uri(KVM_CHECK_L2NOVLAN_NETWORK_PATH, self.check_bridge)
         http_server.register_async_uri(KVM_CHECK_MACVLAN_L2VLAN_NETWORK_PATH, self.check_macvlan_vlan_eth)
