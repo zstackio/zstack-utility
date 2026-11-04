@@ -2766,6 +2766,15 @@ class Vm(object):
         else:
             return self.state == state
 
+    def is_powered_off(self):
+        try:
+            (cur, _, _, _, _) = self.domain.info()
+            return cur == self.VIR_DOMAIN_SHUTOFF
+        except libvirt.libvirtError as ex:
+            if ex.get_error_code() == libvirt.VIR_ERR_NO_DOMAIN:
+                return True
+            raise
+
     def get_occupied_disk_address_units(self, bus, controller):
         # type: (str, int) -> list[int]
         result = []
@@ -3024,14 +3033,7 @@ class Vm(object):
                 # domain has been shut down
                 pass
 
-            try:
-                return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
-            except libvirt.libvirtError as ex:
-                error_code = ex.get_error_code()
-                if error_code == libvirt.VIR_ERR_NO_DOMAIN:
-                    return True
-                else:
-                    raise
+            return self.is_powered_off()
 
         def iscsi_cleanup():
             disks = self.domain_xmlobject.devices.get_child_node_as_list('disk')
@@ -3065,6 +3067,12 @@ class Vm(object):
                 self.domain.undefineFlags(self._get_undefine_flags(keep_nvram))
             except libvirt.libvirtError as ex:
                 logger.warn('undefine domain[%s] failed: %s' % (self.uuid, str(ex)))
+                if 'transient' in str(ex).lower():
+                    try:
+                        self.domain.destroy()
+                    except:
+                        pass
+                    return self.is_powered_off()
                 force_undefine()
 
             return self.wait_for_state_change(None)
@@ -3076,14 +3084,7 @@ class Vm(object):
                 # domain has been destroyed
                 pass
 
-            try:
-                return self.wait_for_state_change(self.VM_STATE_SHUTDOWN)
-            except libvirt.libvirtError as ex:
-                error_code = ex.get_error_code()
-                if error_code == libvirt.VIR_ERR_NO_DOMAIN:
-                    return True
-                else:
-                    raise
+            return self.is_powered_off()
 
         do_destroy, isPersistent = strategy == 'grace' or strategy == 'cold', self.domain.isPersistent()
         if strategy == 'grace':
@@ -8530,8 +8531,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
             if vmUseOpenvSwitch:
                 ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(vmUuid)
-        except kvmagent.KvmError as e:
-            logger.debug(linux.get_exception_stacktrace())
         finally:
             # libvirt is not reliable, c.f. ZSTAC-15412
             self.kill_vm(vmUuid)
