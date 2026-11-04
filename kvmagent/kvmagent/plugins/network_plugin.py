@@ -15,7 +15,6 @@ from zstacklib.utils.bash import *
 from zstacklib.utils import ovs
 from jinja2 import Template
 import os
-import time
 import traceback
 import subprocess
 import json
@@ -646,59 +645,7 @@ class NetworkPlugin(kvmagent.KvmAgent):
             return False
         return True
 
-    @staticmethod
-    def _new_bridge_stage_stats():
-        if hasattr(linux, 'new_bridge_stage_stats'):
-            stats = linux.new_bridge_stage_stats()
-            if isinstance(stats, dict):
-                return stats
-        stats = {}
-        for k in ('state_read', 'create_repair', 'ip_link', 'mtu',
-                  'bridge_params', 'alias', 'multicast', 'fdb'):
-            stats[k] = {'ms': 0.0, 'calls': 0, 'skipped': 0}
-        return stats
-
-    def _begin_bridge_stage_stats(self):
-        stats = self._new_bridge_stage_stats()
-        self._active_bridge_stats = stats
-        if hasattr(linux, 'set_active_bridge_stage_stats'):
-            linux.set_active_bridge_stage_stats(stats)
-        return stats
-
-    def _end_bridge_stage_stats(self):
-        stats = getattr(self, '_active_bridge_stats', None)
-        self._active_bridge_stats = None
-        if hasattr(linux, 'set_active_bridge_stage_stats'):
-            linux.set_active_bridge_stage_stats(None)
-        return stats
-
-    def _record_bridge_stage(self, stage, elapsed_sec=0.0, calls=0, skipped=0):
-        stats = getattr(self, '_active_bridge_stats', None)
-        if not isinstance(stats, dict):
-            return
-        entry = stats.get(stage)
-        if entry is None:
-            return
-        entry['ms'] += elapsed_sec * 1000.0
-        entry['calls'] += calls
-        entry['skipped'] += skipped
-
-    @staticmethod
-    def _format_bridge_stage_stats(stats):
-        if not isinstance(stats, dict):
-            return ""
-        parts = []
-        for k in ('state_read', 'create_repair', 'ip_link', 'mtu',
-                  'bridge_params', 'alias', 'multicast', 'fdb'):
-            entry = stats.get(k)
-            if not entry:
-                continue
-            parts.append("%s=%.1fms(calls=%d,skip=%d)" % (
-                k, entry['ms'], entry['calls'], entry['skipped']))
-        return ", ".join(parts)
-
     def _configure_bridge(self, disableIptables):
-        t0 = time.time()
         shell.call('modprobe br_netfilter || true')
         if disableIptables:
             self.modifySysConfiguration("net.bridge.bridge-nf-call-iptables", 1, 0)
@@ -711,22 +658,17 @@ class NetworkPlugin(kvmagent.KvmAgent):
         linux.write_file('/proc/sys/net/bridge/bridge-nf-filter-vlan-tagged', '1')
         linux.write_file('/proc/sys/net/ipv4/conf/default/forwarding', '1')
         linux.write_file('/proc/sys/net/ipv6/conf/default/forwarding', '1')
-        self._record_bridge_stage('bridge_params', time.time() - t0, calls=1)
 
     def _get_interface_mtu(self, interf):
-        t0 = time.time()
         mtu_path = "/sys/class/net/%s/mtu" % interf
         if os.path.exists(mtu_path):
             mtu_str = linux.read_file_strip(mtu_path)
             if isinstance(mtu_str, (str, type(u''))) and mtu_str.isdigit():
-                self._record_bridge_stage('state_read', time.time() - t0, calls=1)
                 return int(mtu_str)
         try:
             link = iproute.query_link(interf)
-            self._record_bridge_stage('state_read', time.time() - t0, calls=1)
             return link.mtu
         except Exception as e:
-            self._record_bridge_stage('state_read', time.time() - t0, calls=1)
             logger.debug("get mtu of link: %s failed: %s", interf, str(e))
             return 0
 
@@ -734,17 +676,12 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def _configure_bridge_mtu(self, bridgeName, interf, mtu=None):
         if mtu is not None:
             mtu_path = "/sys/class/net/%s/mtu" % interf
-            t0 = time.time()
             if os.path.exists(mtu_path):
                 current_mtu = linux.read_file_strip(mtu_path)
-                self._record_bridge_stage('state_read', time.time() - t0, calls=1)
                 if isinstance(current_mtu, (str, type(u''))) and current_mtu.isdigit() and int(current_mtu) == int(mtu):
-                    self._record_bridge_stage('mtu', 0.0, skipped=1)
                     return
             try:
-                t1 = time.time()
                 iproute.set_link_attribute(interf, mtu=mtu)
-                self._record_bridge_stage('mtu', time.time() - t1, calls=1)
             except Exception as e:
                 raise Exception('failed to configure bridge mtu, '
                                 'please check if mtu exceeds the maximum value of all vnic mtus and global property, '
@@ -756,26 +693,17 @@ class NetworkPlugin(kvmagent.KvmAgent):
     def _configure_bridge_learning(self, bridgeName, interf, learning='on'):
         learning_path = "/sys/class/net/%s/brport/learning" % interf
         target = "1" if learning == 'on' else "0"
-        t0 = time.time()
         if os.path.exists(learning_path):
             current = linux.read_file_strip(learning_path)
-            self._record_bridge_stage('state_read', time.time() - t0, calls=1)
             if isinstance(current, (str, type(u''))) and current == target:
-                self._record_bridge_stage('bridge_params', 0.0, skipped=1)
                 return
-            t1 = time.time()
             linux.write_file(learning_path, target)
-            self._record_bridge_stage('bridge_params', time.time() - t1, calls=1)
             return
-        t1 = time.time()
         shell.call("bridge link set dev %s learning %s" % (interf, learning), False)
-        self._record_bridge_stage('bridge_params', time.time() - t1, calls=1)
 
     def _enable_bridge_igmp_snooping(self, bridgeName, igmpVersion, mldVersion):
-        t0 = time.time()
         shell.call("echo 1 >  /sys/class/net/%s/bridge/multicast_querier" % bridgeName, False)
         shell.call("echo 1 >  /sys/class/net/%s/bridge/multicast_snooping" % bridgeName, False)
-        self._record_bridge_stage('multicast', time.time() - t0, calls=2)
         #if igmpVersion != 0:
         #    shell.call("echo %d >  /sys/class/net/%s/bridge/multicast_igmp_version" % (igmpVersion, bridgeName), False)
         #if mldVersion != 0:
@@ -801,16 +729,11 @@ class NetworkPlugin(kvmagent.KvmAgent):
             path = '%s/%s' % (bridgePath, name)
             try:
                 if os.path.exists(path):
-                    t0 = time.time()
                     current = linux.read_file_strip(path)
-                    self._record_bridge_stage('state_read', time.time() - t0, calls=1)
                     if isinstance(current, (str, type(u''))) and current == value:
-                        self._record_bridge_stage('multicast', 0.0, skipped=1)
                         continue
-                t1 = time.time()
                 if not linux.write_file(path, value):
                     raise IOError('sysfs path does not exist')
-                self._record_bridge_stage('multicast', time.time() - t1, calls=1)
             except Exception as e:
                 raise Exception('failed to set bridge[%s] %s to %s: %s' %
                                 (cmd.bridgeName, name, value, str(e)))
@@ -1611,8 +1534,6 @@ configure lldp status rx-only \n
         if not cmd.bridgeCmds:
             return jsonobject.dumps(rsp)
 
-        batch_start = time.time()
-        stats = self._begin_bridge_stage_stats()
         isolated_ifaces = []
         try:
             has_nonzero_vlan = any(getattr(b, 'vlan', 0) != 0 for b in cmd.bridgeCmds)
@@ -1657,19 +1578,13 @@ configure lldp status rx-only \n
         finally:
             if isolated_ifaces:
                 try:
-                    t_iso = time.time()
                     self._configure_isolated_batch(isolated_ifaces)
-                    self._record_bridge_stage('bridge_params', time.time() - t_iso, calls=1)
                 except Exception as e:
                     logger.warning(traceback.format_exc())
                     if rsp.success:
                         rsp.error = 'unable to configure isolated vlan bridges[%s], because %s' % (
                             ','.join(isolated_ifaces), str(e))
                         rsp.success = False
-            self._end_bridge_stage_stats()
-            logger.debug('vlan bridge batch realized: count=%d, success=%s, total_ms=%.1f, stages=[%s]' % (
-                len(cmd.bridgeCmds), rsp.success, (time.time() - batch_start) * 1000.0,
-                self._format_bridge_stage_stats(stats)))
 
         return jsonobject.dumps(rsp)
 
@@ -1915,17 +1830,9 @@ configure lldp status rx-only \n
                 rsp.success = False
                 return jsonobject.dumps(rsp)
 
-        batch_start = time.time()
-        stats = self._begin_bridge_stage_stats()
-        try:
-            existing_vxlan_vteps = linux.get_vxlan_interfaces_vtep_map()
-            for bridgeCmd in cmd.bridgeCmds:
-                self.create_single_vxlan_bridge(bridgeCmd, existing_vxlan_vteps=existing_vxlan_vteps)
-        finally:
-            self._end_bridge_stage_stats()
-            logger.debug('vxlan bridge batch realized: count=%d, success=%s, total_ms=%.1f, stages=[%s]' % (
-                len(cmd.bridgeCmds), rsp.success, (time.time() - batch_start) * 1000.0,
-                self._format_bridge_stage_stats(stats)))
+        existing_vxlan_vteps = linux.get_vxlan_interfaces_vtep_map()
+        for bridgeCmd in cmd.bridgeCmds:
+            self.create_single_vxlan_bridge(bridgeCmd, existing_vxlan_vteps=existing_vxlan_vteps)
 
         return jsonobject.dumps(rsp)
 
@@ -1968,31 +1875,18 @@ configure lldp status rx-only \n
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = PopulateVxlanFdbResponse
 
-        batch_start = time.time()
-        stats = self._begin_bridge_stage_stats()
-        interfs = []
-        try:
-            interfs = linux.get_interfs_from_uuids(cmd.networkUuids)
-            if interfs == []:
-                rsp.success = True
-                return jsonobject.dumps(rsp)
-
-            if linux.populate_vxlan_fdbs(interfs, cmd.peers) == False:
-                rsp.success = False
-                rsp.error = "error on populate fdb"
-                return jsonobject.dumps(rsp)
-
+        interfs = linux.get_interfs_from_uuids(cmd.networkUuids)
+        if interfs == []:
             rsp.success = True
             return jsonobject.dumps(rsp)
-        finally:
-            self._end_bridge_stage_stats()
-            logger.debug('vxlan fdb batch populated: uuids=%d, interfs=%d, peers=%d, success=%s, total_ms=%.1f, stages=[%s]' % (
-                len(cmd.networkUuids) if cmd.networkUuids else 0,
-                len(interfs),
-                len(cmd.peers) if cmd.peers else 0,
-                getattr(rsp, 'success', True),
-                (time.time() - batch_start) * 1000.0,
-                self._format_bridge_stage_stats(stats)))
+
+        if linux.populate_vxlan_fdbs(interfs, cmd.peers) == False:
+            rsp.success = False
+            rsp.error = "error on populate fdb"
+            return jsonobject.dumps(rsp)
+
+        rsp.success = True
+        return jsonobject.dumps(rsp)
 
     def delete_vxlan_fdbs(self, req):
         # delete  vxlan fdb

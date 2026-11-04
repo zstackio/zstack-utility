@@ -3321,35 +3321,37 @@ class TestNetworkPluginCreateVlanBridgesBatch:
                 executed_cmds.append(self.cmd_str)
                 return self.stdout
 
-        real_linux.shell.ShellCmd = _FakeShellCmd
-        # Matching VTEP IP in pre-fetched map -> only sets link up
-        assert real_linux.create_vxlan_interface(10, '10.0.0.1', 8472, existing_vxlan_vteps={'vxlan10': '10.0.0.1'}) is True
-        assert executed_cmds == ['ip link set vxlan10 up']
+        with patch.object(real_linux.shell, "ShellCmd", _FakeShellCmd), \
+             patch.object(real_linux, "is_network_device_up", return_value=False):
+            # Matching VTEP IP in pre-fetched map -> only sets link up
+            assert real_linux.create_vxlan_interface(10, '10.0.0.1', 8472, existing_vxlan_vteps={'vxlan10': '10.0.0.1'}) is True
+            assert executed_cmds == ['ip link set vxlan10 up']
 
-        # Missing or mismatched VTEP IP -> deletes, recreates, and sets link up
-        executed_cmds.clear()
-        assert real_linux.create_vxlan_interface(11, '10.0.0.1', 8472, existing_vxlan_vteps={'vxlan10': '10.0.0.1'}) is True
-        assert len(executed_cmds) == 3
-        assert 'ip link del vxlan11' in executed_cmds[0]
-        assert 'ip link add vxlan11 type vxlan id 11' in executed_cmds[1]
-        assert 'ip link set vxlan11 up' in executed_cmds[2]
+            # Missing or mismatched VTEP IP -> deletes, recreates, and sets link up
+            executed_cmds.clear()
+            assert real_linux.create_vxlan_interface(11, '10.0.0.1', 8472, existing_vxlan_vteps={'vxlan10': '10.0.0.1'}) is True
+            assert len(executed_cmds) == 3
+            assert 'ip link del vxlan11' in executed_cmds[0]
+            assert 'ip link add vxlan11 type vxlan id 11' in executed_cmds[1]
+            assert 'ip link set vxlan11 up' in executed_cmds[2]
 
         # Verify fallback behavior when batch queries fail or return empty output
-        real_linux.shell.call = MagicMock(return_value="")
-        assert real_linux.get_devices_with_ip() is None
+        with patch.object(real_linux.shell, "call", MagicMock(return_value="")):
+            assert real_linux.get_devices_with_ip() is None
 
         class _FailedShellCmd(_FakeShellCmd):
             def __init__(self, cmd_str: str):
                 super().__init__(cmd_str)
                 self.return_code = 1
 
-        real_linux.shell.ShellCmd = _FailedShellCmd
-        assert real_linux.get_vxlan_interfaces_vtep_map() is None
-        real_linux.shell.ShellCmd = _FakeShellCmd
-        assert real_linux.get_vxlan_interfaces_vtep_map() == {}
+        with patch.object(real_linux.shell, "ShellCmd", _FailedShellCmd):
+            assert real_linux.get_vxlan_interfaces_vtep_map() is None
+        with patch.object(real_linux.shell, "ShellCmd", _FakeShellCmd):
+            assert real_linux.get_vxlan_interfaces_vtep_map() == {}
 
         executed_cmds.clear()
-        assert real_linux.get_interfs_from_uuids([]) == []
+        with patch.object(real_linux.shell, "ShellCmd", _FakeShellCmd):
+            assert real_linux.get_interfs_from_uuids([]) == []
         assert any("ip link | grep ''" in c for c in executed_cmds)
 
         repo_root = Path(__file__).resolve().parents[3]
@@ -3455,14 +3457,12 @@ class TestNetworkPluginCreateVlanBridgesBatch:
                 self.cmd_str = cmd_str
                 self.return_code = 0
                 self.stdout = ""
+                if "ip link | grep" in cmd_str and "vx-200-uuid" in cmd_str:
+                    self.stdout = "vxlan200\n"
 
             def __call__(self, is_exception: bool = True) -> str:
                 shell_cmds.append(self.cmd_str)
                 return self.stdout
-
-        real_linux.shell.ShellCmd = _FakeShellCmd
-        real_linux.shell.call = MagicMock(side_effect=lambda cmd, *a, **kw: shell_calls.append(cmd) or "")
-        real_linux.iproute.set_link_up = MagicMock(side_effect=lambda dev: link_up_calls.append(dev))
 
         sysfs_state: dict[str, str] = {
             "/sys/class/net/eth0": "dir",
@@ -3495,23 +3495,22 @@ class TestNetworkPluginCreateVlanBridgesBatch:
             "/sys/class/net/br_vx_100/bridge/forward_delay": "0",
         }
 
-        real_linux.read_file_strip = MagicMock(side_effect=lambda p: sysfs_state.get(p))
-        real_linux.read_file_lines = MagicMock(side_effect=lambda p: sysfs_state[p].splitlines() if p in sysfs_state else [])
-
         def _write_file(p: str, content: object, *_a: object, **_kw: object) -> str:
             val = str(content).strip()
             sysfs_state[p] = val
             written_files.append((p, val))
             return p
 
-        real_linux.write_file = MagicMock(side_effect=_write_file)
-
-        with patch.object(real_linux.os.path, "exists", side_effect=lambda p: p in sysfs_state), \
+        with patch.object(real_linux.shell, "ShellCmd", _FakeShellCmd), \
+             patch.object(real_linux.shell, "call", MagicMock(side_effect=lambda cmd, *a, **kw: shell_calls.append(cmd) or "")), \
+             patch.object(real_linux.iproute, "set_link_up", MagicMock(side_effect=lambda dev: link_up_calls.append(dev))), \
+             patch.object(real_linux, "read_file_strip", MagicMock(side_effect=lambda p: sysfs_state.get(p))), \
+             patch.object(real_linux, "read_file_lines", MagicMock(side_effect=lambda p: sysfs_state[p].splitlines() if p in sysfs_state else [])), \
+             patch.object(real_linux, "write_file", MagicMock(side_effect=_write_file)), \
+             patch.object(real_linux.os.path, "exists", side_effect=lambda p: p in sysfs_state), \
              patch.object(real_linux.os.path, "isdir", side_effect=lambda p: p == "/sys/class/net" or sysfs_state.get(p) == "dir"), \
              patch.object(real_linux.os, "listdir", side_effect=lambda p: ["eth0", "eth0.100", "br_eth0_100", "vxlan100", "br_vx_100"] if p == "/sys/class/net" else []):
             # 1. All VLAN and VXLAN states match desired state -> 0 shell calls, 0 link_up calls, 0 sysfs writes
-            stats = real_linux.new_bridge_stage_stats()
-            real_linux.set_active_bridge_stage_stats(stats)
             real_linux.create_vlan_bridge("br_eth0_100", "eth0", 100, move_route=False)
             real_linux.set_bridge_alias_using_phy_nic_name("br_eth0_100", "eth0")
             real_linux.set_device_uuid_alias("eth0.100", "vlan-100-uuid")
@@ -3519,18 +3518,15 @@ class TestNetworkPluginCreateVlanBridgesBatch:
             real_linux.create_vxlan_bridge("vxlan100", "br_vx_100", None)
             real_linux.set_device_uuid_alias("vxlan100", "vx-100-uuid")
             assert real_linux.get_interfs_from_uuids(["vx-100-uuid"]) == ["vxlan100"]
-            real_linux.set_active_bridge_stage_stats(None)
 
             assert shell_calls == []
             assert shell_cmds == []
             assert written_files == []
             assert link_up_calls == []
-            assert stats["ip_link"]["calls"] == 0
-            assert stats["ip_link"]["skipped"] >= 4
-            assert stats["bridge_params"]["calls"] == 0
-            assert stats["bridge_params"]["skipped"] == 4
-            assert stats["alias"]["calls"] == 0
-            assert stats["alias"]["skipped"] == 3
+
+            # Partial sysfs match falls through to fallback and merges both interfaces
+            assert real_linux.get_interfs_from_uuids(["vx-100-uuid", "vx-200-uuid"]) == ["vxlan100", "vxlan200"]
+            shell_cmds.clear()
 
             # 2. Drift injection: VLAN & VXLAN devices DOWN, MAC drifted, STP=1, forward_delay=200, alias drifted, master detached
             sysfs_state["/sys/class/net/eth0.100/flags"] = "0x1002"
@@ -3546,16 +3542,14 @@ class TestNetworkPluginCreateVlanBridgesBatch:
             sysfs_state["/sys/class/net/br_vx_100/bridge/forward_delay"] = "200"
             sysfs_state["/sys/class/net/vxlan100/ifalias"] = "uuid: wrong"
             del sysfs_state["/sys/class/net/br_vx_100/brif/vxlan100"]
-            real_linux.ip_link_set_net_device_master = MagicMock()
 
-            drift_stats = real_linux.new_bridge_stage_stats()
-            real_linux.set_active_bridge_stage_stats(drift_stats)
-            real_linux.create_vlan_bridge("br_eth0_100", "eth0", 100, move_route=False)
-            real_linux.set_bridge_alias_using_phy_nic_name("br_eth0_100", "eth0")
-            real_linux.create_vxlan_interface(100, "10.0.0.1", 8472, existing_vxlan_vteps={"vxlan100": "10.0.0.1"})
-            real_linux.create_vxlan_bridge("vxlan100", "br_vx_100", None)
-            real_linux.set_device_uuid_alias("vxlan100", "vx-100-uuid")
-            real_linux.set_active_bridge_stage_stats(None)
+            with patch.object(real_linux, "ip_link_set_net_device_master", MagicMock()) as mock_set_master:
+                real_linux.create_vlan_bridge("br_eth0_100", "eth0", 100, move_route=False)
+                real_linux.set_bridge_alias_using_phy_nic_name("br_eth0_100", "eth0")
+                real_linux.create_vxlan_interface(100, "10.0.0.1", 8472, existing_vxlan_vteps={"vxlan100": "10.0.0.1"})
+                real_linux.create_vxlan_bridge("vxlan100", "br_vx_100", None)
+                real_linux.set_device_uuid_alias("vxlan100", "vx-100-uuid")
+                mock_set_master.assert_called_once_with("vxlan100", "br_vx_100")
 
         assert link_up_calls == ["eth0.100"]
         assert "ip link set br_eth0_100 up" in shell_calls
@@ -3563,7 +3557,6 @@ class TestNetworkPluginCreateVlanBridgesBatch:
         assert "ip link set vxlan100 up" in shell_cmds
         assert "ip link set br_vx_100 up" in shell_calls
         assert "ip link set br_vx_100 address aa:bb:cc:dd:ee:ff" in shell_calls
-        real_linux.ip_link_set_net_device_master.assert_called_once_with("vxlan100", "br_vx_100")
         assert ("/sys/class/net/br_eth0_100/bridge/stp_state", "0") in written_files
         assert ("/sys/class/net/br_eth0_100/bridge/forward_delay", "0") in written_files
         assert ("/sys/class/net/br_vx_100/bridge/stp_state", "0") in written_files
@@ -3589,7 +3582,6 @@ class TestNetworkPluginCreateVlanBridgesBatch:
         iproute_mod.query_link = MagicMock()
         iproute_mod.set_link_attribute = MagicMock()
 
-        stats = plugin._begin_bridge_stage_stats()
         assert plugin._get_interface_mtu("eth0.100") == 1500
         plugin._configure_bridge_mtu("br_eth0_100", "eth0.100", 1500)
         plugin._configure_bridge_learning("br_eth0_100", "eth0.100", "on")
@@ -3598,15 +3590,11 @@ class TestNetworkPluginCreateVlanBridgesBatch:
             enableMulticastSnooping=True,
             enableMulticastQuerier=True,
         ))
-        plugin._end_bridge_stage_stats()
 
         # When sysfs already matches, query_link, set_link_attribute, and write_file are skipped
         iproute_mod.query_link.assert_not_called()
         iproute_mod.set_link_attribute.assert_not_called()
         linux.write_file.assert_not_called()
-        assert stats["mtu"]["skipped"] == 1
-        assert stats["bridge_params"]["skipped"] == 1
-        assert stats["multicast"]["skipped"] == 2
 
         # Drift MTU, learning, and multicast -> repaired via set_link_attribute and write_file
         sysfs_values["/sys/class/net/eth0.100/mtu"] = "1400"
