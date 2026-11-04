@@ -809,6 +809,36 @@ def test_the_active_backend_disk_is_recorded_by_its_persistent_identity(host, mo
                                           'byIdPath': '/dev/disk/by-id/virtio-disk-a'}
 
 
+def test_an_identity_that_cannot_be_recorded_is_a_reason_of_the_inventory(host, monkeypatch):
+    plugin, service, world = host
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: '/dev/vdb')
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'reasons': [], 'candidates': [{'device': '/dev/vdb', 'state': 'ACTIVE', 'stableIdentity': {
+            'serial': 'disk-a', 'wwn': '', 'byIdPath': '/dev/disk/by-id/virtio-disk-a'}}]})
+
+    def full(*args, **kwargs):
+        raise OSError(28, 'No space left on device')
+    monkeypatch.setattr(plugin, '_atomic_write', full)
+    inventory = plugin._writeback_inventory(HOST)
+    # The query still answers; a reboot cannot reclaim the disk without the record.
+    assert inventory['candidates'][0]['state'] == 'ACTIVE'
+    assert 'BACKEND_IDENTITY_NOT_RECORDED' in inventory['reasons']
+    assert plugin._backend_identity() == {}
+
+
+@pytest.mark.parametrize('configured, serial', [(None, 'disk-a'), ('/dev/vdc', 'disk-a'), ('/dev/vdb', '')])
+def test_an_active_disk_left_without_its_identity_is_a_reason_of_the_inventory(host, monkeypatch, configured, serial):
+    plugin, service, world = host
+    # The configured device cannot be read or is another disk, or the disk has no persistent identifier.
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: configured)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'reasons': [], 'candidates': [{'device': '/dev/vdb', 'state': 'ACTIVE', 'stableIdentity': {
+            'serial': serial, 'wwn': '', 'byIdPath': ''}}]})
+    inventory = plugin._writeback_inventory(HOST)
+    assert 'BACKEND_IDENTITY_NOT_RECORDED' in inventory['reasons']
+    assert plugin._backend_identity() == {}
+
+
 @pytest.mark.parametrize('serial, recorded', [('disk-b', 'disk-a'), ('disk-a', None)])
 def test_a_rebooted_host_resets_only_the_disk_it_recorded(host, monkeypatch, serial, recorded):
     plugin, service, world = host
