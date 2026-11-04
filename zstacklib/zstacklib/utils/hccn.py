@@ -1,3 +1,4 @@
+import concurrent.futures
 import ipaddress
 import re
 import subprocess
@@ -12,9 +13,31 @@ def _field(output, name):
     return match.group(1) if match else None
 
 
+def _link_status(command_output, device_id):
+    try:
+        output = command_output("/usr/local/Ascend/driver/tools/hccn_tool", "-i", device_id, "-link", "-g")
+    except (subprocess.SubprocessError, OSError):
+        return "UNKNOWN"
+    match = re.search(r"^\s*link status\s*:\s*(\S+)\s*$", output, re.MULTILINE | re.IGNORECASE)
+    status = match.group(1).upper() if match else None
+    return status if status in ("UP", "DOWN") else "UNKNOWN"
+
+
+class _DriverCommandError(subprocess.CalledProcessError):
+    def __str__(self):
+        return "%s: %s" % (super().__str__(), str(self.output or "").strip()[:200])
+
+
+def _list_npus(command_output):
+    try:
+        return command_output("npu-smi", "info", "-l")
+    except subprocess.CalledProcessError as error:
+        raise _DriverCommandError(error.returncode, error.cmd, error.output, error.stderr) from error
+
+
 def collect_devices(command_output=_command_output):
     """Read device IPs while the host driver still owns the NPUs."""
-    output = command_output("npu-smi", "info", "-l")
+    output = _list_npus(command_output)
     ids = re.findall(r"^\s*NPU ID\s*:\s*(\d+)\s*$", output, re.MULTILINE)
     if len(ids) != len(set(ids)):
         raise ValueError("duplicate host NPU ID")
@@ -56,4 +79,11 @@ def collect_devices(command_output=_command_output):
     configured = [device["address"] for device in devices if device["address"]]
     if len(configured) != len(set(configured)):
         raise ValueError("duplicate host NPU HCCN address")
+    if devices:
+        # Each query can take its full timeout on a card whose port is resetting; run them
+        # side by side so one slow card does not multiply the survey time.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(devices)) as pool:
+            statuses = list(pool.map(lambda device_id: _link_status(command_output, device_id), ids))
+        for device, status in zip(devices, statuses):
+            device["linkStatus"] = status
     return devices
