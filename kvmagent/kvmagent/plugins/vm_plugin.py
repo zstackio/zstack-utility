@@ -2439,6 +2439,79 @@ def transform_to_tf_uuid(src):
     tmp = [src[:8], src[8:12], src[12:16], src[16:20], src[20:]]
     return '-'.join(tmp)
 
+
+def _make_usb_redirect_xml(devices, cmd, dist_name, host_arch):
+    """Build USB controllers and (optionally) redirdev XML on `devices`.
+
+    Extracted from ``Vm.to_xmlobject`` so the control flow can be
+    unit-tested without a full VM bring-up. ``dist_name`` and
+    ``host_arch`` are passed explicitly (rather than read from module
+    globals) so tests can drive the legacy aarch64 RPM-based branch.
+    """
+    e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
+
+    # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
+    @linux.on_redhat_based(dist_name)
+    @linux.with_arch(todo_list=['aarch64'], host_arch=host_arch)
+    def set_default():
+        # Old aarch64 RPM stacks (e.g. centos + qemu 2.12_0-18) only
+        # support default qemu-xhci 3.0 controllers; keep that layout
+        # as the safe baseline for the legacy combination.
+        e(devices, 'controller', None, {'type': 'usb', 'index': '1'})
+        e(devices, 'controller', None, {'type': 'usb', 'index': '2'})
+        return True
+
+    def set_usb2_3():
+        if host_arch == 'loongarch64':
+            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'nec-xhci'})
+        else:
+            e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
+        e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
+
+        # USB2.0 Controller for redirect
+        if host_arch == 'loongarch64':
+            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'nec-xhci'})
+        else:
+            e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
+        e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
+
+    def set_redirdev():
+        chan = e(devices, 'channel', None, {'type': 'spicevmc'})
+        e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
+        e(chan, 'address', None, {'type': 'virtio-serial'})
+
+        redirdev1 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+        e(redirdev1, 'address', None, {'type': 'usb', 'bus': '3', 'port': '1'})
+        redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+        e(redirdev2, 'address', None, {'type': 'usb', 'bus': '3', 'port': '2'})
+        redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+        e(redirdev3, 'address', None, {'type': 'usb', 'bus': '4', 'port': '1'})
+        redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
+        e(redirdev4, 'address', None, {'type': 'usb', 'bus': '4', 'port': '2'})
+
+    not_colo_vm = not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary
+    # spicevmc needs a SPICE graphics device. VNC-only and noConsole VMs
+    # can still have usbRedirect enabled in the management-node command.
+    has_spice_graphics = devices.find("graphics[@type='spice']") is not None
+    need_redirdev = cmd.usbRedirect and not_colo_vm and has_spice_graphics
+
+    if set_default():
+        if need_redirdev:
+            # set_default() only adds USB controllers 0/1/2 on the
+            # aarch64 RPM-based path. set_redirdev() addresses bus=3/4,
+            # so attach two more controllers using libvirt's default
+            # qemu-xhci -- modern aarch64 qemu (>= 6.2) supports
+            # usb-redir on it, and the default model avoids ehci /
+            # nec-xhci availability differences across aarch64 builds.
+            e(devices, 'controller', None, {'type': 'usb', 'index': '3'})
+            e(devices, 'controller', None, {'type': 'usb', 'index': '4'})
+            set_redirdev()
+        return
+    set_usb2_3()
+    if need_redirdev:
+        set_redirdev()
+
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -6056,52 +6129,7 @@ class Vm(object):
             e(chan, 'target', None, {'type': 'virtio', 'name': 'org.spice-space.webdav.0'})
 
         def make_usb_redirect():
-            devices = elements['devices']
-            e(devices, 'controller', None, {'type': 'usb', 'index': '0'})
-            # make sure there are three usb controllers, each for USB 1.1/2.0/3.0
-            @linux.on_redhat_based(DIST_NAME)
-            @linux.with_arch(todo_list=['aarch64'])
-            def set_default():
-                # for aarch64 centos, only support default controller(qemu-xhci 3.0) on current qemu version(2.12_0-18)
-                e(devices, 'controller', None, {'type': 'usb', 'index': '1'})
-                e(devices, 'controller', None, {'type': 'usb', 'index': '2'})
-                return True
-
-
-            def set_usb2_3():
-                if HOST_ARCH == 'loongarch64':
-                    e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'nec-xhci'})
-                else:
-                    e(devices, 'controller', None, {'type': 'usb', 'index': '1', 'model': 'ehci'})
-                e(devices, 'controller', None, {'type': 'usb', 'index': '2', 'model': 'nec-xhci'})
-
-                # USB2.0 Controller for redirect
-                if HOST_ARCH == 'loongarch64':
-                    e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'nec-xhci'})
-                else:
-                    e(devices, 'controller', None, {'type': 'usb', 'index': '3', 'model': 'ehci'})
-                e(devices, 'controller', None, {'type': 'usb', 'index': '4', 'model': 'nec-xhci'})
-
-            def set_redirdev():
-                chan = e(devices, 'channel', None, {'type': 'spicevmc'})
-                e(chan, 'target', None, {'type': 'virtio', 'name': 'com.redhat.spice.0'})
-                e(chan, 'address', None, {'type': 'virtio-serial'})
-
-                redirdev1 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev1, 'address', None, {'type': 'usb', 'bus': '3', 'port': '1'})
-                redirdev2 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev2, 'address', None, {'type': 'usb', 'bus': '3', 'port': '2'})
-                redirdev3 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev3, 'address', None, {'type': 'usb', 'bus': '4', 'port': '1'})
-                redirdev4 = e(devices, 'redirdev', None, {'type': 'spicevmc', 'bus': 'usb'})
-                e(redirdev4, 'address', None, {'type': 'usb', 'bus': '4', 'port': '2'})
-
-            if set_default():
-                return
-            set_usb2_3()
-            not_colo_vm = not cmd.coloPrimary and not cmd.coloSecondary and not cmd.useColoBinary
-            if cmd.usbRedirect and not_colo_vm:
-                set_redirdev()
+            _make_usb_redirect_xml(elements['devices'], cmd, DIST_NAME, HOST_ARCH)
 
         def make_video():
             devices = elements['devices']
