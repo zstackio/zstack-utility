@@ -14,13 +14,14 @@ from enum import Enum, unique
 from zstacklib.utils import log
 from zstacklib.utils import bash
 from zstacklib.utils import iproute
-from zstacklib.utils import linux
+from zstacklib.utils import linux, pci
+from zstacklib.utils.pci import getAllDpdkNic
 
 logger = log.get_logger(__name__)
 
 AppCtlBin = "/usr/bin/ovn-appctl"
 CtlBin = "/usr/bin/ovs-vsctl "
-DevBindBin = "/usr/bin/dpdk-devbind.py "
+DevBindBin = pci.DPDK_DEVBIND + " "
 OVS_DPDK_SRC_PATH = "/var/run/openvswitch/"
 
 VSWITCHD_PID_PATH = '/var/run/openvswitch/ovs-vswitchd.pid'
@@ -54,56 +55,6 @@ def normalizeInterfaceId(ifaceId):
 class OvsError(Exception):
     '''ovs error'''
 
-
-class OvsDpdkNic:
-    def __init__(self):
-        self.name = ""
-        self.pciAddress = ""
-        self.driver = ""
-        self.oldDriver = ""
-
-
-@bash.in_bash
-def getAllDpdkNic():
-    ret = []
-    r, o, e = bash.bash_roe(DevBindBin + " --status-dev net | grep drv= | grep -v 'Virtual Function'")
-    if r != 0:
-        logger.debug(DevBindBin + " --status-dev net | grep drv=, failed {err}".format(err=e))
-        return ret
-
-    lines = o.split("\n")
-    for line in lines:
-        line = line.strip()
-        if line == "":
-            continue
-
-        nic = OvsDpdkNic()
-        items = line.split(" ")
-        nic.pciAddress = items[0]
-        for item in items:
-            if item.startswith("if="):
-                nic.name = item.split("=")[1]
-            elif item.startswith("drv="):
-                nic.driver = item.split("=")[1]
-            elif item.startswith("unused="):
-                oldDrivers = item.split("=")[1]
-                nic.oldDriver = oldDrivers.split(",")[0]
-
-        logger.debug("dpdk nic{} name: {}, driver: {}, unused:{}"
-                     .format(nic.pciAddress, nic.name, nic.driver, nic.oldDriver))
-        ret.append(nic)
-
-    return ret
-
-
-def getAllVfioPciNic():
-    ret = []
-    dpdkNics = getAllDpdkNic()
-    for nic in dpdkNics:
-        if nic.driver == "vfio-pci" or nic.driver == "uio_pci_generic":
-            ret.append(nic)
-
-    return ret
 
 @bash.in_bash
 def delVnicFromOvsByVmUuidIfExist(vmUuid, brName="br-int"):
@@ -192,7 +143,7 @@ def restoreNicDriver(pciAddressList):
 
     for pciAddress in pciAddressList:
         found = False
-        targetNic = OvsDpdkNic()
+        targetNic = pci.PciNetworkDevice()
         for dpdkNic in dpdkNics:
             if dpdkNic.pciAddress == pciAddress:
                 found = True
@@ -234,7 +185,7 @@ def restoreNicDriver(pciAddressList):
     dpdkNics = getAllDpdkNic()
     for pciAddress, expectedDriver in restoreTargets:
         found = False
-        targetNic = OvsDpdkNic()
+        targetNic = pci.PciNetworkDevice()
         for dpdkNic in dpdkNics:
             if dpdkNic.pciAddress == pciAddress:
                 found = True

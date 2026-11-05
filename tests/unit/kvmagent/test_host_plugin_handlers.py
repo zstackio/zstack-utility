@@ -1202,7 +1202,8 @@ class TestHostPluginNetworkInventoryDeep:
         thread_facade = MagicMock()
         thread_facade.run_in_thread = MagicMock(side_effect=lambda fn, args: _ThreadStub(fn, args))
 
-        with patch('kvmagent.plugins.host_plugin.os.readlink', return_value='../../../0000:00:10.0'), \
+        with patch.object(host_plugin.ip, 'exclude_ipoib_interfaces', return_value=['eth0']), \
+                patch('kvmagent.plugins.host_plugin.os.readlink', return_value='../../../0000:00:10.0'), \
                 patch('kvmagent.plugins.host_plugin.os.path.exists', side_effect=exists_side_effect), \
                 patch.object(host_plugin, 'bash_roe', return_value=(0, 'Vendor: Intel\nDevice: X520\n', '')), \
                 patch.object(host_plugin, 'bash_o', return_value=''), \
@@ -1210,7 +1211,7 @@ class TestHostPluginNetworkInventoryDeep:
                 patch.object(host_plugin.subprocess, 'check_output', return_value=b'src 10.0.0.1'):
             nics = plugin.get_host_networking_interfaces('10.0.0.1')
 
-        assert nics
+        assert len(nics) == 1
         assert nics[0].interfaceName == 'eth0'
         assert nics[0].interfaceModel is not None
 
@@ -1273,23 +1274,29 @@ class TestHostPluginGetPciInfo:
             '0000:0e:00.1': 'vf',
         }
 
-    def test_get_pci_info_skip_grub(self):
+    @pytest.mark.parametrize('vfio_exists', [False, True])
+    def test_get_pci_info_skip_grub(self, vfio_exists):
         plugin = _make_plugin()
         plugin._collect_format_pci_device_info = MagicMock()
-        from kvmagent.plugins.host_plugin import UpdateConfigration
-        UpdateConfigration.enable_vfio_module = MagicMock()
-
-        with patch('kvmagent.plugins.host_plugin.os.path.exists', return_value=False):
-            req = _make_req({
-                'skipGrubConfig': True,
-                'enableIommu': True,
-                'opaque': False,
-                'pciDeviceAddresses': [],
-            })
-            result = plugin.get_pci_info(req)
+        with patch.object(host_plugin, 'UpdateConfigration') as config, \
+                patch.object(host_plugin.os.path, 'exists', return_value=vfio_exists):
+            def collect_after_vfio(*args):
+                if not vfio_exists:
+                    config.return_value.enable_vfio_module.assert_called_once_with()
+            plugin._collect_format_pci_device_info.side_effect = collect_after_vfio
+            result = plugin.get_pci_info(_make_req({
+                'skipGrubConfig': True, 'enableIommu': True,
+                'opaque': {}, 'pciDeviceAddresses': [],
+            }))
         rsp = json.loads(result)
         assert rsp['success'] is True
         assert rsp['hostIommuStatus'] is True
+        plugin._collect_format_pci_device_info.assert_called_once()
+        config.assert_called_once_with()
+        if vfio_exists:
+            config.return_value.enable_vfio_module.assert_not_called()
+        config.return_value.updateHostIommu.assert_not_called()
+        config.return_value.updateGrubConfig.assert_not_called()
 
 
 @pytest.mark.kvmagent
@@ -1384,6 +1391,51 @@ class TestHostPluginUpdateVmConsolePasswordLive:
 
 @pytest.mark.kvmagent
 class TestHostPluginGetPciInfoDeep:
+    @pytest.mark.parametrize('pci_class,class_name,config,expected', [
+        ('0207', 'Infiniband controller', [], 'IB_Controller'),
+        ('0207', 'Network controller', [], 'IB_Controller'),
+        ('0207', 'Class 0207', [], 'IB_Controller'),
+        ('0207', 'Network controller', ['Infiniband controller:'], 'IB_Controller'),
+        ('0207', 'Network controller', ['Ethernet controller:Network controller'], 'IB_Controller'),
+        ('0200', 'Ethernet controller', [], 'Ethernet_Controller'),
+        ('0200', 'Ethernet controller', ['Infiniband controller:'], 'Ethernet_Controller'),
+        ('0403', 'Audio device', ['Infiniband controller:'], 'Audio_Controller'),
+        ('0c03', 'USB controller', ['Infiniband controller:'], 'USB_Controller'),
+        ('0604', 'PCI bridge', ['Infiniband controller:'], 'PCI_Bridge'),
+        ('ffff', 'Unknown device', ['Infiniband controller:   '], 'Generic'),
+        ('ffff', 'Network controller', [], 'Generic'),
+        ('ffff', 'Custom IB controller', ['Infiniband controller:Custom IB'], 'IB_Controller'),
+    ])
+    def test_pci_classification_uses_numeric_ib_class_and_nonempty_alias(
+            self, pci_class, class_name, config, expected):
+        plugin = _make_plugin()
+        slot = '0000:17:00.0'
+        ids_output = 'Slot: %s\nClass: %s\n' % (slot, pci_class)
+        names_output = 'Slot: %s\nClass: %s\n' % (slot, class_name)
+        with patch.object(host_plugin.pci, 'get_pci_device_ids', return_value=(0, ids_output, '')), \
+                patch.object(host_plugin.pci, 'get_pci_device_names', return_value=(0, names_output, '')), \
+                patch.object(host_plugin.pci, 'collect_pci_devices_with_dependencies', return_value=[]), \
+                patch.object(host_plugin.pci, 'PCI_CLASS_INFINIBAND', 0x0207), \
+                patch.object(host_plugin.linux, 'read_file_lines', return_value=config):
+            device_ids, device_names, mapper = plugin._parse_pci_device_info(host_plugin.GetPciDevicesResponse())
+            device = plugin._convert_pci_info_to_to(slot, device_ids[slot], device_names, mapper, {})
+
+        assert device.type == expected
+        assert device.pciDeviceAddress == slot
+        assert device.description == class_name + ': '
+
+    def test_numeric_ib_class_does_not_override_gpu_processor(self):
+        plugin = _make_plugin()
+        device = host_plugin.PciDeviceTO()
+        device.pciDeviceAddress = '0000:17:00.0'
+        device.type = 'GPU_Video_Controller'
+        context = MagicMock(gpu_info_map={device.pciDeviceAddress: object()})
+        with patch.object(host_plugin.pci, 'normalize_pci_address', side_effect=lambda address: address), \
+                patch.object(host_plugin.pci, 'PCI_CLASS_INFINIBAND', 0x0207):
+            plugin._set_generic_pci_device_type(device, {}, context, '0207')
+
+        assert device.type == 'GPU_Video_Controller'
+
     def test_get_pci_info_runs_iommu_update_and_collects_devices(self):
         plugin = _make_plugin()
 

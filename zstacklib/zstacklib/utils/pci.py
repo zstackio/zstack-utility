@@ -1,14 +1,84 @@
 import os
 import platform
 import re
+import struct
 import time
 
-from zstacklib.utils import log, linux, sizeunit
+from zstacklib.utils import log, linux, sizeunit, bash
 import xml.etree.ElementTree as ET
 
 from zstacklib.utils.bash import bash_roe
 
 logger = log.get_logger(__name__)
+
+# PCI_CLASS_DEVICE contains subclass/base class as a little-endian 16-bit value.
+PCI_CLASS_DEVICE_OFFSET = 0x0A
+PCI_CLASS_DEVICE_SIZE = 2
+PCI_CLASS_INFINIBAND = 0x0207
+DPDK_DEVBIND = "/usr/bin/dpdk-devbind.py"
+
+
+def is_infiniband_device(pci_address):
+    """Return True only when the current PCI config identifies an IB controller."""
+    try:
+        # The cached sysfs class may be stale after a device mode switch.
+        with open(os.path.join('/sys/bus/pci/devices', pci_address, 'config'), 'rb') as stream:
+            stream.seek(PCI_CLASS_DEVICE_OFFSET)
+            pci_class = struct.unpack('<H', stream.read(PCI_CLASS_DEVICE_SIZE))[0]
+        return pci_class == PCI_CLASS_INFINIBAND
+    except (IOError, OSError, struct.error) as err:
+        logger.warn('cannot read PCI class for device[%s], keeping it in NIC collection: %s'
+                    % (pci_address, err))
+        return False
+
+
+class PciNetworkDevice:
+    def __init__(self):
+        self.name = ""
+        self.pciAddress = ""
+        self.driver = ""
+        self.oldDriver = ""
+
+
+@bash.in_bash
+def getAllDpdkNic():
+    ret = []
+    r, o, e = bash.bash_roe(DPDK_DEVBIND + " --status-dev net | grep drv= | grep -v 'Virtual Function'")
+    if r != 0:
+        logger.debug(DPDK_DEVBIND + " --status-dev net | grep drv=, failed {err}".format(err=e))
+        return ret
+
+    lines = o.split("\n")
+    for line in lines:
+        line = line.strip()
+        if line == "":
+            continue
+
+        nic = PciNetworkDevice()
+        items = line.split(" ")
+        nic.pciAddress = items[0]
+        for item in items:
+            if item.startswith("if="):
+                nic.name = item.split("=")[1]
+            elif item.startswith("drv="):
+                nic.driver = item.split("=")[1]
+            elif item.startswith("unused="):
+                oldDrivers = item.split("=")[1]
+                nic.oldDriver = oldDrivers.split(",")[0]
+
+        logger.debug("dpdk nic{} name: {}, driver: {}, unused:{}"
+                     .format(nic.pciAddress, nic.name, nic.driver, nic.oldDriver))
+        ret.append(nic)
+
+    return ret
+
+
+def getAllVfioPciNic():
+    """Collect VFIO/UIO network devices, excluding confirmed IB controllers."""
+    return [nic for nic in getAllDpdkNic()
+            if nic.driver in ("vfio-pci", "uio_pci_generic")
+            and not is_infiniband_device(nic.pciAddress)]
+
 
 _pci_device_cache = {}
 
