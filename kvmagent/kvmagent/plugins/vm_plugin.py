@@ -9920,7 +9920,7 @@ class VmPlugin(kvmagent.KvmAgent):
                 if vmUseOpenvSwitch:
                     ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(cmd.uuid)
                 # notify vrouter agent nic removed from source host
-                for nic in cmd.vmNics:
+                for nic in cmd.vmNics or []:
                     if nic.type == 'TFVNIC':
                         vrouter_cmd = [
                             'vrouter-port-control',
