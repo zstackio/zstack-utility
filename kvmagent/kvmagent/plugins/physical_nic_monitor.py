@@ -50,16 +50,14 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
     TEST_PHYSICAL_NIC_MONITOR = "/host/physicalNic/test"
     ALARM_WAITING_TIME = 3
 
-    bond_info = {}
-    ip_info = {}
-    nic_info = {}
-    history_nics = []
-    state = None
-    time_lock = 0
-    alarms_to_send = {}
-
     def __init__(self):
         super(PhysicalNicMonitor, self).__init__()
+        self.bond_info = {}
+        self.ip_info = {}
+        self.nic_info = {}
+        self.history_nics = []
+        self.alarms_to_send = {}
+        self.time_lock = 0
         self.state = False
 
     def configure(self, config=None):
@@ -76,12 +74,34 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
         pass
 
     def initial_data(self, nics):
+        physical_nics = ip_utils.find_host_physicl_nics()
         for nic in nics:
+            if nic.interfaceName not in physical_nics and self._is_veth(nic.interfaceName):
+                self._forget_nic(nic.interfaceName)
+                continue
             self.nic_info[nic.interfaceName] = (lambda x: 'up' if x is True else 'down')(nic.carrierActive)
-            self.history_nics.append(nic.interfaceName)
+            if nic.interfaceName not in self.history_nics:
+                self.history_nics.append(nic.interfaceName)
+
+    def _is_veth(self, nic):
+        try:
+            return iproute.query_link(nic).device_type == 'veth'
+        except Exception as e:
+            # A missing interface may be a physical NIC that has just disappeared.
+            logger.debug('cannot query interface type for %s: %s' % (nic, e))
+            return False
+
+    @lock.lock('alarms_to_send')
+    def _forget_nic(self, nic):
+        self.history_nics = [name for name in self.history_nics if name != nic]
+        for cache in (self.nic_info, self.bond_info, self.ip_info, self.alarms_to_send):
+            cache.pop(nic, None)
 
     @lock.lock('physical_nic_monitor_send_to_mn')
     def send_to_mn(self, physical_nic_alarm):
+        # Recheck delayed callbacks as well as alarms already in the queue.
+        if physical_nic_alarm.nic not in self.history_nics or self._is_veth(physical_nic_alarm.nic):
+            return
         logger.debug('transmitting physical_nic alarm info [name:%s, status:%s] to management node' % (
             physical_nic_alarm.nic, physical_nic_alarm.status))
         physical_nic_alarm.host = self.config.get(kvmagent.HOST_UUID)
@@ -142,6 +162,10 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
             if current_time - last_time < self.ALARM_WAITING_TIME:
                 continue
 
+            if self._is_veth(nic):
+                self._forget_nic(nic)
+                continue
+
             if len(events) % 2 == 0:
                 status = events[-2].status
                 self.send_to_mn(self.get_nic_info(nic, status))
@@ -195,11 +219,21 @@ class PhysicalNicMonitor(kvmagent.KvmAgent):
         msg = get_msg[0]
         if 'event' in msg and msg['event'] == 'RTM_NEWLINK':
             nic = msg.get_attr('IFLA_IFNAME')
-            status = msg.get_attr('IFLA_OPERSTATE').lower()
-            if not nic or not status:
+            if not nic:
                 return
+            if msg.get_nested('IFLA_LINKINFO', 'IFLA_INFO_KIND') == 'veth':
+                self._forget_nic(nic)
+                return
+            physical_nics = ip_utils.find_host_physicl_nics()
+            if nic not in physical_nics and nic in self.history_nics and self._is_veth(nic):
+                self._forget_nic(nic)
+                return
+            status = msg.get_attr('IFLA_OPERSTATE')
+            if not status:
+                return
+            status = status.lower()
             # update nic record
-            for new_nic in ip_utils.find_host_physicl_nics():
+            for new_nic in physical_nics:
                 if new_nic not in self.history_nics:
                     self.history_nics.append(new_nic)
             # old nic alarm
