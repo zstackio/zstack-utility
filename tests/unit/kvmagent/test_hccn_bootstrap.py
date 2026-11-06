@@ -616,3 +616,63 @@ def test_outer_limit_retains_known_error_count_and_first_cause(raw_qga):
     assert result['hccnBootstrap']['errorCount'] == 2
     assert result['hccnBootstrap']['errors'][0]['reason'].startswith('peer-first-original: ')
     assert result['hccnBootstrap']['errors'][1]['reason'] == 'second peer failure'
+
+
+class AgentTimeout(Exception):
+    def get_error_code(self):
+        return 86
+
+
+def test_transient_agent_timeout_while_polling_keeps_waiting_for_the_same_process(raw_qga, monkeypatch):
+    original = raw_qga.qemuAgentCommand
+    timeouts = [2]
+
+    def flaky(domain, raw, timeout, flags):
+        if json.loads(raw)['execute'] == 'guest-exec-status' and timeouts[0]:
+            timeouts[0] -= 1
+            raw_qga.calls.append(json.loads(raw))
+            raise AgentTimeout('Guest agent is not responding: Guest agent not available for now')
+        return original(domain, raw, timeout, flags)
+
+    monkeypatch.setattr(raw_qga, 'qemuAgentCommand', flaky)
+    monkeypatch.setattr(bootstrap.time, 'sleep', lambda _: None)
+    result = bootstrap.dispatch(request(raw_qga), lambda _: Domain())
+    assert result['success'] is True, result
+    assert raw_qga.count('guest-exec') == 1
+    assert raw_qga.count('guest-exec-status') == 3
+
+
+def test_agent_that_stays_unresponsive_fails_with_original_cause_and_no_resend(raw_qga, monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr(bootstrap.time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(bootstrap.time, 'sleep', lambda seconds: clock.__setitem__(0, clock[0] + max(seconds, 1)))
+    original = raw_qga.qemuAgentCommand
+
+    def dead(domain, raw, timeout, flags):
+        if json.loads(raw)['execute'] == 'guest-exec-status':
+            raw_qga.calls.append(json.loads(raw))
+            clock[0] += timeout
+            raise AgentTimeout('Guest agent is not responding: Guest agent not available for now')
+        return original(domain, raw, timeout, flags)
+
+    monkeypatch.setattr(raw_qga, 'qemuAgentCommand', dead)
+    result = bootstrap.dispatch(request(raw_qga), lambda _: Domain())
+    assert result['success'] is False
+    assert 'Guest agent not available for now' in result['error']
+    assert raw_qga.count('guest-exec') == 1
+    assert clock[0] < 120
+
+
+def test_non_timeout_status_failure_is_not_retried(raw_qga, monkeypatch):
+    original = raw_qga.qemuAgentCommand
+
+    def broken(domain, raw, timeout, flags):
+        if json.loads(raw)['execute'] == 'guest-exec-status':
+            raw_qga.calls.append(json.loads(raw))
+            raise RuntimeError('domain is not running')
+        return original(domain, raw, timeout, flags)
+
+    monkeypatch.setattr(raw_qga, 'qemuAgentCommand', broken)
+    result = bootstrap.dispatch(request(raw_qga), lambda _: Domain())
+    assert result['success'] is False
+    assert raw_qga.count('guest-exec-status') == 1

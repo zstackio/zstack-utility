@@ -22,6 +22,8 @@ CONTEXT = ('schemaVersion', 'groupUuid', 'instanceUuid', 'vmUuid', 'attemptId',
            'epoch', 'bootId', 'nodeRank', 'nnodes')
 HEX32 = re.compile(r'^[0-9a-f]{32}$')
 SHA256 = re.compile(r'^[0-9a-f]{64}$')
+VIR_ERR_AGENT_UNRESPONSIVE = 86
+STATUS_UNRESPONSIVE_GRACE = 60
 
 
 class BootstrapError(Exception):
@@ -196,7 +198,10 @@ class GuestTransport(object):
             response = libvirt_qemu.qemuAgentCommand(
                 self.domain, raw_request, max(1, min(3, int(math.ceil(remaining)))), 0)
         except Exception as exc:
-            raise BootstrapError(_redact_guest_error(str(exc), raw_request, arguments), 'transport')
+            error = BootstrapError(_redact_guest_error(str(exc), raw_request, arguments), 'transport')
+            get_code = getattr(exc, 'get_error_code', None)
+            error.agent_unresponsive = callable(get_code) and get_code() == VIR_ERR_AGENT_UNRESPONSIVE
+            raise error
         _require(time.monotonic() <= deadline, 'QGA deadline exceeded', 'transport')
         parsed = parse_json(response, 4 * ((LIMIT + 2) // 3) + 4096)
         if isinstance(parsed, dict) and set(parsed) == {'error'}:
@@ -256,8 +261,20 @@ class GuestTransport(object):
         started = self.call('guest-exec', args, deadline)
         _require(isinstance(started, dict) and _integer(started.get('pid'), 1, 2 ** 63 - 1),
                  'QGA did not return a real process pid', 'transport')
+        unresponsive_since = None
         while True:
-            status = self.call('guest-exec-status', {'pid': started['pid']}, deadline)
+            try:
+                status = self.call('guest-exec-status', {'pid': started['pid']}, deadline)
+            except BootstrapError as error:
+                now = time.monotonic()
+                if not getattr(error, 'agent_unresponsive', False):
+                    raise
+                unresponsive_since = now if unresponsive_since is None else unresponsive_since
+                if now - unresponsive_since >= STATUS_UNRESPONSIVE_GRACE or now >= deadline:
+                    raise
+                time.sleep(min(1, max(0, deadline - now)))
+                continue
+            unresponsive_since = None
             _require(isinstance(status, dict) and type(status.get('exited')) is bool,
                      'QGA process terminal state missing', 'transport')
             if status['exited']:
