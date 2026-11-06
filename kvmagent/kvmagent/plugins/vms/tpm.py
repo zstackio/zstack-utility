@@ -1,6 +1,10 @@
+import base64
+import binascii
+import io
 import os
 import re
 import shutil
+import tarfile
 import uuid
 import xml.etree.ElementTree as etree
 
@@ -31,6 +35,23 @@ class TpmStateHostFile(object):
             result.error = 'invalid TPM state vm host file path ' + result.path
             return result
         vm_host_file.read_vm_host_file_targz(result)
+        if result.error is not None:
+            return result
+
+        state_member = os.path.join(os.path.basename(result.path.rstrip('/')), TPM_PERMALL_RELATIVE_PATH)
+        try:
+            with tarfile.open(fileobj=io.BytesIO(base64.b64decode(result.contentBase64)), mode='r:gz') as archive:
+                state = archive.getmember(state_member)
+                if not state.isfile() or state.size <= 0:
+                    result.error = 'invalid TPM state file %s: expected a nonempty regular file' % state_member
+        except KeyError:
+            result.error = 'TPM state file %s does not exist in the state archive' % state_member
+        except (IOError, ValueError, TypeError, binascii.Error, tarfile.TarError) as error:
+            result.error = 'failed to validate TPM state archive %s: %s' % (result.path, str(error))
+
+        if result.error is not None:
+            result.contentBase64 = ''
+            result.fileFormat = ''
         return result
 
     def write_file(self, to):
