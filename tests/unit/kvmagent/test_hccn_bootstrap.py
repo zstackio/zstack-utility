@@ -676,3 +676,47 @@ def test_non_timeout_status_failure_is_not_retried(raw_qga, monkeypatch):
     result = bootstrap.dispatch(request(raw_qga), lambda _: Domain())
     assert result['success'] is False
     assert raw_qga.count('guest-exec-status') == 1
+
+
+class CommandTimeout(Exception):
+    def get_error_code(self):
+        return 112
+
+
+def test_sent_status_command_timeout_is_retried_for_the_same_process(raw_qga, monkeypatch):
+    original = raw_qga.qemuAgentCommand
+    timeouts = [1]
+
+    def flaky(domain, raw, timeout, flags):
+        if json.loads(raw)['execute'] == 'guest-exec-status' and timeouts[0]:
+            timeouts[0] -= 1
+            raw_qga.calls.append(json.loads(raw))
+            raise CommandTimeout('Guest agent command timed out after sending')
+        return original(domain, raw, timeout, flags)
+
+    monkeypatch.setattr(raw_qga, 'qemuAgentCommand', flaky)
+    monkeypatch.setattr(bootstrap.time, 'sleep', lambda _: None)
+    result = bootstrap.dispatch(request(raw_qga), lambda _: Domain())
+    assert result['success'] is True, result
+    assert raw_qga.count('guest-exec') == 1
+
+
+def test_status_reaped_after_lost_reply_fails_with_both_causes(raw_qga, monkeypatch):
+    original = raw_qga.qemuAgentCommand
+    replies = iter([CommandTimeout('Guest agent command timed out after sending'),
+                    RuntimeError('Invalid parameter pid 102')])
+
+    def reaped(domain, raw, timeout, flags):
+        if json.loads(raw)['execute'] == 'guest-exec-status':
+            raw_qga.calls.append(json.loads(raw))
+            raise next(replies)
+        return original(domain, raw, timeout, flags)
+
+    monkeypatch.setattr(raw_qga, 'qemuAgentCommand', reaped)
+    monkeypatch.setattr(bootstrap.time, 'sleep', lambda _: None)
+    result = bootstrap.dispatch(request(raw_qga), lambda _: Domain())
+    assert result['success'] is False
+    reasons = [e['reason'] for e in result['hccnBootstrap']['errors']]
+    assert any('Invalid parameter pid 102' in r for r in reasons), reasons
+    assert any('timed out after sending' in r for r in reasons), reasons
+    assert raw_qga.count('guest-exec') == 1

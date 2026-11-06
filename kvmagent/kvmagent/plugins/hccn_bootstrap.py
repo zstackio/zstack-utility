@@ -23,6 +23,7 @@ CONTEXT = ('schemaVersion', 'groupUuid', 'instanceUuid', 'vmUuid', 'attemptId',
 HEX32 = re.compile(r'^[0-9a-f]{32}$')
 SHA256 = re.compile(r'^[0-9a-f]{64}$')
 VIR_ERR_AGENT_UNRESPONSIVE = 86
+VIR_ERR_AGENT_COMMAND_TIMEOUT = 112
 STATUS_UNRESPONSIVE_GRACE = 60
 
 
@@ -200,7 +201,8 @@ class GuestTransport(object):
         except Exception as exc:
             error = BootstrapError(_redact_guest_error(str(exc), raw_request, arguments), 'transport')
             get_code = getattr(exc, 'get_error_code', None)
-            error.agent_unresponsive = callable(get_code) and get_code() == VIR_ERR_AGENT_UNRESPONSIVE
+            error.agent_unresponsive = callable(get_code) and get_code() in (VIR_ERR_AGENT_UNRESPONSIVE,
+                                                                           VIR_ERR_AGENT_COMMAND_TIMEOUT)
             raise error
         _require(time.monotonic() <= deadline, 'QGA deadline exceeded', 'transport')
         parsed = parse_json(response, 4 * ((LIMIT + 2) // 3) + 4096)
@@ -261,20 +263,23 @@ class GuestTransport(object):
         started = self.call('guest-exec', args, deadline)
         _require(isinstance(started, dict) and _integer(started.get('pid'), 1, 2 ** 63 - 1),
                  'QGA did not return a real process pid', 'transport')
-        unresponsive_since = None
+        unresponsive_since, unresponsive = None, None
         while True:
             try:
                 status = self.call('guest-exec-status', {'pid': started['pid']}, deadline)
             except BootstrapError as error:
                 now = time.monotonic()
                 if not getattr(error, 'agent_unresponsive', False):
+                    if unresponsive is not None:
+                        error.errors.extend(unresponsive.errors)
                     raise
                 unresponsive_since = now if unresponsive_since is None else unresponsive_since
                 if now - unresponsive_since >= STATUS_UNRESPONSIVE_GRACE or now >= deadline:
                     raise
+                unresponsive = unresponsive or error
                 time.sleep(min(1, max(0, deadline - now)))
                 continue
-            unresponsive_since = None
+            unresponsive_since, unresponsive = None, None
             _require(isinstance(status, dict) and type(status.get('exited')) is bool,
                      'QGA process terminal state missing', 'transport')
             if status['exited']:
