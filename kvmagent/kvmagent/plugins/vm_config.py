@@ -1,6 +1,7 @@
 import base64
 import libvirt
 from kvmagent.plugins import vm_plugin
+from kvmagent.plugins import hccn_bootstrap
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
@@ -474,7 +475,10 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def vm_gpu_info_sync(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        raw_request = req[http.REQUEST_BODY]
+        if hccn_bootstrap.has_request(raw_request):
+            return hccn_bootstrap.serialize_response(hccn_bootstrap.dispatch(raw_request, get_virt_domain))
+        cmd = jsonobject.loads(raw_request)
         rsp = GetVmGpuInfoResponse()
 
         domain = get_virt_domain(cmd.vmUuid)
