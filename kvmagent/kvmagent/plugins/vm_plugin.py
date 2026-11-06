@@ -4062,6 +4062,24 @@ class Vm(object):
                 flags |= getattr(libvirt, attr)
         return flags
 
+    def _undefine_for_firmware_cleanup(self):
+        try:
+            self.domain.undefineFlags(getattr(libvirt, 'VIR_DOMAIN_UNDEFINE_KEEP_NVRAM', 1 << 3))
+            return
+        except libvirt.libvirtError as error:
+            if (error.get_error_code() != libvirt.VIR_ERR_INVALID_ARG
+                    or error.get_str1() != 'qemuDomainUndefineFlags' or error.get_str2() != 'flags'):
+                raise
+
+        tree = etree.fromstring(self.domain.XMLDesc(libvirt.VIR_DOMAIN_XML_INACTIVE))
+        nvram = tree.find('./os/nvram')
+        flags = 0
+        if nvram is not None:
+            if nvram.text != '/var/lib/libvirt/qemu/nvram/%s.fd' % self.uuid:
+                raise kvmagent.KvmError('unexpected NVRAM path for vm[uuid:%s]; keep its domain' % self.uuid)
+            flags = getattr(libvirt, 'VIR_DOMAIN_UNDEFINE_NVRAM', 1 << 2)
+        self.domain.undefineFlags(flags)
+
     def stop(self, strategy='grace', timeout=5, undefine=True, keep_nvram=True):
         def cleanup_addons():
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
@@ -9410,7 +9428,8 @@ class VmPlugin(kvmagent.KvmAgent):
         try:
             self._record_operation(cmd.vmInstanceUuid, self.VM_OP_START)
 
-            self._start_vm(cmd)
+            with lock.NamedLock('vm-firmware-%s' % cmd.vmInstanceUuid):
+                self._start_vm(cmd)
             logger.debug('successfully started vm[uuid:%s, name:%s]' % (cmd.vmInstanceUuid, cmd.vmName))
         except kvmagent.KvmError as e:
             e_str = linux.get_exception_stacktrace()
@@ -10162,27 +10181,28 @@ class VmPlugin(kvmagent.KvmAgent):
 
 
     def _stop_vm(self, cmd):
-        try:
-            vmUuid = cmd.uuid
-            strategy = str(cmd.type)
-            vm = get_vm_by_uuid(vmUuid, exception_if_not_existing=not getattr(cmd, 'ignoreNotFoundError', False))
-            if vm is None:
-                logger.debug("vm[uuid:%s] not found, skip stop vm" % vmUuid)
-                return
-            vmUseOpenvSwitch = ovs.isVmUseOpenvSwitch(vmUuid)
+        with lock.NamedLock('vm-firmware-%s' % cmd.uuid):
+            try:
+                vmUuid = cmd.uuid
+                strategy = str(cmd.type)
+                vm = get_vm_by_uuid(vmUuid, exception_if_not_existing=not getattr(cmd, 'ignoreNotFoundError', False))
+                if vm is None:
+                    logger.debug("vm[uuid:%s] not found, skip stop vm" % vmUuid)
+                    return
+                vmUseOpenvSwitch = ovs.isVmUseOpenvSwitch(vmUuid)
 
-            if strategy == "cold" or strategy == "force":
-                vm.stop(strategy=strategy)
-            else:
-                vm.stop(timeout=cmd.timeout // 2)
+                if strategy == "cold" or strategy == "force":
+                    vm.stop(strategy=strategy)
+                else:
+                    vm.stop(timeout=cmd.timeout // 2)
 
-            delVnicFromOvsByVmUuidIfExist(vmUuid)
-            if vmUseOpenvSwitch:
-                ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(vmUuid)
-        finally:
-            # libvirt is not reliable, c.f. ZSTAC-15412
-            delVnicFromOvsByVmUuidIfExist(vmUuid)
-            self.kill_vm(vmUuid)
+                delVnicFromOvsByVmUuidIfExist(vmUuid)
+                if vmUseOpenvSwitch:
+                    ovs.getOvsCtl(with_dpdk=True).destoryNicBackend(vmUuid)
+            finally:
+                # libvirt is not reliable, c.f. ZSTAC-15412
+                delVnicFromOvsByVmUuidIfExist(vmUuid)
+                self.kill_vm(vmUuid)
 
     def kill_vm(self, vm_uuid):
         output = bash.bash_o("ps -ef | grep -P -o '(qemu-kvm|qemu-system).*?-name\s+(guest=)?\K%s,' | sed 's/.$//'" % vm_uuid)
@@ -13072,14 +13092,43 @@ host side snapshot files chian:
         fpath = "/var/lib/libvirt/qemu/nvram/{}.fd".format(vm_uuid)
         linux.rm_file_checked(fpath)
 
+    @staticmethod
+    def _check_vm_firmware_flash(vm_uuid):
+        fpath = '/var/lib/libvirt/qemu/nvram/%s.fd' % vm_uuid
+        if not os.path.exists(fpath):
+            return
+        check = shell.ShellCmd("timeout 10 lsof -Fc -- '%s'" % fpath)
+        check(False)
+        if check.stdout:
+            raise linux.VolumeInUseError('file %s is still opened: %s' % (fpath, ' '.join(check.stdout.splitlines())))
+        if check.return_code != 1 or check.stderr:
+            raise kvmagent.KvmError('cannot check firmware file for vm[uuid:%s]: lsof exit %s'
+                                   % (vm_uuid, check.return_code))
+
     @kvmagent.replyerror
     def clean_firmware_flash(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = kvmagent.AgentResponse()
 
         vm_uuid = cmd.vmUuid
-        if not get_vm_by_uuid_no_retry(vm_uuid, False):
+        if not re.match(r'^[0-9a-fA-F]{32}\Z', vm_uuid or ''):
+            raise kvmagent.KvmError('invalid vm UUID for firmware cleanup')
+        with lock.NamedLock('vm-firmware-%s' % vm_uuid):
+            if linux.find_vm_pid_by_uuid(vm_uuid):
+                raise kvmagent.KvmError('vm[uuid:%s] still has a QEMU process; keep its firmware flash' % vm_uuid)
+            vm = get_vm_by_uuid_no_retry(vm_uuid, False)
+            if vm:
+                if getattr(cmd, 'cleanupInactiveDomain', False) is not True:
+                    raise kvmagent.KvmError('vm[uuid:%s] still has a libvirt domain; keep its firmware flash' % vm_uuid)
+                if not vm.is_powered_off():
+                    raise kvmagent.KvmError('vm[uuid:%s] is not powered off; keep its firmware flash' % vm_uuid)
+            self._check_vm_firmware_flash(vm_uuid)
+            if vm:
+                vm._undefine_for_firmware_cleanup()
+                if get_vm_by_uuid_no_retry(vm_uuid, False):
+                    raise kvmagent.KvmError('vm[uuid:%s] still has a libvirt domain; keep its firmware flash' % vm_uuid)
             self.clean_vm_firmware_flash(vm_uuid)
+            rsp.cleanupCompleted = True
 
         return jsonobject.dumps(rsp)
 

@@ -303,17 +303,158 @@ class TestApplyMemoryBalloonHandler:
 
 @pytest.mark.kvmagent
 class TestCleanFirmwareFlashHandler:
-    def test_clean_firmware_flash(self):
+    def test_clean_firmware_flash(self, monkeypatch):
         plugin = _make_vm_plugin()
         vm_plugin.get_vm_by_uuid_no_retry = MagicMock(return_value=None)
+        monkeypatch.setattr(vm_plugin.linux, 'find_vm_pid_by_uuid', MagicMock(return_value=None))
         plugin.clean_vm_firmware_flash = MagicMock()
 
-        req = _make_req({'vmUuid': 'vm-uuid'})
+        req = _make_req({'vmUuid': '0123456789abcdef0123456789abcdef'})
         result = plugin.clean_firmware_flash(req)
         rsp = json.loads(result)
 
         assert rsp['success'] is True
-        plugin.clean_vm_firmware_flash.assert_called_once_with('vm-uuid')
+        assert rsp.get('cleanupCompleted') is True, 'successful cleanup must explicitly acknowledge completion'
+        plugin.clean_vm_firmware_flash.assert_called_once_with('0123456789abcdef0123456789abcdef')
+
+    @pytest.mark.parametrize('cleanup_inactive_domain', [False, True])
+    def test_domain_absent_with_qemu_pid_returns_cleanup_error(self, monkeypatch, cleanup_inactive_domain):
+        monkeypatch.setattr(vm_plugin, 'get_vm_by_uuid_no_retry', MagicMock(return_value=None))
+        monkeypatch.setattr(vm_plugin.linux, 'find_vm_pid_by_uuid', MagicMock(return_value='123'))
+        monkeypatch.setattr(vm_plugin.linux, 'rm_file_checked', MagicMock())
+        response = json.loads(_make_vm_plugin().clean_firmware_flash(_make_req(
+            {'vmUuid': 'a' * 32, 'cleanupInactiveDomain': cleanup_inactive_domain})))
+        assert response['success'] is False, 'a running QEMU must protect NVRAM even without a libvirt domain: %s' % response
+        assert response.get('cleanupCompleted') is not True
+        vm_plugin.linux.rm_file_checked.assert_not_called()
+
+    def historical_vm(self, monkeypatch, state=5, pid=None, saved_state=None):
+        class SavedStateError(Exception):
+            def get_error_code(self):
+                return 55
+
+        vm = vm_plugin.Vm.__new__(vm_plugin.Vm)
+        vm.uuid = 'a' * 32
+        vm.domain = MagicMock(defined=True)
+        vm.domain.info.return_value = (state, 0, 0, 0, 0)
+        vm.domain.isPersistent.return_value = True
+        vm.domain_xmlobject = MagicMock()
+        vm.domain_xmlobject.devices.get_child_node_as_list.return_value = []
+        vm.is_alive = lambda: vm.domain.defined
+        vm.wait_for_state_change = lambda state: not vm.domain.defined
+        vm.stop = MagicMock(wraps=vm.stop)
+
+        def undefine(flags):
+            if saved_state is not None and saved_state.exists():
+                raise SavedStateError('Refusing to undefine while domain managed save image exists')
+            vm.domain.defined = False
+
+        vm.domain.undefineFlags.side_effect = undefine
+        for name, value in [('VIR_DOMAIN_UNDEFINE_MANAGED_SAVE', 1),
+                            ('VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA', 2),
+                            ('VIR_DOMAIN_UNDEFINE_NVRAM', 4),
+                            ('VIR_DOMAIN_UNDEFINE_KEEP_NVRAM', 8),
+                            ('VIR_ERR_INVALID_ARG', 8)]:
+            monkeypatch.setattr(vm_plugin.libvirt, name, value)
+        monkeypatch.setattr(vm_plugin.libvirt, 'libvirtError', SavedStateError)
+        monkeypatch.setattr(vm_plugin, 'get_vm_by_uuid_no_retry',
+                            MagicMock(side_effect=lambda *args: vm if vm.domain.defined else None))
+        monkeypatch.setattr(vm_plugin.linux, 'find_vm_pid_by_uuid', MagicMock(return_value=pid))
+        monkeypatch.setattr(vm_plugin.linux, 'find_process_by_cmdline', MagicMock(return_value=None))
+        monkeypatch.setattr(vm_plugin.linux, 'kill_process', MagicMock())
+        monkeypatch.setattr(vm_plugin.linux, 'wait_callback_success', lambda callback, arg, **kw: callback(arg))
+        monkeypatch.setattr(vm_plugin.linux, 'rm_file_checked', MagicMock())
+        return vm
+
+    @pytest.mark.parametrize('option', [None, False, 0, 1, 1.0, 'false', 'true', '0', '1', '', [], [True], {}, {'enabled': True}])
+    def test_default_request_refuses_existing_domain_with_error_response(self, monkeypatch, option):
+        vm = self.historical_vm(monkeypatch)
+        command = {'vmUuid': vm.uuid}
+        if option is not None:
+            command['cleanupInactiveDomain'] = option
+        response = json.loads(_make_vm_plugin().clean_firmware_flash(_make_req(command)))
+        assert response['success'] is False
+        assert 'still has a libvirt domain' in response['error']
+        vm.stop.assert_not_called()
+        vm_plugin.linux.rm_file_checked.assert_not_called()
+
+    @pytest.mark.parametrize('state,pid', [(1, None), (4, None), (9, None), (5, '123')])
+    def test_final_cleanup_refuses_active_unknown_or_pid_with_error_response(self, monkeypatch, state, pid):
+        vm = self.historical_vm(monkeypatch, state=state, pid=pid)
+        response = json.loads(_make_vm_plugin().clean_firmware_flash(
+            _make_req({'vmUuid': vm.uuid, 'cleanupInactiveDomain': True})))
+        assert response['success'] is False
+        assert response['error']
+        vm.stop.assert_not_called()
+        vm_plugin.linux.kill_process.assert_not_called()
+        vm_plugin.linux.rm_file_checked.assert_not_called()
+
+    def test_final_cleanup_removes_historical_domain_without_stopping_vm(self, monkeypatch):
+        vm = self.historical_vm(monkeypatch)
+        response = json.loads(_make_vm_plugin().clean_firmware_flash(
+            _make_req({'vmUuid': vm.uuid, 'cleanupInactiveDomain': True})))
+        assert response['success'] is True, 'final deletion must remove an upgrade-era stopped domain: %s' % response
+        assert response.get('cleanupCompleted') is True, 'historical-domain cleanup must explicitly acknowledge completion'
+        assert vm.domain.defined is False
+        vm.domain.undefineFlags.assert_called_once_with(8)
+        vm_plugin.linux.rm_file_checked.assert_called_once_with('/var/lib/libvirt/qemu/nvram/' + vm.uuid + '.fd')
+
+    def test_final_cleanup_saved_state_refusal_is_an_error_response(self, monkeypatch, tmp_path):
+        saved_state = tmp_path / 'existing-managed-save'
+        saved_state.write_bytes(b'existing user saved state')
+        vm = self.historical_vm(monkeypatch, saved_state=saved_state)
+        response = json.loads(_make_vm_plugin().clean_firmware_flash(
+            _make_req({'vmUuid': vm.uuid, 'cleanupInactiveDomain': True})))
+        assert response['success'] is False
+        assert 'managed save image exists' in response['error']
+        assert saved_state.read_bytes() == b'existing user saved state'
+        assert vm.domain.defined is True
+        vm_plugin.linux.rm_file_checked.assert_not_called()
+
+    def test_final_cleanup_does_not_stop_vm_or_logout_shared_iscsi(self, monkeypatch):
+        vm = self.historical_vm(monkeypatch)
+        disk = MagicMock(type_='block', device_='lun')
+        disk.source.dev_ = '/dev/disk/by-path/shared-iscsi-lun'
+        vm.domain_xmlobject.devices.get_child_node_as_list.side_effect = lambda kind: [disk] if kind == 'disk' else []
+        logout = MagicMock()
+        monkeypatch.setattr(vm_plugin.BlkIscsi, 'logout_portal', logout)
+        response = json.loads(_make_vm_plugin().clean_firmware_flash(
+            _make_req({'vmUuid': vm.uuid, 'cleanupInactiveDomain': True})))
+        assert response['success'] is True
+        assert vm.domain.defined is False
+        logout.assert_not_called()
+        vm.stop.assert_not_called()
+        vm_plugin.linux.kill_process.assert_not_called()
+
+    @pytest.mark.parametrize('has_domain', [False, True])
+    @pytest.mark.parametrize('code,stdout,stderr', [
+        (124, '', ''), (127, '', 'lsof missing'), (2, '', 'permission denied'),
+        (0, '', ''), (1, '', 'permission denied'), (0, 'p123\ncqemu\n', '')])
+    def test_file_check_failure_returns_error_response(self, monkeypatch, has_domain, code, stdout, stderr):
+        vm = self.historical_vm(monkeypatch) if has_domain else None
+        if not vm:
+            monkeypatch.setattr(vm_plugin, 'get_vm_by_uuid_no_retry', MagicMock(return_value=None))
+            monkeypatch.setattr(vm_plugin.linux, 'find_vm_pid_by_uuid', MagicMock(return_value=None))
+            monkeypatch.setattr(vm_plugin.linux, 'rm_file_checked', MagicMock())
+        monkeypatch.setattr(vm_plugin.linux, 'VolumeInUseError', RuntimeError)
+        command = MagicMock(return_code=code, stdout=stdout, stderr=stderr)
+        monkeypatch.setattr(vm_plugin.shell, 'ShellCmd', MagicMock(return_value=command))
+        with patch.object(vm_plugin.os.path, 'exists', return_value=True):
+            response = json.loads(_make_vm_plugin().clean_firmware_flash(
+                _make_req({'vmUuid': 'a' * 32, 'cleanupInactiveDomain': True})))
+        assert response['success'] is False, 'uncertain or occupied firmware must not be removed: %s' % response
+        assert response.get('cleanupCompleted') is not True
+        vm_plugin.linux.rm_file_checked.assert_not_called()
+        if vm:
+            assert vm.domain.defined is True
+            vm.domain.undefineFlags.assert_not_called()
+
+    def test_force_stop_preserves_upstream_inactive_domain(self, monkeypatch):
+        vm = self.historical_vm(monkeypatch)
+        vm.stop(strategy='force')
+        assert vm.domain.defined is True
+        vm.domain.undefineFlags.assert_not_called()
+
 
 
 @pytest.mark.kvmagent
