@@ -1,4 +1,5 @@
 # coding=utf-8
+import errno
 import os
 import socket
 import commands
@@ -190,6 +191,20 @@ class NbdDeviceOperator(object):
             return False
         return True
 
+    @staticmethod
+    def _check_nbd_process_alive(nbd_id):
+        try:
+            with open('/sys/block/nbd{}/pid'.format(nbd_id), 'r') as f:
+                pid = f.read().strip()
+            if not pid.isdigit() or int(pid) <= 0:
+                raise ValueError('Invalid pid for nbd{}: {!r}'.format(nbd_id, pid))
+            os.stat('/proc/{}'.format(pid))
+            return True
+        except (IOError, OSError) as e:
+            if e.errno in (errno.ENOENT, errno.ESRCH):
+                return False
+            raise
+
     def _get_available_nbd_id(self):
         """ Find a available nbd id and return
         """
@@ -285,7 +300,7 @@ class NbdDeviceOperator(object):
             shell.call(cmd)
 
         def _check_disconnected():
-            if not self._check_nbd_dev_empty(self.volume.nbd_id):
+            if self._check_nbd_process_alive(self.volume.nbd_id):
                 raise exception.NbdDeviceFailedDisconnect(
                     instance_uuid=self.volume.instance_uuid,
                     volume_uuid=self.volume.volume_uuid,

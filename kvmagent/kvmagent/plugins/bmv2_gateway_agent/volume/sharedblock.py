@@ -104,8 +104,17 @@ class SharedBlockVolume(base.BaseVolume):
         nbd_operator.fetch_nbd_id()
 
         dm_operator = helper.DmDeviceOperator(self)
+
+        def _rollback():
+            self.nbd_id = None
+            nbd_operator.connect()
+            dm_operator.reload(self)
+            dm_operator.resume()
+
         with bm_utils.rollback(dm_operator.resume):
             dm_operator.suspend()
+
+        with bm_utils.rollback(_rollback):
             nbd_operator.disconnect()
 
     def post_take_volume_snapshot(self, src_vol):
