@@ -92,14 +92,18 @@ def _accounting_wire_identity(value):
     return result
 
 
-@contextmanager
-def _opened(path, flags):
-    """A descriptor from os.open, closed when the block ends."""
-    descriptor = os.open(path, flags)
-    try:
-        yield descriptor
-    finally:
-        os.close(descriptor)
+class _Descriptor(object):
+    """A descriptor from os.open, closed when its with block ends."""
+
+    def __init__(self, path, flags):
+        self.descriptor = os.open(path, flags)
+
+    def __enter__(self):
+        return self.descriptor
+
+    def __exit__(self, *exc_info):
+        os.close(self.descriptor)
+        return False
 
 
 def _product_vm_uuid(value):
@@ -324,7 +328,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 stream.flush()
                 os.fsync(stream.fileno())
             os.rename(temporary, path)
-            with _opened(directory, os.O_RDONLY) as directory_fd:
+            with _Descriptor(directory, os.O_RDONLY) as directory_fd:
                 os.fsync(directory_fd)
         except Exception:
             if os.path.exists(temporary):

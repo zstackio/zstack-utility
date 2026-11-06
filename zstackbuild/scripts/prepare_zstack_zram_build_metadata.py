@@ -18,6 +18,16 @@ except NameError:
     INTEGER_TYPES = (int,)
 
 
+def _read(path, mode='rb'):
+    with open(path, mode) as stream:
+        return stream.read()
+
+
+def _write(path, data, mode='wb'):
+    with open(path, mode) as stream:
+        stream.write(data)
+
+
 def _build_environment_id():
     if os.environ.get('ZSTACK_BUILD_ENVIRONMENT_ID', '').strip():
         return os.environ['ZSTACK_BUILD_ENVIRONMENT_ID'].strip()
@@ -25,11 +35,11 @@ def _build_environment_id():
     go = subprocess.check_output(['sh', '-c', 'command -v "$1"', 'sh', go],
                                  universal_newlines=True).strip()
     components = {
-        'osRelease': open('/etc/os-release').read() if os.path.isfile('/etc/os-release') else 'unknown',
+        'osRelease': _read('/etc/os-release', 'r') if os.path.isfile('/etc/os-release') else 'unknown',
         'architecture': platform.machine(),
         'rpm': subprocess.check_output(['rpm', '--version'], universal_newlines=True).strip(),
         'goVersion': subprocess.check_output([go, 'version'], universal_newlines=True).strip(),
-        'goBinarySha256': hashlib.sha256(open(go, 'rb').read()).hexdigest(),
+        'goBinarySha256': hashlib.sha256(_read(go)).hexdigest(),
     }
     canonical = json.dumps(components, sort_keys=True, separators=(',', ':')).encode()
     return 'sha256:' + hashlib.sha256(canonical).hexdigest()
@@ -81,7 +91,7 @@ def _freeze_source(source, snapshot_dir):
                 raise ValueError('SOURCE_SYMLINK_REFUSED:' + name)
         if not os.path.isfile(path):
             raise ValueError('SOURCE_REGULAR_FILE_REQUIRED:' + name)
-        data = open(path, 'rb').read()
+        data = _read(path)
         records.append({'path': name, 'sha256': hashlib.sha256(data).hexdigest(),
                         'bytes': len(data), 'mode': stat.S_IMODE(os.stat(path).st_mode)})
     required = {'service/go.mod', 'cli/go.mod', 'packaging/build-rpm.sh'}
@@ -89,7 +99,7 @@ def _freeze_source(source, snapshot_dir):
         raise ValueError('REQUIRED_BUILD_SOURCE_MISSING')
 
     os.makedirs(snapshot_dir)
-    open(os.path.join(snapshot_dir, 'dirty.patch'), 'wb').write(patch)
+    _write(os.path.join(snapshot_dir, 'dirty.patch'), patch)
     for record in records:
         dest = os.path.join(snapshot_dir, 'source', *record['path'].split('/'))
         dest_parent = os.path.dirname(dest)
@@ -97,7 +107,7 @@ def _freeze_source(source, snapshot_dir):
             os.makedirs(dest_parent)
         shutil.copyfile(os.path.join(source, *record['path'].split('/')), dest)
         os.chmod(dest, record['mode'])
-        if hashlib.sha256(open(dest, 'rb').read()).hexdigest() != record['sha256']:
+        if hashlib.sha256(_read(dest)).hexdigest() != record['sha256']:
             raise ValueError('SOURCE_CHANGED_DURING_FREEZE:' + record['path'])
     if _git(source, 'diff', '--binary', '--full-index', 'HEAD', '--') != patch:
         raise ValueError('PATCH_CHANGED_DURING_FREEZE')
@@ -108,7 +118,7 @@ def _freeze_source(source, snapshot_dir):
     manifest_bytes = (json.dumps(manifest, sort_keys=True, indent=2,
                                  separators=(',', ': ')) + '\n').encode()
     manifest_path = os.path.join(snapshot_dir, 'SOURCE-SNAPSHOT.json')
-    open(manifest_path, 'wb').write(manifest_bytes)
+    _write(manifest_path, manifest_bytes)
     return os.path.join(snapshot_dir, 'source'), manifest_path, patch
 
 
@@ -117,7 +127,7 @@ def _spec_default(source, macro):
     if os.path.islink(spec_path) or not os.path.isfile(spec_path):
         raise ValueError('RPM_SPEC_MISSING_OR_SYMLINK')
     pattern = r'(?m)^%global\s+zram_rpm_' + re.escape(macro) + r'_default\s+([A-Za-z0-9._+]+)\s*$'
-    matches = re.findall(pattern, open(spec_path, 'r').read())
+    matches = re.findall(pattern, _read(spec_path, 'r'))
     if len(matches) != 1:
         raise ValueError('RPM_SPEC_DEFAULT_INVALID:' + macro)
     return matches[0]
@@ -155,7 +165,7 @@ def prepare(source_checkout, snapshot_dir, output, version, release, epoch,
         raise ValueError('RPM_VERSION_INVALID')
     if not re.match(r'[A-Za-z0-9._+]+\Z', release):
         raise ValueError('RPM_RELEASE_INVALID')
-    manifest_bytes = open(manifest, 'rb').read()
+    manifest_bytes = _read(manifest)
     digest = hashlib.sha256(manifest_bytes).hexdigest()
     data = json.loads(manifest_bytes)
     if epoch is None:
@@ -188,7 +198,7 @@ def prepare(source_checkout, snapshot_dir, output, version, release, epoch,
     output_dir = os.path.dirname(output)
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
-    open(output, 'w').write(''.join('%s=%s\n' % item for item in sorted(properties.items())))
+    _write(output, ''.join('%s=%s\n' % item for item in sorted(properties.items())), 'w')
     return properties
 
 
