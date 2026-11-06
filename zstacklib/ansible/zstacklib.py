@@ -410,7 +410,7 @@ class ZstackRunner(object):
                     }],
             vars={'ansible_user': self.remote_user,
                   'ansible_port': self.remote_port,
-                  'ansible_pipelining': True}
+                  'ansible_pipelining': not self.become}
         )
         play = ansible_play.Play().load(
             play_source,
