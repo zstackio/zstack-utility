@@ -132,8 +132,9 @@ def test_rejects_ambiguous_repo_builds_before_install(installer):
     check()
     assert not any(' install ' in command for command in calls)
     assert messages
-    # A failed optional step is an error in the deploy log while the deploy itself goes on.
-    assert all(message[2] == 'ERROR' for message in messages)
+    # A failed optional step is an error in the deploy log while the deploy itself goes on:
+    # it is never reported as ERROR, which ends the deploy (post_msg exits) and keeps the Host from connecting.
+    assert all(message[2] == 'WARNING' for message in messages), [message[2] for message in messages]
     check.__globals__['logger'].error.assert_called_with(messages[-1][0])
 
 

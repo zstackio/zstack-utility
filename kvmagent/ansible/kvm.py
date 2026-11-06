@@ -1406,10 +1406,14 @@ memory_optimization_warnings = []
 
 
 def _memory_optimization_warning(message):
-    """Memory optimization is optional: report the failure as an error and keep deploying, then summarize it."""
+    """Memory optimization is optional: log the failure as an error and keep deploying, then summarize it.
+
+    It is reported to the management node as a warning: an ERROR report ends the deploy (post_msg exits),
+    and the Host would not connect.
+    """
     memory_optimization_warnings.append(message)
     logger.error(message)
-    handle_ansible_info(message, host_post_info, 'ERROR')
+    handle_ansible_info(message, host_post_info, 'WARNING')
 
 
 def check_alinux_zram_driver():
@@ -1723,7 +1727,7 @@ if memory_optimization_warnings:
     logger.error('memory optimization is unavailable or partial on this host: %s'
                  % '; '.join(memory_optimization_warnings))
     handle_ansible_info('memory optimization is unavailable or partial on this host: %s'
-                        % '; '.join(memory_optimization_warnings), host_post_info, 'ERROR')
+                        % '; '.join(memory_optimization_warnings), host_post_info, 'WARNING')
 do_ksm_config()
 modprobe_usb_module()
 modprobe_mpci_module()
