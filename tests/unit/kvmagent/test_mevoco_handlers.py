@@ -977,7 +977,6 @@ class TestMevocoReleaseDhcp:
         plugin = _make_plugin()
         _ensure_http()
         mevoco.EBTABLES_CMD = "ebtables"
-        mevoco.is_ebtables_nf_tables = MagicMock(return_value=False)
         plugin._make_conf_path = MagicMock(return_value=('/tmp/conf', '/tmp/dhcp', '/tmp/dns', '/tmp/option', '/tmp/log'))
         setattr(mevoco, "bash_o", MagicMock(return_value='192.168.0.1'))
         setattr(mevoco, "bash_r", MagicMock(return_value=0))
@@ -1283,7 +1282,6 @@ class TestMevocoApplyUserdataInternals:
         with patch("os.path.exists", side_effect=_exists), patch("os.path.islink", return_value=False), \
                 patch.object(mevoco, "Template", side_effect=_template_factory), \
                 patch.object(mevoco, 'EBTABLES_CMD', 'ebtables', create=True), \
-                patch.object(mevoco, 'is_ebtables_nf_tables', return_value=False), \
                 patch("builtins.open", side_effect=_track_open):
             plugin._apply_userdata_xtables(to)
             plugin._apply_userdata_vmdata(to)

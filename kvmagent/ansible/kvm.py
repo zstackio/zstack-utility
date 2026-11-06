@@ -394,7 +394,8 @@ def install_kvm_pkg():
             'h2203sp1o': 'vconfig open-iscsi OpenIPMI-modalias qemu python2-pyudev collectd-disk edac-utils freeipmi lldpd tcpdump %s' % py3_rpms,
             'nfs4': 'vconfig iscsi-initiator-utils OpenIPMI nettle libselinux-devel iptables iptables-services qemu-kvm python2-pyudev collectd-disk',
             'alinux4': ('%s qemu-kvm libvirt-daemon libvirt-daemon-kvm freeipmi '
-                        'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump %s') % (helix_rhel_rpms, py3_rpms),
+                        'seabios-bin elfutils-libelf-devel collectd-disk lldpd tcpdump '
+                        'ebtables-legacy %s') % (helix_rhel_rpms, py3_rpms),
         }
 
         edk2_mapping = {
@@ -505,6 +506,8 @@ def install_kvm_pkg():
                         'libguestfs-winsupport', 'libguestfs-tools', 'pv', 'rsync', 'nmap', 'ipset', 'usbutils', 'pciutils', 'expect',
                         'lvm2', 'lvm2-lockd', 'sanlock', 'sysfsutils', 'smartmontools', 'device-mapper-multipath', 'hwdata', 'sg3_utils']:
                 yum_install_package(pkg, host_post_info)
+            if releasever == 'alinux4':
+                yum_install_package('ebtables-legacy', host_post_info)
             if host_info.major_version >= 7:
                 # name: RHEL7 specific packages from online
                 for pkg in ['qemu-kvm', 'qemu-img', 'collectd-virt']:
@@ -1077,29 +1080,9 @@ def copy_juicefs():
 
 
 def set_legacy_iptables_ebtables():
-    """set legacy mode if needed; on alinux4 deploy ebtables wrapper for --logical-in compatibility."""
+    """Select native legacy ebtables on Alinux4 and legacy backends on Debian."""
     if releasever == "alinux4" and host_info.distro in RPM_BASED_OS:
-        # alinux4 has no ebtables-legacy; deploy wrapper that translates --logical-in to -i
-        # and keep save/restore followers available for kvmagent rule checks.
-        wrapper = (
-            '#!/bin/bash\n'
-            'args=()\n'
-            'for arg in "$@"; do\n'
-            '    case "$arg" in\n'
-            '        --logical-in)  args+=("-i") ;;\n'
-            '        --logical-out) args+=("-o") ;;\n'
-            '        *)             args+=("$arg") ;;\n'
-            '    esac\n'
-            'done\n'
-            'exec /usr/sbin/ebtables-nft "${args[@]}"\n'
-        )
-        command = (
-            "printf '%%s' '%s' > /usr/local/sbin/ebtables-wrapper && "
-            "chmod +x /usr/local/sbin/ebtables-wrapper && "
-            "alternatives --install /usr/sbin/ebtables ebtables /usr/local/sbin/ebtables-wrapper 200 "
-            "--slave /usr/sbin/ebtables-save ebtables-save /usr/sbin/ebtables-nft-save "
-            "--slave /usr/sbin/ebtables-restore ebtables-restore /usr/sbin/ebtables-nft-restore || true"
-        ) % wrapper
+        command = "alternatives --set ebtables /usr/sbin/ebtables-legacy"
         host_post_info.post_label = "ansible.shell.switch.legacy-version"
         host_post_info.post_label_param = None
         run_remote_command(command, host_post_info)
