@@ -2,7 +2,10 @@
 import errno
 import json
 import os
+import sys
 import time
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -1021,3 +1024,50 @@ def test_a_candidate_state_alone_decides_whether_it_backs_writeback(state, can_b
     with pytest.raises(ValueError) as rejected:
         maintenance._canonical_candidate(inventory, 'candidate:x')
     assert str(rejected.value) == 'WRITEBACK_CANDIDATE_NOT_PREPARABLE'
+
+
+def test_a_unit_systemd_cannot_report_is_unknown_and_logged(host, monkeypatch):
+    plugin, service, world = host
+    logger = Mock()
+    monkeypatch.setattr(module, 'logger', logger)
+
+    def timeout(argv, seconds):
+        raise RuntimeError('BOUNDED_COMMAND_TIMEOUT')
+    monkeypatch.setattr(plugin, '_bounded_command_output', staticmethod(timeout))
+    assert MemoryOptimizationPlugin._service_unit_state(plugin) == 'unknown'
+    assert 'BOUNDED_COMMAND_TIMEOUT' in logger.error.call_args[0][0]
+
+
+def test_libvirt_that_cannot_be_reached_leaves_the_vm_inventory_incomplete(host, monkeypatch):
+    plugin, service, world = host
+    logger = Mock()
+    monkeypatch.setattr(module, 'logger', logger)
+
+    def refused(uri):
+        raise Exception('Failed to connect socket to /var/run/libvirt/libvirt-sock-ro')
+    monkeypatch.setitem(sys.modules, 'libvirt', SimpleNamespace(openReadOnly=refused))
+    assert plugin._complete_vm_inventory({}) == ({}, False)
+    assert 'libvirt-sock-ro' in logger.error.call_args[0][0]
+
+
+def test_an_unreadable_backend_service_is_reported_and_logged_but_a_bug_is_not_hidden(host, monkeypatch):
+    plugin, service, world = host
+    logger = Mock()
+    monkeypatch.setattr(module, 'logger', logger)
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': [{'device': '/dev/vdb', 'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+    failure = [IOError('memory service socket closed')]
+
+    def call(action, payload):
+        if action == 'backend-view':
+            raise failure[0]
+        return service(action, payload)
+    monkeypatch.setattr(plugin, 'service_call', call)
+    inventory = plugin._writeback_inventory(HOST)
+    assert 'BACKEND_SERVICE_OBSERVATION_UNAVAILABLE' in inventory['reasons']
+    assert 'socket closed' in logger.error.call_args[0][0]
+
+    failure[0] = KeyError('a bug in the agent')
+    with pytest.raises(KeyError):
+        plugin._writeback_inventory(HOST)

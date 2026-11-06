@@ -379,7 +379,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         try:
             output = self._bounded_command_output(
                 ['systemctl', 'show', unit] + ['--property=%s' % name for name in names], 10)
-        except (IOError, OSError, RuntimeError, subprocess.CalledProcessError):
+        except (IOError, OSError, RuntimeError, subprocess.CalledProcessError) as exc:
+            # The caller reports the unit as unknown; the cause is only here.
+            logger.error('Host[%s] systemctl show %s failed: %s\n%s'
+                         % (self._load_host_uuid(), unit, exc, traceback.format_exc()))
             return {}
         return dict(line.split('=', 1) for line in output.splitlines() if '=' in line)
 
@@ -1260,8 +1263,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                             ', '.join(sorted(unresolved)[:10]), '; '.join(sorted(set(unresolved.values())))))
         return inventory, True
 
-    @staticmethod
-    def _libvirt_vm_generations():
+    def _libvirt_vm_generations(self):
         """Running domains; the identity of each is resolved by the service."""
         try:
             import libvirt
@@ -1272,7 +1274,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         vm_uuid = _product_vm_uuid(domain.UUIDString())
                         result[vm_uuid] = {'instanceGeneration': '%s:%s' % (vm_uuid, domain.ID())}
                 return result, True
-        except Exception:
+        except Exception as exc:
+            # The VM inventory is reported incomplete; the cause is only here.
+            logger.error('Host[%s] listing the running domains from libvirt failed: %s\n%s'
+                         % (self._load_host_uuid(), exc, traceback.format_exc()))
             return {}, False
 
     # ----------------------------------------------------------- converge
@@ -1672,8 +1677,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 backend = dict(detail)
                 backend['backend_resource'] = status.get('backend_resource')
                 config = detail.get('configured') or {}
-            except Exception:
+            except (IOError, OSError, ValueError, RuntimeError, Rejected, stdlib_http.HTTPException) as exc:
                 # An offline service does not make a blank disk PREPARED.
+                logger.error('Host[%s] reading the writeback backend from the memory service failed: %s\n%s'
+                             % (host_uuid, exc, traceback.format_exc()))
                 observation_error = 'BACKEND_SERVICE_OBSERVATION_UNAVAILABLE'
         inventory = probe_writeback_backends(host_uuid, backend, config)
         if not isinstance(inventory, dict):
