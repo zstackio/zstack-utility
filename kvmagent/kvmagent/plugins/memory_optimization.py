@@ -113,6 +113,46 @@ def _product_vm_uuid(value):
     return value
 
 
+class EfficiencyMode(object):
+    """Whether the service reclaims idle VM memory; only its request carries the boolean.
+
+    ENABLED and DISABLED are the only instances, so a value of another mode or a string is refused.
+    """
+    def __init__(self, name):
+        self.name = name
+
+    def __repr__(self):
+        return 'EfficiencyMode.%s' % self.name
+
+    @staticmethod
+    def of(enabled):
+        return EfficiencyMode.ENABLED if enabled else EfficiencyMode.DISABLED
+
+
+EfficiencyMode.ENABLED = EfficiencyMode('ENABLED')
+EfficiencyMode.DISABLED = EfficiencyMode('DISABLED')
+
+
+class WritebackMode(object):
+    """Whether the service writes ZRAM pages back to the backend; only its request carries the boolean.
+
+    ENABLED and DISABLED are the only instances, so a value of another mode or a string is refused.
+    """
+    def __init__(self, name):
+        self.name = name
+
+    def __repr__(self):
+        return 'WritebackMode.%s' % self.name
+
+    @staticmethod
+    def of(enabled):
+        return WritebackMode.ENABLED if enabled else WritebackMode.DISABLED
+
+
+WritebackMode.ENABLED = WritebackMode('ENABLED')
+WritebackMode.DISABLED = WritebackMode('DISABLED')
+
+
 class Converging(Exception):
     """A multi-step change is in progress; the caller resends the request."""
     def __init__(self, reason, retry_after=5):
@@ -1425,13 +1465,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         changes = self._service_changes(zram, tuned, efficiency, cpu)
         if changes and cpu.get('efficiency_enabled') is True:
             # Stop reclaim while the pool, tuning or VM scope change underneath it.
-            self._set_efficiency(cpu, False)
+            self._set_efficiency(cpu, EfficiencyMode.DISABLED)
         if 'capacity' in changes:
             self._service('capacity', {
                 'logical_capacity': self._capacity_value(zram['logicalCapacityBytes']),
                 'physical_memory_limit': self._capacity_value(zram['ramLimitBytes'])})
         if 'tuning' in changes:
-            self._set_writeback(tuned['enabled'] is True)
+            self._set_writeback(WritebackMode.of(tuned['enabled'] is True))
         if managed and efficiency:
             capacity = self._service('capacity-state')
             if capacity.get('apply_state') == 'RECONCILING' and pool_generation:
@@ -1441,7 +1481,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 # A live pool takes a new capacity only through drain and rebuild.
                 self._drain(generation)
                 raise Converging('CAPACITY_MAINTENANCE')
-        self._set_efficiency(cpu, efficiency)
+        self._set_efficiency(cpu, EfficiencyMode.of(efficiency))
         if control == 'paused':
             if lifecycle.get('paused') is not True:
                 self._service('lifecycle-pause', {'action': 'pause'})
@@ -1495,7 +1535,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         # A side without a unit restores the service default.
         return {'bytes': value} if value is not None else {}
 
-    def _set_efficiency(self, cpu, enabled):
+    def _set_efficiency(self, cpu, mode):
+        if mode is not EfficiencyMode.ENABLED and mode is not EfficiencyMode.DISABLED:
+            raise ValueError('unknown efficiency mode %r' % (mode,))
+        enabled = mode is EfficiencyMode.ENABLED
         if cpu.get('efficiency_enabled') is enabled:
             return
         self._service('host-cpu', {'efficiency_enabled': enabled,
@@ -1503,10 +1546,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                    'idle_duration_seconds': cpu.get('idle_duration_seconds', 60)})
         cpu['efficiency_enabled'] = enabled
 
-    def _set_writeback(self, enabled):
+    def _set_writeback(self, mode):
+        if mode is not WritebackMode.ENABLED and mode is not WritebackMode.DISABLED:
+            raise ValueError('unknown writeback mode %r' % (mode,))
         settings = dict(self._service('tuning-state').get('settings') or {})
         writeback = dict(settings.get('writeback') or {})
-        writeback['enabled'] = enabled
+        writeback['enabled'] = mode is WritebackMode.ENABLED
         settings['writeback'] = writeback
         result = self._service_raw('tuning', {'settings': settings})
         if result.get('error') == 'TUNING_REQUIRES_QUIESCENT_EXECUTOR':
@@ -1533,7 +1578,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if not (status.get('host_zram') or {}).get('pool_generation'):
                 raise Rejected('DRAIN_POOL_IDENTITY_UNKNOWN')
             self._service('lifecycle-pause', {'action': 'pause'})
-            self._set_efficiency(self._service('host-cpu-state'), False)
+            self._set_efficiency(self._service('host-cpu-state'), EfficiencyMode.DISABLED)
             self._bounded_command_output(['systemctl', 'stop', self.MANAGED_ZRAM_UNIT], 60)
         if self._service_unit_state() not in ('inactive', 'failed'):
             raise Converging('SERVICE_STOPPING')
@@ -1867,7 +1912,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if inventory.get('poolGeneration') != 'none' or self._service_unit_state() != 'active':
             return
         self._service('lifecycle-pause', {'action': 'pause'})
-        self._set_efficiency(self._service('host-cpu-state'), False)
+        self._set_efficiency(self._service('host-cpu-state'), EfficiencyMode.DISABLED)
         if (self._service('status').get('host_zram') or {}).get('pool_generation'):
             raise Rejected('MEMORY_SERVICE_NOT_STOPPED')
         self._bounded_command_output(['systemctl', 'stop', self.MANAGED_ZRAM_UNIT], 60)

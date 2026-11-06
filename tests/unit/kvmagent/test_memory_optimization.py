@@ -1071,3 +1071,19 @@ def test_an_unreadable_backend_service_is_reported_and_logged_but_a_bug_is_not_h
     failure[0] = KeyError('a bug in the agent')
     with pytest.raises(KeyError):
         plugin._writeback_inventory(HOST)
+
+
+def test_a_service_switch_is_named_not_a_bare_boolean(host):
+    plugin, service, world = host
+    cpu = {'efficiency_enabled': True}
+    plugin._set_efficiency(cpu, module.EfficiencyMode.DISABLED)
+    assert cpu['efficiency_enabled'] is False and service.efficiency is False
+    calls = len(service.calls)
+    for wrong in (True, False, 'enabled', 'disabled', module.WritebackMode.ENABLED):
+        with pytest.raises(ValueError):
+            plugin._set_efficiency(cpu, wrong)
+    for wrong in (True, False, 'enabled', 'disabled', module.EfficiencyMode.ENABLED):
+        with pytest.raises(ValueError):
+            plugin._set_writeback(wrong)
+    assert len(service.calls) == calls, 'a refused switch changes nothing on the service'
+    assert cpu['efficiency_enabled'] is False
