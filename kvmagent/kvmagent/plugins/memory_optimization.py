@@ -124,10 +124,6 @@ class EfficiencyMode(object):
     def __repr__(self):
         return 'EfficiencyMode.%s' % self.name
 
-    @staticmethod
-    def of(enabled):
-        return EfficiencyMode.ENABLED if enabled else EfficiencyMode.DISABLED
-
 
 EfficiencyMode.ENABLED = EfficiencyMode('ENABLED')
 EfficiencyMode.DISABLED = EfficiencyMode('DISABLED')
@@ -143,10 +139,6 @@ class WritebackMode(object):
 
     def __repr__(self):
         return 'WritebackMode.%s' % self.name
-
-    @staticmethod
-    def of(enabled):
-        return WritebackMode.ENABLED if enabled else WritebackMode.DISABLED
 
 
 WritebackMode.ENABLED = WritebackMode('ENABLED')
@@ -1471,7 +1463,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 'logical_capacity': self._capacity_value(zram['logicalCapacityBytes']),
                 'physical_memory_limit': self._capacity_value(zram['ramLimitBytes'])})
         if 'tuning' in changes:
-            self._set_writeback(WritebackMode.of(tuned['enabled'] is True))
+            self._set_writeback(WritebackMode.ENABLED if tuned['enabled'] is True else WritebackMode.DISABLED)
         if managed and efficiency:
             capacity = self._service('capacity-state')
             if capacity.get('apply_state') == 'RECONCILING' and pool_generation:
@@ -1481,7 +1473,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 # A live pool takes a new capacity only through drain and rebuild.
                 self._drain(generation)
                 raise Converging('CAPACITY_MAINTENANCE')
-        self._set_efficiency(cpu, EfficiencyMode.of(efficiency))
+        self._set_efficiency(cpu, EfficiencyMode.ENABLED if efficiency else EfficiencyMode.DISABLED)
         if control == 'paused':
             if lifecycle.get('paused') is not True:
                 self._service('lifecycle-pause', {'action': 'pause'})
