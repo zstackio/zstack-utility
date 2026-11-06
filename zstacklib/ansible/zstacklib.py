@@ -409,6 +409,8 @@ class ZstackRunner(object):
                   'ansible_port': self.remote_port,
                   'ansible_pipelining': True}
         ps_vars.update(self.ansible_vars)
+        if self.become:
+            ps_vars['ansible_pipelining'] = False
         play_source = dict(
             hosts=self.host,
             tasks=[{'action': action,
