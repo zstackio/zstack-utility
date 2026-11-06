@@ -234,6 +234,21 @@ def _query_index_by_ifname(ifname, iproute):
         :param iproute: not None
         :return int or None
     '''
+    if type(iproute) is pyroute2.IPRoute:
+        if hasattr(socket, 'if_nametoindex'):
+            try:
+                return socket.if_nametoindex(ifname)
+            except OSError:
+                return None
+        if os.path.isdir('/sys/class/net'):
+            ifindex_path = '/sys/class/net/%s/ifindex' % ifname
+            if not os.path.exists(ifindex_path):
+                return None
+            try:
+                with open(ifindex_path, 'r') as f:
+                    return int(f.read().strip())
+            except Exception:
+                return None
     rets = iproute.link_lookup(ifname=ifname)
     return rets[0] if rets else None
 
@@ -807,7 +822,7 @@ def batch_populate_vxlan_fdbs(ifnames, lladdr, dsts):
     with get_iproute(None) as ipr:
         ifNameIndexMap = {}
         for ifname in ifnames:
-            ifindex = query_index_by_ifname(ifname.strip())
+            ifindex = _query_index_by_ifname(ifname.strip(), ipr)
             if ifindex is None:
                 continue
             ifNameIndexMap[ifname] = ifindex
@@ -815,6 +830,8 @@ def batch_populate_vxlan_fdbs(ifnames, lladdr, dsts):
         ipb = pyroute2.IPBatch()
         for dst in dsts:
             for ifname in ifnames:
+                if ifname not in ifNameIndexMap:
+                    continue
                 ipb.fdb('append', ifindex=ifNameIndexMap[ifname], lladdr=lladdr, dst=dst)
             data = ipb.batch
             ipb.reset()
@@ -827,7 +844,7 @@ def batch_delete_vxlan_fdbs(ifnames, lladdr, dsts):
     with get_iproute(None) as ipr:
         ifNameIndexMap = {}
         for ifname in ifnames:
-            ifindex = query_index_by_ifname(ifname.strip())
+            ifindex = _query_index_by_ifname(ifname.strip(), ipr)
             if ifindex is None:
                 continue
             ifNameIndexMap[ifname] = ifindex
@@ -835,6 +852,8 @@ def batch_delete_vxlan_fdbs(ifnames, lladdr, dsts):
         ipb = pyroute2.IPBatch()
         for dst in dsts:
             for ifname in ifnames:
+                if ifname not in ifNameIndexMap:
+                    continue
                 ipb.fdb('del', ifindex=ifNameIndexMap[ifname], lladdr=lladdr, dst=dst)
             data = ipb.batch
             ipb.reset()
