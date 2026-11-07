@@ -279,7 +279,10 @@ def test_an_older_generation_is_rejected_while_a_newer_one_converges(host):
     world['unit'] = 'starting'
     assert apply(plugin, 11, desired())['reasonCode'] == 'SERVICE_STARTING'
     world['unit'] = 'active'
-    assert apply(plugin, 10, desired(zram=False))['reasonCode'] == 'STALE_GENERATION'
+    stale = apply(plugin, 10, desired(zram=False))
+    assert stale['reasonCode'] == 'STALE_GENERATION'
+    # The Host names the generation it took, so a sender whose record restarted (a re-added Host) numbers above it.
+    assert stale['acceptedGeneration'] == 11 and stale['appliedGeneration'] is None
     assert apply(plugin, 11, desired())['status'] == 'Succeeded'
 
 
@@ -289,7 +292,10 @@ def test_an_older_generation_is_rejected_without_changes(host, monkeypatch):
     assert apply(plugin, 4, desired(zram=None, ksm=True))['status'] == 'Succeeded'
     stale = apply(plugin, 3, desired(zram=None, ksm=False))
     assert stale['status'] == 'Failed' and stale['reasonCode'] == 'STALE_GENERATION'
-    assert stale['appliedGeneration'] == 4
+    assert stale['appliedGeneration'] == 4 and stale['acceptedGeneration'] == 4
+    # A Host that recorded no accepted generation (an earlier Agent) still names the one it applied.
+    os.remove(os.path.join(plugin.operation_dir, 'accepted-generation'))
+    assert apply(plugin, 3, desired(zram=None, ksm=False))['acceptedGeneration'] == 4
     assert world['ksm'] == [({'enabled': True, 'zeroPagesEnabled': None}, 'active')]
     assert apply(plugin, 4, desired(zram=None, ksm=True))['status'] == 'Succeeded'
 
@@ -486,6 +492,24 @@ def test_resume_after_drain_prepares_finalizes_and_activates_the_pool(host):
     assert second['reasonCode'] == 'WAITING_FOR_POOL'
     service.pool = POOL
     assert apply(plugin, 12, desired())['status'] == 'Succeeded'
+
+
+def test_a_rebuilt_pool_waits_paused_while_zram_is_off(host):
+    plugin, service, world = host
+    service.pool, service.paused = None, True
+    service.receipts['pool'] = {'stage': 'APPLIED', 'request_id': 'pool-9-' + POOL[:16], 'pool_generation': POOL,
+                                'expected_control_operation_uuid': 'pool-9-' + POOL[:16]}
+    # KSM only: the pool is not wanted, so it is neither activated nor resumed and the configuration succeeds.
+    result = apply(plugin, 9, desired(zram=False, ksm=True))
+    assert result['status'] == 'Succeeded', result
+    assert 'lifecycle-activate-maintenance' not in service.actions()
+    assert ('lifecycle-pause', {'action': 'resume'}) not in service.calls
+    assert service.paused is True
+    # ZRAM on again opens the rebuilt pool through the service's activation.
+    apply(plugin, 10, desired(zram=True, ksm=True))
+    activation = [payload for action, payload in service.calls if action == 'lifecycle-activate-maintenance']
+    assert activation and activation[-1]['request_id'] == 'activate-pool-9-' + POOL[:16]
+    assert service.paused is False
 
 
 def test_activation_names_the_preparation_of_the_current_drain(host, tmp_path):
