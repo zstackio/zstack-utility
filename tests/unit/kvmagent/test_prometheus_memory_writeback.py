@@ -9,13 +9,13 @@ from types import SimpleNamespace
 
 import pytest
 
-NAMES = ('_memory_observation_seconds', '_accounting_report_current', '_read_memory_optimization_int',
+NAMES = ('_memory_observation_seconds', '_accounting_report_quality', '_read_memory_optimization_int',
          '_zram_accounting_generation', 'MEMORY_ACCOUNTING_REPORT_MAX_AGE_SECONDS')
 SIZES = {}
 
 
 @pytest.fixture
-def current():
+def quality():
     path = Path(__file__).resolve().parents[3] / 'kvmagent/kvmagent/plugins/prometheus.py'
     tree = ast.parse(path.read_text())
     nodes = [node for node in tree.body
@@ -27,7 +27,7 @@ def current():
     linux = SimpleNamespace(read_file=files)
     scope = dict(re=re, calendar=calendar, time=time, os=os, linux=linux)
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), 'exec'), scope)
-    return scope['_accounting_report_current']
+    return scope['_accounting_report_quality']
 
 
 def report(**changes):
@@ -39,36 +39,40 @@ def report(**changes):
     return value
 
 
-def test_the_writeback_split_uses_a_current_report_of_this_pool(current):
-    assert current(report(), ['zram0'], time.time())
+def test_a_current_report_of_this_pool_keeps_its_quality(quality):
+    assert quality(report(), ['zram0'], time.time()) == 'partial_vm_attribution'
 
 
 @pytest.mark.parametrize('changes', [
     {'host_boot_id': 'boot-b'},
     {'device': '/dev/zram1'},
-    {'quality': 'unavailable'},
     {'observed_at': '2020-01-01T00:00:00Z'},
     {'observed_at': None},
     {'inventory': ['not', 'an', 'object']}])
-def test_the_writeback_split_ignores_a_report_of_another_pool_or_time(current, changes):
-    # An earlier boot's or device's committed bytes, or a report that could not be built, is not this pool's.
-    assert not current(report(**changes), ['zram0'], time.time())
+def test_a_report_of_another_pool_or_time_is_stale(quality, changes):
+    # An earlier boot's or device's committed bytes, or a report made too long ago, are not this pool's.
+    assert quality(report(**changes), ['zram0'], time.time()) == 'stale'
 
 
-def test_the_writeback_split_ignores_a_report_of_a_pool_since_reset(current):
+def test_a_report_that_could_not_be_built_keeps_its_own_quality(quality):
+    assert quality(report(quality='unavailable'), ['zram0'], time.time()) == 'unavailable'
+    assert quality(None, ['zram0'], time.time()) == 'unavailable'
+
+
+def test_a_report_of_a_pool_since_reset_is_stale(quality):
     SIZES['/sys/block/zram0/disksize'] = '0\n'
-    assert not current(report(), ['zram0'], time.time())
+    assert quality(report(), ['zram0'], time.time()) == 'stale'
 
 
-@pytest.mark.parametrize('accounting', ['zram_accounting 2\ngeneration 8\n', 'zram_accounting 2\n', None])
-def test_the_writeback_split_ignores_a_report_of_an_earlier_pool_on_the_same_device(current, accounting):
+@pytest.mark.parametrize('header', ['zram_accounting 2\ngeneration 8\n', 'zram_accounting 2\n', None])
+def test_a_report_of_an_earlier_pool_on_the_same_device_is_stale(quality, header):
     # A pool rebuilt on the same device within the report's age has a new kernel generation.
-    if accounting is None:
+    if header is None:
         del SIZES['/proc/zram0_accounting']
     else:
-        SIZES['/proc/zram0_accounting'] = accounting
-    assert not current(report(), ['zram0'], time.time())
-    assert not current(report(inventory={'schema_version': 2}), ['zram0'], time.time())
+        SIZES['/proc/zram0_accounting'] = header
+    assert quality(report(), ['zram0'], time.time()) == 'stale'
+    assert quality(report(inventory={'schema_version': 2}), ['zram0'], time.time()) == 'stale'
 
 
 class GaugeMetricFamily(object):
@@ -86,19 +90,19 @@ def collect():
     nodes = [node for node in tree.body
              if isinstance(node, ast.FunctionDef) and node.name == 'collect_memory_optimization_statistics']
     reads, accounted = [], []
-    state = {'current': True}
+    state = {'quality': 'partial_vm_attribution'}
     scope = dict(GaugeMetricFamily=GaugeMetricFamily, PAGE_SIZE=4096, time=time, re=re,
                  os=SimpleNamespace(listdir=lambda path: ['zram0']),
                  _read_memory_optimization_int=lambda path: 0,
                  _memory_optimization_epoch=lambda devices: 'epoch-a',
                  _read_zram_saved_bytes=lambda path: reads.pop(0),
-                 _accounting_report_current=lambda value, devices, now: state['current'],
-                 collect_memory_optimization_vm_accounting=lambda value, current: accounted.append(current) or [])
+                 _accounting_report_quality=lambda value, devices, now: state['quality'],
+                 collect_memory_optimization_vm_accounting=lambda value, quality: accounted.append(quality) or [])
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), 'exec'), scope)
 
-    def run(before, after, current=True):
+    def run(before, after, quality='partial_vm_attribution'):
         reads[:] = [before, after]
-        state['current'] = current
+        state['quality'] = quality
         del accounted[:]
         samples = [s for family in scope['collect_memory_optimization_statistics'](report()) for s in family.samples]
         value = lambda name, **labels: next((s.value for s in samples if s.name == name and
@@ -133,11 +137,11 @@ def test_a_failed_zram_read_gives_no_total(collect):
 
 
 def test_a_stale_report_neither_splits_the_pool_nor_accounts_vms(collect):
-    value = collect(70 << 30, 70 << 30, current=False)
+    value = collect(70 << 30, 70 << 30, quality='stale')
     assert value('host_zram_saved_estimate_bytes') == 70 << 30
     assert value('host_zram_writeback_saved_bytes') is None and value('host_zram_ordinary_saved_bytes') is None
-    assert value.accounted == [False], 'the VM accounting is told the report is not current'
-    assert collect(70 << 30, 70 << 30).accounted == [True]
+    assert value.accounted == ['stale'], 'the VM accounting is given the quality of this scrape'
+    assert collect(70 << 30, 70 << 30).accounted == ['partial_vm_attribution']
 
 
 @pytest.fixture
@@ -149,8 +153,8 @@ def accounting():
     scope = dict(GaugeMetricFamily=GaugeMetricFamily, re=re, calendar=calendar, time=time)
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), 'exec'), scope)
 
-    def run(value, current):
-        samples = [s for family in scope['collect_memory_optimization_vm_accounting'](value, current)
+    def run(value, quality):
+        samples = [s for family in scope['collect_memory_optimization_vm_accounting'](value, quality)
                    for s in family.samples]
         return lambda name, **labels: [s.value for s in samples if s.name == name and
                                        all(s.labels.get(k) == v for k, v in labels.items())]
@@ -165,14 +169,14 @@ def vm_report(**changes):
 
 
 def test_a_current_report_accounts_its_vms(accounting):
-    value = accounting(vm_report(), True)
+    value = accounting(vm_report(), 'partial_vm_attribution')
     assert value('host_zram_vm_saved_bytes', vm_uuid='vm-1', host_boot_id='boot-a', pool_generation='7') == [11264]
     assert value('host_zram_accounting_sample_info', quality='partial_vm_attribution') == [1]
 
 
 def test_a_stale_report_accounts_no_vm(accounting):
     # An earlier boot's or pool's report, or one made too long ago, is shown stale and gives no VM sample.
-    value = accounting(vm_report(), False)
+    value = accounting(vm_report(), 'stale')
     assert value('host_zram_accounting_sample_info', schema_version='2', quality='stale') == [1]
     for name in ('host_zram_vm_saved_bytes', 'host_zram_vm_identity_info', 'host_zram_vm_accounting_quality',
                  'host_zram_vm_sample_timestamp_seconds', 'host_zram_accounting_generation',
@@ -181,6 +185,14 @@ def test_a_stale_report_accounts_no_vm(accounting):
 
 
 def test_an_incomplete_report_keeps_its_own_quality(accounting):
-    value = accounting(vm_report(quality='unavailable'), False)
+    value = accounting(vm_report(quality='unavailable'), 'unavailable')
     assert value('host_zram_accounting_sample_info', quality='unavailable') == [1]
     assert value('host_zram_vm_saved_bytes') == []
+
+
+def test_a_report_of_another_schema_shows_the_quality_of_this_scrape(accounting):
+    value = accounting(vm_report(schema_version=1), 'stale')
+    assert value('host_zram_accounting_sample_info', schema_version='1', quality='stale') == [1]
+    assert value('host_zram_vm_saved_bytes') == []
+    assert accounting(None, 'unavailable')('host_zram_accounting_sample_info', schema_version='unknown',
+                                           quality='unavailable') == [1]
