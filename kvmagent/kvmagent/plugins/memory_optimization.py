@@ -539,6 +539,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                            'reasonCode': reason if re.match(r'^[A-Z][A-Z0-9_:]+\Z', reason) else 'MEMORY_APPLY_FAILED',
                            'reason': reason})
         result['appliedGeneration'] = self._applied_generation()
+        # The latest generation this Host took, applied or only accepted: a STALE_GENERATION reply tells the
+        # sender what to number above, also on a Host that recorded no accepted generation.
+        taken = [value for value in (self._applied_generation(), self._applied_generation('accepted-generation'))
+                 if value is not None]
+        result['acceptedGeneration'] = max(taken) if taken else None
         try:
             result['state'] = self._observe()
         except Exception as exc:
@@ -1450,8 +1455,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         # Reclaim belongs to ZRAM: an unmanaged one (none on the MN) keeps reclaim as it was, like an unmanaged KSM.
         managed = zram['enabled'] is not None
         efficiency = bool(zram['enabled'] or writeback['enabled']) if managed else cpu.get('efficiency_enabled') is True
-        activating = (control != 'paused' and lifecycle.get('paused') is True and not pool_generation and
-                      self._maintenance_prepared())
+        prepared = (control != 'paused' and lifecycle.get('paused') is True and not pool_generation and
+                    self._maintenance_prepared())
+        # The rebuilt pool opens for ZRAM only; with ZRAM off it stays paused behind its fence until ZRAM is on.
+        activating = prepared and zram['enabled'] is not False
         # The service activates a rebuilt pool only with writeback off; the converge after it turns writeback on.
         tuned = {'enabled': False} if activating else writeback
         changes = self._service_changes(zram, tuned, efficiency, cpu)
@@ -1482,7 +1489,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if activating:
                 # A rebuilt pool opens only through the service's activation checks.
                 self._activate_after_maintenance(generation)
-            else:
+            elif not prepared:
                 self._service('lifecycle-pause', {'action': 'resume'})
         if zram['enabled'] is True and not pool_generation:
             pool = self._service('status').get('host_zram') or {}
