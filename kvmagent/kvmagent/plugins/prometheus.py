@@ -1874,6 +1874,9 @@ def _memory_observation_seconds(value):
     match = re.match(r'^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d{1,9}))?(Z|[+-]\d{2}:\d{2})$', value)
     if not match:
         return None
+    # Go writes no leap second; strptime would read second 60 or 61 into the next minute.
+    if int(match.group(1)[17:19]) > 59:
+        return None
     try:
         epoch = calendar.timegm(time.strptime(match.group(1), '%Y-%m-%dT%H:%M:%S'))
         fraction = float('.' + match.group(2)) if match.group(2) else 0
