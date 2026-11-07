@@ -610,6 +610,8 @@ def get_strict_pci_passthrough_observation(vm_dom):
     tree = ET.fromstring(xml)
     expected, hosts, guests = {}, set(), set()
     for device in tree.findall('./devices/hostdev'):
+        if device.get('type') == 'usb':
+            continue
         if device.get('type') != 'pci':
             raise ValueError('unsupported non-PCI hostdev in strict allocation')
         alias_element = device.find('alias')

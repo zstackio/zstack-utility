@@ -480,6 +480,42 @@ class TestStrictPciObservation:
             with pytest.raises(ValueError, match='guest address'):
                 pci.get_strict_pci_passthrough_observation(self.domain())
 
+    def test_usb_hostdev_does_not_block_pci_observation(self):
+        usb = """
+    <hostdev mode='subsystem' type='usb' managed='yes'>
+      <source>
+        <vendor id='0x1234'/>
+        <product id='0x5678'/>
+        <address bus='1' device='2'/>
+      </source>
+      <address type='usb' bus='0' port='1'/>
+    </hostdev>"""
+        xml = VM_XML_WITH_PCI_PASSTHROUGH.replace('</devices>', usb + '\n  </devices>')
+        output = 'Bus 5, device 0, function 0:\n  id "hostdev0"\n'
+        with patch.object(pci, '_query_pci_info_by_qmp', return_value=(0, output, '')):
+            result = pci.get_strict_pci_passthrough_observation(self.domain(xml))
+        assert result['devices'] == [{'alias': 'hostdev0', 'hostPciAddress': '0000:3b:00.0',
+                                      'guestPciAddress': '0000:05:00.0'}]
+
+    def test_usb_only_domain_still_has_no_pci_observation(self):
+        import pytest
+        xml = VM_XML_NO_PASSTHROUGH.replace('</devices>', """
+    <hostdev mode='subsystem' type='usb' managed='yes'>
+      <source><vendor id='0x1234'/><product id='0x5678'/></source>
+    </hostdev>
+  </devices>""")
+        with patch.object(pci, '_query_pci_info_by_qmp') as query:
+            with pytest.raises(ValueError, match='no hostdev'):
+                pci.get_strict_pci_passthrough_observation(self.domain(xml))
+        query.assert_not_called()
+
+    def test_mdev_hostdev_is_still_rejected(self):
+        import pytest
+        with patch.object(pci, '_query_pci_info_by_qmp') as query:
+            with pytest.raises(ValueError, match='unsupported non-PCI hostdev'):
+                pci.get_strict_pci_passthrough_observation(self.domain(VM_XML_WITH_MDEV_PASSTHROUGH))
+        query.assert_not_called()
+
     def test_duplicate_xml_alias_is_rejected_before_query(self):
         import pytest
         xml = VM_XML_WITH_PCI_PASSTHROUGH.replace('</devices>',
