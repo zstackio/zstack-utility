@@ -39,6 +39,28 @@ def report(**changes):
     return value
 
 
+@pytest.fixture
+def observation_seconds():
+    path = Path(__file__).resolve().parents[3] / 'kvmagent/kvmagent/plugins/prometheus.py'
+    tree = ast.parse(path.read_text())
+    nodes = [node for node in tree.body
+             if isinstance(node, ast.FunctionDef) and node.name == '_memory_observation_seconds']
+    scope = dict(re=re, calendar=calendar, time=time)
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), 'exec'), scope)
+    return scope['_memory_observation_seconds']
+
+
+def test_a_report_time_is_read_in_utc(observation_seconds):
+    assert observation_seconds('2026-11-05T16:30:59Z') == 1793896259
+    assert observation_seconds('2026-11-06T00:30:59.5+08:00') == 1793896259.5
+
+
+@pytest.mark.parametrize('value', ['2026-11-05T16:30:60Z', '2026-11-05T16:30:61Z', '2026-11-06T00:30:61.5+08:00'])
+def test_a_report_time_with_a_leap_second_is_not_a_time(observation_seconds, value):
+    # The service never writes second 60 or 61; such a report has no valid time, so it is not current.
+    assert observation_seconds(value) is None
+
+
 def test_a_current_report_of_this_pool_keeps_its_quality(quality):
     assert quality(report(), ['zram0'], time.time()) == 'partial_vm_attribution'
 
