@@ -1683,15 +1683,15 @@ def _read_memory_accounting_report():
         return report
 
 
-def collect_memory_optimization_vm_accounting(report, current):
+def collect_memory_optimization_vm_accounting(report, quality):
     """Export identity-qualified ABI-2 VM accounting supplied by the service.
 
     The Agent does not infer ownership from ``VmSwap`` or any other guest
     process counter.  ``report`` is the committed service ``vm_accounting
     Report`` JSON; absent/unsupported reports produce quality state only and
-    never synthetic zero-valued VM samples.  ``current`` tells whether the
-    report is of this boot's ZRAM device and pool and made now; a complete
-    report that is not is exported as ``stale`` without any VM sample.
+    never synthetic zero-valued VM samples.  ``quality`` is the quality this
+    scrape gives the report (``_accounting_report_quality``); a ``stale``
+    report is exported as such without any VM sample.
     """
     metrics = {
         'host_zram_vm_ram_original_bytes': GaugeMetricFamily(
@@ -1739,7 +1739,7 @@ def collect_memory_optimization_vm_accounting(report, current):
     def quality_only(value):
         metrics['host_zram_accounting_sample_info'].add_metric(
             [str(value.get('schema_version', 'unknown')) if isinstance(value, dict) else 'unknown',
-             value.get('quality', 'unavailable') if isinstance(value, dict) else 'unavailable'], 1)
+             str(quality)], 1)
         return list(metrics.values())
 
     if not isinstance(report, dict):
@@ -1749,16 +1749,14 @@ def collect_memory_optimization_vm_accounting(report, current):
     if report.get('schema_version') != 2 or not isinstance(inventory, dict) or \
             inventory.get('schema_version') != 2:
         return quality_only(report)
-    quality = report.get('quality', 'unavailable')
     report_complete = quality in ('atomic_inventory_identity_checked',
                                   'partial_vm_attribution')
-    if report_complete and not current:
-        # A report of an earlier boot or pool, or one made too long ago, accounts for none of the VMs now.
-        metrics['host_zram_accounting_sample_info'].add_metric(['2', 'stale'], 1)
-        return list(metrics.values())
-    observed = _memory_observation_seconds(report.get('observed_at'))
     metrics['host_zram_accounting_sample_info'].add_metric(
         ['2', str(quality)], 1)
+    if quality == 'stale':
+        # A report of an earlier boot or pool, or one made too long ago, accounts for none of the VMs now.
+        return list(metrics.values())
+    observed = _memory_observation_seconds(report.get('observed_at'))
     generation = inventory.get('pool_generation')
     sequence = inventory.get('sequence')
     if isinstance(generation, (int, float)) and not isinstance(generation, bool):
@@ -1832,10 +1830,17 @@ def collect_memory_optimization_vm_accounting(report, current):
     return list(metrics.values())
 
 
-def _accounting_report_current(report, devices, now):
-    """The service report counts only if it is a complete report of this boot's ZRAM device and pool, made now."""
-    if report.get('quality') not in ('atomic_inventory_identity_checked', 'partial_vm_attribution'):
-        return False
+def _accounting_report_quality(report, devices, now):
+    """The quality this scrape gives the service report.
+
+    A complete report counts only if it is of this boot's ZRAM device and pool
+    and made now; otherwise it is ``stale``.  Any other report keeps its own.
+    """
+    if not isinstance(report, dict):
+        return 'unavailable'
+    quality = report.get('quality', 'unavailable')
+    if quality not in ('atomic_inventory_identity_checked', 'partial_vm_attribution'):
+        return quality
     boot = (linux.read_file('/proc/sys/kernel/random/boot_id') or '').strip()
     device = report.get('device')
     observed = _memory_observation_seconds(report.get('observed_at'))
@@ -1843,11 +1848,13 @@ def _accounting_report_current(report, devices, now):
     inventory = report.get('inventory')
     generation = inventory.get('pool_generation') if isinstance(inventory, dict) else None
     # A device reset or a pool rebuilt on it since the report holds none of the bytes it counted.
-    return (bool(boot) and report.get('host_boot_id') == boot and name in devices and
+    if (bool(boot) and report.get('host_boot_id') == boot and name in devices and
             (_read_memory_optimization_int('/sys/block/%s/disksize' % name) or 0) > 0 and
             isinstance(generation, int) and not isinstance(generation, bool) and
             generation == _zram_accounting_generation(name) and
-            observed is not None and -5 <= now - observed <= MEMORY_ACCOUNTING_REPORT_MAX_AGE_SECONDS)
+            observed is not None and -5 <= now - observed <= MEMORY_ACCOUNTING_REPORT_MAX_AGE_SECONDS):
+        return quality
+    return 'stale'
 
 
 def _zram_accounting_generation(name):
@@ -1998,14 +2005,14 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
     # and cumulative-I/O counters and must never be used as a savings value.
     zram_writeback = None
     zram_normal = None
-    report_current = (isinstance(vm_accounting_report, dict) and
-                      _accounting_report_current(vm_accounting_report, zram_devices, time.time()))
+    report_quality = _accounting_report_quality(vm_accounting_report, zram_devices, time.time())
     if (zram_values_before == zram_values_after and
             isinstance(vm_accounting_report, dict) and
             vm_accounting_report.get('schema_version') == 2 and
             isinstance(vm_accounting_report.get('inventory'), dict) and
             vm_accounting_report.get('inventory', {}).get('schema_version') == 2 and
-            isinstance(vm_accounting_report.get('total'), dict) and report_current):
+            isinstance(vm_accounting_report.get('total'), dict) and
+            report_quality in ('atomic_inventory_identity_checked', 'partial_vm_attribution')):
         candidate = vm_accounting_report['total'].get('backend_committed_original_bytes')
         if (isinstance(candidate, (int, float)) and not isinstance(candidate, bool)
                 and candidate >= 0 and candidate <= 9223372036854775807):
@@ -2087,7 +2094,7 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
     metrics['host_memory_optimization_sample_info'].add_metric(['mechanism-estimate-v1'], 1)
     metrics['host_memory_optimization_sample_timestamp_seconds'].add_metric([], time.time())
     families = list(metrics.values())
-    families.extend(collect_memory_optimization_vm_accounting(vm_accounting_report, report_current))
+    families.extend(collect_memory_optimization_vm_accounting(vm_accounting_report, report_quality))
     # zwatch selects memory series by this source label (the former textfile contract).
     for family in families:
         for sample in family.samples:
