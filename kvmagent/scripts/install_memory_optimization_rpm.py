@@ -349,6 +349,22 @@ class _Descriptor(object):
         os.close(self.fd)
 
 
+class _TemporaryFile(object):
+    """A temporary file in a directory, removed when its with block ends unless it was renamed away."""
+
+    def __init__(self, directory, prefix):
+        fd, self.path = tempfile.mkstemp(prefix=prefix, dir=directory)
+        self.stream = os.fdopen(fd, 'w')
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.stream.close()
+        if os.path.exists(self.path):
+            os.unlink(self.path)
+
+
 def _sync_path(path):
     with _Descriptor(path, os.O_RDONLY | os.O_NOFOLLOW) as fd:
         os.fsync(fd)
@@ -509,17 +525,13 @@ def _write_recovery(root, package, controller, config_sha):
     _makedirs(parent, 0o700)
     if os.path.islink(parent):
         raise InstallError('UPGRADE_RECOVERY_NOT_REGULAR')
-    fd, temporary = tempfile.mkstemp(prefix='.rpm-upgrade-', dir=parent)
-    try:
-        with os.fdopen(fd, 'w') as stream:
-            json.dump(data, stream, sort_keys=True)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.rename(temporary, path)
-        _sync_path(parent)
-    finally:
-        if os.path.exists(temporary):
-            os.unlink(temporary)
+    with _TemporaryFile(parent, '.rpm-upgrade-') as temporary:
+        json.dump(data, temporary.stream, sort_keys=True)
+        temporary.stream.flush()
+        os.fsync(temporary.stream.fileno())
+        temporary.stream.close()
+        os.rename(temporary.path, path)
+    _sync_path(parent)
     return data
 
 
