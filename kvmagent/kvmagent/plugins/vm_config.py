@@ -146,6 +146,12 @@ class GetVmGpuInfoResponse(kvmagent.AgentResponse):
         self.gpuInfos = []
 
 
+class VmGpuInfoSyncCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("hccnBootstrap")
+    def __init__(self):
+        super(VmGpuInfoSyncCmd, self).__init__()
+
+
 class VmConfigPlugin(kvmagent.KvmAgent):
     VM_CONFIG_PORTS = "/vm/configsync/ports"
     VM_GUEST_TOOLS_STATE = "/vm/guesttools/state"
@@ -558,7 +564,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.VM_CONFIG_PORTS, self.vm_config_ports)
         http_server.register_async_uri(self.VM_GUEST_TOOLS_STATE, self.vm_guest_tools_state)
         http_server.register_async_uri(self.VM_SET_HOSTNAME, self.vm_set_hostname)
-        http_server.register_async_uri(self.VM_GPU_INFO_SYNC, self.vm_gpu_info_sync)
+        http_server.register_async_uri(self.VM_GPU_INFO_SYNC, self.vm_gpu_info_sync, cmd=VmGpuInfoSyncCmd())
         http_server.register_async_uri(self.VM_WRITE_FILE, self.vm_write_file)
         http_server.register_async_uri(self.VM_DELETE_FILE, self.vm_delete_file)
 
