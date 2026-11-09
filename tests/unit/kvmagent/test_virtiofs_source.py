@@ -1163,3 +1163,50 @@ def test_hccn_release_timeout_terminates_mount_command_process_group(release_pro
     status = pathlib.Path('/proc/%s/stat' % pid)
     # An orphan already killed but awaiting init's reap is also non-running.
     assert not status.exists() or status.read_text().split()[2] == 'Z'
+
+
+def test_hccn_release_trusts_the_opened_file_not_a_prior_path_check(release_probe, tmp_path, monkeypatch):
+    # The manifest can be replaced between any path check and the read; only the opened file may decide.
+    request, state = release_probe
+    (tmp_path / 'outside-manifest').write_bytes(b'secret-not-read')
+    state['symlink'] = True
+    real_lstat = os.lstat
+    real_read = virtiofs_source._read_hccn_release_file
+    regular = real_lstat(str(tmp_path / 'outside-manifest'))
+
+    def read_with_stale_path_checks(mount_path, relative_path):
+        os.lstat = lambda p: regular if str(p).endswith('hccn-bootstrap.release.json') else real_lstat(p)
+        try:
+            return real_read(mount_path, relative_path)
+        finally:
+            os.lstat = real_lstat
+    monkeypatch.setattr(virtiofs_source, '_read_hccn_release_file', read_with_stale_path_checks)
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is False
+    assert result['cleanupIncomplete'] is False
+    assert 'secret-not-read' not in str(result)
+
+
+def test_hccn_release_rejects_artifact_dir_swapped_after_checks(release_probe, tmp_path, monkeypatch):
+    # O_NOFOLLOW guards only the last component; a swapped parent must still be caught on the opened fd.
+    import shutil
+    request, _ = release_probe
+    outside = tmp_path / 'outside-dir'
+    outside.mkdir()
+    (outside / 'hccn-bootstrap.release.json').write_bytes(b'secret-not-read')
+    real_ensure = virtiofs_source.ensure_under
+    swapped = tmp_path / 'swapped'
+
+    def ensure_then_swap(path, root, field_name, allow_root=True):
+        resolved = real_ensure(path, root, field_name, allow_root)
+        if field_name == 'release manifest' and not swapped.exists():
+            swapped.write_text('1')
+            artifact = os.path.dirname(path)
+            shutil.rmtree(artifact)
+            os.symlink(str(outside), artifact)
+        return resolved
+    monkeypatch.setattr(virtiofs_source, 'ensure_under', ensure_then_swap)
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert swapped.exists()
+    assert result['success'] is False
+    assert 'secret-not-read' not in str(result)

@@ -964,9 +964,17 @@ def _read_hccn_release_file(mount_path, relative_path):
                              'artifactRelativePath', allow_root=False)
     path = os.path.join(directory, HCCN_RELEASE_FILE)
     ensure_under(path, mount_path, 'release manifest', allow_root=False)
-    if not stat.S_ISREG(os.lstat(path).st_mode):
-        raise ValueError('release manifest must be a regular file, not a symlink')
-    with open(path, 'rb') as stream:
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ValueError('release manifest must be a regular file, not a symlink')
+        raise
+    with os.fdopen(fd, 'rb') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError('release manifest must be a regular file, not a symlink')
+        ensure_under(os.readlink('/proc/self/fd/%d' % stream.fileno()), mount_path,
+                     'release manifest', allow_root=False)
         content = stream.read(HCCN_RELEASE_LIMIT + 1)
     if not content or len(content) > HCCN_RELEASE_LIMIT:
         raise ValueError('release manifest must contain 1..65536 bytes')
