@@ -48,6 +48,37 @@ zstack-ctl status::
 zstack-ctl configured_collect_log::
 收集 ZStack Cloud 的日志，提供了很多细节参数来控制收集的粒度、收集的时间范围、收集的服务器范围等等，详细内容参考 xref:configured_collect_log.adoc[]。
 
+== 为物理机准备 cgroup v2 启动参数
+
+ISO 默认使用 cgroup v1。在管理节点执行以下命令，为指定集群内的 KVM 物理机设置下次启动使用 cgroup v2。
+必须指定集群 UUID；可选指定多个 Host UUID，缩小到这些物理机：
+
+[source,bash]
+----
+zstack-ctl enable_cgroup_v2 --cluster-uuid <clusterUuid>
+zstack-ctl enable_cgroup_v2 --cluster-uuid <clusterUuid> --host-uuids <hostUuid1> <hostUuid2>
+----
+
+UUID 必须是 32 位十六进制字符。未指定 Host UUID 时，处理该集群内全部 KVM 物理机；指定后只处理选中的物理机，重复 UUID 只执行一次。
+指定的 Host UUID 不存在、不属于该集群或不是 KVM 物理机时，整次请求在远程执行前报错。
+
+目前仅支持 H84 x86_64：在目标物理机上验证 `/etc/zstack-release` 为 `h84r`，且 `uname -m` 为 `x86_64`。
+命令使用数据库中的物理机 SSH 信息和管理节点已有的 SSH 密钥连接，检查内核 cgroup v2 支持；
+安装了 Docker 的物理机还要求 Docker 20.10 或更新版本。命令不会安装或升级这些组件。
+
+通过 `grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=1"` 更新启动项并读回验证，
+保留其他启动参数，允许重复执行。逐台输出物理机 UUID、管理 IP 和结果；机型不支持的物理机拒绝写入并报错。
+某台失败后继续处理其余物理机，存在失败时返回非零退出码；不会回滚已成功设置的物理机。
+
+[IMPORTANT]
+====
+命令不会重启物理机或服务，不改变当前运行的 cgroup 模式、资源限制或资源分配全局开关。
+成功只表示启动参数已写入并验证，不表示当前已切换为 v2；需另行安排物理机重启后生效。
+仅管理节点或存储节点、尚未纳管的物理机不在处理范围内。执行前应确认物理机上其他组件与 cgroup v2 的兼容性。
+====
+
+== 子命令参考
+
 更多更细节的内容请参考详细的子命令介绍页面：
 
 include::../nav.adoc[lines=3..]
