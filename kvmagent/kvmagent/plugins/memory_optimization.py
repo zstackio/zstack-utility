@@ -185,6 +185,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     MANAGED_ZRAM_UNIT = 'zram-memory.service'
     # ZRAM is the Host's swap; at swappiness 0 (some distributions' default) reclaim moves no VM memory.
     SWAPPINESS_PATH = '/proc/sys/vm/swappiness'
+    SYS_BLOCK_PATH = '/sys/block'
+    PROC_SWAPS_PATH = '/proc/swaps'
     SWAPPINESS_CONF = '/etc/sysctl.d/99-zstack-zram.conf'
     ZRAM_SWAPPINESS = 60
     KSM_CONF = '/etc/ksmtuned.conf'
@@ -792,6 +794,23 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return False
         state_dir = self._service_state_dir()
         return state_dir is not None and (not os.path.isdir(state_dir) or not os.listdir(state_dir))
+
+    def _zram_device_reset(self):
+        """Whether the service's zram device is as the first use requires: no size, memory limit, backing or swap."""
+        try:
+            device = self._read_service_config().get('device') or ''
+            base = os.path.join(self.SYS_BLOCK_PATH, os.path.basename(device))
+            with open(os.path.join(base, 'disksize')) as stream:
+                disksize = stream.read().strip()
+            with open(os.path.join(base, 'mm_stat')) as stream:
+                memory_limit = stream.read().split()[3]
+            with open(os.path.join(base, 'backing_dev')) as stream:
+                backing = stream.read().strip()
+            with open(self.PROC_SWAPS_PATH) as stream:
+                swapping = any(line.split()[:1] == [device] for line in stream.readlines()[1:])
+        except (IOError, OSError, ValueError, IndexError, AttributeError):
+            return False
+        return bool(device) and disksize == '0' and memory_limit == '0' and backing == 'none' and not swapping
 
     def _no_recorded_pool(self):
         """The service keeps its pool's record in its state directory until the pool is released."""
@@ -1746,6 +1765,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT'):
                 # A check that failed proves nothing: the pool may still be recorded.
                 pool_generation = 'none'
+                if 'BACKEND_IDENTITY_CHANGED_REQUIRES_MAINTENANCE' in str(native.get('error') or ''):
+                    # The prepared disk came back under another device in this boot; a reboot reclaims it.
+                    reasons.append('PREPARED_BACKEND_IDENTITY_MISMATCH')
+                if not self._zram_device_reset():
+                    # A first use needs the device the released pool left behind to be reset by a reboot.
+                    reasons.append('BACKEND_MAINTENANCE_FIRST_USE_NOT_EMPTY')
         if not pool_generation:
             reasons.append('POOL_GENERATION_UNKNOWN')
         receipt = self._receipt('backend')
@@ -1850,11 +1875,17 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         try:
             if isinstance(generation, bool) or not isinstance(generation, INTEGER_TYPES) or generation < 1:
                 raise Rejected('INVALID_GENERATION')
+            operation = command.get('operationUuid')
+            if not isinstance(operation, STRING_TYPES) or not re.match(r'^[0-9a-f]{32}\Z', operation):
+                raise Rejected('INVALID_OPERATION_UUID')
+            # Each preparation the management node starts is its own request; its resends advance it.
+            request_id = 'backend-%d-%s' % (generation, operation[:16])
             with self._host_lock(self._lock_wait(command)):
                 self._finish_recorded_maintenance()
                 receipt = self._receipt('backend')
-                request_id = 'backend-%d-%s' % (generation, str(command.get('candidateId', ''))[-16:])
                 if receipt.get('request_id') == request_id and receipt.get('stage') == 'APPLIED':
+                    if not command.get('expectedHostBootId'):
+                        raise Rejected('BACKEND_MAINTENANCE_CONFIRMATION_REQUIRED')
                     if not self._same_backend_preparation(receipt, command):
                         # The same request id on another boot, disk, capacity or pool: its success is not this one.
                         raise Rejected('BACKEND_MAINTENANCE_REQUEST_CONFLICT')
@@ -1891,7 +1922,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _same_backend_preparation(self, receipt, command):
         target = receipt.get('target_identity') or {}
         return (receipt.get('candidate_id') == command.get('candidateId') and
-                receipt.get('host_boot_id') == (command.get('expectedHostBootId') or self._current_boot_id()) and
+                receipt.get('host_boot_id') == command.get('expectedHostBootId') and
                 target.get('capacity_bytes') == command.get('backendCapacityBytes') and
                 (receipt.get('pool_generation') or 'none') == command.get('expectedPoolGeneration') and
                 command.get('resetConfirmed') is True)
