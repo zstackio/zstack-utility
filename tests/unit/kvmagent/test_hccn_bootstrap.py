@@ -466,13 +466,16 @@ def test_visible_alias_guest_reordering_rejects_result(raw_qga, actual_pci, monk
     def query(_, timeout=None):
         assert timeout == 5
         count[0] += 1
-        output = qmp_output() if count[0] == 1 else qmp_output().replace('Bus 149', 'Bus 150')
-        return 0, output, ''
+        if count[0] == 1:
+            return 0, qmp_output(), ''
+        # Swap hostdev0 and hostdev2 buses: still a valid layout, but not the one
+        # observed before the guest operation.
+        return 0, qmp_output().replace('Bus 149', 'Bus 200').replace('Bus 150', 'Bus 149').replace('Bus 200', 'Bus 150'), ''
     monkeypatch.setattr(actual_pci, '_query_pci_info_by_qmp', query)
     snapshot_result(raw_qga)
     result = bootstrap.dispatch(snapshot_request(raw_qga), lambda _: PciDomain())
     assert result['success'] is False
-    assert 'guest address' in result['error']
+    assert 'observation changed' in result['error']
 
 
 def test_original_qga_class_methods_are_exercised_at_libvirt_boundary(raw_qga):

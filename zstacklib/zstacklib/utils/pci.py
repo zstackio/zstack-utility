@@ -608,7 +608,7 @@ def get_strict_pci_passthrough_observation(vm_dom):
     if not isinstance(xml, str) or len(xml.encode('utf-8')) > 1048576:
         raise ValueError('invalid/oversized active domain XML')
     tree = ET.fromstring(xml)
-    expected, hosts, guests = {}, set(), set()
+    expected, hosts = {}, set()
     for device in tree.findall('./devices/hostdev'):
         if device.get('type') == 'usb':
             continue
@@ -619,12 +619,11 @@ def get_strict_pci_passthrough_observation(vm_dom):
         if not alias:
             raise ValueError('missing PCI hostdev alias')
         host = _strict_xml_pci_address(device.find('source/address'))
-        guest = _strict_xml_pci_address(device.find('address'))
-        if alias in expected or host in hosts or guest in guests:
-            raise ValueError('duplicate active XML alias/PCI BDF')
-        expected[alias] = {'alias': alias, 'hostPciAddress': host, 'guestPciAddress': guest}
+        if alias in expected or host in hosts:
+            raise ValueError('duplicate active XML alias/host BDF')
+        # XML bus is the controller index; the guest BDF comes from QMP below.
+        expected[alias] = {'alias': alias, 'hostPciAddress': host}
         hosts.add(host)
-        guests.add(guest)
     if not expected:
         raise ValueError('strict PCI observation has no hostdev devices')
     runtime_id, vm_uuid, vm_name = vm_dom.ID(), vm_dom.UUIDString(), vm_dom.name()
@@ -647,9 +646,7 @@ def get_strict_pci_passthrough_observation(vm_dom):
                 raise ValueError('QMP alias missing guest address')
             if alias in observed or current in addresses:
                 raise ValueError('duplicate raw QMP alias/guest BDF')
-            if expected[alias]['guestPciAddress'] != current:
-                raise ValueError('QMP guest address differs from active XML')
-            observed[alias] = expected[alias]
+            observed[alias] = dict(expected[alias], guestPciAddress=current)
             addresses.add(current)
     if set(observed) != set(expected):
         raise ValueError('incomplete single QMP observation')
