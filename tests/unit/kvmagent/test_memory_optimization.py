@@ -17,6 +17,7 @@ from kvmagent.plugins import memory_writeback_maintenance as maintenance
 
 HOST = '1' * 32
 POOL = 'a' * 64
+OPERATION = '0123456789abcdef' * 2
 
 
 class FakeService(object):
@@ -122,6 +123,7 @@ def host(tmp_path, monkeypatch):
     monkeypatch.setattr(plugin, '_converge_ksm', lambda ksm, control: world.setdefault('ksm', []).append((ksm, control)))
     monkeypatch.setattr(plugin, '_receipt', lambda kind: dict(service.receipts[kind]))
     monkeypatch.setattr(plugin, '_current_boot_id', lambda: 'boot')
+    monkeypatch.setattr(plugin, '_zram_device_reset', lambda: world.get('zram_reset', True), raising=False)
     (tmp_path / 'swappiness').write_text('60\n')
     monkeypatch.setattr(plugin, 'SWAPPINESS_PATH', str(tmp_path / 'swappiness'))
 
@@ -916,6 +918,7 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
     monkeypatch.setattr(module, 'build_backend_maintenance_request',
                         lambda inventory, preparation: built.append(preparation) or {'request_id': preparation['requestId']})
     command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
+               'operationUuid': OPERATION,
                'expectedHostBootId': 'boot', 'expectedPoolGeneration': POOL, 'backendCapacityBytes': 1 << 30,
                'resetConfirmed': True}
     def prepare():
@@ -923,7 +926,7 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
 
     first = prepare()
     assert first['status'] == 'Converging' and first['reasonCode'] == 'BACKEND_PREPARING'
-    request_id = 'backend-20-' + 'd' * 16
+    request_id = 'backend-20-' + OPERATION[:16]
     assert built[0]['requestId'] == request_id
     assert world['started'][0][:2] == ('zstack-memory-backend-' + request_id, '--prepare-backend-maintenance')
     assert prepare()['reasonCode'] == 'BACKEND_PREPARING'
@@ -955,9 +958,10 @@ def applied_backend_receipt(request_id, **changes):
     ({}, {'resetConfirmed': False})])
 def test_an_applied_preparation_answers_only_the_same_request(host, changes, request_changes):
     plugin, service, world = host
-    request_id = 'backend-20-' + 'd' * 16
+    request_id = 'backend-20-' + OPERATION[:16]
     service.receipts['backend'] = applied_backend_receipt(request_id, **changes)
     command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
+               'operationUuid': OPERATION,
                'expectedHostBootId': 'boot', 'expectedPoolGeneration': POOL, 'backendCapacityBytes': 1 << 30,
                'resetConfirmed': True}
     command.update(request_changes)
@@ -967,15 +971,57 @@ def test_an_applied_preparation_answers_only_the_same_request(host, changes, req
     assert world['started'] == []
 
 
+def test_an_applied_preparation_without_the_boot_it_was_made_on_is_refused(host):
+    plugin, service, world = host
+    service.receipts['backend'] = applied_backend_receipt('backend-20-' + OPERATION[:16])
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
+               'operationUuid': OPERATION, 'expectedPoolGeneration': POOL, 'backendCapacityBytes': 1 << 30,
+               'resetConfirmed': True}
+    # The management node always names the boot; a request without it is not completed with the current one.
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'BACKEND_MAINTENANCE_CONFIRMATION_REQUIRED', result
+    assert world['started'] == []
+
+
+def test_a_new_preparation_of_the_same_disk_is_its_own_request(host, monkeypatch):
+    plugin, service, world = host
+    # An earlier preparation of the disk succeeded under the same generation, with a pool since released.
+    service.receipts['backend'] = applied_backend_receipt('backend-20-' + 'f' * 16)
+    world['unit'] = 'inactive'
+    monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {
+        'canPrepare': True, 'poolGeneration': 'none',
+        'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
+                        'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+    monkeypatch.setattr(module, 'build_backend_maintenance_request',
+                        lambda inventory, preparation: {'request_id': preparation['requestId']})
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
+               'operationUuid': OPERATION, 'expectedHostBootId': 'boot', 'expectedPoolGeneration': 'none',
+               'backendCapacityBytes': 1 << 30, 'resetConfirmed': True}
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+    assert result['status'] == 'Converging' and result['reasonCode'] == 'BACKEND_PREPARING', result
+    assert world['started'][0][0] == 'zstack-memory-backend-backend-20-' + OPERATION[:16]
+
+
+def test_a_preparation_without_its_operation_is_refused(host):
+    plugin, service, world = host
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': 'none', 'backendCapacityBytes': 1 << 30,
+               'resetConfirmed': True}
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'INVALID_OPERATION_UUID', result
+    assert world['started'] == []
+
+
 @pytest.mark.parametrize('candidates', [[], [{'device': '/dev/vdb', 'state': 'DISCONNECTED'}],
                                         # The same disk prepared again by another maintenance is another resource.
                                         [{'device': '/dev/vdb', 'state': 'PREPARED', 'resourceUuid': 'e' * 32}]])
 def test_an_applied_preparation_whose_disk_is_no_longer_the_backend_fails(host, monkeypatch, candidates):
     plugin, service, world = host
-    request_id = 'backend-20-' + 'd' * 16
+    request_id = 'backend-20-' + OPERATION[:16]
     service.receipts['backend'] = applied_backend_receipt(request_id)
     monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {'candidates': candidates})
     command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20, 'candidateId': 'candidate:' + 'd' * 64,
+               'operationUuid': OPERATION,
                'expectedHostBootId': 'boot', 'expectedPoolGeneration': POOL, 'backendCapacityBytes': 1 << 30,
                'resetConfirmed': True}
     # The earlier success does not hold once its disk is gone or no longer prepared.
@@ -996,6 +1042,7 @@ def test_a_host_without_a_pool_stops_its_service_to_prepare_a_backend(host, monk
     inventory = plugin._writeback_inventory(HOST)
     assert inventory['canPrepare'] is True and inventory['poolGeneration'] == 'none', inventory
     command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 4, 'candidateId': 'candidate:' + 'd' * 64,
+               'operationUuid': OPERATION,
                'expectedHostBootId': 'boot', 'expectedPoolGeneration': 'none', 'backendCapacityBytes': 1 << 30,
                'resetConfirmed': True}
     result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
@@ -1003,6 +1050,45 @@ def test_a_host_without_a_pool_stops_its_service_to_prepare_a_backend(host, monk
     # Stopped like a drain: paused, and the host policy off as the readback requires.
     assert world['unit'] == 'inactive' and service.paused is True and service.efficiency is False
     assert world['started'][0][1] == '--prepare-backend-maintenance'
+
+
+@pytest.mark.parametrize('native, zram_reset, reason', [
+    # The released pool's device keeps its size until a reboot; the first use refuses it.
+    (None, False, 'BACKEND_MAINTENANCE_FIRST_USE_NOT_EMPTY'),
+    # The prepared disk came back under another device in this boot.
+    ({'error': 'BACKEND_NOT_READY: BACKEND_IDENTITY_CHANGED_REQUIRES_MAINTENANCE'}, True,
+     'PREPARED_BACKEND_IDENTITY_MISMATCH')])
+def test_a_stopped_host_without_a_pool_says_why_it_cannot_prepare(host, monkeypatch, native, zram_reset, reason):
+    plugin, service, world = host
+    world.update({'unit': 'inactive', 'drained': native, 'zram_reset': zram_reset})
+    monkeypatch.setattr(plugin, '_no_recorded_pool', lambda: True)
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
+                        'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+    inventory = plugin._writeback_inventory(HOST)
+    assert inventory['poolGeneration'] == 'none' and inventory['canPrepare'] is False, inventory
+    assert inventory['preparationReasons'] == [reason], inventory
+
+
+@pytest.mark.parametrize('disksize, mm_stat, backing, swaps, reset', [
+    ('0', '0 0 0 0 0 0 0 0 0', 'none', '', True),
+    ('2978701312', '4096 74 12288 0 12288 0 0 0 0', 'none', '', False),
+    ('0', '0 0 0 1073741824 0 0 0 0 0', 'none', '', False),
+    ('0', '0 0 0 0 0 0 0 0 0', '/dev/vdb', '', False),
+    ('0', '0 0 0 0 0 0 0 0 0', 'none', '/dev/zram0 partition 0 0 100\n', False)])
+def test_the_zram_device_is_reset_only_without_size_limit_backing_or_swap(host, tmp_path, monkeypatch,
+                                                                          disksize, mm_stat, backing, swaps, reset):
+    plugin, service, world = host
+    block = tmp_path / 'block' / 'zram0'
+    block.mkdir(parents=True)
+    (block / 'disksize').write_text(disksize + '\n')
+    (block / 'mm_stat').write_text(mm_stat + '\n')
+    (block / 'backing_dev').write_text(backing + '\n')
+    (tmp_path / 'swaps').write_text('Filename\tType\tSize\tUsed\tPriority\n' + swaps)
+    monkeypatch.setattr(plugin, 'SYS_BLOCK_PATH', str(tmp_path / 'block'))
+    monkeypatch.setattr(plugin, 'PROC_SWAPS_PATH', str(tmp_path / 'swaps'))
+    assert MemoryOptimizationPlugin._zram_device_reset(plugin) is reset
 
 
 def test_an_earlier_agent_journal_is_moved_aside_on_start(tmp_path):
