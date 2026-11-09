@@ -474,11 +474,13 @@ class TestStrictPciObservation:
             with pytest.raises(ValueError, match='duplicate'):
                 pci.get_strict_pci_passthrough_observation(self.domain())
 
-    def test_qmp_guest_reorder_conflicts_with_active_xml(self):
-        import pytest
-        with patch.object(pci, '_query_pci_info_by_qmp', return_value=(0, 'Bus 6, device 0, function 0:\n id "hostdev0"', '')):
-            with pytest.raises(ValueError, match='guest address'):
-                pci.get_strict_pci_passthrough_observation(self.domain())
+    def test_qmp_guest_address_wins_over_xml_controller_index(self):
+        # libvirt XML bus is the controller index; the guest bus is only known from QMP.
+        output = 'Bus 6, device 0, function 0:\n  id "hostdev0"\n'
+        with patch.object(pci, '_query_pci_info_by_qmp', return_value=(0, output, '')):
+            result = pci.get_strict_pci_passthrough_observation(self.domain())
+        assert result['devices'] == [{'alias': 'hostdev0', 'hostPciAddress': '0000:3b:00.0',
+                                      'guestPciAddress': '0000:06:00.0'}]
 
     def test_usb_hostdev_does_not_block_pci_observation(self):
         usb = """
