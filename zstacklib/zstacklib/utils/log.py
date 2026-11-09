@@ -225,7 +225,10 @@ def mask_sensitive_field(cmd, cmd_str):
         return cmd_str
 
     field_paths = getattr(cmd, SENSITIVE_FIELD_NAME)
-    obj = simplejson.loads(cmd_str)
+    try:
+        obj = simplejson.loads(cmd_str)
+    except Exception:
+        return '<unparseable body with sensitive fields omitted>'
     if isinstance(obj, dict):
         for path in field_paths:
             try:

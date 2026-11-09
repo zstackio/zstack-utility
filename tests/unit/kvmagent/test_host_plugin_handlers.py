@@ -2015,3 +2015,87 @@ class TestHostPluginNumaTopologyDeep:
         assert rsp['topology']['0']['cpus'] == ['0', '1', '3']
         assert rsp['topology']['0']['size'] == 2048 * 1024
         assert rsp['topology']['0']['free'] == 1024 * 1024
+
+
+@pytest.mark.kvmagent
+class TestHostPluginHccnNativeFailures:
+    @staticmethod
+    def _output(case):
+        def output(command, **kwargs):
+            assert kwargs == {'stderr': -2, 'text': True, 'timeout': 5}
+            if command == ('npu-smi', 'info', '-l'):
+                if isinstance(case, Exception):
+                    raise case
+                return 'NPU ID: 0\nNPU ID: 1\n'
+            if command[0] == 'npu-smi':
+                number = command[-1]
+                serial = 'card-0' if case == 'duplicate_sn' else 'card-' + number
+                address = '0000:01:00.0' if case == 'duplicate_pci' else '0000:0%s:00.0' % (int(number) + 1)
+                return 'Serial Number : %s\nPCIe Bus Info : %s\n' % (serial, address)
+            if command[3] == '-link':
+                if case == 'link_unobservable':
+                    import subprocess
+                    raise subprocess.TimeoutExpired(command, 5)
+                return 'link status: UP\n'
+            mask = '255.0.255.0' if case == 'bad_mask' else '255.255.0.0'
+            return 'ipaddr:172.20.9.%s\nnetmask:%s\n' % (80 + int(command[2]), mask)
+        return output
+
+    @staticmethod
+    def _invoke(output):
+        import inspect
+        from pathlib import Path
+        from zstacklib.utils import hccn
+        assert host_plugin.hccn is hccn
+        assert inspect.isfunction(hccn.collect_devices)
+        assert Path(hccn.collect_devices.__code__.co_filename).resolve() == Path(hccn.__file__).resolve()
+        with patch.object(hccn.subprocess, 'check_output', side_effect=output):
+            return json.loads(_make_plugin().get_hccn_devices(_make_req()))
+
+    @pytest.mark.parametrize('case', ['duplicate_sn', 'duplicate_pci', 'bad_mask'])
+    def test_known_invalid_configuration_keeps_collector_reason(self, case):
+        from zstacklib.utils import hccn
+        output = self._output(case)
+        with patch.object(hccn.subprocess, 'check_output', side_effect=output):
+            with pytest.raises(ValueError) as original:
+                hccn.collect_devices()
+        rsp = self._invoke(output)
+        assert rsp['success'] is False
+        assert rsp['error'] == str(original.value)
+        assert rsp['nativeFailureKind'] == 'invalid'
+
+    @pytest.mark.parametrize('kind', ['nonzero', 'timeout', 'oserror', 'subprocess'])
+    def test_command_unobservable_keeps_collector_reason(self, kind):
+        import subprocess
+        from zstacklib.utils import hccn
+        errors = {
+            'nonzero': subprocess.CalledProcessError(191, ('npu-smi', 'info', '-l'), output='dcmi initialize failed -8001'),
+            'timeout': subprocess.TimeoutExpired(('npu-smi', 'info', '-l'), 5),
+            'oserror': OSError(2, 'npu-smi not installed'),
+            'subprocess': subprocess.SubprocessError('native command channel unavailable'),
+        }
+        output = self._output(errors[kind])
+        with patch.object(hccn.subprocess, 'check_output', side_effect=output):
+            with pytest.raises((subprocess.SubprocessError, OSError)) as original:
+                hccn.collect_devices()
+        rsp = self._invoke(output)
+        assert rsp['success'] is False
+        assert rsp['error'] == str(original.value)
+        assert rsp['nativeFailureKind'] == 'unobservable'
+
+    def test_unknown_failure_keeps_original_untyped_decorator_response(self):
+        rsp = self._invoke(self._output(RuntimeError('unexpected collector defect')))
+        assert rsp == {'success': False, 'error': 'unexpected collector defect'}
+
+    @pytest.mark.parametrize('case,link', [('normal', 'UP'), ('link_unobservable', 'UNKNOWN')])
+    def test_success_and_unknown_link_keep_original_success_shape(self, case, link):
+        rsp = self._invoke(self._output(case))
+        assert set(rsp) == {'success', 'error', 'devices'}
+        assert rsp['success'] is True
+        assert rsp['error'] == ''
+        assert rsp['devices'] == [
+            {'pciDeviceAddress': '0000:01:00.0', 'serialNumber': 'card-0',
+             'address': '172.20.9.80', 'netmask': '255.255.0.0', 'linkStatus': link},
+            {'pciDeviceAddress': '0000:02:00.0', 'serialNumber': 'card-1',
+             'address': '172.20.9.81', 'netmask': '255.255.0.0', 'linkStatus': link},
+        ]
