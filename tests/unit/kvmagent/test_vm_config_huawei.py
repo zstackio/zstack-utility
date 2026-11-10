@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import base64
 import json
 from unittest.mock import MagicMock, patch
 
@@ -229,3 +230,59 @@ def test_legacy_nvidia_empty_result_uses_original_collector_without_new_gate():
     assert result['success'] is True
     assert result['gpuInfos'] == []
     assert 'hccnBootstrap' not in result
+
+
+
+def _real_log_and_registered_gpu_sync_cmd(monkeypatch):
+    # The shared conftest swaps log for a passthrough mock; load the real masker and decorator instead.
+    import importlib.util
+    import os
+    import sys
+    utils = sys.modules['zstacklib.utils']
+    root = os.path.dirname(os.path.dirname(os.path.abspath(vm_config.__file__)))
+    log_path = os.path.join(list(utils.__path__)[0], 'log.py')
+    log_spec = importlib.util.spec_from_file_location('zstacklib.utils._real_log', log_path)
+    real_log = importlib.util.module_from_spec(log_spec)
+    log_spec.loader.exec_module(real_log)
+    real_log.get_logger = lambda _name: MagicMock()
+    monkeypatch.setitem(sys.modules, 'zstacklib.utils.log', real_log)
+    monkeypatch.setattr(utils, 'log', real_log, raising=False)
+    spec = importlib.util.spec_from_file_location('_vm_config_real_log', os.path.join(root, 'plugins', 'vm_config.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    server = MagicMock()
+    plugin = module.VmConfigPlugin.__new__(module.VmConfigPlugin)
+    with patch.object(module.kvmagent, 'get_http_server', return_value=server):
+        plugin.start()
+    for call in server.register_async_uri.call_args_list:
+        if call.args[0] == module.VmConfigPlugin.VM_GPU_INFO_SYNC:
+            return real_log, call.kwargs.get('cmd')
+    raise AssertionError('gpu info sync uri not registered')
+
+
+def test_strict_publish_yaml_is_masked_in_the_request_log(monkeypatch):
+    # serviceYamlBase64 decodes to the service config with credentials; debug logs must never carry it.
+    log, cmd = _real_log_and_registered_gpu_sync_cmd(monkeypatch)
+    secret_yaml = base64.b64encode(b'password: hunter2\n').decode()
+    raw = json.dumps({'vmUuid': 'a' * 32, 'vendors': ['Huawei'], 'hccnBootstrap': {
+        'schemaVersion': 1, 'operation': 'publish', 'payload': {'serviceYamlBase64': secret_yaml}}})
+    logged = log.mask_sensitive_field(cmd, raw)
+    assert secret_yaml not in logged
+    assert json.loads(logged)['vmUuid'] == 'a' * 32
+
+
+def test_unparseable_strict_body_is_not_logged_and_does_not_raise(monkeypatch):
+    # A body the masker cannot parse may still hold secrets, and the strict handler must still answer it.
+    log, cmd = _real_log_and_registered_gpu_sync_cmd(monkeypatch)
+    raw = '{"hccnBootstrap": {"payload": {"serviceYamlBase64": "c2VjcmV0"}'
+    logged = log.mask_sensitive_field(cmd, raw)
+    assert 'c2VjcmV0' not in logged
+
+
+def test_non_object_strict_body_is_not_logged(monkeypatch):
+    # Field paths only address a JSON object; an array body would otherwise be logged with its secret intact.
+    log, cmd = _real_log_and_registered_gpu_sync_cmd(monkeypatch)
+    secret_yaml = base64.b64encode(b'password: hunter2\n').decode()
+    raw = json.dumps([{'hccnBootstrap': {'payload': {'serviceYamlBase64': secret_yaml}}}])
+    logged = log.mask_sensitive_field(cmd, raw)
+    assert secret_yaml not in logged

@@ -564,7 +564,7 @@ def test_strict_qmp_query_bounds_real_blocking_process(tmp_path, monkeypatch):
     while time.monotonic() < started + 7:
         try:
             terminated = status.read_text().split()[2] == 'Z'
-        except FileNotFoundError:
+        except (FileNotFoundError, ProcessLookupError):
             terminated = True
         if terminated:
             break

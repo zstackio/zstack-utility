@@ -225,14 +225,18 @@ def mask_sensitive_field(cmd, cmd_str):
         return cmd_str
 
     field_paths = getattr(cmd, SENSITIVE_FIELD_NAME)
-    obj = simplejson.loads(cmd_str)
-    if isinstance(obj, dict):
-        for path in field_paths:
-            try:
-                exec(("if {0}: {0}='*****'".format(path)), {'obj': obj})
-            except:
-                pass
-        if SENSITIVE_FIELD_NAME in obj:
-            del obj[SENSITIVE_FIELD_NAME]
+    try:
+        obj = simplejson.loads(cmd_str)
+    except Exception:
+        return '<unparseable body with sensitive fields omitted>'
+    if not isinstance(obj, dict):
+        return '<non-object body with sensitive fields omitted>'
+    for path in field_paths:
+        try:
+            exec(("if {0}: {0}='*****'".format(path)), {'obj': obj})
+        except:
+            pass
+    if SENSITIVE_FIELD_NAME in obj:
+        del obj[SENSITIVE_FIELD_NAME]
 
     return simplejson.dumps(obj)
