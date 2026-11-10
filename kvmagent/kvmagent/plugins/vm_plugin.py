@@ -57,6 +57,7 @@ from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins import host_pushgateway
 from kvmagent.plugins import vm_artifact
 from kvmagent.plugins import zbs_storage_plugin
+from kvmagent.plugins import ramfb
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
 from kvmagent.plugins.nvram import nvram, nvram_secure_boot
@@ -3893,7 +3894,7 @@ class Vm(object):
         # Memory snapshots must retain the video devices, aliases and PCI
         # addresses from the saved QEMU state, including pre-ramfb snapshots.
         root = etree.fromstring(self.domain_xml)
-        if not any(model.get('type') == 'virtio' for model in root.findall('devices/video/model')):
+        if not any(model.get('type') in ('virtio', 'ramfb') for model in root.findall('devices/video/model')):
             return
 
         @LibvirtAutoReconnect
@@ -3908,6 +3909,7 @@ class Vm(object):
         for video in devices.findall('video'):
             devices.remove(video)
         devices.extend(videos)
+        ramfb.restore_migration(root, saved)
         self.domain_xml = etree.tostring(root, encoding='unicode')
 
     def _remove_legacy_virtio_blk_discard_if_absent_in_saved_image(self, path):
@@ -9075,6 +9077,7 @@ class Vm(object):
             add_cpu_vendor_id_to_cpu_flags()
 
         root = elements['root']
+        ramfb.enable_migration(root)
         xml = etree.tostring(root, encoding="unicode")
 
         vm = Vm()
