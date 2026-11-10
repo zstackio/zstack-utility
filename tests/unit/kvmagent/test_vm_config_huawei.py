@@ -277,3 +277,12 @@ def test_unparseable_strict_body_is_not_logged_and_does_not_raise(monkeypatch):
     raw = '{"hccnBootstrap": {"payload": {"serviceYamlBase64": "c2VjcmV0"}'
     logged = log.mask_sensitive_field(cmd, raw)
     assert 'c2VjcmV0' not in logged
+
+
+def test_non_object_strict_body_is_not_logged(monkeypatch):
+    # Field paths only address a JSON object; an array body would otherwise be logged with its secret intact.
+    log, cmd = _real_log_and_registered_gpu_sync_cmd(monkeypatch)
+    secret_yaml = base64.b64encode(b'password: hunter2\n').decode()
+    raw = json.dumps([{'hccnBootstrap': {'payload': {'serviceYamlBase64': secret_yaml}}}])
+    logged = log.mask_sensitive_field(cmd, raw)
+    assert secret_yaml not in logged
