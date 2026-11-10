@@ -26,7 +26,7 @@ except ImportError:
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http, lvm, ceph, pci, gpu, linux, cpu_frequency
+from zstacklib.utils import http, lvm, ceph, pci, gpu, linux, cpu_frequency, sansec
 from zstacklib.utils import qemu
 from zstacklib.utils import iptables
 from zstacklib.utils import iproute
@@ -3923,6 +3923,12 @@ done
         if not os.path.exists("/dev/vfio/vfio"):
             logger.info("enable vfio/vfio-pci module")
             updateConfigration.enable_vfio_module()
+
+        try:
+            with lock.NamedLock('sansec-device-operation'):
+                sansec.converge_driver()
+        except shell.ShellError as error:
+            logger.warn("cannot load swcsm with the persisted VFnum before PCI discovery: %s" % error)
 
         if cmd.skipGrubConfig:
             rsp.hostIommuStatus = True
