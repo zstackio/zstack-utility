@@ -1237,11 +1237,36 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             logger.debug("not find any usable fc disks")
             return []
 
+        if rescan:
+            rescanned = [[] for _ in fc_targets]
+
+            def rescan_luns(fc_target, i):
+                for info in [x for x in scsi_infos if '[' + fc_target in x]:
+                    if info.split()[-1] == '-':
+                        continue
+                    dev_name = os.path.basename(info.split()[-2])
+                    linux.write_file("/sys/block/%s/device/rescan" % dev_name, "1")
+                    logger.debug("rescaned disk %s" % dev_name)
+                    rescanned[i].append(info)
+
+            threads = [thread.ThreadFacade.run_in_thread(rescan_luns, [target, i])
+                       for i, target in enumerate(fc_targets)]
+            for t in threads:
+                t.join()
+            rescanned_infos = set(info for infos in rescanned for info in infos)
+            scsi_infos = [info for info in scsi_infos if info in rescanned_infos]
+
+        snapshot = lvm.StorageDeviceScanSnapshot()
+        snapshot.blk_infos = lvm.get_lsblk_infos()
+        snapshot.device_paths = lvm.get_device_paths()
+        snapshot.storage_wwnns = lvm.get_storage_wwnns()
+        snapshot.multipath_running = lvm.is_multipath_running()
+        snapshot.multipath_slaves = lvm.get_multipath_slaves() if snapshot.multipath_running else set()
         luns = [[] for _ in enumerate(fc_targets)]
 
         def fill_lun_info(fc_target, i):
             for target_scsi_info in [x for x in scsi_infos if '[' + fc_target in x]:
-                device_info = self.get_fc_device_info(target_scsi_info, rescan)
+                device_info = self.get_fc_device_info(target_scsi_info, False, snapshot)
                 if device_info:
                     luns[i].append(device_info)
 
@@ -1354,8 +1379,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @staticmethod
-    def get_fc_device_info(scsi_info, rescan):
-        # type: (str, bool) -> FiberChannelLunStruct
+    def get_fc_device_info(scsi_info, rescan, snapshot=None):
+        # type: (str, bool, lvm.StorageDeviceScanSnapshot or None) -> FiberChannelLunStruct or None
+        if snapshot is None:
+            snapshot = lvm.StorageDeviceScanSnapshot()
         s = FiberChannelLunStruct()
 
         dev_name = os.path.basename(scsi_info.split()[-2])
@@ -1368,7 +1395,7 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
             linux.write_file("/sys/block/%s/device/rescan" % dev_name, "1")
             logger.debug("rescaned disk %s" % dev_name)
 
-        blk_info = lvm.lsblk_info(dev_name)
+        blk_info = lvm.lsblk_info(dev_name, snapshot.blk_infos)
         if not blk_info:
             return None
 
@@ -1378,10 +1405,10 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
         s.serial = blk_info.serial
         s.hctl = blk_info.hctl
         s.size = blk_info.size
-        s.type = 'mpath' if lvm.is_slave_of_multipath("/dev/%s" % dev_name) else blk_info.type
+        s.type = 'mpath' if lvm.is_slave_of_multipath("/dev/%s" % dev_name, snapshot.multipath_slaves, snapshot.multipath_running) else blk_info.type
         s.wwids = [wwid]
-        s.path = lvm.get_device_path(dev_name)
-        s.storageWwnn = lvm.get_storage_wwnn(s.hctl)
+        s.path = lvm.get_device_path(dev_name, snapshot.device_paths)
+        s.storageWwnn = lvm.get_storage_wwnn(s.hctl, snapshot.storage_wwnns)
         return s
 
 
@@ -1423,19 +1450,25 @@ class StorageDevicePlugin(kvmagent.KvmAgent):
                     if transport:
                         return transport.strip()
 
+        snapshot = lvm.StorageDeviceScanSnapshot()
+        snapshot.blk_infos = lvm.get_lsblk_infos()
+        snapshot.device_paths = lvm.get_device_paths()
+        snapshot.multipath_running = lvm.is_multipath_running()
+        snapshot.multipath_slaves = lvm.get_multipath_slaves() if snapshot.multipath_running else set()
+
         for lun in nvme_luns:
             s = NvmeLunStruct()
             dev_name = os.path.basename(lun.DevicePath)
-            blk_info = lvm.lsblk_info(dev_name)
+            blk_info = lvm.lsblk_info(dev_name, snapshot.blk_infos)
             s.vendor = blk_info.vendor
             s.model = blk_info.model
             s.wwn = blk_info.wwn
             s.serial = blk_info.serial
             s.hctl = blk_info.hctl
             s.size = blk_info.size
-            s.type = 'mpath' if lvm.is_slave_of_multipath(lun.DevicePath) else blk_info.type
+            s.type = 'mpath' if lvm.is_slave_of_multipath(lun.DevicePath, snapshot.multipath_slaves, snapshot.multipath_running) else blk_info.type
             s.wwids = [s.wwn]
-            path = lvm.get_device_path(lun.DevicePath)
+            path = lvm.get_device_path(lun.DevicePath, snapshot.device_paths)
             s.path = path if path else s.wwn
             s.nqn = get_nqn()
             s.transport = get_transport()
