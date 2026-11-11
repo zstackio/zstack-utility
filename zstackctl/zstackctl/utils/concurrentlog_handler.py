@@ -68,8 +68,7 @@ from portalocker import lock, unlock, LOCK_EX, LOCK_NB, LockException
 class NullLogRecord(LogRecord):
 
     def __init__(self):
-        super(NullLogRecord, self).__init__()
-        pass
+        LogRecord.__init__(self, name='', level=0, pathname='', lineno=0, msg='', args=None, exc_info=None)
 
     def __getattr__(self, attr):
         return None
