@@ -1864,6 +1864,72 @@ class TestNetworkPluginMulticastSnooping:
 
 
 @pytest.mark.kvmagent
+class TestNetworkPluginKylinMulticastCapacity:
+    bridge_path = "/sys/class/net/br0/bridge/"
+
+    @pytest.fixture
+    def state(self, monkeypatch):
+        plugin = _make_plugin()
+        module = importlib.import_module("kvmagent.plugins.network_plugin")
+        values = {"hash_max": "512", "multicast_snooping": "0", "multicast_querier": "0"}
+        def write_file(path, value):
+            values[path.rsplit("/", 1)[1]] = value
+            return path
+        write = MagicMock(side_effect=write_file)
+        monkeypatch.setattr(module.kvmagent, "get_host_distribution", lambda: "kylin")
+        monkeypatch.setattr(module.os.path, "exists", lambda path: path.startswith(self.bridge_path))
+        monkeypatch.setattr(module.linux, "read_file_strip", lambda path: values[path.rsplit("/", 1)[1]])
+        monkeypatch.setattr(module.linux, "write_file", write)
+        monkeypatch.setattr(module.time, "sleep", write.sleep)
+        return plugin, values, write
+
+    @pytest.mark.parametrize("hash_max, snooping, querier", [
+        ("512", "0", True), ("512", "1", True), ("4096", "0", True),
+        ("8192", "0", True), ("512", "0", False)])
+    def test_capacity_and_reconnect(self, state, hash_max, snooping, querier):
+        plugin, values, write = state
+        values["hash_max"], values["multicast_snooping"] = hash_max, snooping
+        cmd = SimpleNamespace(bridgeName="br0", enableMulticastSnooping=True, enableMulticastQuerier=querier)
+        plugin._configure_bridge_multicast(cmd)
+        expected = []
+        if int(hash_max) < 4096:
+            expected.append(call(self.bridge_path + "hash_max", "4096"))
+            expected.append(call.sleep(1))
+        if snooping == "0":
+            expected.append(call(self.bridge_path + "multicast_snooping", "1"))
+        if querier:
+            expected.append(call(self.bridge_path + "multicast_querier", "1"))
+        assert write.mock_calls == expected
+        plugin._configure_bridge_multicast(cmd)
+        assert write.mock_calls == expected
+
+    @pytest.mark.parametrize("distribution, snooping", [("centos", True), ("kylin", False), ("kylin", None)])
+    def test_original_scope(self, state, monkeypatch, distribution, snooping):
+        plugin, values, write = state
+        module = importlib.import_module("kvmagent.plugins.network_plugin")
+        monkeypatch.setattr(module.kvmagent, "get_host_distribution", lambda: distribution)
+        legacy = MagicMock()
+        monkeypatch.setattr(plugin, "_enable_bridge_igmp_snooping", legacy)
+        values["multicast_snooping"] = values["multicast_querier"] = "1"
+        plugin._configure_bridge_multicast(SimpleNamespace(
+            bridgeName="br0", enableMulticastSnooping=snooping, enableMulticastQuerier=True))
+        assert values["hash_max"] == "512"
+        write.sleep.assert_not_called()
+        if snooping is None:
+            legacy.assert_called_once_with("br0", 0, 0)
+        else:
+            assert values["multicast_snooping"] == str(int(snooping))
+
+    def test_hash_write_failure(self, state):
+        plugin, _, write = state
+        write.side_effect = lambda path, value: None
+        with pytest.raises(Exception, match=r"bridge\[br0\] hash_max to 4096"):
+            plugin._configure_bridge_multicast(SimpleNamespace(bridgeName="br0", enableMulticastSnooping=True))
+        write.assert_called_once_with(self.bridge_path + "hash_max", "4096")
+        write.sleep.assert_not_called()
+
+
+@pytest.mark.kvmagent
 class TestNetworkPluginCreateBridge:
     def test_create_bridge_success(self):
         plugin = _make_plugin()

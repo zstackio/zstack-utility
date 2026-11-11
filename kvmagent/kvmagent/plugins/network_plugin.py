@@ -15,6 +15,7 @@ from zstacklib.utils.bash import *
 from zstacklib.utils import ovs
 from jinja2 import Template
 import os
+import time
 import traceback
 import subprocess
 import json
@@ -724,16 +725,23 @@ class NetworkPlugin(kvmagent.KvmAgent):
         settings = [('multicast_snooping', snooping), ('multicast_querier', querier)]
         if not enableSnooping:
             settings.reverse()
+        if enableSnooping and kvmagent.get_host_distribution() == 'kylin':
+            # An undersized MDB can disable snooping and block host reconnect.
+            settings.insert(0, ('hash_max', '4096'))
 
         for name, value in settings:
             path = '%s/%s' % (bridgePath, name)
             try:
                 if os.path.exists(path):
                     current = linux.read_file_strip(path)
+                    if name == 'hash_max' and int(current) >= int(value):
+                        continue
                     if isinstance(current, (str, type(u''))) and current == value:
                         continue
                 if not linux.write_file(path, value):
                     raise IOError('sysfs path does not exist')
+                if name == 'hash_max':
+                    time.sleep(1)
             except Exception as e:
                 raise Exception('failed to set bridge[%s] %s to %s: %s' %
                                 (cmd.bridgeName, name, value, str(e)))
