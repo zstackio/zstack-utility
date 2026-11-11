@@ -989,7 +989,7 @@ configure lldp status rx-only \n
 
         except Exception as e:
             logger.warning(traceback.format_exc())
-            rsp.error = 'unable to apply lldp config, because %s', str(e)
+            rsp.error = 'unable to apply lldp config, because %s' % str(e)
             rsp.success = False
 
         return jsonobject.dumps(rsp)

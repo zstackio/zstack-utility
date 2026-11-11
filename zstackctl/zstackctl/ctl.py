@@ -3619,7 +3619,8 @@ class InstallDbCmd(Command):
   tasks:
     - name: ansible_distribution_major_version
       set_fact:
-        ansible_distribution_major_version: "{{ ansible_distribution_major_version | int }}"
+        ansible_distribution_major_version: "{{ item }}"
+      loop: "{{ [ansible_distribution_major_version | regex_replace('[^0-9]', '') | int] }}"
 
     - name: pre install script
       script: $pre_install_script
@@ -3630,9 +3631,9 @@ class InstallDbCmd(Command):
 
     - name: install GreatDB
       when: >
-        (ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 8)
-        or 
-        (ansible_os_family == 'Kylin' and ansible_distribution_version == '10') 
+        ((ansible_os_family == 'RedHat' and ansible_distribution_major_version >= 8)
+        or
+        (ansible_os_family == 'Kylin' and ansible_distribution_version == '10'))
         and yum_repo != 'false'
       shell: yum clean all; yum --disablerepo="*" --enablerepo={{ yum_repo }} install -y greatsql-client greatsql-devel greatsql-icu-data-files greatsql-mysql-router greatsql-server greatsql-shared
       register: install_result
@@ -3688,8 +3689,8 @@ class InstallDbCmd(Command):
                     if not ip:
                         continue
                     if args.choose_database == 'GreatDB':
-                        more_cmd += "CREATE USER IF NOT EXISTS 'root'@'{host}' IDENTIFIED BY '' WITH GRANT OPTION;".format(host=ip)
-                        more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'{host}';".format(host=ip)
+                        more_cmd += "CREATE USER IF NOT EXISTS 'root'@'{host}' IDENTIFIED BY '';".format(host=ip)
+                        more_cmd += "GRANT ALL PRIVILEGES ON *.* TO 'root'@'{host}' WITH GRANT OPTION;".format(host=ip)
                 grant_access_cmd = '''/usr/bin/mysql -u root -e ''' \
                                    '''"CREATE USER IF NOT EXISTS 'root'@'localhost' IDENTIFIED BY '';''' \
                                    '''CREATE USER IF NOT EXISTS 'root'@'{host}' IDENTIFIED BY '';''' \

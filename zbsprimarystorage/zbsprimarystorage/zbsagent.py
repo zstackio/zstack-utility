@@ -25,6 +25,12 @@ class AgentResponse(object):
         self.error = error
 
 
+class PingResponse(AgentResponse):
+    def __init__(self):
+        super(PingResponse, self).__init__()
+        self.agentVersion = None
+
+
 class SyncMetadataRsp(AgentResponse):
     def __init__(self):
         super(SyncMetadataRsp, self).__init__()
@@ -231,6 +237,8 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.ROLLBACK_SNAPSHOT_PATH, self.rollback_snapshot)
         self.http_server.register_sync_uri(self.GET_VOLUME_CLIENTS_PATH, self.get_volume_clients)
 
+        self.agent_version = None
+
     @replyerror
     def get_facts(self, req):
         rsp = GetFactsRsp()
@@ -270,13 +278,13 @@ class ZbsAgent(plugin.TaskManager):
             return jsonobject.dumps(rsp)
 
         self.SUPPORT_GET_VOLUME_CLIENTS = zbsutils.is_support_get_volume_clients()
-
+        self.agent_version = cmd.agentVersion
         return jsonobject.dumps(rsp)
 
     @replyerror
     def ping(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        rsp = AgentResponse()
+        rsp = PingResponse()
 
         current_cluster_uuid = zbsutils.get_cluster_uuid(cmd.clusterInfo.version)
         if current_cluster_uuid != cmd.clusterInfo.uuid:
@@ -299,6 +307,7 @@ class ZbsAgent(plugin.TaskManager):
             rsp.error = 'cannot found mds leader'
             return jsonobject.dumps(rsp)
 
+        rsp.agentVersion = self.agent_version
         return jsonobject.dumps(rsp)
 
     @replyerror
