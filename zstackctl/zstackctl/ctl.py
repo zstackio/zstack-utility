@@ -2695,6 +2695,10 @@ class ShowStatusCmd(Command):
         def show_hci_version():
             full_version = get_hci_full_version()
             if not full_version:
+                detail_version = get_hci_detail_version()
+                if detail_version:
+                    name, version = detail_version.rsplit('-', 1)
+                    info('%s version: %s' % (name, version))
                 return
             name, version = full_version.rsplit('-', 2)[0].rsplit('-', 1)
             info('%s version: %s (%s)' % (name, version, full_version))

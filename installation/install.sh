@@ -1788,6 +1788,7 @@ upgrade_zstack(){
     [ $? -ne 0 ] && zstack-ctl configure RepoVersion.Strategy="permissive"
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
+        do_config_deploy_mode
         return
     fi
 
