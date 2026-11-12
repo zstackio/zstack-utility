@@ -1,4 +1,5 @@
 import functools
+import re
 import time
 
 from kvmagent import kvmagent
@@ -92,18 +93,25 @@ class Eip(object):
     def getPhysicalNicNameFromBridgeName(self, bridgeName):
         return bridgeName.replace('br_', '', 1).split("_")[0]
 
-    def find_namespace_name_by_ip(self, ipaddr, version):
-        if version == 4:
+    def find_matching_namespaces_by_ip(self, ipaddr, version, netns=None):
+        if int(version) == 4:
             ns_name_suffix = ipaddr.replace('.', '_')
         else:
             ns_name_suffix = ipaddr
 
-        netns = iproute.IpNetnsShell.list_netns()
-        for ns in netns:
-            if ns.endswith(ns_name_suffix):  # ns is like 'br_eth0_172_20_51_136'
-                return ns
+        target_suffix = '_' + ns_name_suffix
+        candidates = iproute.IpNetnsShell.list_netns() if netns is None else netns
+        return [ns for ns in candidates if ns.endswith(target_suffix)]
 
-        return None
+    def find_namespace_name_by_ip(self, ipaddr, version):
+        matches = self.find_matching_namespaces_by_ip(ipaddr, version)
+        if len(matches) > 1:
+            logger.warn(
+                "multiple namespaces %s matched ip[%s], refusing ambiguous match"
+                % (matches, ipaddr)
+            )
+            return None
+        return matches[0] if matches else None
 
     def set_public_interface_state(self, ns_name, eip_uuid, vip, version, active,
                                    fail_if_missing=True, vip_gateway=None, announce=True):
@@ -378,7 +386,61 @@ class Eip(object):
         phy_dev = phy_dev.strip().split("\n")[0]
         iproute.del_fdb_entry(phy_dev, inner_mac)
 
-    def is_eip_present(self, eip, existing_netns):
+    @staticmethod
+    def _is_ebtables_chain_hooked(chain_name, ebtables_nat_output):
+        if not ebtables_nat_output:
+            return False
+        escaped = re.escape(chain_name)
+        has_chain = re.search(
+            r'(?m)^Bridge chain:\s+%s,' % escaped, ebtables_nat_output
+        ) is not None
+        has_jump = re.search(
+            r'(?m)-j\s+%s(?:\s|$)' % escaped, ebtables_nat_output
+        ) is not None
+        return has_chain and has_jump
+
+    def _has_expected_ebtables_rules(
+            self, eip, pub_odev, pri_odev, ebtables_nat_output):
+        nic_name = eip.nicName
+        if int(getattr(eip, 'ipVersion', 4)) == 4:
+            required_chain_groups = [
+                ("eip-%s-gw" % nic_name, "%s-gw" % nic_name),
+                ("eip-%s-gw" % pri_odev, "%s-gw" % pri_odev),
+                ("eip-%s-arp" % pri_odev, "%s-arp" % pri_odev),
+                ("eip-%s-arp" % pub_odev, "%s-arp" % pub_odev),
+                ("eip-%s-arp" % nic_name, "%s-arp" % nic_name),
+            ]
+        else:
+            required_chain_groups = [
+                ("eip-%s-gw" % nic_name, "%s-gw" % nic_name),
+            ]
+        return all(
+            any(
+                self._is_ebtables_chain_hooked(chain, ebtables_nat_output)
+                for chain in group
+            )
+            for group in required_chain_groups
+        )
+
+    @staticmethod
+    def _has_expected_fdb_entry(pri_mac, physical_nic, fdb_output):
+        if not fdb_output:
+            return False
+        target_mac = pri_mac.strip().lower()
+        target_nic = physical_nic.strip()
+        for line in fdb_output.splitlines():
+            tokens = line.strip().split()
+            if not tokens or tokens[0].lower() != target_mac:
+                continue
+            if "self" not in tokens:
+                continue
+            for idx, token in enumerate(tokens[:-1]):
+                if token == "dev" and tokens[idx + 1] == target_nic:
+                    return True
+        return False
+
+    def is_eip_present(
+            self, eip, existing_netns, ebtables_nat_output=None, fdb_output=None):
         ns_name = self.generate_namespace_name(eip.publicBridgeName, eip.vip)
         if ns_name not in existing_netns:
             return False
@@ -389,8 +451,26 @@ class Eip(object):
                 not linux.is_network_device_up(pri_odev)):
             return False
         netns = iproute.IpNetnsShell(ns_name)
-        return (netns.get_mac("%s_ei" % eip_suffix) is not None and
-                netns.get_mac("%s_i" % eip_suffix) is not None)
+        pub_mac = netns.get_mac("%s_ei" % eip_suffix)
+        pri_mac = netns.get_mac("%s_i" % eip_suffix)
+        if pub_mac is None or pri_mac is None:
+            return False
+        if ebtables_nat_output is None:
+            r, ebtables_nat_output = bash_ro(get_ebtables_cmd() + ' -t nat -L')
+            if r != 0:
+                return False
+        if not self._has_expected_ebtables_rules(
+                eip, pub_odev, pri_odev, ebtables_nat_output):
+            return False
+        if getattr(eip, 'addfdb', False) and getattr(eip, 'physicalNic', None):
+            if fdb_output is None:
+                r, fdb_output, _ = bash_roe('bridge fdb show')
+                if r != 0:
+                    return False
+            if not self._has_expected_fdb_entry(
+                    pri_mac, eip.physicalNic, fdb_output):
+                return False
+        return True
 
     @bash.in_bash
     @lock.file_lock('/run/xtables.lock')
@@ -1013,6 +1093,13 @@ class DEip(kvmagent.KvmAgent):
             rsp.error = "; ".join(errors)
         return jsonobject.dumps(rsp)
 
+    def _mark_recent_applied(self, eip_uuids):
+        now = time.monotonic()
+        for eip_uuid in eip_uuids:
+            norm_uuid = self._normalize_uuid(eip_uuid)
+            if norm_uuid:
+                self._recent_applied_eips[norm_uuid] = now
+
     @lock.lock('eip')
     def _delete_eips(self, eips):
         eip_cmd = Eip()
@@ -1023,16 +1110,38 @@ class DEip(kvmagent.KvmAgent):
     @lock.lock('eip')
     def _apply_eips(self, eips):
         eip_cmd = Eip()
-        for eip in eips:
-            self._recent_applied_eips[self._normalize_uuid(eip.eipUuid)] = time.monotonic()
-            eip_cmd.apply_eip(eip)
+        succeeded_uuids = []
+        try:
+            for eip in eips:
+                norm_uuid = self._normalize_uuid(eip.eipUuid)
+                try:
+                    eip_cmd.apply_eip(eip)
+                except Exception:
+                    self._recent_applied_eips.pop(norm_uuid, None)
+                    raise
+                self._recent_applied_eips[norm_uuid] = time.monotonic()
+                succeeded_uuids.append(norm_uuid)
+        finally:
+            if succeeded_uuids:
+                self._mark_recent_applied(succeeded_uuids)
 
     @lock.lock('eip')
     def _prepare_eips(self, eips):
         eip_cmd = Eip()
-        for eip in eips:
-            self._recent_applied_eips[self._normalize_uuid(eip.eipUuid)] = time.monotonic()
-            eip_cmd.apply_eip(eip, False)
+        succeeded_uuids = []
+        try:
+            for eip in eips:
+                norm_uuid = self._normalize_uuid(eip.eipUuid)
+                try:
+                    eip_cmd.apply_eip(eip, False)
+                except Exception:
+                    self._recent_applied_eips.pop(norm_uuid, None)
+                    raise
+                self._recent_applied_eips[norm_uuid] = time.monotonic()
+                succeeded_uuids.append(norm_uuid)
+        finally:
+            if succeeded_uuids:
+                self._mark_recent_applied(succeeded_uuids)
 
     @lock.lock('eip')
     def _sync_eips(self, expected_eips, in_flight_eip_uuids, grace_seconds):
@@ -1056,6 +1165,11 @@ class DEip(kvmagent.KvmAgent):
         }
 
         eip_cmd = Eip()
+        expected_netns = {
+            eip_cmd.generate_namespace_name(eip.publicBridgeName, eip.vip)
+            for eip in expected_eips
+            if getattr(eip, 'publicBridgeName', None) and getattr(eip, 'vip', None)
+        }
         actual_eips = {}
         eip_strings = [w for w in bash_o('ip -o -d link').split() if w.startswith('eip:')]
         for estr in eip_strings:
@@ -1068,6 +1182,7 @@ class DEip(kvmagent.KvmAgent):
             )
 
         errors = []
+        existing_netns = None
         for norm_uuid, (eip_uuid, vip, version, vnic_name) in list(actual_eips.items()):
             if norm_uuid in expected_by_uuid or norm_uuid in in_flight_uuids:
                 continue
@@ -1075,9 +1190,29 @@ class DEip(kvmagent.KvmAgent):
             if applied_at is not None and (now - applied_at) < grace_seconds:
                 continue
             try:
-                ns_name = eip_cmd.find_namespace_name_by_ip(vip, version)
+                if existing_netns is None:
+                    existing_netns = set(iproute.IpNetnsShell.list_netns())
+                matches = eip_cmd.find_matching_namespaces_by_ip(
+                    vip, version, existing_netns
+                )
+                if len(matches) > 1:
+                    logger.warn(
+                        "skip cleaning orphan EIP[uuid:%s, vip:%s] during sync: "
+                        "multiple namespaces matched %s" % (eip_uuid, vip, matches)
+                    )
+                    continue
+                ns_name = matches[0] if matches else None
+                if ns_name in expected_netns:
+                    logger.warn(
+                        "preserving active namespace[%s] while cleaning orphan "
+                        "EIP[uuid:%s, vip:%s] during sync"
+                        % (ns_name, eip_uuid, vip)
+                    )
+                    ns_name = None
                 eip_cmd.delete_orphan_fdb_if_needed(ns_name, eip_uuid)
                 eip_cmd.delete_eip_with_ns(ns_name, eip_uuid, version, vnic_name)
+                if ns_name:
+                    existing_netns.discard(ns_name)
                 self._recent_applied_eips.pop(norm_uuid, None)
                 logger.info(
                     "cleaned orphan EIP[uuid:%s, vip:%s, vnic:%s, ns:%s] during sync"
@@ -1093,27 +1228,45 @@ class DEip(kvmagent.KvmAgent):
         applied_vip_uuids = []
         if expected_eips:
             existing_netns = set(iproute.IpNetnsShell.list_netns())
-            for eip in expected_eips:
-                try:
-                    if eip_cmd.is_eip_present(eip, existing_netns):
-                        continue
-                    logger.info(
-                        "re-applying missing EIP[uuid:%s, vip:%s, vm:%s] during sync"
-                        % (eip.eipUuid, eip.vip, eip.vmUuid)
-                    )
-                    self._recent_applied_eips[self._normalize_uuid(eip.eipUuid)] = time.monotonic()
-                    eip_cmd.apply_eip(eip)
-                    if getattr(eip, 'vipUuid', None):
-                        applied_vip_uuids.append(eip.vipUuid)
-                    existing_netns.add(
-                        eip_cmd.generate_namespace_name(eip.publicBridgeName, eip.vip)
-                    )
-                except Exception as err:
-                    logger.warn(
-                        "failed to apply missing EIP[uuid:%s, vip:%s] during sync: %s"
-                        % (eip.eipUuid, eip.vip, err)
-                    )
-                    errors.append(str(err))
+            r_nat, nat_out = bash_ro(get_ebtables_cmd() + ' -t nat -L')
+            ebtables_nat_output = nat_out if r_nat == 0 else ""
+            fdb_output = None
+            if any(getattr(e, 'addfdb', False) and getattr(e, 'physicalNic', None)
+                   for e in expected_eips):
+                r_fdb, fdb_out, _ = bash_roe('bridge fdb show')
+                fdb_output = fdb_out if r_fdb == 0 else ""
+            reapplied_uuids = []
+            try:
+                for eip in expected_eips:
+                    norm_uuid = self._normalize_uuid(eip.eipUuid)
+                    try:
+                        if eip_cmd.is_eip_present(
+                                eip, existing_netns, ebtables_nat_output, fdb_output):
+                            continue
+                        logger.info(
+                            "re-applying missing EIP[uuid:%s, vip:%s, vm:%s] during sync"
+                            % (eip.eipUuid, eip.vip, eip.vmUuid)
+                        )
+                        eip_cmd.apply_eip(eip)
+                        self._recent_applied_eips[norm_uuid] = time.monotonic()
+                        reapplied_uuids.append(norm_uuid)
+                        if getattr(eip, 'vipUuid', None):
+                            applied_vip_uuids.append(eip.vipUuid)
+                        existing_netns.add(
+                            eip_cmd.generate_namespace_name(
+                                eip.publicBridgeName, eip.vip
+                            )
+                        )
+                    except Exception as err:
+                        self._recent_applied_eips.pop(norm_uuid, None)
+                        logger.warn(
+                            "failed to apply missing EIP[uuid:%s, vip:%s] during sync: %s"
+                            % (eip.eipUuid, eip.vip, err)
+                        )
+                        errors.append(str(err))
+            finally:
+                if reapplied_uuids:
+                    self._mark_recent_applied(reapplied_uuids)
 
         return applied_vip_uuids, errors
 
@@ -1137,6 +1290,9 @@ class DEip(kvmagent.KvmAgent):
     def _return_eips_to_passive(self, eip_cmd, eips):
         with lock.NamedLock('eip'):
             for eip in eips:
+                self._recent_applied_eips.pop(
+                    self._normalize_uuid(eip.eipUuid), None
+                )
                 try:
                     eip_cmd.set_eip_public_interface_state(
                         eip, False, announce=False)
@@ -1149,6 +1305,9 @@ class DEip(kvmagent.KvmAgent):
     def _return_public_interfaces_to_passive(self, eip_cmd, interfaces):
         with lock.NamedLock('eip'):
             for ns_name, eip_uuid, vip, version in interfaces:
+                self._recent_applied_eips.pop(
+                    self._normalize_uuid(eip_uuid), None
+                )
                 try:
                     eip_cmd.set_public_interface_state(
                         ns_name, eip_uuid, vip, version, False, False,
@@ -1167,12 +1326,18 @@ class DEip(kvmagent.KvmAgent):
             with lock.NamedLock('eip'):
                 for eip in eips:
                     if active:
-                        self._recent_applied_eips[self._normalize_uuid(eip.eipUuid)] = time.monotonic()
                         switched_eips.append(eip)
                     switched = eip_cmd.set_eip_public_interface_state(
                         eip, active, announce=False)
-                    if active and not switched:
-                        switched_eips.pop()
+                    if active:
+                        if switched:
+                            self._recent_applied_eips[
+                                self._normalize_uuid(eip.eipUuid)
+                            ] = time.monotonic()
+                        else:
+                            switched_eips.pop()
+                if active and switched_eips:
+                    self._mark_recent_applied([e.eipUuid for e in switched_eips])
         except Exception:
             if active:
                 self._return_eips_to_passive(eip_cmd, switched_eips)
@@ -1189,6 +1354,9 @@ class DEip(kvmagent.KvmAgent):
             except Exception:
                 self._return_eips_to_passive(eip_cmd, switched_eips)
                 raise
+            if switched_eips:
+                with lock.NamedLock('eip'):
+                    self._mark_recent_applied([e.eipUuid for e in switched_eips])
 
     def _register_vm_lifecycle_hook(self):
         import libvirt
@@ -1260,8 +1428,17 @@ class DEip(kvmagent.KvmAgent):
                         False,
                         announce=False,
                     )
-                    if active and not switched:
-                        switched_interfaces.pop()
+                    if active:
+                        if switched:
+                            self._recent_applied_eips[
+                                self._normalize_uuid(eip_uuid)
+                            ] = time.monotonic()
+                        else:
+                            switched_interfaces.pop()
+                if active and switched_interfaces:
+                    self._mark_recent_applied(
+                        [iface[1] for iface in switched_interfaces]
+                    )
         except Exception:
             if active:
                 self._return_public_interfaces_to_passive(
@@ -1275,3 +1452,8 @@ class DEip(kvmagent.KvmAgent):
                 self._return_public_interfaces_to_passive(
                     eip_cmd, switched_interfaces)
                 raise
+            if switched_interfaces:
+                with lock.NamedLock('eip'):
+                    self._mark_recent_applied(
+                        [iface[1] for iface in switched_interfaces]
+                    )

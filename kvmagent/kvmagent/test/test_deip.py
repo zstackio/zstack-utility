@@ -1058,7 +1058,8 @@ class TestDeleteEipWithMissingNamespace(unittest.TestCase):
                 mock.call("123456789_o"),
                 mock_iproute.delete_link_no_error.call_args_list,
             )
-            self.assertTrue(any("eip-vnic1.0-gw" in c for c in executed_cmds))
+            self.assertTrue(any("-F eip-vnic1.0-gw" in c for c in executed_cmds))
+            self.assertTrue(any("-X eip-vnic1.0-gw" in c for c in executed_cmds))
         finally:
             for p in patchers:
                 p.stop()
@@ -1087,6 +1088,32 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
             DEip.SYNC_EIP_PATH, self.plugin.sync_eips
         )
 
+    @staticmethod
+    def _healthy_ebtables_nat_output(eip_uuid="abcdef111111111", nic_name="vnic1.0"):
+        suffix = eip_uuid[-9:]
+        pub_odev = "%s_eo" % suffix
+        pri_odev = "%s_o" % suffix
+        chains = [
+            "eip-%s-gw" % nic_name,
+            "eip-%s-gw" % pri_odev,
+            "eip-%s-arp" % pri_odev,
+            "eip-%s-arp" % pub_odev,
+            "eip-%s-arp" % nic_name,
+        ]
+        lines = [
+            "Bridge table: nat",
+            "Bridge chain: PREROUTING, entries: 2, policy: ACCEPT",
+            "-p ARP -i %s -j eip-%s-gw" % (nic_name, nic_name),
+            "-p ARP -i %s -j eip-%s-gw" % (pri_odev, pri_odev),
+            "Bridge chain: POSTROUTING, entries: 3, policy: ACCEPT",
+            "-p ARP -o %s -j eip-%s-arp" % (pri_odev, pri_odev),
+            "-p ARP -o %s -j eip-%s-arp" % (pub_odev, pub_odev),
+            "-p ARP -o %s -j eip-%s-arp" % (nic_name, nic_name),
+        ]
+        for chain in chains:
+            lines.append("Bridge chain: %s, entries: 1, policy: RETURN" % chain)
+        return "\n".join(lines) + "\n"
+
     @mock.patch("kvmagent.plugins.deip.bash_o")
     def test_sync_prunes_multiple_orphan_eips_including_same_vm_and_missing_netns(
             self, bash_o):
@@ -1100,11 +1127,10 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
             % (alias1, alias2)
         )
 
-        def fake_find_ns(ipaddr, version):
-            return "br_eth0_11_168_100_10" if ipaddr == "11.168.100.10" else None
-
-        with mock.patch.object(Eip, "find_namespace_name_by_ip",
-                               side_effect=fake_find_ns):
+        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute:
+            mock_iproute.IpNetnsShell.list_netns.return_value = [
+                "br_eth0_11_168_100_10"
+            ]
             with mock.patch.object(Eip, "delete_orphan_fdb_if_needed") as del_fdb:
                 with mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
                     inspect.unwrap(DEip._sync_eips)(self.plugin, [], [], 0)
@@ -1143,8 +1169,10 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
                 del_eip.assert_not_called()
 
         with mock.patch("kvmagent.plugins.deip.time.monotonic", return_value=135.0):
-            with mock.patch.object(Eip, "find_namespace_name_by_ip",
-                                   return_value="br_eth0_11_168_100_11"):
+            with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute:
+                mock_iproute.IpNetnsShell.list_netns.return_value = [
+                    "br_eth0_11_168_100_11"
+                ]
                 with mock.patch.object(Eip, "delete_orphan_fdb_if_needed"):
                     with mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
                         inspect.unwrap(DEip._sync_eips)(
@@ -1178,23 +1206,28 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
             )
         )
 
-        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute:
-            with mock.patch("kvmagent.plugins.deip.linux") as mock_linux:
-                mock_iproute.IpNetnsShell.list_netns.return_value = [
-                    "br_eth0_192_168_1_100",
-                    "br_eth0_192_168_1_102",
-                ]
-                mock_iproute.IpNetnsShell.return_value.get_mac.return_value = (
-                    "aa:bb:cc:dd:ee:ff"
-                )
-                mock_linux.is_network_device_up.side_effect = (
-                    lambda dev: dev in ("111111111_eo", "111111111_o", "333333333_o")
-                )
-                with mock.patch.object(Eip, "apply_eip") as apply_eip:
-                    with mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
-                        applied_vips, errors = inspect.unwrap(DEip._sync_eips)(
-                            self.plugin, [healthy, passive, missing], [], 30
-                        )
+        nat_out = self._healthy_ebtables_nat_output(healthy.eipUuid, healthy.nicName)
+        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
+                mock.patch("kvmagent.plugins.deip.linux") as mock_linux, \
+                mock.patch("kvmagent.plugins.deip.get_ebtables_cmd",
+                           return_value="ebtables"), \
+                mock.patch("kvmagent.plugins.deip.bash_ro",
+                           return_value=(0, nat_out)):
+            mock_iproute.IpNetnsShell.list_netns.return_value = [
+                "br_eth0_192_168_1_100",
+                "br_eth0_192_168_1_102",
+            ]
+            mock_iproute.IpNetnsShell.return_value.get_mac.return_value = (
+                "aa:bb:cc:dd:ee:ff"
+            )
+            mock_linux.is_network_device_up.side_effect = (
+                lambda dev: dev in ("111111111_eo", "111111111_o", "333333333_o")
+            )
+            with mock.patch.object(Eip, "apply_eip") as apply_eip:
+                with mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
+                    applied_vips, errors = inspect.unwrap(DEip._sync_eips)(
+                        self.plugin, [healthy, passive, missing], [], 30
+                    )
 
         del_eip.assert_not_called()
         self.assertEqual([mock.call(passive), mock.call(missing)], apply_eip.call_args_list)
@@ -1219,8 +1252,10 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
                 inspect.unwrap(DEip._delete_eips)(self.plugin, [eip])
 
         with mock.patch("kvmagent.plugins.deip.time.monotonic", return_value=105.0):
-            with mock.patch.object(Eip, "find_namespace_name_by_ip",
-                                   return_value="br_eth0_11_168_100_12"):
+            with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute:
+                mock_iproute.IpNetnsShell.list_netns.return_value = [
+                    "br_eth0_11_168_100_12"
+                ]
                 with mock.patch.object(Eip, "delete_orphan_fdb_if_needed"):
                     with mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
                         inspect.unwrap(DEip._sync_eips)(self.plugin, [], [], 30)
@@ -1292,6 +1327,167 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
             with mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
                 inspect.unwrap(DEip._sync_eips)(self.plugin, [], [], 30)
                 del_eip.assert_not_called()
+
+    @mock.patch("kvmagent.plugins.deip.bash_o")
+    def test_find_namespace_requires_underscore_boundary_and_rejects_ambiguity(
+            self, bash_o):
+        eip_cmd = Eip()
+        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute:
+            mock_iproute.IpNetnsShell.list_netns.return_value = [
+                "br_eth0_110_0_0_1",
+                "br_eth0_2001:db8::1",
+                "br_eth0_10_0_0_2",
+                "br_eth1_10_0_0_2",
+            ]
+            self.assertIsNone(eip_cmd.find_namespace_name_by_ip("10.0.0.1", 4))
+            self.assertIsNone(eip_cmd.find_namespace_name_by_ip("::1", 6))
+            self.assertIsNone(eip_cmd.find_namespace_name_by_ip("10.0.0.2", 4))
+            self.assertEqual(
+                "br_eth0_110_0_0_1",
+                eip_cmd.find_namespace_name_by_ip("110.0.0.1", 4),
+            )
+
+        orphan_suffix = self._alias("abcdef555555555", "10.0.0.1", "vnic5.0")
+        orphan_ambig = self._alias("abcdef666666666", "10.0.0.2", "vnic6.0")
+        orphan_shared = self._alias("abcdef777777777", "10.0.0.3", "vnic7.0")
+        active_shared = _make_eip()
+        active_shared.eipUuid = "abcdef888888888"
+        active_shared.vip = "10.0.0.3"
+        active_shared.publicBridgeName = "br_eth0"
+
+        bash_o.return_value = (
+            "10: 555555555_eo alias %s\n"
+            "11: 666666666_eo alias %s\n"
+            "12: 777777777_eo alias %s\n"
+            % (orphan_suffix, orphan_ambig, orphan_shared)
+        )
+        nat_out = self._healthy_ebtables_nat_output(
+            active_shared.eipUuid, active_shared.nicName
+        )
+        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
+                mock.patch("kvmagent.plugins.deip.linux") as mock_linux, \
+                mock.patch("kvmagent.plugins.deip.get_ebtables_cmd",
+                           return_value="ebtables"), \
+                mock.patch("kvmagent.plugins.deip.bash_ro",
+                           return_value=(0, nat_out)), \
+                mock.patch.object(Eip, "delete_orphan_fdb_if_needed") as del_fdb, \
+                mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
+            mock_iproute.IpNetnsShell.list_netns.return_value = [
+                "br_eth0_110_0_0_1",
+                "br_eth0_10_0_0_2",
+                "br_eth1_10_0_0_2",
+                "br_eth0_10_0_0_3",
+            ]
+            mock_iproute.IpNetnsShell.return_value.get_mac.return_value = (
+                "aa:bb:cc:dd:ee:ff"
+            )
+            mock_linux.is_network_device_up.return_value = True
+            inspect.unwrap(DEip._sync_eips)(
+                self.plugin, [active_shared], [], 0
+            )
+
+        self.assertCountEqual(
+            [
+                mock.call(None, "abcdef555555555", 4, "vnic5.0"),
+                mock.call(None, "abcdef777777777", 4, "vnic7.0"),
+            ],
+            del_eip.call_args_list,
+        )
+        self.assertEqual([mock.call(None, "abcdef555555555"),
+                          mock.call(None, "abcdef777777777")],
+                         del_fdb.call_args_list)
+
+    @mock.patch("kvmagent.plugins.deip.bash_o")
+    def test_batch_apply_refreshes_grace_on_completion_and_failed_apply_is_not_shielded(
+            self, bash_o):
+        eip1 = _make_eip()
+        eip1.eipUuid = "abcdef111111111"
+        eip1.vip = "11.168.100.21"
+        eip2 = _make_eip()
+        eip2.eipUuid = "abcdef222222222"
+        eip2.vip = "11.168.100.22"
+        eip_fail = _make_eip()
+        eip_fail.eipUuid = "abcdef999999999"
+        eip_fail.vip = "11.168.100.29"
+
+        # Batch of 2 EIPs finishes at t=50.0 (started at t=10.0 -> 40s batch)
+        clock = iter([10.0, 50.0, 50.0])
+        with mock.patch("kvmagent.plugins.deip.time.monotonic",
+                        side_effect=lambda: next(clock)):
+            with mock.patch.object(Eip, "apply_eip"):
+                inspect.unwrap(DEip._apply_eips)(self.plugin, [eip1, eip2])
+
+        bash_o.return_value = (
+            "10: 111111111_eo alias %s\n"
+            "11: 222222222_eo alias %s\n"
+            % (
+                self._alias(eip1.eipUuid, eip1.vip, "vnic1.0"),
+                self._alias(eip2.eipUuid, eip2.vip, "vnic2.0"),
+            )
+        )
+        with mock.patch("kvmagent.plugins.deip.time.monotonic", return_value=70.0):
+            with mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
+                inspect.unwrap(DEip._sync_eips)(self.plugin, [], [], 30)
+                del_eip.assert_not_called()
+
+        # Failed apply_eip does not leave EIP shielded in _recent_applied_eips
+        with mock.patch("kvmagent.plugins.deip.time.monotonic", return_value=100.0):
+            with mock.patch.object(Eip, "apply_eip",
+                                   side_effect=Exception("arping duplicate")):
+                with self.assertRaisesRegex(Exception, "arping duplicate"):
+                    inspect.unwrap(DEip._apply_eips)(self.plugin, [eip_fail])
+
+        bash_o.return_value = "12: 999999999_eo alias %s\n" % self._alias(
+            eip_fail.eipUuid, eip_fail.vip, "vnic9.0"
+        )
+        with mock.patch("kvmagent.plugins.deip.time.monotonic", return_value=101.0), \
+                mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
+                mock.patch.object(Eip, "delete_orphan_fdb_if_needed"), \
+                mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
+            mock_iproute.IpNetnsShell.list_netns.return_value = [
+                "br_eth0_11_168_100_29"
+            ]
+            inspect.unwrap(DEip._sync_eips)(self.plugin, [], [], 30)
+            del_eip.assert_called_once_with(
+                "br_eth0_11_168_100_29", "abcdef999999999", 4, "vnic9.0"
+            )
+
+    def test_is_eip_present_detects_missing_ebtables_and_vf_fdb_entries(self):
+        eip = _make_eip()
+        eip.eipUuid = "abcdef111111111"
+        eip.vip = "192.168.1.100"
+        eip.nicName = "vnic1.0"
+        eip.addfdb = True
+        eip.physicalNic = "eth0"
+
+        eip_cmd = Eip()
+        existing_netns = {"br_eth0_192_168_1_100"}
+        full_nat = self._healthy_ebtables_nat_output(eip.eipUuid, eip.nicName)
+        missing_arp_nat = full_nat.replace("-p ARP -o vnic1.0 -j eip-vnic1.0-arp\n", "")
+        good_fdb = "aa:bb:cc:dd:ee:ff dev eth0 self permanent\n"
+        missing_fdb = "aa:bb:cc:dd:ee:ff dev eth1 self permanent\n"
+
+        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
+                mock.patch("kvmagent.plugins.deip.linux") as mock_linux:
+            mock_linux.is_network_device_up.return_value = True
+            mock_iproute.IpNetnsShell.return_value.get_mac.return_value = (
+                "aa:bb:cc:dd:ee:ff"
+            )
+            self.assertFalse(
+                eip_cmd.is_eip_present(
+                    eip, existing_netns, missing_arp_nat, good_fdb
+                )
+            )
+            self.assertFalse(
+                eip_cmd.is_eip_present(
+                    eip, existing_netns, full_nat, missing_fdb
+                )
+            )
+            self.assertTrue(
+                eip_cmd.is_eip_present(
+                    eip, existing_netns, full_nat, good_fdb
+                )
+            )
 
 
 if __name__ == "__main__":
