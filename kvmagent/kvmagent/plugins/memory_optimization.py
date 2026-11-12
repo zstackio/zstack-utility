@@ -1062,10 +1062,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             if tuned == 'active':
                 self._atomic_write(restart, b'')
             self._publish_ksm_config(content)
-        if tuned == 'active' and os.path.exists(restart):
-            subprocess.check_call(['systemctl', 'restart', self.KSM_TUNED_UNIT])
-        # A stopped ksmtuned reads the file when it starts.
+        # The record means ksmtuned ran when the block left the file; a failed restart leaves it failed,
+        # so it is restarted until it runs again. A stopped ksmtuned reads the file when it starts.
         if os.path.exists(restart):
+            subprocess.check_call(['systemctl', 'restart', self.KSM_TUNED_UNIT])
             os.remove(restart)
 
     def _publish_ksm_config(self, content):
@@ -1142,6 +1142,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             else:
                 subprocess.check_call(['systemctl', 'stop', self.KSM_TUNED_UNIT])
                 subprocess.check_call(['systemctl', 'stop', self.KSM_UNIT])
+                # Stopping ksmtuned on purpose replaces a restart still owed from releasing KSM.
+                restart = os.path.join(os.path.dirname(self.KSM_LOCK), self.KSM_TUNED_RESTART)
+                if os.path.exists(restart):
+                    os.remove(restart)
                 if content != existing:
                     self._publish_ksm_config(content)
                 self._write_ksm_sysfs('run', '0')
