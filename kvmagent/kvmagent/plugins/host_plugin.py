@@ -1168,13 +1168,14 @@ done
 def _parse_package_processes(output):
     processes = []
     for line in output.splitlines():
-        fields = line.split(None, 4)
-        if len(fields) < 4:
+        fields = line.split(None, 5)
+        if len(fields) < 5:
             continue
 
         try:
             pid = int(fields[0])
             etimes = int(fields[2])
+            start_ticks = int(fields[3])
         except ValueError:
             continue
 
@@ -1182,16 +1183,18 @@ def _parse_package_processes(output):
             'pid': pid,
             'stat': fields[1],
             'etimes': etimes,
-            'comm': fields[3],
-            'args': fields[4] if len(fields) > 4 else ''
+            'start_ticks': start_ticks,
+            'comm': fields[4],
+            'args': fields[5] if len(fields) > 5 else ''
         })
     return processes
 
 
-def _list_package_processes():
+def _package_process_list_command():
     cmd = r"""
 pgid="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
-ps -eo pid=,ppid=,pgid=,stat=,etimes=,comm=,args= 2>/dev/null | awk \
+process_output="$(ps -eo pid=,ppid=,pgid=,stat=,etimes=,comm=,args= 2>/dev/null)" || exit 2
+printf '%s\n' "$process_output" | awk \
     -v self="$$" -v parent="$PPID" -v pgid="$pgid" '
     {
         pid=$1
@@ -1219,6 +1222,25 @@ ps -eo pid=,ppid=,pgid=,stat=,etimes=,comm=,args= 2>/dev/null | awk \
             print pid, stat, etimes, comm, args
         }
     }'
+"""
+    return cmd
+
+
+def _list_package_processes():
+    cmd = _package_process_list_command().rstrip() + r""" | while read pid stat etimes comm args; do
+        start_ticks="$(awk '
+            {
+                line=$0
+                sub(/^.*\) /, "", line)
+                count=split(line, fields, " ")
+                if (count >= 20) print fields[20]
+            }' "/proc/$pid/stat" 2>/dev/null)"
+        case "$start_ticks" in
+            ''|*[!0-9]*) continue ;;
+        esac
+        printf '%s %s %s %s %s %s\n' \
+            "$pid" "$stat" "$etimes" "$start_ticks" "$comm" "$args"
+    done
 """
     r, o, e = bash_roe(cmd)
     if r != 0:
@@ -1282,42 +1304,101 @@ def _terminate_package_processes(processes):
     if not processes:
         return True, None
 
-    pids = ' '.join([str(p['pid']) for p in processes])
-    cmd = """
-pids="%s"
-targets=""
-for pid in $pids; do
-    proc="$(ps -p "$pid" -o comm= -o args= 2>/dev/null)" || continue
-    case "$proc" in
-        *yum*|*dnf*|*rpm*)
-            targets="$targets $pid"
+    target_specs = ' '.join([
+        '%s:%s' % (p['pid'], p['start_ticks']) for p in processes])
+    cmd = r"""
+target_specs="%s"
+
+get_process_start_ticks() {
+    awk '
+        {
+            line=$0
+            sub(/^.*\) /, "", line)
+            count=split(line, fields, " ")
+            if (count >= 20) print fields[20]
+        }' "/proc/$1/stat" 2>/dev/null
+}
+
+is_same_stale_package_process() {
+    pid="$1"
+    expected_start_ticks="$2"
+
+    current_start_ticks="$(get_process_start_ticks "$pid")"
+    [ "$current_start_ticks" = "$expected_start_ticks" ] || {
+        echo "skip pid whose process identity changed: $pid"
+        return 1
+    }
+
+    process_info="$(ps -p "$pid" -o etimes= -o stat= -o comm= -o args= 2>/dev/null)" || return 1
+    set -- $process_info
+    current_etimes="$1"
+    current_stat="$2"
+    current_comm="$3"
+    case "$current_etimes" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$current_etimes" -ge %s ] || {
+        echo "skip package manager process below stale threshold: $pid"
+        return 1
+    }
+
+    case "$current_stat" in
+        D*|Z*) return 1 ;;
+    esac
+
+    case "$current_comm" in
+        yum|dnf|rpm)
+            return 0
             ;;
-        *)
-            echo "skip pid no longer owned by package manager: $pid"
+        python|python[0-9]*|*-python|*-python[0-9]*)
+            case "$process_info" in
+                */usr/bin/yum*|*/bin/yum*|*/usr/bin/dnf*|*/bin/dnf*)
+                    return 0
+                    ;;
+            esac
             ;;
     esac
+
+    echo "skip pid no longer owned by package manager: $pid"
+    return 1
+}
+
+targets=""
+for target_spec in $target_specs; do
+    pid="${target_spec%%:*}"
+    expected_start_ticks="${target_spec#*:}"
+    if is_same_stale_package_process "$pid" "$expected_start_ticks"; then
+        echo "terminate stale package manager process: $pid"
+        if kill -TERM "$pid" 2>/dev/null; then
+            targets="$targets $target_spec"
+        fi
+    fi
 done
 
 [ -n "$targets" ] || exit 0
-
-echo "terminate stale package manager processes:$targets"
-kill -TERM $targets 2>/dev/null || true
 sleep 5
 
 alive=""
-for pid in $targets; do
-    kill -0 "$pid" 2>/dev/null && alive="$alive $pid"
+for target_spec in $targets; do
+    pid="${target_spec%%:*}"
+    expected_start_ticks="${target_spec#*:}"
+    if is_same_stale_package_process "$pid" "$expected_start_ticks"; then
+        echo "force kill stale package manager process: $pid"
+        if kill -KILL "$pid" 2>/dev/null; then
+            alive="$alive $target_spec"
+        fi
+    fi
 done
 
-if [ -n "$alive" ]; then
-    echo "force kill stale package manager processes:$alive"
-    kill -KILL $alive 2>/dev/null || true
-    sleep 2
-fi
+[ -z "$alive" ] || sleep 2
 
 still_alive=""
-for pid in $targets; do
+for target_spec in $alive; do
+    pid="${target_spec%%:*}"
+    expected_start_ticks="${target_spec#*:}"
     kill -0 "$pid" 2>/dev/null || continue
+    current_start_ticks="$(get_process_start_ticks "$pid")"
+    [ "$current_start_ticks" = "$expected_start_ticks" ] || continue
     stat="$(ps -o stat= -p "$pid" 2>/dev/null)"
     case "$stat" in
         Z*)
@@ -1332,14 +1413,14 @@ if [ -n "$still_alive" ]; then
     echo "package manager processes are still alive after SIGKILL:$still_alive"
     exit 2
 fi
-""" % pids
+""" % (target_specs, RPMDB_REPAIR_STALE_SECONDS)
     r, o, e = bash_roe(cmd)
     if r != 0:
         return False, e or o
     return True, None
 
 
-def _list_blocking_rpmdb_users(include_lock_files=False):
+def _rpmdb_user_scan_command(include_lock_files=False):
     cmd = r"""
 dbpath="$(rpm --eval '%{_dbpath}' 2>/dev/null)"
 [ -n "$dbpath" ] || exit 2
@@ -1393,6 +1474,11 @@ for pid in sorted(pids):
 PY
 """.replace("__INCLUDE_LOCK_FILES__",
             "true" if include_lock_files else "false")
+    return cmd
+
+
+def _list_blocking_rpmdb_users(include_lock_files=False):
+    cmd = _rpmdb_user_scan_command(include_lock_files)
     r, o, e = bash_roe(cmd)
     if r != 0:
         return None, e or o
@@ -1403,19 +1489,40 @@ def _backup_and_rebuild_rpmdb():
     cmd = r"""
 dbpath="$(rpm --eval '%{_dbpath}' 2>/dev/null)"
 [ -n "$dbpath" ] || exit 2
+
+require_idle_rpmdb() {
+    package_processes="$(__PACKAGE_PROCESS_LIST__)" || return 2
+    if [ -n "$package_processes" ]; then
+        echo "package manager processes appeared during rpmdb rebuild guard: $package_processes"
+        return 1
+    fi
+    rpmdb_users="$(__RPMDB_USER_SCAN__)" || return 2
+    if [ -n "$rpmdb_users" ]; then
+        echo "rpmdb file descriptors appeared during rebuild guard:$rpmdb_users"
+        return 1
+    fi
+    return 0
+}
+
 RPMDB_BACKUP_DIR="/var/lib/zstack/rpmdb-backups"
 mkdir -p "$RPMDB_BACKUP_DIR" || exit 2
 backup_file="$RPMDB_BACKUP_DIR/rpmdb-$(date +%Y%m%d%H%M%S).tar.gz"
 
+require_idle_rpmdb || exit 2
 if [ -d "$dbpath" ]; then
     timeout -k 10s 120s tar czf "$backup_file" -C "$(dirname "$dbpath")" "$(basename "$dbpath")" || exit 2
 fi
 ls -1t "$RPMDB_BACKUP_DIR"/rpmdb-*.tar.gz 2>/dev/null | awk 'NR > 5' | xargs -r rm -f
 
+if ! require_idle_rpmdb; then
+    rm -f "$backup_file"
+    exit 2
+fi
 rm -f "$dbpath"/__db.* || exit 2
 timeout -k 10s 180s rpm --rebuilddb || exit 2
 timeout -k 5s 30s rpm -qa >/dev/null || exit 2
-"""
+""".replace("__PACKAGE_PROCESS_LIST__", _package_process_list_command())
+    cmd = cmd.replace("__RPMDB_USER_SCAN__", _rpmdb_user_scan_command(True))
     r, o, e = bash_roe(cmd)
     if r != 0:
         return False, e or o
