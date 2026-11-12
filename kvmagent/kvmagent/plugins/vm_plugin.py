@@ -20,6 +20,7 @@ from time import sleep
 
 import netaddr
 import uuid
+import hashlib
 import shutil
 import simplejson
 import base64
@@ -1926,6 +1927,10 @@ def _normalize_hex_component(value, width):
     except ValueError:
         return None
     return format(number, 'x').zfill(width)
+
+def vf_secondary_device_uuid(nic_uuid):
+    return uuid.UUID(bytes=hashlib.md5((nic_uuid + ':vf-secondary').encode('utf-8')).digest(), version=3).hex
+
 
 def normalize_pci_address(addr):
     if not addr:
@@ -5621,7 +5626,7 @@ class Vm(object):
 
         return True
 
-    def _interface_cmd_to_xml(self, cmd, action=None):
+    def _interface_cmd_to_xml(self, cmd, action=None, alias_name=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
         brMode = cmd.addons['brMode'] if cmd.addons else None
 
@@ -5633,7 +5638,7 @@ class Vm(object):
         if cmd.nic.type == "TFVNIC":
             interface = Vm._build_interface_xml(cmd.nic, action=action, cmd=cmd)
         else:
-            interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
+            interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode, alias_name=alias_name)
 
         def addon():
             if cmd.nic.addons and cmd.nic.addons['NicQos'] and cmd.nic.addons['NicQos'][cmd.nic.uuid]:
@@ -5985,8 +5990,70 @@ class Vm(object):
         except Exception as e:
             logger.warning('failed to online CPUs via QGA for vm[uuid:%s]: %s' % (self.uuid, str(e)))
 
+    def _vf_device_xml(self, pci_address):
+        self.refresh()
+        expected = normalize_pci_address(pci_address)
+        for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            if iface.type_ == 'hostdev' and get_interface_source_pci_address(iface.dump()) == expected:
+                return iface.dump()
+        return None
+
+    def _detach_vf_device(self, address):
+        xml = self._vf_device_xml(address)
+        if xml is None:
+            return
+        request_error = None
+        try:
+            if self.state in (self.VM_STATE_RUNNING, self.VM_STATE_PAUSED):
+                self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+            else:
+                self.domain.detachDevice(xml)
+        except libvirt.libvirtError as ex:
+            # Libvirt can report an error after QEMU has accepted the unplug request.
+            request_error = str(ex)
+            logger.warn(linux.get_exception_stacktrace())
+        if not linux.wait_callback_success(lambda _: self._vf_device_xml(address) is None, interval=0.5, timeout=30):
+            raise Exception('VF device %s is still attached on vm[%s]; request error: %s; '
+                            'its allocation must be retained' % (address, self.uuid, request_error))
+
+    def _attach_vf_bond(self, cmd):
+        addresses = [cmd.nic.pciDeviceAddress] + list(cmd.nic.extraPciDeviceAddresses)
+        if len(addresses) != 2 or len(set(normalize_pci_address(a) for a in addresses)) != 2:
+            raise Exception('VF bond requires exactly two different PCI devices')
+        existing = set(a for a in addresses if self._vf_device_xml(a) is not None)
+        try:
+            for index, address in enumerate(addresses):
+                if address in existing:
+                    continue
+                subcmd = jsonobject.loads(jsonobject.dumps(cmd))
+                subcmd.nic.pciDeviceAddress = address
+                subcmd.nic.extraPciDeviceAddresses = []
+                alias = None
+                if index:
+                    subcmd.nic.pci = getattr(cmd.nic, 'secondaryPci', None)
+                    internal_name = getattr(cmd.nic, 'nicInternalName', None)
+                    alias = 'ua-net%s-slave1' % (internal_name.split('.', 1)[1] if internal_name and '.' in internal_name else '0')
+                xml = self._interface_cmd_to_xml(subcmd, action='Attach', alias_name=alias)
+                if self.state in (self.VM_STATE_RUNNING, self.VM_STATE_PAUSED):
+                    self.domain.attachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                else:
+                    self.domain.attachDevice(xml)
+                if not linux.wait_callback_success(lambda _: self._vf_device_xml(address) is not None, interval=0.5, timeout=30):
+                    raise Exception('VF device %s did not appear after attachment' % address)
+        except Exception:
+            for address in reversed(addresses):
+                if address in existing:
+                    continue
+                try:
+                    self._detach_vf_device(address)
+                except Exception:
+                    logger.warn('VF bond attach compensation failed: %s' % linux.get_exception_stacktrace())
+            raise
+
     @linux.retry(times=3, sleep_time=5)
     def _attach_nic(self, cmd):
+        if cmd.nic.type == 'VF' and getattr(cmd.nic, 'extraPciDeviceAddresses', None):
+            return self._attach_vf_bond(cmd)
         def check_device(_):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
@@ -6141,6 +6208,10 @@ class Vm(object):
 
     @linux.retry(times=3, sleep_time=5)
     def _detach_nic(self, cmd):
+        if cmd.nic.type == 'VF' and getattr(cmd.nic, 'extraPciDeviceAddresses', None):
+            for address in list(cmd.nic.extraPciDeviceAddresses) + [cmd.nic.pciDeviceAddress]:
+                self._detach_vf_device(address)
+            return
         def check_device(_):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
@@ -7794,9 +7865,10 @@ class Vm(object):
                         continue
                     extra_nic = _clone_nic(nic)
                     extra_nic.put('pciDeviceAddress', extra_addr)
+                    extra_nic.put('pci', getattr(nic, 'secondaryPci', None))
                     if hasattr(extra_nic, 'extraPciDeviceAddresses'):
                         extra_nic.put('extraPciDeviceAddresses', [])
-                    alias_name = '%s-slave%d' % (alias_base, extra_index + 1)
+                    alias_name = 'ua-%s-slave%d' % (alias_base, extra_index + 1)
                     extra_interface = Vm._build_interface_xml(extra_nic, devices, vhostSrcPath, 'Attach', brMode, index, None, alias_name)
                     addon(extra_interface, extra_nic)
                     break
@@ -8394,7 +8466,7 @@ class Vm(object):
                 if iface_id:
                     e(vp, 'parameters', None, attrib={'interfaceid': iface_id})
 
-        if nic.pci is not None and (iftype == 'bridge' or iftype == 'direct' or iftype == 'vhostuser'):
+        if nic.pci is not None and (iftype in ('bridge', 'direct', 'vhostuser', 'hostdev')):
             e(interface, 'address', None, attrib={'type': nic.pci.type, 'domain': nic.pci.domain, 'bus': nic.pci.bus, 'slot': nic.pci.slot, "function": nic.pci.function})
         else:
             e(interface, 'address', None, attrib={'type': "pci"})
@@ -8953,13 +9025,31 @@ class VmPlugin(kvmagent.KvmAgent):
         rsp = AttachNicResponse()
 
         vm = get_vm_by_uuid(cmd.vmUuid)
-        vm.attach_nic(cmd)
+        try:
+            vm.attach_nic(cmd)
+        except Exception as ex:
+            if cmd.nic.type != 'VF' or not getattr(cmd.nic, 'extraPciDeviceAddresses', None):
+                raise
+            rsp.success = False
+            rsp.error = str(ex)
+            rsp.vfBondCleanupRequired = True
+            try:
+                rsp.vfBondCleanupRequired = any(vm._vf_device_xml(a) is not None for a in
+                        [cmd.nic.pciDeviceAddress] + list(cmd.nic.extraPciDeviceAddresses))
+            except Exception as check_error:
+                rsp.error += '; failed to inspect residual VF devices: %s' % check_error
+                logger.warn(rsp.error)
+            return jsonobject.dumps(rsp)
+        vm.refresh()
 
         for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
             if iface.mac.address_ != cmd.nic.mac:
                 continue
 
             virtualDeviceInfo = VirtualDeviceInfo()
+            virtualDeviceInfo.resourceUuid = cmd.nic.uuid
+            if cmd.nic.type == 'VF' and get_interface_source_pci_address(iface.dump()) != normalize_pci_address(cmd.nic.pciDeviceAddress):
+                virtualDeviceInfo.resourceUuid = vf_secondary_device_uuid(cmd.nic.uuid)
             virtualDeviceInfo.deviceAddress.bus = iface.address.bus_
             virtualDeviceInfo.deviceAddress.function = iface.address.function_
             virtualDeviceInfo.deviceAddress.type = iface.address.type_
@@ -9107,6 +9197,7 @@ class VmPlugin(kvmagent.KvmAgent):
             vmNicInfo.deviceAddress.domain = iface.address.domain_
             vmNicInfo.deviceAddress.slot = iface.address.slot_
             vmNicInfo.macAddress = iface.mac.address_
+            vmNicInfo.alias = iface.alias.name_ if hasattr(iface, "alias") else None
             nicInfos.append(vmNicInfo)
 
         for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
@@ -9850,6 +9941,9 @@ class VmPlugin(kvmagent.KvmAgent):
                 self._dump(cmd.uuid)
             self._record_operation(cmd.uuid, self.VM_OP_STOP)
             self._stop_vm(cmd)
+            # A successful stop must mean guest writers have actually terminated.
+            if not linux.wait_callback_success(lambda _: not linux.find_vm_process_by_uuid(cmd.uuid), None, timeout=10, interval=1):
+                raise kvmagent.KvmError('QEMU process still exists after stop: %s' % cmd.uuid)
             # notify vrouter agent nic removed from source host
             for nic in cmd.vmNics:
                 if nic.type == 'TFVNIC':
@@ -13545,7 +13639,10 @@ host side snapshot files chian:
                                 'tx_queue_size': str(tx_buffer_size)})
                 return etree.tostring(interface, encoding="unicode")
             else:
-                interface = Vm._build_interface_xml(nic, action='Update')
+                # HA members share one logical NIC address; preserve libvirt allocation here.
+                ha_nic = _clone_nic(nic)
+                ha_nic.pci = None
+                interface = Vm._build_interface_xml(ha_nic, action='Update')
                 return etree.tostring(interface, encoding="unicode")
 
         def _clone_nic(nic_obj):
