@@ -1,4 +1,5 @@
 import functools
+import time
 
 from kvmagent import kvmagent
 from zstacklib.utils import http
@@ -37,6 +38,12 @@ class AgentRsp(object):
     def __init__(self):
         self.success = True
         self.error = None
+
+
+class SyncEipRsp(AgentRsp):
+    def __init__(self):
+        super(SyncEipRsp, self).__init__()
+        self.appliedVipUuids = []
 
 class Eip(object):
     def _ipv6address2tag(self, ip):
@@ -210,6 +217,9 @@ class Eip(object):
 
         @bash.in_bash
         def delete_namespace():
+            if not NS_NAME:
+                return
+
             def is_missing_namespace_error(err):
                 err_msg = str(err)
                 return (
@@ -231,6 +241,8 @@ class Eip(object):
         def delete_outer_dev():
             if linux.is_network_device_existing(PUB_ODEV):
                 iproute.delete_link_no_error(PUB_ODEV)
+            if linux.is_network_device_existing(PRI_ODEV):
+                iproute.delete_link_no_error(PRI_ODEV)
 
         @bash.in_bash
         def delete_arp_rules():
@@ -346,6 +358,39 @@ class Eip(object):
 
         del_bridge_fdb_entry_for_pri_idev()
         self.delete_eip_with_ns(ns, eip.eipUuid, eip.ipVersion, eip.nicName)
+
+    @bash.in_bash
+    def delete_orphan_fdb_if_needed(self, ns_name, eip_uuid):
+        if not ns_name:
+            return
+        pri_idev = "%s_i" % eip_uuid[-9:]
+        try:
+            inner_mac = iproute.IpNetnsShell(ns_name).get_mac(pri_idev)
+        except Exception:
+            return
+        if not inner_mac:
+            return
+        r, phy_dev, _ = bash_roe(
+            "bridge fdb show | grep -i %s | grep self | awk '{print $3}'" % inner_mac
+        )
+        if r != 0 or not phy_dev.strip():
+            return
+        phy_dev = phy_dev.strip().split("\n")[0]
+        iproute.del_fdb_entry(phy_dev, inner_mac)
+
+    def is_eip_present(self, eip, existing_netns):
+        ns_name = self.generate_namespace_name(eip.publicBridgeName, eip.vip)
+        if ns_name not in existing_netns:
+            return False
+        eip_suffix = eip.eipUuid[-9:]
+        pub_odev = "%s_eo" % eip_suffix
+        pri_odev = "%s_o" % eip_suffix
+        if (not linux.is_network_device_up(pub_odev) or
+                not linux.is_network_device_up(pri_odev)):
+            return False
+        netns = iproute.IpNetnsShell(ns_name)
+        return (netns.get_mac("%s_ei" % eip_suffix) is not None and
+                netns.get_mac("%s_i" % eip_suffix) is not None)
 
     @bash.in_bash
     @lock.file_lock('/run/xtables.lock')
@@ -886,6 +931,16 @@ class DEip(kvmagent.KvmAgent):
     BATCH_DELETE_EIP_PATH = "/flatnetworkprovider/eip/batchdelete"
     BATCH_PREPARE_EIP_PATH = "/flatnetworkprovider/eip/batchprepare"
     BATCH_ENABLE_EIP_PATH = "/flatnetworkprovider/eip/batchenable"
+    SYNC_EIP_PATH = "/flatnetworkprovider/eip/sync"
+    DEFAULT_SYNC_GRACE_SECONDS = 30
+
+    def __init__(self):
+        super(DEip, self).__init__()
+        self._recent_applied_eips = {}
+
+    @staticmethod
+    def _normalize_uuid(uuid_str):
+        return uuid_str.replace('-', '') if uuid_str else uuid_str
 
     def start(self):
         http_server = kvmagent.get_http_server()
@@ -896,6 +951,7 @@ class DEip(kvmagent.KvmAgent):
         http_server.register_async_uri(self.BATCH_DELETE_EIP_PATH, self.delete_eips)
         http_server.register_async_uri(self.BATCH_PREPARE_EIP_PATH, self.prepare_eips)
         http_server.register_async_uri(self.BATCH_ENABLE_EIP_PATH, self.enable_eips)
+        http_server.register_async_uri(self.SYNC_EIP_PATH, self.sync_eips)
         self._register_vm_lifecycle_hook()
 
     def stop(self):
@@ -937,23 +993,129 @@ class DEip(kvmagent.KvmAgent):
         self._delete_eips([cmd.eip])
         return jsonobject.dumps(AgentRsp())
 
+    @kvmagent.replyerror
+    def sync_eips(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        expected_eips = cmd.eips or []
+        in_flight_eip_uuids = cmd.inFlightEipUuids or []
+        grace_seconds = (
+            self.DEFAULT_SYNC_GRACE_SECONDS
+            if getattr(cmd, 'graceSeconds', None) is None
+            else int(cmd.graceSeconds)
+        )
+        rsp = SyncEipRsp()
+        applied_vip_uuids, errors = self._sync_eips(
+            expected_eips, in_flight_eip_uuids, grace_seconds
+        )
+        rsp.appliedVipUuids = applied_vip_uuids
+        if errors:
+            rsp.success = False
+            rsp.error = "; ".join(errors)
+        return jsonobject.dumps(rsp)
+
     @lock.lock('eip')
     def _delete_eips(self, eips):
         eip_cmd = Eip()
         for eip in eips:
+            self._recent_applied_eips.pop(self._normalize_uuid(eip.eipUuid), None)
             eip_cmd.delete_eip(eip)
 
     @lock.lock('eip')
     def _apply_eips(self, eips):
         eip_cmd = Eip()
         for eip in eips:
+            self._recent_applied_eips[self._normalize_uuid(eip.eipUuid)] = time.monotonic()
             eip_cmd.apply_eip(eip)
 
     @lock.lock('eip')
     def _prepare_eips(self, eips):
         eip_cmd = Eip()
         for eip in eips:
+            self._recent_applied_eips[self._normalize_uuid(eip.eipUuid)] = time.monotonic()
             eip_cmd.apply_eip(eip, False)
+
+    @lock.lock('eip')
+    def _sync_eips(self, expected_eips, in_flight_eip_uuids, grace_seconds):
+        now = time.monotonic()
+        retention = max(grace_seconds, self.DEFAULT_SYNC_GRACE_SECONDS)
+        self._recent_applied_eips = {
+            uuid: applied_at
+            for uuid, applied_at in self._recent_applied_eips.items()
+            if (now - applied_at) < retention
+        }
+
+        expected_by_uuid = {
+            self._normalize_uuid(eip.eipUuid): eip
+            for eip in expected_eips
+            if getattr(eip, 'eipUuid', None)
+        }
+        in_flight_uuids = {
+            self._normalize_uuid(eip_uuid)
+            for eip_uuid in in_flight_eip_uuids
+            if eip_uuid
+        }
+
+        eip_cmd = Eip()
+        actual_eips = {}
+        eip_strings = [w for w in bash_o('ip -o -d link').split() if w.startswith('eip:')]
+        for estr in eip_strings:
+            vip, _, _, version, _, eip_uuid, vnic_name = eip_cmd.parse_eip_string(estr)
+            if not eip_uuid or not vip or not vnic_name:
+                logger.warn("incomplete eip alias found during sync: %s" % estr)
+                continue
+            actual_eips[self._normalize_uuid(eip_uuid)] = (
+                eip_uuid, vip, version, vnic_name
+            )
+
+        errors = []
+        for norm_uuid, (eip_uuid, vip, version, vnic_name) in list(actual_eips.items()):
+            if norm_uuid in expected_by_uuid or norm_uuid in in_flight_uuids:
+                continue
+            applied_at = self._recent_applied_eips.get(norm_uuid)
+            if applied_at is not None and (now - applied_at) < grace_seconds:
+                continue
+            try:
+                ns_name = eip_cmd.find_namespace_name_by_ip(vip, version)
+                eip_cmd.delete_orphan_fdb_if_needed(ns_name, eip_uuid)
+                eip_cmd.delete_eip_with_ns(ns_name, eip_uuid, version, vnic_name)
+                self._recent_applied_eips.pop(norm_uuid, None)
+                logger.info(
+                    "cleaned orphan EIP[uuid:%s, vip:%s, vnic:%s, ns:%s] during sync"
+                    % (eip_uuid, vip, vnic_name, ns_name)
+                )
+            except Exception as err:
+                logger.warn(
+                    "failed to clean orphan EIP[uuid:%s, vip:%s] during sync: %s"
+                    % (eip_uuid, vip, err)
+                )
+                errors.append(str(err))
+
+        applied_vip_uuids = []
+        if expected_eips:
+            existing_netns = set(iproute.IpNetnsShell.list_netns())
+            for eip in expected_eips:
+                try:
+                    if eip_cmd.is_eip_present(eip, existing_netns):
+                        continue
+                    logger.info(
+                        "re-applying missing EIP[uuid:%s, vip:%s, vm:%s] during sync"
+                        % (eip.eipUuid, eip.vip, eip.vmUuid)
+                    )
+                    self._recent_applied_eips[self._normalize_uuid(eip.eipUuid)] = time.monotonic()
+                    eip_cmd.apply_eip(eip)
+                    if getattr(eip, 'vipUuid', None):
+                        applied_vip_uuids.append(eip.vipUuid)
+                    existing_netns.add(
+                        eip_cmd.generate_namespace_name(eip.publicBridgeName, eip.vip)
+                    )
+                except Exception as err:
+                    logger.warn(
+                        "failed to apply missing EIP[uuid:%s, vip:%s] during sync: %s"
+                        % (eip.eipUuid, eip.vip, err)
+                    )
+                    errors.append(str(err))
+
+        return applied_vip_uuids, errors
 
     def _announce_public_interfaces(self, eip_cmd, announcements):
         failures = []
@@ -1005,6 +1167,7 @@ class DEip(kvmagent.KvmAgent):
             with lock.NamedLock('eip'):
                 for eip in eips:
                     if active:
+                        self._recent_applied_eips[self._normalize_uuid(eip.eipUuid)] = time.monotonic()
                         switched_eips.append(eip)
                     switched = eip_cmd.set_eip_public_interface_state(
                         eip, active, announce=False)
