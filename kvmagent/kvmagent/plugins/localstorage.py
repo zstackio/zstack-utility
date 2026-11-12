@@ -700,7 +700,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         @rollback.rollbackable
         def _0():
-            linux.rm_file_force(cmd.insallPath)
+            linux.rm_file_force(cmd.installPath)
         _0()
 
         t_shell = traceable_shell.get_shell(cmd)
