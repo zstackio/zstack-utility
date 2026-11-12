@@ -239,6 +239,69 @@ def test_unmanaged_ksm_restarts_ksmtuned_again_after_a_failed_restart(host, tmp_
     assert commands == [['systemctl', 'restart', plugin.KSM_TUNED_UNIT]] * 2
 
 
+def test_unmanaged_ksm_keeps_restarting_a_ksmtuned_left_failed_until_it_runs(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    conf = tmp_path / 'ksmtuned.conf'
+    conf.write_text(ksm_native.render_config('KSM_MONITOR_INTERVAL=60\n', 1, 2000, 20))
+    monkeypatch.setattr(plugin, 'KSM_CONF', str(conf))
+    monkeypatch.setattr(plugin, 'KSM_LOCK', str(tmp_path / 'lock' / 'ksm.lock'))
+    record = tmp_path / 'lock' / plugin.KSM_TUNED_RESTART
+    states = {'tuned': 'active', 'starts': False}
+    monkeypatch.setattr(plugin, '_native_service_state', lambda unit, default: states['tuned'])
+    commands = []
+
+    def restart(argv):
+        commands.append(argv)
+        # A restart whose start fails leaves ksmtuned failed.
+        states['tuned'] = 'active' if states['starts'] else 'failed'
+        if not states['starts']:
+            raise module.subprocess.CalledProcessError(1, argv)
+    monkeypatch.setattr(module.subprocess, 'check_call', restart)
+    for _ in range(2):
+        with pytest.raises(module.subprocess.CalledProcessError):
+            MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+        assert record.exists(), 'the restart is still owed while ksmtuned is %s' % states['tuned']
+    states['starts'] = True
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    assert states['tuned'] == 'active' and not record.exists()
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    assert commands == [['systemctl', 'restart', plugin.KSM_TUNED_UNIT]] * 3
+
+
+def test_a_disabled_ksm_drops_a_restart_still_owed_and_ksmtuned_stays_stopped(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    conf = tmp_path / 'ksmtuned.conf'
+    conf.write_text(ksm_native.render_config('KSM_MONITOR_INTERVAL=60\n', 1, 2000, 20))
+    monkeypatch.setattr(plugin, 'KSM_CONF', str(conf))
+    monkeypatch.setattr(plugin, 'KSM_LOCK', str(tmp_path / 'lock' / 'ksm.lock'))
+    monkeypatch.setattr(plugin, 'NATIVE_KSM_FILES', [str(conf)])
+    monkeypatch.setattr(plugin, '_read_ksm_zero_pages', lambda: 'unsupported')
+    monkeypatch.setattr(plugin, '_read_ksm_sysfs', lambda name: '0')
+    monkeypatch.setattr(plugin, '_write_ksm_sysfs', lambda name, value: None)
+    record = tmp_path / 'lock' / plugin.KSM_TUNED_RESTART
+    states = {'tuned': 'active'}
+    monkeypatch.setattr(plugin, '_native_service_state', lambda unit, default: states['tuned'])
+    commands = []
+
+    def systemctl(argv):
+        commands.append(argv)
+        if argv[1] == 'restart':
+            states['tuned'] = 'failed'
+            raise module.subprocess.CalledProcessError(1, argv)
+        if argv[1] == 'stop' and argv[2] == plugin.KSM_TUNED_UNIT:
+            states['tuned'] = 'inactive'
+    monkeypatch.setattr(module.subprocess, 'check_call', systemctl)
+    with pytest.raises(module.subprocess.CalledProcessError):
+        MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    assert record.exists()
+    # Turning KSM off stops ksmtuned on purpose; the restart owed from the release no longer applies.
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': False, 'zeroPagesEnabled': None}, 'active')
+    assert not record.exists(), 'an explicit stop cancels the restart still owed'
+    del commands[:]
+    MemoryOptimizationPlugin._converge_ksm(plugin, {'enabled': None, 'zeroPagesEnabled': None}, 'active')
+    assert commands == [] and states['tuned'] == 'inactive', 'unmanaged KSM keeps the stopped ksmtuned stopped'
+
+
 @pytest.mark.parametrize('writeback, running', [(None, False), (False, False), (False, True)])
 def test_unmanaged_zram_leaves_reclaim_as_it_is(host, writeback, running):
     plugin, service, world = host
