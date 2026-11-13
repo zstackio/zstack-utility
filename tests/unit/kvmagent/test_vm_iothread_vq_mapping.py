@@ -518,6 +518,65 @@ def test_set_device_address_replans_incomplete_virtio_scsi_persisted_drive_addre
 
 
 @pytest.mark.kvmagent
+@pytest.mark.parametrize('bus, target', [
+    ('1', '0'),
+    ('0', '0'),
+    (0, 0),
+    ('1', '1'),
+    (None, None),
+    ('', ''),
+])
+def test_set_device_address_preserves_ide_bus_and_target(bus, target):
+    disk = disk_with_target('ide')
+    volume = Volume(deviceAddress=Volume(
+        type='drive', controller='0', bus=bus, target=target, unit='1'))
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    expected = {'type': 'drive', 'controller': '0', 'unit': '1'}
+    if bus not in (None, ''):
+        expected['bus'] = str(bus)
+    if target not in (None, ''):
+        expected['target'] = str(target)
+    assert disk.find('address').attrib == expected
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_keeps_ide_data_disk_separate_from_cdrom():
+    disks = [disk_with_target('ide') for _ in range(3)]
+    for disk, bus, unit in zip(disks, ['0', '1', '0'], ['0', '1', '1']):
+        volume = Volume(deviceAddress=Volume(
+            type='drive', controller='0', bus=bus, target='0', unit=unit))
+        vm_plugin.Vm.set_device_address(disk, volume)
+
+    addresses = [disk.find('address') for disk in disks]
+    assert len({tuple(address.get(field, '0') for field in
+                      ('controller', 'bus', 'target', 'unit'))
+                for address in addresses}) == 3
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_leaves_new_ide_disk_unassigned():
+    disk = disk_with_target('ide')
+
+    vm_plugin.Vm.set_device_address(disk, Volume())
+
+    assert disk.find('address') is None
+
+
+@pytest.mark.kvmagent
+def test_set_device_address_keeps_sata_address_behavior():
+    disk = disk_with_target('sata')
+    volume = Volume(deviceAddress=Volume(
+        type='drive', controller='0', bus='1', target='0', unit='1'))
+
+    vm_plugin.Vm.set_device_address(disk, volume)
+
+    assert disk.find('address').attrib == {
+        'type': 'drive', 'controller': '0', 'unit': '1'}
+
+
+@pytest.mark.kvmagent
 def test_set_device_address_keeps_virtio_blk_pci_address():
     disk = disk_with_target('virtio')
     volume = cbd_volume(

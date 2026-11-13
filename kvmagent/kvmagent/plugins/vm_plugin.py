@@ -3429,7 +3429,7 @@ class Vm(object):
             return bool(persisted_address and persisted_address.type == address_type)
 
         def set_drive_address(controller, unit):
-            e(disk_element, 'address', None, {'type': 'drive', 'controller': controller, 'unit': str(unit)})
+            return e(disk_element, 'address', None, {'type': 'drive', 'controller': controller, 'unit': str(unit)})
 
         match bus:
             case 'virtio':
@@ -3467,7 +3467,12 @@ class Vm(object):
 
             case 'sata' | 'ide':
                 if has_persisted_address_type('drive'):
-                    set_drive_address(persisted_address.controller, persisted_address.unit)
+                    address = set_drive_address(persisted_address.controller, persisted_address.unit)
+                    if bus == 'ide':
+                        if persisted_address.bus not in (None, ''):
+                            address.set('bus', str(persisted_address.bus))
+                        if persisted_address.target not in (None, ''):
+                            address.set('target', str(persisted_address.target))
 
     @staticmethod
     def _can_reuse_persisted_scsi_drive_address(vol):
