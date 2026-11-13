@@ -47,6 +47,7 @@ from zstacklib.hardware.pci.passthrough import check_device_in_use
 from jinja2 import Template
 
 from kvmagent import kvmagent
+from kvmagent.volume import disk_xml as volume_disk_xml
 from kvmagent.plugins.baremetal_v2_gateway_agent import \
     BaremetalV2GatewayAgentPlugin as BmV2GwAgent
 from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
@@ -4290,6 +4291,7 @@ class Vm(object):
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
+        volume_disk_xml.apply_extensions(disk_element, volume, volume.deviceType)
         Vm.set_device_address(disk_element, volume, get_vm_by_uuid(self.uuid))
         Vm.set_volume_qos(addons, volume.volumeUuid, disk_element)
         Vm.set_volume_serial_id(volume.volumeUuid, disk_element)
@@ -7627,6 +7629,7 @@ class Vm(object):
                     raise Exception('unknown volume deviceType: %s' % v.deviceType)
 
                 assert vol is not None, 'vol cannot be None'
+                volume_disk_xml.apply_extensions(vol, v, 'nbd' if r else v.deviceType)
                 if dataSourceOnly:
                     return vol
 
@@ -10369,6 +10372,7 @@ class VmPlugin(kvmagent.KvmAgent):
         else:
             raise Exception('unsupported volume deviceType[%s]' % volume.deviceType)
 
+        volume_disk_xml.apply_extensions(ele, volume, volume.deviceType)
         driver = ele.find('driver')
         driver.attrib.pop('queues', None)
         if source_queues:

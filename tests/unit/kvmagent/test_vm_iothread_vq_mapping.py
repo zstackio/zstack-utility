@@ -5,6 +5,9 @@ import pytest
 from kvmagent.plugins import vm_plugin
 
 
+pytestmark = pytest.mark.usefixtures('configured_volume_extensions', 'plain_volume_metadata')
+
+
 class Volume(object):
     def __init__(self, **kwargs):
         for key, value in kwargs.items():

@@ -24,6 +24,9 @@ from kvmagent.plugins import vm_artifact
 from kvmagent.plugins import vm_plugin
 
 
+pytestmark = pytest.mark.usefixtures('configured_volume_extensions', 'plain_volume_metadata')
+
+
 def _make_req(body_dict=None):
     body = json.dumps(body_dict or {})
     return {http.REQUEST_BODY: body, http.REQUEST_HEADER: {}}

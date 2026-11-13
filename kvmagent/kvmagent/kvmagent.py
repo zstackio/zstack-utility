@@ -12,8 +12,6 @@ from zstacklib.utils import daemon
 from zstacklib.utils import linux
 from zstacklib.utils import qemu
 import os.path
-import traceback
-import pprint
 import functools
 import subprocess
 import platform
@@ -154,12 +152,10 @@ def replyerror(func):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            content = traceback.format_exc()
-            err = '%s\n%s\nargs:%s' % (str(e), content, pprint.pformat([args, kwargs]))
             rsp = AgentResponse()
             rsp.success = False
             rsp.error = str(e)
-            logger.warn(err)
+            logger.warn(log.format_exception_for_log(e, args, kwargs, http.REQUEST_BODY))
             return jsonobject.dumps(rsp)
     return wrap
 

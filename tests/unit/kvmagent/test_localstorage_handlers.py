@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import importlib
 import json
-import pytest
 import sys
 from types import ModuleType
 from typing import Callable, Protocol, cast
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+
+pytestmark = pytest.mark.usefixtures('configured_volume_extensions')
 
 
 class _HttpModule(Protocol):

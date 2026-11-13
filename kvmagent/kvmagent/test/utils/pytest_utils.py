@@ -60,9 +60,12 @@ class PytestExtension(object):
 
 def ztest_decorater(func):
     def wrapper(*args, **kwargs):
+        from kvmagent.plugins.volume_crypto_plugin import VolumeCryptoPlugin
+
         global Out_flag
         last_out_flag = Out_flag
         Out_flag = False
+        VolumeCryptoPlugin().configure()
         func(*args, **kwargs)
         Out_flag = last_out_flag
 
