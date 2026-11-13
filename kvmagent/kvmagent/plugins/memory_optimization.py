@@ -1345,7 +1345,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _converge(self, desired, generation):
         capabilities = self.discover_capabilities()
         interfaces = capabilities.get('interfaces') or {}
+        # Only a service that is not running is asked again once it starts; a running service
+        # whose answer was not understood leaves ZRAM unmanaged like any other verdict.
         unknown = (capabilities.get('zramReasonCode') == 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
+                   and not capabilities.get('service')
                    and interfaces.get('cgroupv2') and interfaces.get('memory_reclaim'))
         # What the Host cannot run stays unmanaged instead of failing the configuration;
         # the observation reports the capability and its reason.
