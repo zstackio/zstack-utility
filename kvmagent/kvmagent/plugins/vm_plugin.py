@@ -10772,10 +10772,17 @@ class VmPlugin(kvmagent.KvmAgent):
                         else 'virsh blockcopy exited with return code %d' % rc
                 logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, error))
                 try:
-                    aborted = abort_unfinished_copy_job(domain)
+                    if abort_unfinished_copy_job(domain):
+                        return False, error
                 except Exception as e:
-                    return False, '%s; %s' % (error, e)
-                if aborted or not pivoted_to_new_volume():
+                    error = '%s; %s' % (error, e)
+                    # Pivot may finish before abort; verify state before reporting failure.
+                    try:
+                        if domain.blockJobInfo(disk_name, 0):
+                            return False, error
+                    except Exception as recheck_error:
+                        return False, '%s; failed to recheck block job: %s' % (error, recheck_error)
+                if not pivoted_to_new_volume():
                     return False, error
                 logger.warn("virsh blockcopy failed after vm[uuid:%s] disk[%s] pivoted to %s, treat it as success"
                             % (vmUuid, disk_name, task_spec.newVolume.installPath))

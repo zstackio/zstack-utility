@@ -90,3 +90,61 @@ class TestBlockCopyFailureCleanup:
         assert success is False
         assert 'return code 1' in error
         env.domain.blockJobAbort.assert_not_called()
+
+    def test_abort_error_after_completed_pivot_is_success(self, env):
+        env.domain.blockJobInfo.side_effect = [COPY_JOB, {}]
+        env.domain.blockJobAbort.side_effect = RuntimeError('no active block job')
+        vm_plugin.check_install_path_by_qmp.return_value = True
+        assert env.copy() == (True, None)
+        env.domain.blockJobAbort.assert_called_once_with('vdb', 0)
+
+    def test_abort_error_without_pivot_preserves_failure(self, env):
+        env.domain.blockJobInfo.side_effect = [COPY_JOB, {}]
+        env.domain.blockJobAbort.side_effect = RuntimeError('abort failed')
+        success, error = env.copy()
+        assert success is False
+        assert 'signal 15' in error and 'abort failed' in error
+
+    def test_abort_error_with_copy_remaining_does_not_accept_target(self, env):
+        env.domain.blockJobInfo.return_value = COPY_JOB
+        env.domain.blockJobAbort.side_effect = RuntimeError('abort failed')
+        vm_plugin.check_install_path_by_qmp.return_value = True
+        success, error = env.copy()
+        assert success is False
+        assert 'abort failed' in error
+        vm_plugin.check_install_path_by_qmp.assert_not_called()
+
+    def test_abort_error_with_job_query_error_is_not_success(self, env):
+        env.domain.blockJobInfo.side_effect = [COPY_JOB, RuntimeError('query unavailable')]
+        env.domain.blockJobAbort.side_effect = RuntimeError('abort failed')
+        success, error = env.copy()
+        assert success is False
+        assert 'signal 15' in error and 'abort failed' in error
+        assert 'query unavailable' in error
+        vm_plugin.check_install_path_by_qmp.assert_not_called()
+
+    def test_abort_error_with_qmp_error_is_not_success(self, env):
+        env.domain.blockJobInfo.side_effect = [COPY_JOB, {}]
+        env.domain.blockJobAbort.side_effect = RuntimeError('abort failed')
+        vm_plugin.check_install_path_by_qmp.side_effect = RuntimeError('QMP unavailable')
+        success, error = env.copy()
+        assert success is False
+        assert 'signal 15' in error and 'abort failed' in error
+
+    def test_existing_non_copy_job_with_target_keeps_source_success(self, env):
+        env.domain.blockJobInfo.return_value = {'type': 3, 'cur': 1, 'end': 2}
+        vm_plugin.check_install_path_by_qmp.return_value = True
+        assert env.copy() == (True, None)
+        env.domain.blockJobAbort.assert_not_called()
+
+    def test_abort_error_without_target_in_xml_is_not_success(self, env):
+        env.domain.blockJobInfo.side_effect = [COPY_JOB, {}]
+        env.domain.blockJobAbort.side_effect = RuntimeError('abort failed')
+        vm_plugin.get_vm_by_uuid.return_value._get_target_disk_by_path.return_value = (None, None)
+        vm_plugin.check_install_path_by_qmp.return_value = True
+
+        success, error = env.copy()
+
+        assert success is False
+        assert 'signal 15' in error and 'abort failed' in error
+        vm_plugin.check_install_path_by_qmp.assert_not_called()
