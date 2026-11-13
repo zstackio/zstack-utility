@@ -49,6 +49,11 @@ class KeyAgentServiceStub(object):
         request_serializer=key__agent__pb2.DeleteSecretRequest.SerializeToString,
         response_deserializer=key__agent__pb2.DeleteSecretResponse.FromString,
         )
+    self.PrepareLuksSecretMaterialChannel = channel.unary_unary(
+        '/keyagent.v1.KeyAgentService/PrepareLuksSecretMaterialChannel',
+        request_serializer=key__agent__pb2.PrepareLuksSecretMaterialChannelRequest.SerializeToString,
+        response_deserializer=key__agent__pb2.PrepareLuksSecretMaterialChannelResponse.FromString,
+        )
 
 
 class KeyAgentServiceServicer(object):
@@ -104,6 +109,13 @@ class KeyAgentServiceServicer(object):
     context.set_details('Method not implemented!')
     raise NotImplementedError('Method not implemented!')
 
+  def PrepareLuksSecretMaterialChannel(self, request, context):
+    # missing associated documentation comment in .proto file
+    pass
+    context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+    context.set_details('Method not implemented!')
+    raise NotImplementedError('Method not implemented!')
+
 
 def add_KeyAgentServiceServicer_to_server(servicer, server):
   rpc_method_handlers = {
@@ -141,6 +153,11 @@ def add_KeyAgentServiceServicer_to_server(servicer, server):
           servicer.DeleteSecret,
           request_deserializer=key__agent__pb2.DeleteSecretRequest.FromString,
           response_serializer=key__agent__pb2.DeleteSecretResponse.SerializeToString,
+      ),
+      'PrepareLuksSecretMaterialChannel': grpc.unary_unary_rpc_method_handler(
+          servicer.PrepareLuksSecretMaterialChannel,
+          request_deserializer=key__agent__pb2.PrepareLuksSecretMaterialChannelRequest.FromString,
+          response_serializer=key__agent__pb2.PrepareLuksSecretMaterialChannelResponse.SerializeToString,
       ),
   }
   generic_handler = grpc.method_handlers_generic_handler(

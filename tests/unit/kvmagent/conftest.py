@@ -15,8 +15,29 @@ import os
 import os.path
 import sys
 import uuid
+from contextlib import ExitStack
+from unittest.mock import patch
 
 import pytest
+
+
+@pytest.fixture
+def configured_volume_extensions():
+    from kvmagent.plugins.volume_crypto_plugin import VolumeCryptoPlugin
+    from kvmagent.volume import disk_xml, driver_registry
+
+    with ExitStack() as stack:
+        for registry in (disk_xml._disk_xml_extensions, driver_registry._driver_registrations):
+            stack.enter_context(patch.dict(registry, {}, clear=True))
+        VolumeCryptoPlugin().configure()
+        yield
+
+
+@pytest.fixture
+def plain_volume_metadata(monkeypatch):
+    from kvmagent.crypto import vm_xml
+
+    monkeypatch.setattr(vm_xml, '_file_chain', lambda path: iter([(path, 'qcow2', False)]))
 
 
 # ---------------------------------------------------------------------------
