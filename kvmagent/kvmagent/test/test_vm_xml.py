@@ -75,6 +75,66 @@ class Test(unittest.TestCase):
         )[0]
         self.assertEqual('unmap', disk.find('driver').get('discard'))
 
+    @unittest.skipUnless(vm_plugin.HOST_ARCH == 'x86_64', 'i440fx is x86_64 only')
+    def testLegacyI440fxAddsDiscardWithoutChangingMemoryBacking(self):
+        cmd = vm_utils.create_startvm_body_jsonobject()
+        cmd.bootMode = 'Legacy'
+        cmd.machineType = 'pc-i440fx-rhel7.6.0'
+
+        vm = vm_plugin.Vm.from_StartVmCmd(cmd)
+
+        namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
+        root = etree.fromstring(vm.domain_xml)
+        commandlines = root.findall('%scommandline' % namespace)
+        self.assertEqual(1, len(commandlines))
+        values = [arg.get('value') for commandline in commandlines
+                  for arg in commandline.findall('%sarg' % namespace)]
+        self.assertIn('virtio-blk-pci.discard=on', values)
+        self.assertIsNone(root.find('memoryBacking'))
+
+    @unittest.skipUnless(vm_plugin.HOST_ARCH == 'x86_64', 'i440fx is x86_64 only')
+    def testMissingBootModeUsesLegacyDiscardDefault(self):
+        cmd = vm_utils.create_startvm_body_jsonobject()
+        cmd.bootMode = None
+        cmd.machineType = 'pc-i440fx-rhel7.6.0'
+        cmd.additionalQmp = False
+
+        root = etree.fromstring(vm_plugin.Vm.from_StartVmCmd(cmd).domain_xml)
+        namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
+        commandlines = root.findall('%scommandline' % namespace)
+        self.assertEqual(1, len(commandlines))
+        values = [arg.get('value') for commandline in commandlines
+                  for arg in commandline.findall('%sarg' % namespace)]
+        self.assertIn('virtio-blk-pci.discard=on', values)
+
+    @unittest.skipUnless(vm_plugin.HOST_ARCH == 'x86_64', 'i440fx is x86_64 only')
+    def testExplicitDiscardOffIsNotOverridden(self):
+        cmd = vm_utils.create_startvm_body_jsonobject()
+        cmd.bootMode = 'Legacy'
+        cmd.machineType = 'pc-i440fx-rhel7.6.0'
+        cmd.addons.qemuCommandLine = ['-global', 'virtio-blk-pci.discard=off']
+
+        root = etree.fromstring(vm_plugin.Vm.from_StartVmCmd(cmd).domain_xml)
+        namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
+        values = [arg.get('value') for commandline in root.findall('%scommandline' % namespace)
+                  for arg in commandline.findall('%sarg' % namespace)]
+        self.assertIn('virtio-blk-pci.discard=off', values)
+        self.assertNotIn('virtio-blk-pci.discard=on', values)
+
+    @unittest.skipUnless(vm_plugin.HOST_ARCH == 'x86_64', 'q35 is x86_64 only')
+    def testQ35DoesNotAddGlobalDiscard(self):
+        cmd = vm_utils.create_startvm_body_jsonobject()
+        cmd.bootMode = 'Legacy'
+        cmd.machineType = 'pc-q35-rhel8.6.0'
+
+        vm = vm_plugin.Vm.from_StartVmCmd(cmd)
+
+        namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
+        root = etree.fromstring(vm.domain_xml)
+        values = [arg.get('value') for commandline in root.findall('%scommandline' % namespace)
+                  for arg in commandline.findall('%sarg' % namespace)]
+        self.assertNotIn('virtio-blk-pci.discard=on', values)
+
 
 if __name__ == "__main__":
     #import sys;sys.argv = ['', 'Test.testName']

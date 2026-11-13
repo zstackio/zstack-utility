@@ -1979,6 +1979,9 @@ def get_machineType(machine_type):
             return "loongson7a"
     return machine_type if machine_type else "pc"
 
+def is_i440fx_machine_type(machine_type):
+    return machine_type == 'pc' or (machine_type and machine_type.startswith('pc-i440fx'))
+
 def get_sgio_value():
     device_name = [x for x in os.listdir("/sys/block") if not x.startswith("loop")][0]
     return "unfiltered" if os.path.isfile("/sys/block/{}/queue/unpriv_sgio".format(device_name)) else "filtered"
@@ -3699,6 +3702,7 @@ class Vm(object):
     def restore(self, path):
         self._patch_disk_xml_order_from_saved_image(path)
         self._patch_xml_from_saved_image(path)
+        self._remove_legacy_virtio_blk_discard_if_absent_in_saved_image(path)
 
         tree = etree.fromstring(self.domain_xml)
         vcpu = tree.find('vcpu')
@@ -3740,6 +3744,46 @@ class Vm(object):
         logger.debug('restoring vm:\n%s' % self.domain_xml)
         define_xml()
         restore_from_file()
+
+    def _remove_legacy_virtio_blk_discard_if_absent_in_saved_image(self, path):
+        qemu_namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
+        root = etree.fromstring(self.domain_xml)
+        os_type = root.find('./os/type')
+        if os_type is None or not is_i440fx_machine_type(os_type.get('machine')):
+            return
+
+        commandlines = root.findall('%scommandline' % qemu_namespace)
+        if not any(arg.get('value') == 'virtio-blk-pci.discard=on'
+                   for commandline in commandlines
+                   for arg in commandline.findall('%sarg' % qemu_namespace)):
+            return
+
+        @LibvirtAutoReconnect
+        def get_saved_xml(conn):
+            return conn.saveImageGetXMLDesc(path, 0)
+
+        saved_root = etree.fromstring(get_saved_xml())
+        if any(arg.get('value') == 'virtio-blk-pci.discard=on'
+               for commandline in saved_root.findall('%scommandline' % qemu_namespace)
+               for arg in commandline.findall('%sarg' % qemu_namespace)):
+            return
+
+        for commandline in commandlines:
+            args = commandline.findall('%sarg' % qemu_namespace)
+            for arg in reversed(args):
+                if arg.get('value') != 'virtio-blk-pci.discard=on':
+                    continue
+
+                index = list(commandline).index(arg)
+                commandline.remove(arg)
+                if index > 0:
+                    previous = list(commandline)[index - 1]
+                    if previous.tag == '%sarg' % qemu_namespace and previous.get('value') == '-global':
+                        commandline.remove(previous)
+
+            if not list(commandline):
+                root.remove(commandline)
+        self.domain_xml = etree.tostring(root, encoding='unicode')
 
     @staticmethod
     def _disk_matches(current, saved):
@@ -8511,6 +8555,16 @@ class Vm(object):
 
         if cmd.additionalQmp:
             make_qemu_commandline()
+
+        if HOST_ARCH == 'x86_64' and cmd.bootMode not in ('UEFI', 'UEFI_WITH_CSM') and is_i440fx_machine_type(machine_type):
+            qemu_args = [arg.strip('"') for arg in (cmd.addons['qemuCommandLine'] or [])] if cmd.additionalQmp else []
+            if not any(qemu_args[i - 1] == '-global' and qemu_args[i].startswith('virtio-blk-pci.discard=')
+                       for i in range(1, len(qemu_args))):
+                qcmd = elements['root'].find('qemu:commandline')
+                if qcmd is None:
+                    qcmd = e(elements['root'], 'qemu:commandline')
+                e(qcmd, 'qemu:arg', attrib={'value': '-global'})
+                e(qcmd, 'qemu:arg', attrib={'value': 'virtio-blk-pci.discard=on'})
 
         if use_numa_memory_backing or cmd.useHugePage or cmd.MemAccess == "shared" or cmd.noSharePages or vm_artifact_views:
             make_memory_backing()
