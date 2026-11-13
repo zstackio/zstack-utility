@@ -34,7 +34,7 @@ def test_imagestore_client_registry_url_wraps_ipv6_only_once():
     assert client._build_registry_url('[2001:db8::10]') == '[2001:db8::10]:8000'
 
 
-def test_download_from_imagestore_uses_bracketed_ipv6_registry_url(monkeypatch):
+def test_download_from_imagestore_uses_bracketed_ipv6_registry_url(monkeypatch, configured_volume_extensions):
     client = ImageStoreClient()
     commands = []
 

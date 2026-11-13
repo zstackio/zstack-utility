@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 
 from kvmagent.crypto import secret
+from kvmagent.crypto import imagestore
 from kvmagent.crypto.conversion_rollback import conversion_rollback
 from kvmagent.crypto.http_error import check_output, log_failure, run_checked
 from zstacklib.utils import lock, log
@@ -278,3 +279,46 @@ def _resize(image, config, size, encrypted_dek):
                      'secret,id=luks_sec,format=raw,file=%s' % secret_file,
                      '--image-opts', _image_options(image, config), str(size)])
     _verified_state(image, config, EncryptionMode.LUKS, encrypted_dek)
+
+
+def download_encrypted_imagestore(cmd, client):
+    config = _config(cmd)
+    image = _image_path(cmd.primaryStorageInstallPath)
+    if not getattr(cmd, 'encryptedDek', None):
+        raise ValueError('encryptedDek is required')
+    if not getattr(cmd, 'hostname', None):
+        raise ValueError('hostname is required')
+    if _rbd_exists(image, config):
+        raise FileExistsError(image)
+    client._check_zstore_cli()
+    name, image_id = client._parse_image_reference(cmd.backupStorageInstallPath)
+    encryption_spec = {field: getattr(cmd, field, None) for field in
+                       ('encryptedDek', 'keyProviderUuid', 'keyVersion', 'cipher')}
+    encryption_spec['encrypted'] = True
+    with _stage_rbd(image, config) as staged_image:
+        with imagestore.temporary_json(encryption_spec) as target_file:
+            command = [client.ZSTORE_CLI_BIN, '-rootca',
+                       '/var/lib/zstack/imagestorebackupstorage/package/certs/ca.pem',
+                       '-url', '%s:%s' % (cmd.hostname, client.ZSTORE_DEF_PORT), 'pull',
+                       '-target-encryption-json-file', target_file,
+                       '-secret-channel-provider', imagestore.KEY_AGENT_PROVIDER]
+            if getattr(cmd, 'sourceEncrypted', False):
+                with imagestore.temporary_json(encryption_spec) as source_file:
+                    source_command = command + ['-encryption-json-file', source_file]
+                    _run_pull(source_command, cmd, name, image_id, config, 'ceph://' + staged_image)
+            else:
+                _run_pull(command, cmd, name, image_id, config, 'ceph://' + staged_image)
+        _verified_state(staged_image, config, EncryptionMode.LUKS, cmd.encryptedDek)
+        _rbd_rename(staged_image, image, config)
+    return True
+
+
+def _run_pull(command, cmd, name, image_id, config, install_path):
+    concurrency = getattr(cmd, 'concurrency', None)
+    if concurrency and int(concurrency) > 1:
+        command.extend(['-concurrency=%d' % int(concurrency)])
+    command.extend(['-installpath', install_path, '%s:%s' % (name, image_id)])
+    environment = os.environ.copy()
+    environment['CEPH_CONF'] = config
+    environment['CEPH_ARGS'] = '--conf %s' % config
+    run_checked(command, env=environment)

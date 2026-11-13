@@ -4,6 +4,7 @@ import platform
 import json
 
 from kvmagent import kvmagent
+from kvmagent.volume import imagestore_commands
 from zstacklib.utils import jsonobject
 from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
@@ -50,8 +51,8 @@ class ImageStoreClient(object):
     def _build_registry_url(self, hostname):
         return network_ipv6.format_host_port(hostname, self.ZSTORE_DEF_PORT)
 
-    def upload_image(self, hostname, fpath, concurrency=None):
-        imf = self.commit_image(fpath)
+    def upload_image(self, hostname, fpath, concurrency=None, addons=None, device_id=None):
+        imf = self.commit_image(fpath, addons, device_id)
 
         extra_param = ""
         if concurrency and concurrency > 1:
@@ -64,10 +65,11 @@ class ImageStoreClient(object):
 
         return imf
 
-    def commit_image(self, fpath):
+    def commit_image(self, fpath, addons=None, device_id=None):
         cmdstr = '%s -json add -file %s' % (self.ZSTORE_CLI_PATH, fpath)
         logger.debug('adding %s to local image store' % fpath)
-        output = shell.call(cmdstr)
+        with imagestore_commands.prepare_image_add_command(cmdstr, addons, device_id) as prepared_command:
+            output = shell.call(prepared_command)
         logger.debug('%s added to local image store' % fpath)
 
         return jsonobject.loads(output.splitlines()[-1])
@@ -226,7 +228,7 @@ class ImageStoreClient(object):
             return vm, maxInfoMap, minInfoMap
 
     # extra_args: (-point-in-time, -oob, -speed 1024)
-    def backup_volume(self, vm, node, bitmap, mode, dest, task_spec, extra_args=()):
+    def backup_volume(self, vm, node, bitmap, mode, dest, task_spec, extra_args=(), addons=None, device_id=None):
         self.check_capacity(os.path.dirname(dest))
 
         PFILE = linux.create_temp_file()
@@ -243,7 +245,8 @@ class ImageStoreClient(object):
         with linux.ShowLibvirtErrorOnException(vm):
             cmdstr = '%s -progress %s backup -bitmap %s -dest %s -domain %s -drive "%s" -mode %s %s' % \
                      (self.ZSTORE_CLI_PATH, PFILE, bitmap, dest, vm, node, mode, " ".join(extra_args))
-            _, mode, err = bash_progress_1(cmdstr, _get_progress)
+            with imagestore_commands.prepare_volume_backup_command(cmdstr, addons, device_id) as prepared_command:
+                _, mode, err = bash_progress_1(prepared_command, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
                 self.check_capacity(os.path.dirname(dest))
@@ -254,7 +257,7 @@ class ImageStoreClient(object):
     # extra_args -> ("-point-in-time", "-oob")
     # {'drive-virtio-disk0': { "backupFile": "foo", "mode":"full" },
     #  'drive-virtio-disk1': { "backupFile": "bar", "mode":"top" }}
-    def backup_volumes(self, vm, args, dstdir, task_spec, extra_args=()):
+    def backup_volumes(self, vm, args, dstdir, task_spec, extra_args=(), addons=None, device_ids=None):
         self.check_capacity(dstdir)
         PFILE = linux.create_temp_file()
         reporter = Report.from_spec(task_spec, "VmBackup")
@@ -271,7 +274,8 @@ class ImageStoreClient(object):
         with linux.ShowLibvirtErrorOnException(vm):
             cmdstr = '%s -progress %s batbak -domain %s -destdir %s %s -args %s' % \
                      (self.ZSTORE_CLI_PATH, PFILE, vm, dstdir, " ".join(extra_args), ':'.join(["%s,%s,%s,%s" % x for x in args]))
-            _, mode, err = bash_progress_1(cmdstr, _get_progress)
+            with imagestore_commands.prepare_batch_backup_command(cmdstr, addons, args, device_ids) as prepared_command:
+                _, mode, err = bash_progress_1(prepared_command, _get_progress)
             linux.rm_file_force(PFILE)
             if err:
                 self.check_capacity(dstdir)
@@ -335,7 +339,8 @@ class ImageStoreClient(object):
         cmdstr = '%s -json  -callbackurl %s -taskid %s -imageUuid %s add -desc \'%s\' -file %s' % (self.ZSTORE_CLI_PATH, req[http.REQUEST_HEADER].get(http.CALLBACK_URI),
                 req[http.REQUEST_HEADER].get(http.TASK_UUID), cmd.imageUuid, cmd.description, fpath)
         logger.debug('adding %s to local image store' % fpath)
-        output = shell.call(cmdstr)
+        with imagestore_commands.prepare_image_add_command(cmdstr, getattr(cmd, 'addons', None)) as prepared_command:
+            output = shell.call(prepared_command)
         logger.debug('%s added to local image store' % fpath)
 
         imf = jsonobject.loads(output.splitlines()[-1])
@@ -347,7 +352,7 @@ class ImageStoreClient(object):
 
         return jsonobject.dumps(rsp)
 
-    def download_from_imagestore(self, cachedir, host, bs_path, ps_path, concurrency=1, failure_action=None):
+    def download_from_imagestore(self, cachedir, host, bs_path, ps_path, concurrency=1, failure_action=None, addons=None):
         self._check_zstore_cli()
 
         name, imageid = self._parse_image_reference(bs_path)
@@ -358,12 +363,13 @@ class ImageStoreClient(object):
         pull_extra_param = ""
         if concurrency and concurrency > 1:
             pull_extra_param += " -concurrency=%d" % concurrency
-        cmdstr = '%s -url %s %s pull %s -installpath %s %s:%s' % \
-                 (self.ZSTORE_CLI_PATH, self._build_registry_url(host), extra_param, pull_extra_param, ps_path, name, imageid)
+        cmdstr = '%s -url %s %s pull %s -installpath %s' % \
+                 (self.ZSTORE_CLI_PATH, self._build_registry_url(host), extra_param, pull_extra_param, ps_path)
         logger.debug('pulling %s:%s from image store' % (name, imageid))
 
         try:
-            shell.call(cmdstr)
+            with imagestore_commands.prepare_image_pull_command(cmdstr, addons) as prepared_command:
+                shell.call('%s %s:%s' % (prepared_command, name, imageid))
         except Exception as ex:
             if failure_action:
                 failure_action()

@@ -903,15 +903,16 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def resize_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
 
         with lvm.RecursiveOperateLv(install_abs_path, shared=False):
             if cmd.force:
-                lvm.resize_lv(install_abs_path, cmd.size, True)
+                lvm.resize_lv(install_abs_path, volume_driver.required_allocation_size(cmd.size), True)
             else:
-                lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd)
+                lvm.extend_lv_from_cmd(install_abs_path, volume_driver.required_allocation_size(cmd.size), cmd)
             fmt = linux.get_img_fmt(install_abs_path)
             if not cmd.live and fmt == 'qcow2':
-                linux.qemu_img_resize(install_abs_path, cmd.size, 'qcow2', cmd.force)
+                volume_driver.resize(install_abs_path, cmd.size)
             ret = linux.qcow2_virtualsize(install_abs_path)
 
         rsp = ResizeVolumeRsp()
@@ -1173,7 +1174,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
                                                         cmd.primaryStorageInstallPath, cmd.concurrency,
-                                                        failure_action=clean)
+                                                        failure_action=clean, addons=getattr(cmd, 'addons', None))
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)

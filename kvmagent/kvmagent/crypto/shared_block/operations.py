@@ -111,3 +111,8 @@ def encrypt_in_place(cmd):
                     temporary, lambda: secret.luks_secret_channel(cmd.encryptedDek))
             _replace_lv(temporary, source)
     return True
+
+
+def resize(cmd, target, size):
+    return _with_secret(cmd, None, target,
+                        lambda secret_file: qemu_volume.resize_with_secret(target, size, secret_file))

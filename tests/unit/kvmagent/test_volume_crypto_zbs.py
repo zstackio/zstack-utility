@@ -119,5 +119,144 @@ class ZbsCryptoTest(unittest.TestCase):
                 zbs.is_encrypted('cbd:physical/logical/source@17')
         probe.assert_not_called()
 
+    def test_encrypted_nbd_chain_download_closes_qsd_and_removes_workspace(self):
+        cmd = SimpleNamespace(primaryStorageInstallPath='cbd:physical/logical/target',
+                              backupStorageHostname='imagestore', backupStorageNbdPort=10809,
+                              backupStorageNbdExportNames=['base', 'leaf'],
+                              encryptedDek='wrapped', sourceEncrypted=True)
+        real_exists = os.path.exists
+        with mock.patch.object(zbs, '_verify', return_value=4096):
+            with mock.patch.object(zbs.secret, 'luks_secret_channel') as channel:
+                channel.return_value.__enter__.return_value = '/tmp/one-shot-secret'
+                with mock.patch.object(zbs.subprocess, 'Popen') as popen:
+                    popen.return_value.poll.return_value = None
+                    with mock.patch.object(zbs.os.path, 'exists',
+                                           side_effect=lambda path: path.endswith('source.sock') or real_exists(path)):
+                        with mock.patch.object(zbs, 'run_checked') as call:
+                            self.assertEqual(4096, zbs.download_encrypted_imagestore(cmd))
+        daemon_command = popen.call_args.args[0]
+        self.assertIn('secret,id=luks_sec,format=raw,file=/tmp/one-shot-secret', daemon_command)
+        self.assertEqual(2, daemon_command.count('--blockdev') // 2)
+        target_command = call.call_args.args[0]
+        self.assertIn('--target-image-opts', target_command)
+        self.assertIn('nbd+unix:///top?socket=', ' '.join(target_command))
+        popen.return_value.terminate.assert_called_once()
+        workspace = daemon_command[-3].split('addr.path=')[1]
+        self.assertFalse(real_exists(os.path.dirname(workspace)))
+
+    def test_nbd_teardown_preserves_business_errors_and_unreaped_workspace(self):
+        cmd = SimpleNamespace(primaryStorageInstallPath='cbd:physical/logical/target',
+                              backupStorageHostname='imagestore', backupStorageNbdPort=10809,
+                              backupStorageNbdExportNames=['leaf'], encryptedDek='wrapped')
+        real_rmtree = zbs.shutil.rmtree
+        for body in ('success', 'convert', 'verify'):
+            for stage in ('normal', 'timeout', 'terminate', 'wait', 'kill', 'final_wait', 'final_timeout', 'rmtree', 'poll'):
+                with self.subTest(body=body, stage=stage), \
+                        mock.patch.object(zbs, '_verify', return_value=4096) as verify, \
+                        mock.patch.object(zbs.secret, 'luks_secret_channel') as channel, \
+                        mock.patch.object(zbs.subprocess, 'Popen') as popen, \
+                        mock.patch.object(zbs, 'run_checked') as convert, \
+                        mock.patch.object(zbs.shutil, 'rmtree', side_effect=real_rmtree) as remove, \
+                        mock.patch.object(zbs, 'logger', logging.getLogger(zbs.__name__)), \
+                        mock.patch.object(http_error, 'logger', logging.getLogger(zbs.__name__)):
+                    channel.return_value.__enter__.return_value = '/tmp/sensitive-channel'
+                    process = popen.return_value
+                    process.poll.return_value = None
+                    process.pid = 12345
+                    failure = OSError('wrapped /tmp/sensitive-channel cleanup failed')
+                    business = RuntimeError('wrapped /tmp/sensitive-channel business failed')
+                    timeout = zbs.subprocess.TimeoutExpired(['qemu-storage-daemon', 'wrapped', '/tmp/sensitive-channel'], 10)
+                    if stage == 'final_timeout':
+                        failure = timeout
+                    if stage in ('timeout', 'terminate', 'kill', 'final_wait', 'final_timeout'):
+                        process.wait.side_effect = [timeout, failure if stage in ('final_wait', 'final_timeout') else 0]
+                    if stage == 'wait':
+                        process.wait.side_effect = [failure, 0]
+                    if stage in ('terminate', 'kill', 'poll'):
+                        getattr(process, stage).side_effect = failure
+                    if stage == 'rmtree':
+                        remove.side_effect = failure
+                    if body == 'convert':
+                        convert.side_effect = business
+                    elif body == 'verify':
+                        verify.side_effect = [4096, business]
+                    workspaces = []
+
+                    def launch(command, stdout, **kwargs):
+                        workspace = os.path.dirname(stdout.name)
+                        workspaces.append(workspace)
+                        self.addCleanup(real_rmtree, workspace, ignore_errors=True)
+                        stdout.write('QSD diagnostic output')
+                        with open(os.path.join(workspace, 'source.sock'), 'w'):
+                            pass
+                        return process
+
+                    popen.side_effect = launch
+                    expected = business if body != 'success' else (
+                        None if stage in ('normal', 'timeout') else failure)
+                    with mock.patch.object(logging.getLogger(zbs.__name__), 'error') as logs:
+                        if expected is None:
+                            self.assertEqual(4096, zbs.download_encrypted_imagestore(cmd))
+                        else:
+                            with self.assertRaises(type(expected)) as raised:
+                                zbs.download_encrypted_imagestore(cmd)
+                            self.assertIs(expected, raised.exception)
+                    retained = stage in ('final_wait', 'final_timeout', 'rmtree')
+                    self.assertEqual(retained, os.path.exists(workspaces[0]))
+                    if retained:
+                        self.assertTrue(os.path.exists(os.path.join(workspaces[0], 'qsd.log')))
+                    for call in process.wait.call_args_list:
+                        self.assertEqual(mock.call(timeout=10), call)
+                    if stage in ('timeout', 'terminate', 'wait', 'kill', 'final_wait', 'final_timeout'):
+                        process.kill.assert_called_once_with()
+                        self.assertEqual(2, process.wait.call_count)
+                    if stage not in ('normal', 'timeout'):
+                        self.assertTrue(logs.called)
+                    messages = str(logs.call_args_list)
+                    self.assertNotIn('wrapped', messages)
+                    self.assertNotIn('/tmp/sensitive-channel', messages)
+                    if stage in ('final_wait', 'final_timeout'):
+                        self.assertIn(workspaces[0], messages)
+                        self.assertIn('12345', messages)
+
+    def test_nbd_startup_failure_is_diagnosed_before_workspace_cleanup(self):
+        cmd = SimpleNamespace(primaryStorageInstallPath='cbd:physical/logical/target',
+                              backupStorageHostname='imagestore', backupStorageNbdPort=10809,
+                              backupStorageNbdExportNames=['leaf'],
+                              encryptedDek='wrapped', sourceEncrypted=True)
+        cases = (
+            (b'Invalid password, cannot unlock any keyslot', 1, 'qsd_startup'),
+            (b'Failed to connect: Connection refused', 2, 'qsd_startup'),
+            (b'Image is not in qcow2 format', 3, 'qsd_startup'),
+            (b'', None, 'qsd_startup_timeout'),
+        )
+        for diagnostic, returncode, stage in cases:
+            with self.subTest(stage=stage), \
+                    mock.patch.object(zbs, 'logger', logging.getLogger(zbs.__name__)), \
+                    mock.patch.object(zbs, '_verify'), mock.patch.object(zbs.time, 'sleep'), \
+                    mock.patch.object(zbs.secret, 'luks_secret_channel') as channel, \
+                    mock.patch.object(zbs.subprocess, 'Popen') as popen, \
+                    mock.patch.object(zbs, 'run_checked') as convert:
+                channel.return_value.__enter__.return_value = '/tmp/sensitive-channel'
+                popen.return_value.poll.return_value = returncode
+                workspaces = []
+
+                def launch(command, stdout, **kwargs):
+                    stdout.write((diagnostic + b' /tmp/sensitive-channel wrapped').decode())
+                    workspaces.append(os.path.dirname(stdout.name))
+                    return popen.return_value
+
+                popen.side_effect = launch
+                with self.assertLogs(zbs.__name__, level='ERROR') as logs:
+                    with self.assertRaises(RuntimeError):
+                        zbs.download_encrypted_imagestore(cmd)
+                message = logs.output[0]
+                self.assertIn('stage=%s returncode=%s' % (stage, returncode), message)
+                self.assertNotIn('/tmp/sensitive-channel', message)
+                self.assertNotIn('wrapped', message)
+                self.assertFalse(os.path.exists(workspaces[0]))
+                convert.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

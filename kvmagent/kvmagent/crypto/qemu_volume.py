@@ -300,3 +300,17 @@ def rebase_no_check_with_secret(backing, target, secret_file, *, backing_format=
 
 def _secret_context(secret_file_or_provider):
     return secret_file_or_provider() if callable(secret_file_or_provider) else nullcontext(secret_file_or_provider)
+
+
+def resize_with_secret(target, size, secret_file):
+    if not secret_file:
+        raise ValueError('LUKS secret file is required')
+    command = [QEMU_IMG, 'resize', '--object',
+               'secret,id=luks_sec,format=raw,file=%s' % secret_file]
+    image_options = _source_image_options(target)
+    if image_options:
+        command.extend(['--image-opts', image_options])
+    else:
+        command.extend(['-f', 'qcow2', target])
+    command.append(str(size))
+    run_checked(command)

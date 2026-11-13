@@ -30,3 +30,6 @@ class PlainSharedBlockVolumeDriver(object):
     def create_with_backing(self, backing_path, target_path, volume_size, qcow2_options):
         return linux.qcow2_clone_with_option(
             backing_path, target_path, qcow2_options, self.cmd.virtualSize if self.cmd.virtualSize else '')
+
+    def resize(self, target_path, volume_size):
+        return linux.qemu_img_resize(target_path, volume_size, 'qcow2', self.cmd.force)

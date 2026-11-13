@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from kvmagent.crypto import http_error, qemu_volume, secret, vm_xml
+from kvmagent.crypto import http_error, imagestore, qemu_volume, secret, vm_xml
 from kvmagent.crypto.ceph import http as ceph_http
 from kvmagent.crypto.ceph import operations as ceph
 from kvmagent.crypto.file_volume import http as file_http
@@ -58,6 +58,46 @@ def test_sharedblock_empty_volume_formats_new_lv(configured_volume_extensions, m
         extend_lv.assert_not_called()
         create_plain.assert_called_once_with(path, size, '', discard_on_metadata=False)
         create_luks.assert_not_called()
+
+
+@pytest.mark.parametrize('encrypted_dek, overhead', [(None, 0), ('synthetic-envelope', block.LUKS_HEADER_OVERHEAD)])
+def test_sharedblock_restore_resize_uses_selected_driver(configured_volume_extensions, monkeypatch, encrypted_dek, overhead):
+    from kvmagent.volume import plain_shared_block_driver
+
+    plugin_path = Path(__file__).parents[3] / 'kvmagent/kvmagent/plugins/shared_block_plugin.py'
+    spec = importlib.util.spec_from_file_location('shared_block_resize_under_test', plugin_path)
+    sharedblock = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sharedblock)
+    plugin = sharedblock.SharedBlockPlugin.__new__(sharedblock.SharedBlockPlugin)
+    path = '/dev/vg/volume'
+    size = 1024 * 1024
+    extend_lv = Mock()
+    resize_plain = Mock()
+    resize_luks = Mock()
+    verify = Mock()
+    linux = SimpleNamespace(get_img_fmt=lambda _: 'qcow2', qcow2_virtualsize=lambda _: size,
+                            qemu_img_resize=resize_plain)
+    monkeypatch.setattr(sharedblock, 'linux', linux, raising=False)
+    monkeypatch.setattr(plain_shared_block_driver, 'linux', linux)
+    monkeypatch.setattr(sharedblock, 'lvm', SimpleNamespace(
+        RecursiveOperateLv=lambda *args, **kwargs: nullcontext(), extend_lv_from_cmd=extend_lv))
+    monkeypatch.setattr(secret, 'luks_secret_channel', lambda _: nullcontext('synthetic-channel'))
+    monkeypatch.setattr(qemu_volume, 'resize_with_secret', resize_luks)
+    monkeypatch.setattr(qemu_volume, 'verify_luks_open', verify)
+
+    cmd = dict(installPath='sharedblock://vg/volume', size=size, encryptedDek=encrypted_dek)
+    response = json.loads(plugin.resize_volume({sharedblock.http.REQUEST_BODY: json.dumps(cmd)}))
+
+    assert response['success'], response
+    assert response['size'] == size
+    assert extend_lv.call_args.args[:2] == (path, size + overhead)
+    if encrypted_dek:
+        resize_luks.assert_called_once_with(path, size, 'synthetic-channel')
+        verify.assert_called_once()
+        resize_plain.assert_not_called()
+    else:
+        resize_plain.assert_called_once_with(path, size, 'qcow2', None)
+        resize_luks.assert_not_called()
 
 
 @pytest.mark.parametrize('publish_result', ['status', 'exception', 'success', 'cleanup_failure'])
@@ -366,14 +406,23 @@ def test_zbs_create_replay_preserves_luks_header_and_data(tmp_path, monkeypatch)
         initialize.assert_not_called()
 
 
+@pytest.mark.parametrize('artifact', ['secret', 'staged_json', 'command_json'])
 @pytest.mark.parametrize('business_fails', [True, False])
-def test_sensitive_cleanup_preserves_business_result(tmp_path, monkeypatch, caplog, business_fails):
+def test_sensitive_cleanup_preserves_business_result(tmp_path, monkeypatch, caplog, artifact, business_fails):
     private_path = str(tmp_path / 'private-test-channel')
     envelope = 'synthetic-private-envelope'
-    error = RuntimeError("operation failed")
     monkeypatch.setattr(http_error, 'logger', logging.getLogger(__name__))
     monkeypatch.setattr(secret, 'prepare_luks_secret_material_channel', lambda _: private_path)
-    manager = secret.luks_secret_channel(envelope)
+    monkeypatch.setattr(imagestore.tempfile, 'tempdir', str(tmp_path))
+    error = RuntimeError('synthetic operation error')
+
+    if artifact == 'secret':
+        manager = secret.luks_secret_channel(envelope)
+    elif artifact == 'staged_json':
+        manager = imagestore.temporary_json({'encryptedDek': envelope})
+    else:
+        manager = imagestore.prepare_command(
+            {'kind': 'add', 'addons': {'ImageStoreEncryption': {'encryptedDek': envelope}}}, 'zstcli add')
 
     def execute():
         with manager:
@@ -385,6 +434,9 @@ def test_sensitive_cleanup_preserves_business_result(tmp_path, monkeypatch, capl
             with pytest.raises(RuntimeError) as caught:
                 execute()
             assert caught.value is error
+        elif artifact == 'staged_json':
+            with pytest.raises(RuntimeError, match='failed to remove temporary ImageStore encryption metadata'):
+                execute()
         else:
             execute()
         unlink.assert_called_once()
