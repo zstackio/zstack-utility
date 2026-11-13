@@ -10,6 +10,7 @@ import traceback
 
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
+from kvmagent.volume import driver_factory
 from kvmagent.plugins.imagestore import ImageStoreClient
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
@@ -875,13 +876,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             if not os.path.exists(dirname):
                 os.makedirs(dirname)
 
-            if cmd.volumeFormat == "raw":
-                linux.raw_create(cmd.installUrl, cmd.size)
-            else:  # default: cmd.volumeFormat == "qcow2"
-                if cmd.backingFile:
-                    linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd)
-                else:
-                    linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+            return driver_factory.get_file_driver(cmd).create_empty()
         try:
             _create_dir_and_file()
         except Exception as e:
@@ -993,7 +988,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0o775)
 
-        linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
+        return driver_factory.get_file_driver(cmd).create_with_backing(backing_path, vol_path)
 
     def create_meta_file(self, cmd, **kwargs):
         meta = VolumeMeta()

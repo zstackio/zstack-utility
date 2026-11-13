@@ -18,7 +18,7 @@ DESCRIPTOR = _descriptor.FileDescriptor(
   package='keyagent.v1',
   syntax='proto3',
   serialized_options=None,
-  serialized_pb=b'\n\x0fkey_agent.proto\x12\x0bkeyagent.v1\"\x1a\n\x18\x43reateEnvelopeKeyRequest\",\n\x19\x43reateEnvelopeKeyResponse\x12\x0f\n\x07\x63reated\x18\x01 \x01(\x08\"\x1a\n\x18RotateEnvelopeKeyRequest\"\x1b\n\x19RotateEnvelopeKeyResponse\"\x15\n\x13GetPublicKeyRequest\"*\n\x14GetPublicKeyResponse\x12\x12\n\npublic_key\x18\x01 \x01(\x0c\"\x19\n\x17\x43heckEnvelopeKeyRequest\"\x1a\n\x18\x43heckEnvelopeKeyResponse\"\xa5\x01\n\x13\x45nsureSecretRequest\x12\x15\n\rencrypted_dek\x18\x01 \x01(\x0c\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12\x0f\n\x07vm_uuid\x18\x03 \x01(\t\x12\x0f\n\x07purpose\x18\x04 \x01(\t\x12\x13\n\x0bkey_version\x18\x05 \x01(\x05\x12\x16\n\x0eusage_instance\x18\x06 \x01(\t\x12\x13\n\x0bsecret_uuid\x18\x07 \x01(\t\"+\n\x14\x45nsureSecretResponse\x12\x13\n\x0bsecret_uuid\x18\x01 \x01(\t\"a\n\x10GetSecretRequest\x12\x0f\n\x07vm_uuid\x18\x01 \x01(\t\x12\x13\n\x0bkey_version\x18\x02 \x01(\x05\x12\x0f\n\x07purpose\x18\x03 \x01(\t\x12\x16\n\x0eusage_instance\x18\x04 \x01(\t\"(\n\x11GetSecretResponse\x12\x13\n\x0bsecret_uuid\x18\x01 \x01(\t\"d\n\x13\x44\x65leteSecretRequest\x12\x0f\n\x07vm_uuid\x18\x01 \x01(\t\x12\x13\n\x0bkey_version\x18\x02 \x01(\x05\x12\x0f\n\x07purpose\x18\x03 \x01(\t\x12\x16\n\x0eusage_instance\x18\x04 \x01(\t\"\x16\n\x14\x44\x65leteSecretResponse2\x85\x05\n\x0fKeyAgentService\x12\x62\n\x11\x43reateEnvelopeKey\x12%.keyagent.v1.CreateEnvelopeKeyRequest\x1a&.keyagent.v1.CreateEnvelopeKeyResponse\x12\x62\n\x11RotateEnvelopeKey\x12%.keyagent.v1.RotateEnvelopeKeyRequest\x1a&.keyagent.v1.RotateEnvelopeKeyResponse\x12S\n\x0cGetPublicKey\x12 .keyagent.v1.GetPublicKeyRequest\x1a!.keyagent.v1.GetPublicKeyResponse\x12_\n\x10\x43heckEnvelopeKey\x12$.keyagent.v1.CheckEnvelopeKeyRequest\x1a%.keyagent.v1.CheckEnvelopeKeyResponse\x12S\n\x0c\x45nsureSecret\x12 .keyagent.v1.EnsureSecretRequest\x1a!.keyagent.v1.EnsureSecretResponse\x12J\n\tGetSecret\x12\x1d.keyagent.v1.GetSecretRequest\x1a\x1e.keyagent.v1.GetSecretResponse\x12S\n\x0c\x44\x65leteSecret\x12 .keyagent.v1.DeleteSecretRequest\x1a!.keyagent.v1.DeleteSecretResponseb\x06proto3'
+  serialized_pb=b'\n\x0fkey_agent.proto\x12\x0bkeyagent.v1\"\x1a\n\x18\x43reateEnvelopeKeyRequest\",\n\x19\x43reateEnvelopeKeyResponse\x12\x0f\n\x07\x63reated\x18\x01 \x01(\x08\"\x1a\n\x18RotateEnvelopeKeyRequest\"\x1b\n\x19RotateEnvelopeKeyResponse\"\x15\n\x13GetPublicKeyRequest\"*\n\x14GetPublicKeyResponse\x12\x12\n\npublic_key\x18\x01 \x01(\x0c\"\x19\n\x17\x43heckEnvelopeKeyRequest\"\x1a\n\x18\x43heckEnvelopeKeyResponse\"\xa5\x01\n\x13\x45nsureSecretRequest\x12\x15\n\rencrypted_dek\x18\x01 \x01(\x0c\x12\x13\n\x0b\x64\x65scription\x18\x02 \x01(\t\x12\x0f\n\x07vm_uuid\x18\x03 \x01(\t\x12\x0f\n\x07purpose\x18\x04 \x01(\t\x12\x13\n\x0bkey_version\x18\x05 \x01(\x05\x12\x16\n\x0eusage_instance\x18\x06 \x01(\t\x12\x13\n\x0bsecret_uuid\x18\x07 \x01(\t\"+\n\x14\x45nsureSecretResponse\x12\x13\n\x0bsecret_uuid\x18\x01 \x01(\t\"a\n\x10GetSecretRequest\x12\x0f\n\x07vm_uuid\x18\x01 \x01(\t\x12\x13\n\x0bkey_version\x18\x02 \x01(\x05\x12\x0f\n\x07purpose\x18\x03 \x01(\t\x12\x16\n\x0eusage_instance\x18\x04 \x01(\t\"(\n\x11GetSecretResponse\x12\x13\n\x0bsecret_uuid\x18\x01 \x01(\t\"d\n\x13\x44\x65leteSecretRequest\x12\x0f\n\x07vm_uuid\x18\x01 \x01(\t\x12\x13\n\x0bkey_version\x18\x02 \x01(\x05\x12\x0f\n\x07purpose\x18\x03 \x01(\t\x12\x16\n\x0eusage_instance\x18\x04 \x01(\t\"\x16\n\x14\x44\x65leteSecretResponse\"@\n\'PrepareLuksSecretMaterialChannelRequest\x12\x15\n\rencrypted_dek\x18\x01 \x01(\x0c\"@\n(PrepareLuksSecretMaterialChannelResponse\x12\x14\n\x0c\x63hannel_path\x18\x01 \x01(\t2\x97\x06\n\x0fKeyAgentService\x12\x62\n\x11\x43reateEnvelopeKey\x12%.keyagent.v1.CreateEnvelopeKeyRequest\x1a&.keyagent.v1.CreateEnvelopeKeyResponse\x12\x62\n\x11RotateEnvelopeKey\x12%.keyagent.v1.RotateEnvelopeKeyRequest\x1a&.keyagent.v1.RotateEnvelopeKeyResponse\x12S\n\x0cGetPublicKey\x12 .keyagent.v1.GetPublicKeyRequest\x1a!.keyagent.v1.GetPublicKeyResponse\x12_\n\x10\x43heckEnvelopeKey\x12$.keyagent.v1.CheckEnvelopeKeyRequest\x1a%.keyagent.v1.CheckEnvelopeKeyResponse\x12S\n\x0c\x45nsureSecret\x12 .keyagent.v1.EnsureSecretRequest\x1a!.keyagent.v1.EnsureSecretResponse\x12J\n\tGetSecret\x12\x1d.keyagent.v1.GetSecretRequest\x1a\x1e.keyagent.v1.GetSecretResponse\x12S\n\x0c\x44\x65leteSecret\x12 .keyagent.v1.DeleteSecretRequest\x1a!.keyagent.v1.DeleteSecretResponse\x12\x8f\x01\n PrepareLuksSecretMaterialChannel\x12\x34.keyagent.v1.PrepareLuksSecretMaterialChannelRequest\x1a\x35.keyagent.v1.PrepareLuksSecretMaterialChannelResponseb\x06proto3'
 )
 
 
@@ -492,6 +492,68 @@ _DELETESECRETRESPONSE = _descriptor.Descriptor(
   serialized_end=763,
 )
 
+
+_PREPARELUKSSECRETMATERIALCHANNELREQUEST = _descriptor.Descriptor(
+  name='PrepareLuksSecretMaterialChannelRequest',
+  full_name='keyagent.v1.PrepareLuksSecretMaterialChannelRequest',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='encrypted_dek', full_name='keyagent.v1.PrepareLuksSecretMaterialChannelRequest.encrypted_dek', index=0,
+      number=1, type=12, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"",
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=765,
+  serialized_end=829,
+)
+
+
+_PREPARELUKSSECRETMATERIALCHANNELRESPONSE = _descriptor.Descriptor(
+  name='PrepareLuksSecretMaterialChannelResponse',
+  full_name='keyagent.v1.PrepareLuksSecretMaterialChannelResponse',
+  filename=None,
+  file=DESCRIPTOR,
+  containing_type=None,
+  fields=[
+    _descriptor.FieldDescriptor(
+      name='channel_path', full_name='keyagent.v1.PrepareLuksSecretMaterialChannelResponse.channel_path', index=0,
+      number=1, type=9, cpp_type=9, label=1,
+      has_default_value=False, default_value=b"".decode('utf-8'),
+      message_type=None, enum_type=None, containing_type=None,
+      is_extension=False, extension_scope=None,
+      serialized_options=None, file=DESCRIPTOR),
+  ],
+  extensions=[
+  ],
+  nested_types=[],
+  enum_types=[
+  ],
+  serialized_options=None,
+  is_extendable=False,
+  syntax='proto3',
+  extension_ranges=[],
+  oneofs=[
+  ],
+  serialized_start=831,
+  serialized_end=895,
+)
+
 DESCRIPTOR.message_types_by_name['CreateEnvelopeKeyRequest'] = _CREATEENVELOPEKEYREQUEST
 DESCRIPTOR.message_types_by_name['CreateEnvelopeKeyResponse'] = _CREATEENVELOPEKEYRESPONSE
 DESCRIPTOR.message_types_by_name['RotateEnvelopeKeyRequest'] = _ROTATEENVELOPEKEYREQUEST
@@ -506,6 +568,8 @@ DESCRIPTOR.message_types_by_name['GetSecretRequest'] = _GETSECRETREQUEST
 DESCRIPTOR.message_types_by_name['GetSecretResponse'] = _GETSECRETRESPONSE
 DESCRIPTOR.message_types_by_name['DeleteSecretRequest'] = _DELETESECRETREQUEST
 DESCRIPTOR.message_types_by_name['DeleteSecretResponse'] = _DELETESECRETRESPONSE
+DESCRIPTOR.message_types_by_name['PrepareLuksSecretMaterialChannelRequest'] = _PREPARELUKSSECRETMATERIALCHANNELREQUEST
+DESCRIPTOR.message_types_by_name['PrepareLuksSecretMaterialChannelResponse'] = _PREPARELUKSSECRETMATERIALCHANNELRESPONSE
 _sym_db.RegisterFileDescriptor(DESCRIPTOR)
 
 CreateEnvelopeKeyRequest = _reflection.GeneratedProtocolMessageType('CreateEnvelopeKeyRequest', (_message.Message,), {
@@ -606,6 +670,20 @@ DeleteSecretResponse = _reflection.GeneratedProtocolMessageType('DeleteSecretRes
   })
 _sym_db.RegisterMessage(DeleteSecretResponse)
 
+PrepareLuksSecretMaterialChannelRequest = _reflection.GeneratedProtocolMessageType('PrepareLuksSecretMaterialChannelRequest', (_message.Message,), {
+  'DESCRIPTOR' : _PREPARELUKSSECRETMATERIALCHANNELREQUEST,
+  '__module__' : 'key_agent_pb2'
+  # @@protoc_insertion_point(class_scope:keyagent.v1.PrepareLuksSecretMaterialChannelRequest)
+  })
+_sym_db.RegisterMessage(PrepareLuksSecretMaterialChannelRequest)
+
+PrepareLuksSecretMaterialChannelResponse = _reflection.GeneratedProtocolMessageType('PrepareLuksSecretMaterialChannelResponse', (_message.Message,), {
+  'DESCRIPTOR' : _PREPARELUKSSECRETMATERIALCHANNELRESPONSE,
+  '__module__' : 'key_agent_pb2'
+  # @@protoc_insertion_point(class_scope:keyagent.v1.PrepareLuksSecretMaterialChannelResponse)
+  })
+_sym_db.RegisterMessage(PrepareLuksSecretMaterialChannelResponse)
+
 
 
 _KEYAGENTSERVICE = _descriptor.ServiceDescriptor(
@@ -614,8 +692,8 @@ _KEYAGENTSERVICE = _descriptor.ServiceDescriptor(
   file=DESCRIPTOR,
   index=0,
   serialized_options=None,
-  serialized_start=766,
-  serialized_end=1411,
+  serialized_start=898,
+  serialized_end=1689,
   methods=[
   _descriptor.MethodDescriptor(
     name='CreateEnvelopeKey',
@@ -678,6 +756,15 @@ _KEYAGENTSERVICE = _descriptor.ServiceDescriptor(
     containing_service=None,
     input_type=_DELETESECRETREQUEST,
     output_type=_DELETESECRETRESPONSE,
+    serialized_options=None,
+  ),
+  _descriptor.MethodDescriptor(
+    name='PrepareLuksSecretMaterialChannel',
+    full_name='keyagent.v1.KeyAgentService.PrepareLuksSecretMaterialChannel',
+    index=7,
+    containing_service=None,
+    input_type=_PREPARELUKSSECRETMATERIALCHANNELREQUEST,
+    output_type=_PREPARELUKSSECRETMATERIALCHANNELRESPONSE,
     serialized_options=None,
   ),
 ])

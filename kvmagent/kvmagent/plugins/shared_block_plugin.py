@@ -6,6 +6,7 @@ import traceback
 import difflib
 
 from kvmagent import kvmagent
+from kvmagent.volume import driver_factory
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.ha_plugin import stop_vg_heartbeat
 from zstacklib.utils import jsonobject
@@ -329,7 +330,6 @@ class CheckDisk(object):
 
 
 class SharedBlockPlugin(kvmagent.KvmAgent):
-
     PING_PATH = "/sharedblock/ping"
     CONNECT_PATH = "/sharedblock/connect"
     DISCONNECT_PATH = "/sharedblock/disconnect"
@@ -936,6 +936,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     def create_volume_with_backing(self, cmd):
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
+        volume_driver.validate_create_request()
         template_abs_path_cache = translate_absolute_path_from_install_path(cmd.templatePathInCache)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
@@ -945,10 +947,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 virtual_size = cmd.virtualSize
             else:
                 virtual_size = linux.qcow2_virtualsize(template_abs_path_cache)
-            lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
+            lvm.create_lv_from_cmd(install_abs_path, volume_driver.required_allocation_size(virtual_size), cmd,
                                    "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), lvmlock=False)
-            size = cmd.virtualSize if cmd.virtualSize else ""
-            linux.qcow2_clone_with_option(template_abs_path_cache, install_abs_path, qcow2_options, size)
+            volume_driver.create_with_backing(
+                template_abs_path_cache, install_abs_path, virtual_size, qcow2_options)
 
         virtual_size = linux.qcow2_get_virtual_size(install_abs_path)
         lvm.deactive_lv(install_abs_path)
@@ -1344,7 +1346,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     lvm.create_lv_from_cmd(install_abs_path, virtual_size, cmd,
                                                      "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                    linux.qcow2_create_with_backing_file_and_option(backing_abs_path, install_abs_path, qcow2_options)
+                    allocation_size = volume_driver.required_allocation_size(virtual_size)
+                    if allocation_size > int(virtual_size):
+                        lvm.extend_lv(install_abs_path, allocation_size,
+                                      skip_if_sufficient=True)
+                    volume_driver.create_empty(install_abs_path, virtual_size, backing_abs_path, qcow2_options)
                     rsp.size = linux.qcow2_virtualsize(install_abs_path)
         elif not lvm.lv_exists(install_abs_path):
             lvm.create_lv_from_cmd(install_abs_path, cmd.size, cmd,
@@ -1352,9 +1358,12 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if cmd.volumeFormat != 'raw':
                 qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, False, cmd.provisioning)
                 with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
-                    linux.qcow2_create_with_option(install_abs_path, cmd.size, qcow2_options, discard_on_metadata=False)
-                    if cmd.zeroFilled:
-                        linux.qcow2_fill(0, 1048576, install_abs_path)
+                    allocation_size = volume_driver.required_allocation_size(cmd.size)
+                    if allocation_size > int(cmd.size):
+                        lvm.extend_lv(install_abs_path, allocation_size,
+                                      skip_if_sufficient=True)
+                    volume_driver.create_empty(install_abs_path, cmd.size, qcow2_options=qcow2_options)
+                    volume_driver.zero_fill_if_requested(install_abs_path)
                     rsp.size = linux.qcow2_virtualsize(install_abs_path)
 
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))

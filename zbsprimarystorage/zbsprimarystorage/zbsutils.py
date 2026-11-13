@@ -259,7 +259,8 @@ def get_volume_clients(logical_pool, volume):
 
 
 def query_snapshot_info(logical_pool, volume):
-    return shell.call("%s list snapshot --path %s/%s --format json" % (ZBS_BIN_PATH, logical_pool, volume))
+    path = linux.shellquote("%s/%s" % (logical_pool, volume))
+    return shell.call("%s list snapshot --path %s --format json" % (ZBS_BIN_PATH, path))
 
 
 def get_physical_pool_name(logical_pool):

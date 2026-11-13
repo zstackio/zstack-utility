@@ -8,6 +8,8 @@ import os.path
 import gzip
 import shutil
 import threading
+import pprint
+import traceback
 
 import simplejson
 from .concurrentlog_handler import ConcurrentRotatingFileHandler
@@ -204,6 +206,8 @@ def cleanup_local_log():
 
 
 SENSITIVE_FIELD_NAME = 'SENSITIVE_FIELDS'
+SENSITIVE_JSON_FIELD_NAMES = frozenset(('encryptedDek',))
+SENSITIVE_REQUEST_OMITTED = '[sensitive request omitted]'
 
 def sensitive_fields(*paths, **typed_paths):
     """
@@ -219,14 +223,37 @@ def sensitive_fields(*paths, **typed_paths):
     return ret
 
 
-def mask_sensitive_field(cmd, cmd_str):
-    # type:(object, str) -> str
-    if not cmd or not hasattr(cmd, SENSITIVE_FIELD_NAME):
-        return cmd_str
+def _mask_sensitive_json_fields(value):
+    masked = False
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key in SENSITIVE_JSON_FIELD_NAMES:
+                value[key] = '*****'
+                masked = True
+            elif _mask_sensitive_json_fields(child):
+                masked = True
+    elif isinstance(value, list):
+        for child in value:
+            if _mask_sensitive_json_fields(child):
+                masked = True
+    return masked
 
-    field_paths = getattr(cmd, SENSITIVE_FIELD_NAME)
-    obj = simplejson.loads(cmd_str)
+
+def redact_request_body(cmd, cmd_str):
+    if not cmd_str:
+        return cmd_str, False
+
+    declared = bool(cmd) and hasattr(cmd, SENSITIVE_FIELD_NAME)
+    field_paths = getattr(cmd, SENSITIVE_FIELD_NAME, ()) if declared else ()
+    try:
+        obj = simplejson.loads(cmd_str)
+        masked = _mask_sensitive_json_fields(obj)
+    except (ValueError, TypeError, RecursionError):
+        return SENSITIVE_REQUEST_OMITTED, True
+
     if isinstance(obj, dict):
+        if SENSITIVE_FIELD_NAME in obj and not field_paths:
+            return SENSITIVE_REQUEST_OMITTED, True
         for path in field_paths:
             try:
                 exec(("if {0}: {0}='*****'".format(path)), {'obj': obj})
@@ -235,4 +262,26 @@ def mask_sensitive_field(cmd, cmd_str):
         if SENSITIVE_FIELD_NAME in obj:
             del obj[SENSITIVE_FIELD_NAME]
 
-    return simplejson.dumps(obj)
+    if not masked and not declared:
+        return cmd_str, False
+    return simplejson.dumps(obj), bool(masked or field_paths)
+
+
+def mask_sensitive_field(cmd, cmd_str):
+    # type:(object, str) -> str
+    return redact_request_body(cmd, cmd_str)[0]
+
+
+def format_exception_for_log(error, args, kwargs, request_body_key):
+    requests = [arg for arg in args if isinstance(arg, dict)]
+    requests.extend(arg for arg in kwargs.values() if isinstance(arg, dict))
+    sensitive = any(redact_request_body(None, arg[request_body_key])[1]
+                    for arg in requests if request_body_key in arg)
+    if sensitive:
+        frames = traceback.extract_tb(error.__traceback__)
+        stack = '\n'.join('%s:%s in %s' % (frame.filename, frame.lineno, frame.name)
+                          for frame in frames)
+        return '%s\n%s\nargs:%s' % (type(error).__name__, stack, SENSITIVE_REQUEST_OMITTED)
+    return '%s\n%s\nargs:%s' % (str(error),
+                               ''.join(traceback.format_exception(type(error), error, error.__traceback__)),
+                               pprint.pformat([args, kwargs]))

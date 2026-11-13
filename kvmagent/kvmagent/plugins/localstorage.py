@@ -6,10 +6,10 @@ import traceback
 
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
+from kvmagent.volume import driver_factory
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.nvram import nvram
 from zstacklib.utils import jsonobject
-from zstacklib.utils import qcow2
 from zstacklib.utils import linux
 from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
@@ -899,13 +899,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname)
 
-        if cmd.volumeFormat == "raw":
-            linux.raw_create(cmd.installUrl, cmd.size)
-        else:  # default: cmd.volumeFormat == "qcow2"
-            if cmd.backingFile:
-                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
-            else:
-                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+        return driver_factory.get_file_driver(cmd).create_empty(volume_size=cmd.size)
 
     @kvmagent.replyerror
     def create_volume_with_backing(self, req):
@@ -940,7 +934,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname, 0o775)
 
-        linux.qcow2_clone_with_cmd(backing_path, vol_path, cmd)
+        return driver_factory.get_file_driver(cmd).create_with_backing(backing_path, vol_path)
 
     @kvmagent.replyerror
     def delete(self, req):
@@ -1097,7 +1091,3 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         rsp.hashValue = secret.get_image_hash(cmd.installPath)
         return jsonobject.dumps(rsp)
-
-
-
-
