@@ -438,6 +438,17 @@ def test_an_unknown_capability_without_reclaim_interfaces_leaves_zram_unmanaged(
     assert world['started'] == []
 
 
+def test_a_running_service_with_an_unrecognized_capability_answer_is_left_unmanaged(host, monkeypatch):
+    plugin, service, world = host
+    # Only a stopped service is asked again after it starts; a running one answered and was not understood.
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN',
+        'service': True, 'interfaces': {'cgroupv2': True, 'memory_reclaim': True}})
+    result = apply(plugin, 8, desired(writeback=True))
+    assert result['status'] == 'Succeeded', result
+    assert service.actions() == []
+
+
 @pytest.mark.parametrize('capabilities, ksm', [
     ({'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'UNSUPPORTED_RECLAIM_KERNEL'}, True),
     ({'supported': False, 'ksm': False, 'zram': False, 'zramReasonCode': 'UNSUPPORTED_OS_RELEASE'}, None)])
