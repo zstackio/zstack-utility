@@ -21,6 +21,11 @@ class ConversionPolicy(Enum):
     ALLOW_SAME_STATE = 'allow-same-state'
 
 
+class ResizeMode(Enum):
+    GROW_ONLY = 'grow-only'
+    ALLOW_SHRINK = 'allow-shrink'
+
+
 def cleanup_temporary_file(path):
     try:
         os.unlink(path)
@@ -300,3 +305,29 @@ def rebase_no_check_with_secret(backing, target, secret_file, *, backing_format=
 
 def _secret_context(secret_file_or_provider):
     return secret_file_or_provider() if callable(secret_file_or_provider) else nullcontext(secret_file_or_provider)
+
+
+def _qcow2_args_with_secret(target, secret_file):
+    if not secret_file:
+        raise ValueError('LUKS secret file is required')
+    args = ['--object', 'secret,id=luks_sec,format=raw,file=%s' % secret_file]
+    image_options = _source_image_options(target)
+    if image_options:
+        args.extend(['--image-opts', image_options])
+    else:
+        args.extend(['-f', 'qcow2', target])
+    return args
+
+
+def resize_with_secret(target, size, secret_file, *, mode=ResizeMode.GROW_ONLY):
+    command = [QEMU_IMG, 'resize']
+    if mode is ResizeMode.ALLOW_SHRINK:
+        command.append('--shrink')
+    command.extend(_qcow2_args_with_secret(target, secret_file))
+    command.append(str(size))
+    run_checked(command)
+
+
+def image_end_offset_with_secret(target, secret_file):
+    command = [QEMU_IMG, 'check', '--output=json'] + _qcow2_args_with_secret(target, secret_file)
+    return int(json.loads(check_output(command))['image-end-offset'])

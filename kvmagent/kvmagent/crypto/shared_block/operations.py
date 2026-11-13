@@ -111,3 +111,14 @@ def encrypt_in_place(cmd):
                     temporary, lambda: secret.luks_secret_channel(cmd.encryptedDek))
             _replace_lv(temporary, source)
     return True
+
+
+def resize(cmd, target, size):
+    mode = qemu_volume.ResizeMode.ALLOW_SHRINK if cmd.force else qemu_volume.ResizeMode.GROW_ONLY
+    return _with_secret(cmd, None, target,
+                        lambda secret_file: qemu_volume.resize_with_secret(target, size, secret_file, mode=mode))
+
+
+def image_end_offset(cmd, target):
+    with secret.luks_secret_channel(cmd.encryptedDek) as secret_file:
+        return qemu_volume.image_end_offset_with_secret(target, secret_file)

@@ -7,12 +7,14 @@ from zstacklib.utils import http, jsonobject
 LUKS_CREATE_EMPTY_PATH = '/zbs/primarystorage/kvmhost/lukscreateempty'
 LUKS_CLONE_PATH = '/zbs/primarystorage/kvmhost/luksclone'
 VOLUME_ENCRYPT_IN_PLACE_PATH = '/zbs/primarystorage/kvmhost/encryptinplace'
+IMAGESTORE_ENCRYPTED_DOWNLOAD_PATH = '/zbs/primarystorage/kvmhost/imagestore/encrypteddownload'
 
 
 def register_http_handlers(http_server):
     http_server.register_async_uri(LUKS_CREATE_EMPTY_PATH, create)
     http_server.register_async_uri(LUKS_CLONE_PATH, clone)
     http_server.register_async_uri(VOLUME_ENCRYPT_IN_PLACE_PATH, encrypt_in_place)
+    http_server.register_async_uri(IMAGESTORE_ENCRYPTED_DOWNLOAD_PATH, encrypted_download)
 
 
 def _operation(req, operation):
@@ -29,7 +31,7 @@ def _operation(req, operation):
     except Exception as error:
         log_failure('zbs.' + operation.__name__, stage, error)
         rsp.success = False
-        rsp.error = response_error(stage, error, (ValueError, FileNotFoundError))
+        rsp.error = response_error(stage, error, (ValueError, FileNotFoundError, operations.QsdStartupError))
     return jsonobject.dumps(rsp)
 
 
@@ -43,3 +45,7 @@ def clone(req):
 
 def encrypt_in_place(req):
     return _operation(req, operations.encrypt_in_place)
+
+
+def encrypted_download(req):
+    return _operation(req, operations.download_encrypted_imagestore)

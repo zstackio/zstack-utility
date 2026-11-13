@@ -11,10 +11,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from kvmagent.crypto import http_error, qemu_volume, secret, vm_xml
+from kvmagent.crypto import http_error, imagestore, qemu_volume, secret, vm_xml
 from kvmagent.crypto.ceph import http as ceph_http
 from kvmagent.crypto.ceph import operations as ceph
 from kvmagent.crypto.file_volume import http as file_http
+from kvmagent.crypto.imagestore_extension import ImageStoreEncryptionExtension
 from kvmagent.crypto.shared_block import http as block_http
 from kvmagent.crypto.shared_block import operations as block
 from kvmagent.crypto.zbs import http as zbs_http
@@ -58,6 +59,98 @@ def test_sharedblock_empty_volume_formats_new_lv(configured_volume_extensions, m
         extend_lv.assert_not_called()
         create_plain.assert_called_once_with(path, size, '', discard_on_metadata=False)
         create_luks.assert_not_called()
+
+
+@pytest.mark.parametrize('encrypted_dek, overhead', [(None, 0), ('synthetic-envelope', block.LUKS_HEADER_OVERHEAD)])
+@pytest.mark.parametrize('scenario', ['grow', 'force-grow', 'force-shrink', 'resize-failed', 'retain-lv', 'live-shrink'])
+def test_sharedblock_restore_resize_uses_selected_driver(configured_volume_extensions, monkeypatch, encrypted_dek,
+                                                        overhead, scenario):
+    from kvmagent.volume import plain_shared_block_driver
+
+    plugin_path = Path(__file__).parents[3] / 'kvmagent/kvmagent/plugins/shared_block_plugin.py'
+    spec = importlib.util.spec_from_file_location('shared_block_resize_under_test', plugin_path)
+    sharedblock = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sharedblock)
+    plugin = sharedblock.SharedBlockPlugin.__new__(sharedblock.SharedBlockPlugin)
+    path = '/dev/vg/volume'
+    size = 1024 * 1024
+    force = scenario != 'grow'
+    live = scenario == 'live-shrink'
+    current_capacity = 64 * size if scenario in ('force-shrink', 'resize-failed', 'retain-lv', 'live-shrink') else 0
+    image_end = 32 * size if scenario == 'retain-lv' else size
+    events = Mock()
+    resize_plain = events.resize_plain
+    resize_luks = events.resize_luks
+    if scenario == 'resize-failed':
+        resize_plain.side_effect = resize_luks.side_effect = RuntimeError('resize failed')
+    verify = Mock()
+    events.get_img_fmt.return_value = 'qcow2'
+    linux = SimpleNamespace(get_img_fmt=events.get_img_fmt, qcow2_virtualsize=lambda _: size,
+                            qemu_img_resize=resize_plain)
+    monkeypatch.setattr(sharedblock, 'linux', linux, raising=False)
+    monkeypatch.setattr(plain_shared_block_driver, 'linux', linux)
+    monkeypatch.setattr(sharedblock, 'lvm', SimpleNamespace(
+        RecursiveOperateLv=lambda *args, **kwargs: nullcontext(), extend_lv_from_cmd=events.extend_lv,
+        resize_lv=events.resize_lv, calcLvReservedSize=lambda allocation: allocation + 12 * size))
+    lv = Mock()
+    lv.seek.return_value = current_capacity
+    events.open_lv.side_effect = lambda *_: nullcontext(lv)
+    monkeypatch.setattr(sharedblock, 'open', events.open_lv, raising=False)
+    monkeypatch.setattr(secret, 'luks_secret_channel', lambda _: nullcontext('synthetic-channel'))
+    monkeypatch.setattr(qemu_volume, 'resize_with_secret', resize_luks)
+    monkeypatch.setattr(qemu_volume, 'verify_luks_open', verify)
+    events.encrypted_end.return_value = image_end
+    monkeypatch.setattr(qemu_volume, 'image_end_offset_with_secret', events.encrypted_end)
+
+    cmd = dict(installPath='sharedblock://vg/volume', size=size, encryptedDek=encrypted_dek)
+    if force:
+        cmd.update(force=force, live=live)
+    response = json.loads(plugin.resize_volume({sharedblock.http.REQUEST_BODY: json.dumps(cmd)}))
+
+    if not encrypted_dek:
+        expected = ['resize_lv' if force else 'extend_lv', 'get_img_fmt']
+        if not live:
+            expected.append('resize_plain')
+    elif not force:
+        expected = ['extend_lv', 'get_img_fmt', 'resize_luks']
+    else:
+        expected = ['get_img_fmt', 'open_lv'] + {
+            'force-grow': ['resize_lv', 'resize_luks'],
+            'force-shrink': ['resize_luks', 'encrypted_end', 'resize_lv'],
+            'resize-failed': ['resize_luks'],
+            'retain-lv': ['resize_luks', 'encrypted_end'],
+            'live-shrink': [],
+        }[scenario]
+    assert [operation for operation, _, _ in events.mock_calls] == expected
+    if scenario == 'resize-failed' or (live and encrypted_dek):
+        assert not response['success'], response
+        return
+    assert response['success'], response
+    assert response['size'] == size
+    if scenario == 'grow':
+        assert events.extend_lv.call_args.args[:2] == (path, size + overhead)
+    if 'resize_lv' in expected:
+        events.resize_lv.assert_called_once_with(path, size + overhead, True)
+    if encrypted_dek:
+        mode = qemu_volume.ResizeMode.ALLOW_SHRINK if force else qemu_volume.ResizeMode.GROW_ONLY
+        resize_luks.assert_called_once_with(path, size, 'synthetic-channel', mode=mode)
+        verify.assert_called_once()
+        resize_plain.assert_not_called()
+    elif not live:
+        resize_plain.assert_called_once_with(path, size, 'qcow2', True if force else None)
+        resize_luks.assert_not_called()
+
+
+@pytest.mark.parametrize('mode', list(qemu_volume.ResizeMode))
+def test_encrypted_qcow2_resize_passes_shrink_flag_only_when_allowed(monkeypatch, mode):
+    resize = Mock()
+    monkeypatch.setattr(qemu_volume, 'run_checked', resize)
+    monkeypatch.setattr(qemu_volume, '_source_image_options', lambda _: 'driver=qcow2')
+
+    qemu_volume.resize_with_secret('/dev/vg/volume', 1048576, 'synthetic-channel', mode=mode)
+
+    command = resize.call_args.args[0]
+    assert ('--shrink' in command) == (mode is qemu_volume.ResizeMode.ALLOW_SHRINK)
 
 
 @pytest.mark.parametrize('publish_result', ['status', 'exception', 'success', 'cleanup_failure'])
@@ -366,14 +459,23 @@ def test_zbs_create_replay_preserves_luks_header_and_data(tmp_path, monkeypatch)
         initialize.assert_not_called()
 
 
+@pytest.mark.parametrize('artifact', ['secret', 'staged_json', 'command_json'])
 @pytest.mark.parametrize('business_fails', [True, False])
-def test_sensitive_cleanup_preserves_business_result(tmp_path, monkeypatch, caplog, business_fails):
+def test_sensitive_cleanup_preserves_business_result(tmp_path, monkeypatch, caplog, artifact, business_fails):
     private_path = str(tmp_path / 'private-test-channel')
     envelope = 'synthetic-private-envelope'
-    error = RuntimeError("operation failed")
     monkeypatch.setattr(http_error, 'logger', logging.getLogger(__name__))
     monkeypatch.setattr(secret, 'prepare_luks_secret_material_channel', lambda _: private_path)
-    manager = secret.luks_secret_channel(envelope)
+    monkeypatch.setattr(imagestore.tempfile, 'tempdir', str(tmp_path))
+    error = RuntimeError('synthetic operation error')
+
+    if artifact == 'secret':
+        manager = secret.luks_secret_channel(envelope)
+    elif artifact == 'staged_json':
+        manager = imagestore.temporary_json({'encryptedDek': envelope})
+    else:
+        manager = ImageStoreEncryptionExtension.prepare_image_add_command(
+            'zstcli add', {'ImageStoreEncryption': {'encryptedDek': envelope}}, None)
 
     def execute():
         with manager:

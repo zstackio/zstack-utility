@@ -7,12 +7,14 @@ from zstacklib.utils import http, jsonobject
 LUKS_CREATE_EMPTY_PATH = '/ceph/primarystorage/kvmhost/lukscreateempty'
 LUKS_CLONE_PATH = '/ceph/primarystorage/kvmhost/luksclone'
 VOLUME_ENCRYPT_IN_PLACE_PATH = '/ceph/primarystorage/kvmhost/encryptinplace'
+IMAGESTORE_ENCRYPTED_DOWNLOAD_PATH = '/ceph/primarystorage/kvmhost/imagestore/encrypteddownload'
 
 
 def register_http_handlers(http_server):
     http_server.register_async_uri(LUKS_CREATE_EMPTY_PATH, create)
     http_server.register_async_uri(LUKS_CLONE_PATH, clone)
     http_server.register_async_uri(VOLUME_ENCRYPT_IN_PLACE_PATH, encrypt_in_place)
+    http_server.register_async_uri(IMAGESTORE_ENCRYPTED_DOWNLOAD_PATH, encrypted_download)
 
 
 def _operation(req, operation):
@@ -45,3 +47,11 @@ def clone(req):
 
 def encrypt_in_place(req):
     return _operation(req, operations.encrypt_in_place)
+
+
+def encrypted_download(req):
+    def download_encrypted_imagestore(cmd):
+        from kvmagent.plugins.imagestore import ImageStoreClient
+        return operations.download_encrypted_imagestore(cmd, ImageStoreClient())
+
+    return _operation(req, download_encrypted_imagestore)

@@ -1,6 +1,11 @@
 import importlib.util
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+from kvmagent.crypto.ceph import operations as ceph
 
 
 def _load_imagestore_module():
@@ -34,7 +39,7 @@ def test_imagestore_client_registry_url_wraps_ipv6_only_once():
     assert client._build_registry_url('[2001:db8::10]') == '[2001:db8::10]:8000'
 
 
-def test_download_from_imagestore_uses_bracketed_ipv6_registry_url(monkeypatch):
+def test_download_from_imagestore_uses_bracketed_ipv6_registry_url(monkeypatch, configured_volume_extensions):
     client = ImageStoreClient()
     commands = []
 
@@ -50,3 +55,22 @@ def test_download_from_imagestore_uses_bracketed_ipv6_registry_url(monkeypatch):
 
     assert len(commands) == 1
     assert ' -url [2001:db8::10]:8000 ' in commands[0]
+
+
+@pytest.mark.parametrize("hostname", [TEST_IPV6_ADDRESS, f"[{TEST_IPV6_ADDRESS}]"])
+def test_ceph_encrypted_download_uses_bracketed_ipv6_registry_url(monkeypatch, hostname):
+    client = ImageStoreClient()
+    cmd = SimpleNamespace(hostname=hostname, backupStorageInstallPath=TEST_IMAGE_PATH,
+                          primaryStorageInstallPath='ceph://pool/volume', encryptedDek='wrapped')
+    commands = []
+    monkeypatch.setattr(client, '_check_zstore_cli', lambda: None)
+    monkeypatch.setattr(ceph, '_config', lambda _: '/etc/ceph.conf')
+    monkeypatch.setattr(ceph, '_rbd_exists', lambda *_: False)
+    monkeypatch.setattr(ceph, '_rbd_rename', lambda *_: None)
+    monkeypatch.setattr(ceph, '_verified_state', lambda *_: None)
+    monkeypatch.setattr(ceph, 'run_checked', lambda command, **_: commands.append(command))
+
+    assert ceph.download_encrypted_imagestore(cmd, client)
+    assert len(commands) == 1
+    command = commands[0]
+    assert command[command.index('-url') + 1] == '[2001:db8::10]:8000'

@@ -24,10 +24,11 @@ import pytest
 @pytest.fixture
 def configured_volume_extensions():
     from kvmagent.plugins.volume_crypto_plugin import VolumeCryptoPlugin
-    from kvmagent.volume import disk_xml, driver_registry
+    from kvmagent.volume import disk_xml, driver_registry, imagestore_commands
 
     with ExitStack() as stack:
-        for registry in (disk_xml._disk_xml_extensions, driver_registry._driver_registrations):
+        for registry in (disk_xml._disk_xml_extensions, driver_registry._driver_registrations,
+                         imagestore_commands._command_extensions):
             stack.enter_context(patch.dict(registry, {}, clear=True))
         VolumeCryptoPlugin().configure()
         yield

@@ -8,7 +8,7 @@ from zstacklib.utils import log
 logger = log.get_logger(__name__)
 
 _TOOL_ACTIONS = {
-    'qemu-img': ('info', 'map', 'create', 'convert', 'rebase', 'commit', 'resize'),
+    'qemu-img': ('info', 'map', 'create', 'convert', 'rebase', 'commit', 'resize', 'check'),
     'qemu-io': (),
     'qemu-storage-daemon': (),
     'rbd': ('info', 'du', 'mv', 'rm'),

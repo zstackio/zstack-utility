@@ -903,20 +903,46 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     def resize_volume(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
 
         with lvm.RecursiveOperateLv(install_abs_path, shared=False):
-            if cmd.force:
-                lvm.resize_lv(install_abs_path, cmd.size, True)
+            allocation_size = volume_driver.required_allocation_size(cmd.size)
+            if (cmd.force and volume_driver.resize_image_before_lv_shrink
+                    and linux.get_img_fmt(install_abs_path) == 'qcow2'):
+                self._force_resize_qcow2(install_abs_path, cmd, volume_driver, allocation_size)
             else:
-                lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd)
-            fmt = linux.get_img_fmt(install_abs_path)
-            if not cmd.live and fmt == 'qcow2':
-                linux.qemu_img_resize(install_abs_path, cmd.size, 'qcow2', cmd.force)
+                if cmd.force:
+                    lvm.resize_lv(install_abs_path, allocation_size, True)
+                else:
+                    lvm.extend_lv_from_cmd(install_abs_path, allocation_size, cmd)
+                fmt = linux.get_img_fmt(install_abs_path)
+                if not cmd.live and fmt == 'qcow2':
+                    volume_driver.resize(install_abs_path, cmd.size)
             ret = linux.qcow2_virtualsize(install_abs_path)
 
         rsp = ResizeVolumeRsp()
         rsp.size = ret
         return jsonobject.dumps(rsp)
+
+    def _force_resize_qcow2(self, path, cmd, volume_driver, allocation_size):
+        with open(path, 'rb') as lv:
+            current_capacity = lv.seek(0, os.SEEK_END)
+        requested_capacity = lvm.calcLvReservedSize(allocation_size)
+        if requested_capacity >= current_capacity:
+            lvm.resize_lv(path, allocation_size, True)
+            if not cmd.live:
+                volume_driver.resize(path, cmd.size)
+            return
+
+        if cmd.live:
+            raise ValueError('cannot shrink an active qcow2 volume')
+        volume_driver.resize(path, cmd.size)
+        image_end_offset = volume_driver.image_end_offset(path)
+        if not 0 < image_end_offset <= requested_capacity:
+            logger.warning('Keeping LV capacity for %s: qcow2 end offset %s cannot fit in %s bytes',
+                           path, image_end_offset, requested_capacity)
+            return
+        lvm.resize_lv(path, allocation_size, True)
 
     @kvmagent.replyerror
     def create_root_volume(self, req):
@@ -1173,7 +1199,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
                                                         cmd.primaryStorageInstallPath, cmd.concurrency,
-                                                        failure_action=clean)
+                                                        failure_action=clean, addons=getattr(cmd, 'addons', None))
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)

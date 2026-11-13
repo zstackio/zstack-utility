@@ -2,7 +2,7 @@ import json
 import logging
 import subprocess
 import unittest
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest import mock
 
@@ -336,6 +336,156 @@ class CephCryptoTest(unittest.TestCase):
             self.assertIn(path, log_text)
         self.assertNotIn('wrapped', log_text)
         self.assertNotIn('/tmp/one-shot-secret', log_text)
+
+    def test_encrypted_download_removes_both_json_files_after_failure(self):
+        cmd = SimpleNamespace(psUuid='ps-uuid', primaryStorageInstallPath='ceph://pool/target',
+                              backupStorageInstallPath='zstore://name/id', hostname='imagestore',
+                              encryptedDek='wrapped', sourceEncrypted=True)
+        client = mock.Mock(ZSTORE_CLI_BIN='/usr/bin/zstcli', ZSTORE_DEF_PORT=8000)
+        client._parse_image_reference.return_value = ('name', 'id')
+        client._build_registry_url.return_value = 'imagestore:8000'
+        paths = []
+
+        def fail_pull(command, env):
+            paths.extend([command[command.index(flag) + 1] for flag in
+                          ('-target-encryption-json-file', '-encryption-json-file')])
+            for path in paths:
+                with open(path) as stream:
+                    self.assertIn('wrapped', stream.read())
+            self.assertNotIn('wrapped', ' '.join(command))
+            raise subprocess.CalledProcessError(1, command)
+
+        with mock.patch.object(ceph.os.path, 'isfile', return_value=True), \
+                mock.patch.object(ceph, '_rbd_exists', return_value=False):
+            with mock.patch.object(ceph, 'run_checked', side_effect=fail_pull):
+                with self.assertRaises(subprocess.CalledProcessError):
+                    ceph.download_encrypted_imagestore(cmd, client)
+        self.assertEqual(2, len(paths))
+        self.assertTrue(all(not ceph.os.path.exists(path) for path in paths))
+
+    def test_download_publishes_only_verified_image_and_cleans_owned_resources(self):
+        unlink = ceph.os.unlink
+        for source_encrypted in (False, True):
+            for outcome in ('success', 'pull_failed', 'json_cleanup_failed', 'pull_and_cleanup_failed', 'format_failed',
+                            'key_failed', 'existing', 'concurrent'):
+                with self.subTest(source_encrypted=source_encrypted, outcome=outcome), \
+                        mock.patch.multiple(ceph, _config=mock.DEFAULT, _rbd_exists=mock.DEFAULT,
+                                            _rbd_remove=mock.DEFAULT, _rbd_rename=mock.DEFAULT,
+                                            _info=mock.DEFAULT) as backend:
+                    cmd = SimpleNamespace(primaryStorageInstallPath='ceph://pool/target',
+                                          backupStorageInstallPath='zstore://name/id', hostname='imagestore',
+                                          encryptedDek='wrapped', sourceEncrypted=source_encrypted,
+                                          keyProviderUuid='provider', keyVersion=1, cipher='luks',
+                                          concurrency=3)
+                    original_cmd = vars(cmd).copy()
+                    target = 'pool/target'
+                    images = {'pool/source': 'source data'}
+                    if outcome == 'existing':
+                        images[target] = 'other request'
+                    paths, verified = [], []
+                    client = mock.Mock(ZSTORE_CLI_BIN='/usr/bin/zstcli', ZSTORE_DEF_PORT=8000)
+                    client._parse_image_reference.return_value = ('name', 'id')
+                    client._build_registry_url.return_value = 'imagestore:8000'
+                    backend['_config'].return_value = '/etc/ceph.conf'
+                    backend['_rbd_exists'].side_effect = lambda name, _: name in images
+                    backend['_rbd_remove'].side_effect = lambda name, _: images.pop(name)
+                    backend['_info'].side_effect = lambda name, _: {'format': images[name]}
+
+                    cleanup_failed = outcome in ('json_cleanup_failed', 'pull_and_cleanup_failed')
+                    succeeds = outcome in ('success', 'json_cleanup_failed')
+                    pull_error = RuntimeError('pull interrupted after write')
+
+                    def remove(path):
+                        if cleanup_failed and path in paths:
+                            raise PermissionError('wrapped ' + path)
+                        unlink(path)
+
+                    def pull(command, env):
+                        install_path = command[command.index('-installpath') + 1]
+                        self.assertTrue(install_path.startswith('ceph://pool/target-converting-'))
+                        self.assertEqual('ceph://pool/target', cmd.primaryStorageInstallPath)
+                        self.assertIn('-concurrency=3', command)
+                        self.assertEqual('name:id', command[-1])
+                        self.assertEqual('imagestore:8000', command[command.index('-url') + 1])
+                        self.assertEqual(ceph.imagestore.KEY_AGENT_PROVIDER,
+                                         command[command.index('-secret-channel-provider') + 1])
+                        self.assertEqual('/etc/ceph.conf', env['CEPH_CONF'])
+                        self.assertEqual('--conf /etc/ceph.conf', env['CEPH_ARGS'])
+                        flags = ['-target-encryption-json-file']
+                        if source_encrypted:
+                            flags.append('-encryption-json-file')
+                        else:
+                            self.assertNotIn('-encryption-json-file', command)
+                        for flag in flags:
+                            path = command[command.index(flag) + 1]
+                            paths.append(path)
+                            if cleanup_failed:
+                                self.addCleanup(unlink, path)
+                            with open(path) as stream:
+                                self.assertEqual(dict(encrypted=True, encryptedDek='wrapped',
+                                                      keyProviderUuid='provider', keyVersion=1,
+                                                      cipher='luks'), json.load(stream))
+                        self.assertNotIn('wrapped', ' '.join(command))
+                        images[ceph._image_path(install_path)] = 'raw' if outcome == 'format_failed' else 'luks'
+                        if outcome in ('pull_failed', 'pull_and_cleanup_failed'):
+                            raise pull_error
+
+                    def check_key(command, **kwargs):
+                        self.assertEqual('map', command[1])
+                        options = dict(item.split('=', 1) for item in command[-1].split(','))
+                        staged = options['file.pool'] + '/' + options['file.image']
+                        self.assertEqual('luks', images[staged])
+                        if outcome == 'key_failed':
+                            raise RuntimeError('key verification failed')
+                        verified.append(staged)
+                        if outcome == 'concurrent':
+                            images[target] = 'other request'
+                        return b'[]'
+
+                    def publish(staged, destination, _):
+                        self.assertEqual([staged], verified)
+                        self.assertEqual(target, destination)
+                        if destination in images:
+                            raise FileExistsError(destination)
+                        images[destination] = images.pop(staged)
+
+                    backend['_rbd_rename'].side_effect = publish
+                    diagnostics = logging.getLogger('ceph-download-cleanup-test')
+                    capture = self.assertLogs(diagnostics, level='ERROR') if cleanup_failed else nullcontext()
+                    with capture as logs, \
+                            mock.patch.object(http_error, 'logger', diagnostics), \
+                            mock.patch.object(ceph.os, 'unlink', side_effect=remove), \
+                            mock.patch.object(ceph, 'run_checked', side_effect=pull) as write, \
+                            mock.patch.object(ceph.subprocess, 'check_output', side_effect=check_key), \
+                            mock.patch.object(ceph.secret, 'luks_secret_channel',
+                                              return_value=nullcontext('/tmp/secret')):
+                        if succeeds:
+                            self.assertTrue(ceph.download_encrypted_imagestore(cmd, client))
+                        else:
+                            error = FileExistsError if outcome in ('existing', 'concurrent') else RuntimeError
+                            with self.assertRaises(error) as failure:
+                                ceph.download_encrypted_imagestore(cmd, client)
+                            if outcome in ('pull_failed', 'pull_and_cleanup_failed'):
+                                self.assertIs(pull_error, failure.exception)
+                    expected = {'pool/source': 'source data'}
+                    if succeeds:
+                        expected[target] = 'luks'
+                    elif outcome in ('existing', 'concurrent'):
+                        expected[target] = 'other request'
+                    self.assertEqual(expected, images)
+                    self.assertEqual(original_cmd, vars(cmd))
+                    self.assertTrue(all(ceph.os.path.exists(path) == cleanup_failed for path in paths))
+                    if cleanup_failed:
+                        self.assertEqual(len(paths), sum('stage=unlink_sensitive_file' in row for row in logs.output))
+                        self.assertNotIn('wrapped', '\n'.join(logs.output))
+                        for path in paths:
+                            self.assertNotIn(path, '\n'.join(logs.output))
+                    if outcome == 'existing':
+                        write.assert_not_called()
+                        backend['_rbd_remove'].assert_not_called()
+                    else:
+                        self.assertEqual(2 if source_encrypted else 1, len(paths))
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -2,6 +2,8 @@ from kvmagent.crypto.shared_block import operations
 
 
 class LuksSharedBlockVolumeDriver(object):
+    resize_image_before_lv_shrink = True
+
     def __init__(self, cmd):
         self.cmd = cmd
 
@@ -24,3 +26,9 @@ class LuksSharedBlockVolumeDriver(object):
 
     def create_with_backing(self, backing_path, target_path, volume_size, qcow2_options):
         return operations.create_with_backing(self.cmd, backing_path, target_path, volume_size, qcow2_options)
+
+    def resize(self, target_path, volume_size):
+        return operations.resize(self.cmd, target_path, volume_size)
+
+    def image_end_offset(self, target_path):
+        return operations.image_end_offset(self.cmd, target_path)

@@ -820,7 +820,7 @@ class TakeSnapshotResponse(kvmagent.AgentResponse):
 
 
 class TakeVolumeBackupCommand(kvmagent.AgentCommand):
-    @log.sensitive_fields("password")
+    @log.sensitive_fields("password", "addons.VolumeBackupEncryption.specs")
     def __init__(self):
         super(TakeVolumeBackupCommand, self).__init__()
         self.hostname = None
@@ -945,7 +945,7 @@ class VolumeBackupInfo(object):
 
 
 class TakeVolumesBackupsCommand(kvmagent.AgentCommand):
-    @log.sensitive_fields("password")
+    @log.sensitive_fields("password", "addons.VolumeBackupEncryption.specs")
     def __init__(self):
         super(TakeVolumesBackupsCommand, self).__init__()
         self.hostname = None
@@ -10974,7 +10974,8 @@ host side snapshot files chian:
             ext_args.append('-oob')
 
         logger.info('{api: %s} taking backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
-        res = isc.backup_volumes(cmd.vmUuid, final_backup_args, dest, task_spec=cmd, extra_args=ext_args)
+        res = isc.backup_volumes(cmd.vmUuid, final_backup_args, dest, task_spec=cmd, extra_args=ext_args,
+                                 addons=getattr(cmd, 'addons', None), device_ids=device_ids)
         logger.info('{api: %s} completed backup for vm: %s' % (cmd.threadContext["api"], cmd.vmUuid))
 
         backres = jsonobject.loads(res)
@@ -10988,7 +10989,8 @@ host side snapshot files chian:
             if nodebak.mode == 'incremental':
                 parent = self.getLastBackup(deviceId, cmd.backupInfos)
             elif (nodebak.mode == 'top' or backupArgs[deviceId][1] == 'top') and deviceId in backing_files:
-                imf = isc.upload_image(cmd.hostname, backing_files[deviceId], cmd.uploadConcurrency)
+                imf = isc.upload_image(cmd.hostname, backing_files[deviceId], cmd.uploadConcurrency,
+                                       addons=getattr(cmd, 'addons', None), device_id=deviceId)
                 parent = isc._build_install_path(imf.name, imf.id)
 
             info = VolumeBackupInfo(deviceId,
@@ -11028,14 +11030,16 @@ host side snapshot files chian:
             ext_args.append('-oob')
         if cmd.volumeWriteBandwidth:
             ext_args.append('-speed %s' % cmd.volumeWriteBandwidth)
-        actual_mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, task_spec=cmd, extra_args=ext_args)
+        actual_mode = isc.backup_volume(cmd.vmUuid, nodename, bitmap, mode, dest, task_spec=cmd, extra_args=ext_args,
+                                        addons=getattr(cmd, 'addons', None), device_id=cmd.volume.deviceId)
         logger.info('{api: %s} finished backup volume with mode: %s' % (cmd.threadContext["api"], mode))
 
         if actual_mode == 'incremental':
             return bitmap, cmd.lastBackup
 
         if (actual_mode == 'top' or mode == 'top') and bf:
-            imf = isc.upload_image(cmd.hostname, bf, cmd.uploadConcurrency)
+            imf = isc.upload_image(cmd.hostname, bf, cmd.uploadConcurrency,
+                                   addons=getattr(cmd, 'addons', None), device_id=cmd.volume.deviceId)
             parent = isc._build_install_path(imf.name, imf.id)
 
         return bitmap, parent
