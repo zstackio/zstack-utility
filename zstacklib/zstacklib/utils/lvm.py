@@ -1,3 +1,4 @@
+import copy
 import errno
 import functools
 import random
@@ -171,6 +172,15 @@ class SharedBlockCandidateStruct:
         self.transport = None  # type: str
         self.targetIdentifier = None  # type: str
 
+class StorageDeviceScanSnapshot(object):
+    def __init__(self):
+        self.blk_infos = None  # type: dict[str, SharedBlockCandidateStruct] or None
+        self.device_paths = None  # type: dict[str, str or None] or None
+        self.storage_wwnns = None  # type: dict[str, str] or None
+        self.multipath_slaves = None  # type: set[str] or None
+        self.multipath_running = None  # type: bool or None
+
+
 def get_vg_uuid(path):
     # type: (str) -> str
     if not path or len(path.split("/")) != 4:
@@ -180,17 +190,21 @@ def get_vg_uuid(path):
 
 def get_block_devices():
     scsi_info = get_lsscsi_info()
+    snapshot = StorageDeviceScanSnapshot()
+    snapshot.blk_infos = get_lsblk_infos()
+    snapshot.device_paths = get_device_paths()
+    snapshot.storage_wwnns = get_storage_wwnns()
     # 1. get multi path devices information
-    block_devices, slave_devices = get_mpath_block_devices(scsi_info)
+    block_devices, slave_devices = get_mpath_block_devices(scsi_info, snapshot)
     # 2. get information of other devices
-    block_devices.extend(get_disk_block_devices(slave_devices, scsi_info))
+    block_devices.extend(get_disk_block_devices(slave_devices, scsi_info, snapshot))
     # 3. get nvme block devices
-    block_devices.extend(get_nvme_block_devices())
+    block_devices.extend(get_nvme_block_devices(snapshot))
 
     device_iqn = get_dev_iqn()
     for d in block_devices:
         if d.source == 'fc':
-            d.targetIdentifier = get_storage_wwnn(d.hctl)
+            d.targetIdentifier = get_storage_wwnn(d.hctl, snapshot.storage_wwnns)
         elif d.source == 'iscsi':
             d.targetIdentifier = device_iqn.get(d.dev_name)
         elif d.source == 'nvme':
@@ -215,7 +229,26 @@ def get_nvme_transport(dev_name):
             if transport:
                 return transport.strip()
 
-def get_storage_wwnn(hctl):
+def get_storage_wwnns():
+    r, o, e = bash.bash_roe("systool -c fc_transport -A node_name")
+    if r != 0:
+        return None
+    nodes = {}
+    node = ""
+    for line in o.splitlines():
+        if 'Class Device =' in line:
+            node = ""
+        elif line.strip().startswith('node_name'):
+            node = line.split('=', 1)[1].strip().strip('"')
+        elif line.strip().startswith('Device = "target'):
+            target = line.split('"')[1][len('target'):]
+            nodes[target] = node
+    return nodes
+
+
+def get_storage_wwnn(hctl, storage_wwnns=None):
+    if storage_wwnns is not None:
+        return storage_wwnns.get(":".join(hctl.split(":")[:3]), "")
     o = shell.call(
         "systool -c fc_transport -A node_name | grep '\"target%s\"' -B2 | awk '/node_name/{print $NF}'" % ":".join(hctl.split(":")[0:3]))
     return o.strip().strip('"')
@@ -251,7 +284,7 @@ def get_nqn(dev_name):
                        linux.walk("/sys/class/nvme-subsystem/%s" % target, depth=2)):
             return nqn.strip()
 
-def get_nvme_block_devices():
+def get_nvme_block_devices(snapshot=None):
     if not os.path.exists('/usr/sbin/nvme') and not os.path.exists('/sbin/nvme'):
         return []
 
@@ -270,7 +303,7 @@ def get_nvme_block_devices():
 
             wwid = linux.read_file("/sys/block/%s/wwid" % dev)
             if wwid:
-                device_info = get_device_info(dev, {dev: wwid.strip()})
+                device_info = get_device_info(dev, {dev: wwid.strip()}, snapshot)
                 device_info.transport = get_nvme_transport(dev)
                 device_info.source = 'nvme'
                 device_info.dev_name = dev
@@ -282,7 +315,7 @@ def get_nvme_block_devices():
 
 
 @bash.in_bash
-def get_mpath_block_devices(scsi_info):
+def get_mpath_block_devices(scsi_info, snapshot=None):
     slave_devices = []
     mpath_devices = []
 
@@ -295,7 +328,7 @@ def get_mpath_block_devices(scsi_info):
 
     def get_slave_block_devices(slave, dm, i):
         try:
-            struct = get_device_info(slave, scsi_info)
+            struct = get_device_info(slave, scsi_info, snapshot)
             if struct is None:
                 return
             struct.type = "mpath"
@@ -331,7 +364,7 @@ def get_mpath_block_devices(scsi_info):
 
     return [_f for _f in block_devices_list if _f], slave_devices
 
-def get_disk_block_devices(slave_devices, scsi_info):
+def get_disk_block_devices(slave_devices, scsi_info, snapshot=None):
     disks = shell.call("lsblk -e 43 -p -o NAME,TYPE | awk '/disk/{print $1}'").strip().split()
     block_devices_list = [None] * len(disks)  # type: list
 
@@ -341,7 +374,7 @@ def get_disk_block_devices(slave_devices, scsi_info):
 
     def get_block_device_info(disk, i):
         try:
-            struct = get_device_info(disk.strip().split("/")[-1], scsi_info)
+            struct = get_device_info(disk.strip().split("/")[-1], scsi_info, snapshot)
             if struct is None:
                 return
             if bash.bash_r('wipefs -n %s | grep LVM2  > /dev/null' % disk.strip()) == 0:
@@ -398,11 +431,32 @@ def is_multipath_running():
     return True
 
 
+def get_multipath_slaves():
+    r, o, e = bash.bash_roe("timeout 10 multipathd show paths raw format '%d %m'")
+    if r != 0:
+        logger.warn("cannot query multipath paths: %s" % e)
+        return None
+    slaves = set()
+    for line in o.splitlines():
+        if not line.strip():
+            continue
+        fields = line.split()
+        if len(fields) != 2:
+            logger.warn("invalid multipath path: %s" % line)
+            return None
+        if fields[1] != '[orphan]':
+            slaves.add(fields[0])
+    return slaves
+
+
 @bash.in_bash
-def is_slave_of_multipath(dev_path):
-    # type: (str) -> bool
-    if is_multipath_running() is False:
+def is_slave_of_multipath(dev_path, slave_multipaths=None, multipath_running=None):
+    if multipath_running is None:
+        multipath_running = is_multipath_running()
+    if multipath_running is False:
         return False
+    if slave_multipaths is not None and os.path.basename(dev_path) in slave_multipaths:
+        return True
 
     r = bash.bash_r("multipath -c %s" % dev_path)
     return r == 0
@@ -491,9 +545,10 @@ def get_dm_wwid(dm):
         logger.warn(linux.get_exception_stacktrace())
         return None
 
-def get_device_info(dev_name, scsi_info):
-    # type: (str, dict[str, str]) -> SharedBlockCandidateStruct
-    s = SharedBlockCandidateStruct()
+def get_device_info(dev_name, scsi_info, snapshot=None):
+    # type: (str, dict[str, str], StorageDeviceScanSnapshot or None) -> SharedBlockCandidateStruct
+    if snapshot is None:
+        snapshot = StorageDeviceScanSnapshot()
     dev_name = dev_name.strip()
 
     def get_wwid(dev):
@@ -508,7 +563,7 @@ def get_device_info(dev_name, scsi_info):
             logger.warn(linux.get_exception_stacktrace())
             return None
 
-    s = lsblk_info(dev_name)
+    s = lsblk_info(dev_name, snapshot.blk_infos)
     if not s:
         return s
 
@@ -517,12 +572,31 @@ def get_device_info(dev_name, scsi_info):
         return None
 
     s.wwid = wwid
-    s.path = get_device_path(dev_name)
+    s.path = get_device_path(dev_name, snapshot.device_paths)
     return s
 
-def lsblk_info(dev_name):
-    # type: (str) -> SharedBlockCandidateStruct
-    s = SharedBlockCandidateStruct()
+def get_lsblk_infos():
+    r, o, e = bash.bash_roe("lsblk -d --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE,TRAN", False)
+    if r != 0:
+        return None
+    infos = {}
+    for line in o.splitlines():
+        if not line.strip():
+            continue
+        try:
+            info = _parse_lsblk_info(line)
+        except (IndexError, ValueError) as error:
+            logger.warn("cannot parse lsblk record[%s]: %s" % (line, error))
+            continue
+        if info.name:
+            infos[os.path.basename(info.name)] = info
+    return infos
+
+
+def lsblk_info(dev_name, blk_infos=None):
+    # type: (str, dict) -> SharedBlockCandidateStruct
+    if blk_infos is not None and dev_name in blk_infos:
+        return copy.copy(blk_infos[dev_name])
 
     r, o, e = bash.bash_roe("lsblk --pair -b -p -o NAME,VENDOR,MODEL,WWN,SERIAL,HCTL,TYPE,SIZE,TRAN /dev/%s" % dev_name,
                             False)
@@ -530,8 +604,14 @@ def lsblk_info(dev_name):
         logger.warn("can not get device information from %s" % dev_name)
         return None
 
+    return _parse_lsblk_info(o.strip().split("\n")[0])
+
+
+def _parse_lsblk_info(o):
+    s = SharedBlockCandidateStruct()
+
     def get_data(e):
-        return e.split("=")[1].strip().strip('"')
+        return e.split("=", 1)[1].strip().strip('"')
 
     for entry in o.strip().split("\n")[0].split('" '):  # type: str
         if entry.startswith("NAME"):
@@ -556,7 +636,28 @@ def lsblk_info(dev_name):
 
     return s
 
-def get_device_path(dev):
+def get_device_paths():
+    r, o, e = bash.bash_roe("udevadm info --export-db")
+    if r != 0:
+        return None
+    paths = {}
+    for record in o.split('\n\n'):
+        dev = None
+        path = None
+        for line in record.splitlines():
+            if line.startswith('N: '):
+                dev = line[3:].strip()
+            elif line.startswith('S: ') and 'by-path' in line and path is None:
+                path = os.path.basename(line[3:].strip())
+        if dev:
+            paths[dev] = path
+    return paths
+
+
+def get_device_path(dev, device_paths=None):
+    dev_name = os.path.basename(dev)
+    if device_paths is not None and dev_name in device_paths:
+        return device_paths[dev_name]
     for symlink in shell.call("udevadm info -q symlink -n %s" % dev).strip().split():
         if 'by-path' in symlink:
             return os.path.basename(symlink)
