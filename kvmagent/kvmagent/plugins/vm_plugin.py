@@ -5208,7 +5208,7 @@ class Vm(object):
 
         return all_disks_backing_file_chain
 
-    def _build_domain_new_xml(self, volumeDicts):
+    def _build_domain_new_xml(self, volumeDicts, no_share_pages=None):
         migrate_disks = {}
 
         for oldpath, volume in list(volumeDicts.items()):
@@ -5217,6 +5217,23 @@ class Vm(object):
 
         tree = etree.ElementTree(etree.fromstring(self.get_migratable_xml()))
         xml_changed = self._split_legacy_rbd_snapshot(tree.getroot())
+        if no_share_pages is True and tree.getroot().find('memoryBacking/nosharepages') is None:
+            backing = tree.getroot().find('memoryBacking')
+            if backing is None:
+                backing = etree.SubElement(tree.getroot(), 'memoryBacking')
+            etree.SubElement(backing, 'nosharepages')
+            xml_changed = True
+        elif no_share_pages is False:
+            backing = tree.getroot().find('memoryBacking')
+            if backing is not None and backing.find('hugepages') is None:
+                no_share = backing.find('nosharepages')
+                if no_share is not None:
+                    backing.remove(no_share)
+                    xml_changed = True
+                    if len(backing) == 0 and not backing.attrib:
+                        tree.getroot().remove(backing)
+        # A bound user Hook sends None to preserve its policy; HugeTLB is always preserved.
+
         devices = tree.getroot().find('devices')
         for disk in tree.iterfind('devices/disk'):
             dev = disk.find('target').attrib['dev']
@@ -5329,15 +5346,24 @@ class Vm(object):
 
         storage_migration_required = cmd.disks and len(cmd.disks.__dict__) != 0
         parameter_map = {}
+        direct = getattr(cmd, 'swapDirect', None)
+        if direct:
+            if cmd.migrateFromDestination or storage_migration_required or cmd.xbzrle or cmd.storageMigrationPolicy in ('FullCopy', 'IncCopy'):
+                raise kvmagent.KvmError('Cold-page direct migration requires source-driven shared-storage precopy without XBZRLE')
+            optimizer = kvmagent.new_rest_service().plugin_rgty.get_plugin('MemoryOptimizationPlugin')
+            parameter_map.update(optimizer.prepare_swap_direct(cmd.vmUuid, json.loads(jsonobject.dumps(direct))))
+            parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
+            if bandwidth:
+                parameter_map[libvirt.VIR_MIGRATE_PARAM_BANDWIDTH] = bandwidth
         if storage_migration_required:
-            disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__)
+            disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__, getattr(cmd, "noSharePages", None))
             parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = disks
             parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
             parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
             if bandwidth != 0:
                 parameter_map[libvirt.VIR_MIGRATE_PARAM_BANDWIDTH] = (bandwidth + len(disks) - 1) // len(disks)
         else:
-            disks, destXml = self._build_domain_new_xml({})
+            disks, destXml = self._build_domain_new_xml({}, getattr(cmd, "noSharePages", None))
         logger.debug("migrate dest xml:%s" % destXml)
         logger.debug("migrate param: %s" % parameter_map)
 
@@ -5460,6 +5486,8 @@ class Vm(object):
                         result.put("total", total)
                         result.put("stage", "migrating")
                         result.put("unit", "bytes")
+                        if direct:
+                            result.put("data", json.dumps({"swapDirect": {key: value for key, value in stats.items() if key.startswith('x-swap-direct.')}}))
                         if total > 0:
                             percent = int(processed * 100.0 / total)
                             if remain > 0:
@@ -5523,13 +5551,35 @@ class Vm(object):
         is_migrate_without_bitmaps = self._is_vm_migrate_without_dirty_bitmap()
         check_mirror_jobs(cmd.vmUuid, is_migrate_without_bitmaps)
 
-        with MigrateDaemon(self.domain, self.uuid):
-            logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
+        completed = threading.Event()
+        callback_id = None
+        connection = self.domain.connect() if direct else None
 
-            if storage_migration_required:
-                self.domain.migrateToURI3(destUrl, parameter_map, flag)
-            else:
-                self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, bandwidth)
+        def job_completed(conn, domain, params, opaque):
+            cmd.swapDirectStats = {key: value for key, value in params.items() if key.startswith('x-swap-direct.')}
+            completed.set()
+
+        try:
+            if direct:
+                if destXml is not None:
+                    parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
+                callback_id = connection.domainEventRegisterAny(self.domain, libvirt.VIR_DOMAIN_EVENT_ID_JOB_COMPLETED,
+                                                               job_completed, None)
+            with MigrateDaemon(self.domain, self.uuid):
+                logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
+                if storage_migration_required or direct:
+                    self.domain.migrateToURI3(destUrl, parameter_map, flag)
+                else:
+                    self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, bandwidth)
+        finally:
+            if callback_id is not None:
+                # UNDEFINE_SOURCE removes the completed domain. Capture libvirt's
+                # existing job-completed event, not a stale final polling sample.
+                completed.wait(5)
+                try:
+                    connection.domainEventDeregisterAny(callback_id)
+                except libvirt.libvirtError as error:
+                    logger.warn('Unable to unregister migration statistics callback: %s' % error)
 
         try:
             if not linux.wait_callback_success(self.wait_for_state_change, callback_data=None, timeout=timeout):
@@ -5540,6 +5590,13 @@ class Vm(object):
             raise
         except:
             logger.debug(linux.get_exception_stacktrace())
+
+        if direct and getattr(cmd, 'swapDirectStats', None):
+            detail = jsonobject.JsonObject()
+            detail.put('data', json.dumps({'swapDirect': cmd.swapDirectStats}))
+            detail.put('stage', 'migrating')
+            Report.from_spec(cmd, Vm.MIGRATE_VM_TASK_NAME).progress_report(
+                str(get_exact_percent(100, stage)), detail=detail)
 
         logger.debug('successfully migrated vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
 
@@ -10114,6 +10171,8 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.error = str(e)
             rsp.success = False
 
+        if getattr(cmd, 'swapDirect', None):
+            rsp.swapDirect = getattr(cmd, 'swapDirectStats', None)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

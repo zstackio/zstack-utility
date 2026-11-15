@@ -30,6 +30,84 @@ def _make_req(body_dict=None):
     return {http.REQUEST_BODY: body, http.REQUEST_HEADER: {}}
 
 
+@pytest.mark.parametrize('direct, transfer_fails', [(False, False), (True, False), (True, True)])
+@pytest.mark.parametrize('dest_xml', [None, '<domain/>'])
+def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monkeypatch, direct, transfer_fails, dest_xml):
+    from types import SimpleNamespace
+
+    class Daemon:
+        def __init__(self, *args): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(vm_plugin.plugin, 'TaskDaemon', Daemon)
+    monkeypatch.setattr(vm_plugin, 'get_task_stage', lambda cmd: None, raising=False)
+    monkeypatch.setattr(vm_plugin, 'get_timeout', lambda cmd: 60, raising=False)
+    reporter = MagicMock()
+    monkeypatch.setattr(vm_plugin, 'Report', reporter, raising=False)
+    monkeypatch.setattr(vm_plugin, 'get_exact_percent', lambda value, stage: value, raising=False)
+    monkeypatch.setattr(vm_plugin, 'get_libvirt_major_version', lambda: 8)
+    monkeypatch.setattr(vm_plugin, 'check_mirror_jobs', lambda *args: None)
+    monkeypatch.setattr(vm_plugin.linux, 'get_host_name', lambda: 'source-host')
+    monkeypatch.setattr(vm_plugin.linux, 'get_fs_type', lambda path: 'block')
+    monkeypatch.setattr(vm_plugin.linux, 'wait_callback_success', lambda *args, **kwargs: True)
+    for index, name in enumerate(('LIVE', 'PEER2PEER', 'UNDEFINE_SOURCE', 'PERSIST_DEST', 'UNSAFE')):
+        monkeypatch.setattr(vm_plugin.libvirt, 'VIR_MIGRATE_' + name, 1 << index)
+    for name in ('URI', 'DEST_XML', 'BANDWIDTH'):
+        monkeypatch.setattr(vm_plugin.libvirt, 'VIR_MIGRATE_PARAM_' + name, name.lower())
+    optimizer = MagicMock()
+    optimizer.prepare_swap_direct.return_value = {'x-swap-direct': True, 'x-swap-direct-source-type': 3,
+                                                'x-swap-direct-dest-type': 7}
+    service = MagicMock()
+    service.plugin_rgty.get_plugin.return_value = optimizer
+    monkeypatch.setattr(vm_plugin.kvmagent, 'new_rest_service', lambda: service)
+    vm = MagicMock(uuid='3' * 32, state=vm_plugin.Vm.VM_STATE_RUNNING)
+    vm._build_domain_new_xml.return_value = ([], dest_xml)
+    vm.list_blk_sources.return_value = ['/dev/mock-volume']
+    vm._is_vm_migrate_without_dirty_bitmap.return_value = False
+    cmd = SimpleNamespace(vmUuid=vm.uuid, migrateFromDestination=False, srcHostIp='192.0.2.1',
+                          destHostIp='192.0.2.2', destHostManagementIp=None, useTls=False,
+                          bandwidth=64, disks=None, downTime=None, autoConverge=False,
+                          xbzrle=False, storageMigrationPolicy=None,
+                          swapDirect={'operationUuid': 'operation'} if direct else None)
+    final = {'x-swap-direct.managed': True, 'x-swap-direct.backing-pages-sent': 128}
+    callbacks = []
+    conn = vm.domain.connect.return_value
+    conn.domainEventRegisterAny.side_effect = lambda domain, event, callback, opaque: callbacks.append(callback) or 9
+    if transfer_fails:
+        vm.domain.migrateToURI3.side_effect = RuntimeError('direct-transfer-failed')
+        with pytest.raises(RuntimeError, match='direct-transfer-failed'):
+            vm_plugin.Vm.migrate(vm, cmd)
+        vm.domain.migrateToURI3.assert_called_once()
+        vm.domain.migrateToURI2.assert_not_called()
+        conn.domainEventDeregisterAny.assert_called_once_with(9)
+        assert cmd.swapDirect == {'operationUuid': 'operation'}
+        return
+    vm.domain.migrateToURI3.side_effect = lambda *args: callbacks[0](conn, vm.domain, final, None)
+    vm_plugin.Vm.migrate(vm, cmd)
+    if direct:
+        vm.domain.migrateToURI3.assert_called_once()
+        vm.domain.migrateToURI2.assert_not_called()
+        params = vm.domain.migrateToURI3.call_args.args[1]
+        assert params['x-swap-direct-dest-type'] == 7
+        if dest_xml is None:
+            assert 'dest_xml' not in params
+        else:
+            assert params['dest_xml'] == dest_xml
+        assert params['bandwidth'] == 64
+        assert cmd.swapDirectStats == final
+        conn.domainEventDeregisterAny.assert_called_once_with(9)
+        report = reporter.from_spec.return_value.progress_report.call_args
+        assert report.args[0] == '100'
+        assert json.loads(report.kwargs['detail'].data)['swapDirect'] == final
+    else:
+        vm.domain.migrateToURI2.assert_called_once()
+        vm.domain.migrateToURI3.assert_not_called()
+        optimizer.prepare_swap_direct.assert_not_called()
+        conn.domainEventRegisterAny.assert_not_called()
+        reporter.from_spec.assert_not_called()
+
+
 @pytest.mark.parametrize('memfd, qemu_version, libvirt_version, expected', [
     (False, '5.1.0', '1.0.6', True),
     (False, '6.2.0', '6.2.0', True),
@@ -4751,3 +4829,38 @@ class TestVmAttachVolumeVariants:
                 volume.deviceId = vol['deviceId']
                 volume.deviceType = vol['deviceType']
                 vm._attach_data_volume(volume, addons)
+
+
+@pytest.mark.parametrize('existing', ['', '<memoryBacking><hugepages/><nosharepages/></memoryBacking>'])
+def test_migration_memory_sharing_preserves_existing_protection(existing):
+    from lxml import etree
+    vm = vm_plugin.Vm.__new__(vm_plugin.Vm)
+    original = '<domain>' + existing + '<devices/></domain>'
+    vm.get_migratable_xml = lambda: original
+    _, changed = vm._build_domain_new_xml({}, no_share_pages=True)
+    root = etree.fromstring(changed or original)
+    assert root.find('memoryBacking/nosharepages') is not None
+    if existing: assert root.find('memoryBacking/hugepages') is not None
+    vm.get_migratable_xml = lambda: etree.tostring(root, encoding='unicode')
+    _, enabled = vm._build_domain_new_xml({}, no_share_pages=False)
+    result = etree.fromstring(enabled or vm.get_migratable_xml())
+    if existing:
+        assert enabled is None
+        assert result.find('memoryBacking/nosharepages') is not None
+        assert result.find('memoryBacking/hugepages') is not None
+    else:
+        assert result.find('memoryBacking') is None
+
+
+def test_migration_preserves_hook_owned_memory_backing():
+    vm = vm_plugin.Vm.__new__(vm_plugin.Vm)
+    original = '<domain><memoryBacking><nosharepages/><access mode="private"/></memoryBacking><devices/></domain>'
+    vm.get_migratable_xml = lambda: original
+    _, changed = vm._build_domain_new_xml({}, no_share_pages=None)
+    assert changed is None
+    # Explicitly enabling sharing for a VM without a Hook only removes nosharepages.
+    from lxml import etree
+    _, changed = vm._build_domain_new_xml({}, no_share_pages=False)
+    root = etree.fromstring(changed)
+    assert root.find('memoryBacking/nosharepages') is None
+    assert root.find('memoryBacking/access').get('mode') == 'private'

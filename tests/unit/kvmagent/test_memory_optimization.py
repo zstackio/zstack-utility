@@ -25,6 +25,7 @@ class FakeService(object):
 
     def __init__(self):
         self.calls = []
+        self.vm_policy = {}
         self.pool = POOL
         self.paused = False
         self.maintenance = False
@@ -94,6 +95,10 @@ class FakeService(object):
             return self.receipts[kind]
         if action == 'migration-hold' and self.hold_error:
             return {'_http_status': 409, 'error': self.hold_error}
+        if action == 'vm-policy':
+            self.vm_policy[payload['_resource']] = {'mode': payload['mode'], 'instance_generation': payload['expected_instance_generation']}
+        if action == 'vm-policy-state':
+            return self.vm_policy[payload['_resource']]
         if action in ('vm-policy', 'migration-hold', 'accounting', 'backend-view'):
             return {'claimed': True}
         raise AssertionError('unexpected service call %s' % action)
@@ -767,11 +772,12 @@ def test_vm_bind_sets_the_instance_policy_and_revoke_changes_nothing(host):
                                    'operationUuid': 'c' * 32})}
     reply = json.loads(plugin.vm_efficiency(request))
     assert reply['status'] == 'Succeeded'
-    assert service.calls[-1] == ('vm-policy', {'expected_instance_generation': 'g1', 'mode': 'deny',
+    assert service.calls[-2] == ('vm-policy', {'expected_instance_generation': 'g1', 'mode': 'deny',
                                               'cpu_rule': None, '_resource': 'b' * 32})
     revoke = {'body': json.dumps({'hostUuid': HOST, 'action': 'revoke', 'resourceUuid': 'b' * 32})}
     assert json.loads(plugin.vm_efficiency(revoke))['status'] == 'Succeeded'
-    assert len(service.calls) == 1
+    assert service.calls[-1] == ('vm-policy-state', {'_resource': 'b' * 32})
+    assert len(service.calls) == 2
 
 
 def _reboot_reclaim_host(plugin, service, world, monkeypatch, capacity, receipt_device='/dev/vdb',
@@ -1301,3 +1307,671 @@ def test_a_service_switch_is_named_not_a_bare_boolean(host):
             plugin._set_writeback(wrong)
     assert len(service.calls) == calls, 'a refused switch changes nothing on the service'
     assert cpu['efficiency_enabled'] is False
+
+
+@pytest.fixture
+def direct_host(host, tmp_path, monkeypatch):
+    import libvirt
+    import stat
+    from zstacklib.utils import qmp
+    plugin, service, world = host
+    world.update(boot='boot', daemon=901, active=True,
+                 xml="<capabilities><host><migration_features><live/>"
+                     "<zstack_swap_direct version='1'/></migration_features></host></capabilities>",
+                 parameters={'x-swap-direct-type': -1, 'x-swap-direct-zobj': True},
+                 qemu_caps=[{'capability': 'x-swap-direct', 'state': False}])
+    vm = '3' * 32
+    emulator, running = tmp_path / 'qemu', tmp_path / 'running-qemu'
+    emulator.write_bytes(b'prototype'); running.write_bytes(b'prototype')
+    paths = {'/proc/902/exe': str(running)}
+    for pid in (901, 902, 903):
+        path = tmp_path / ('stat-%d' % pid)
+        path.write_text('%d (worker (qemu)) ' % pid + ' '.join(['0'] * 19 + ['55']))
+        paths['/proc/%d/stat' % pid] = str(path)
+    original_open, original_stat, original_lstat = open, os.stat, os.lstat
+    monkeypatch.setattr(module, 'open', lambda path, *args, **kwargs:
+                        original_open(paths.get(str(path), path), *args, **kwargs), raising=False)
+    monkeypatch.setattr(module.os, 'stat', lambda path, *args, **kwargs:
+                        original_stat(paths.get(str(path), path), *args, **kwargs))
+    monkeypatch.setattr(module.os, 'lstat', lambda path, *args, **kwargs:
+                        SimpleNamespace(st_mode=stat.S_IFBLK, st_rdev=65024, st_ino=1)
+                        if path == '/dev/zram0' else original_lstat(path, *args, **kwargs))
+    monkeypatch.setattr(module.platform, 'machine', lambda: 'x86_64')
+    monkeypatch.setattr(module.linux, 'get_libvirtd_pid', lambda: world['daemon'])
+    monkeypatch.setattr(module.linux, 'get_vm_pid', lambda name: 902 if name == vm else None)
+    monkeypatch.setattr(plugin, '_current_boot_id', lambda: world['boot'])
+    domain = SimpleNamespace(UUIDString=lambda: vm, isActive=lambda: world['active'],
+                             XMLDesc=lambda flags: '<domain><devices><emulator>%s</emulator></devices></domain>' % emulator)
+    connection = SimpleNamespace(getCapabilities=Mock(side_effect=lambda: world['xml']),
+                                 listAllDomains=lambda flags: [domain], close=Mock())
+    monkeypatch.setattr(libvirt, 'openReadOnly', Mock(return_value=connection))
+    query = Mock(side_effect=lambda name, command, **kwargs:
+                 world['parameters'] if command == 'query-migrate-parameters' else world['qemu_caps'])
+    monkeypatch.setattr(qmp, 'execute_qmp_command', query)
+    kernel = Mock()
+    monkeypatch.setattr(plugin, '_swap_direct_kernel_abi', kernel)
+    monkeypatch.setattr(plugin, '_swap_direct_preflight', Mock(side_effect=AssertionError('no migration preflight')))
+    monkeypatch.setattr(plugin, '_probe_swap_type', Mock(side_effect=AssertionError('no pageout probe')))
+    state = {'bootId': 'boot', 'zram': {'poolGeneration': POOL,
+                                      'pool': {'pool_generation': POOL, 'device': '/dev/zram0'}}}
+    return plugin, service, world, state, connection, query, kernel, emulator, running, paths
+
+
+def test_swap_direct_host_gate_is_cached_by_boot_pool_and_daemon_without_side_effects(direct_host):
+    plugin, service, world, state, conn, query, kernel, _, _, paths = direct_host
+    world['xml'] = '<capabilities><host><migration_features><live/></migration_features></host></capabilities>'
+    before = list(service.calls)
+    first = plugin._swap_direct_capability(state)
+    cache = plugin._swap_direct_capability_cache
+    assert first['supported'] is False
+    assert first['reasonCode'] == 'SWAP_DIRECT_LIBVIRT_CAPABILITY_UNCONFIRMED'
+    first['supported'] = True
+    assert plugin._swap_direct_capability(state)['supported'] is False
+    assert plugin._swap_direct_capability_cache is cache
+    assert conn.getCapabilities.call_count == 1
+    state['bootId'] = world['boot'] = 'new-boot'
+    assert plugin._swap_direct_capability(state)['bootId'] == 'new-boot'
+    assert conn.getCapabilities.call_count == 2
+    state['zram']['poolGeneration'] = state['zram']['pool']['pool_generation'] = 'new-pool'
+    assert plugin._swap_direct_capability(state)['poolGeneration'] == 'new-pool'
+    assert conn.getCapabilities.call_count == 3
+    world['daemon'] = 903
+    plugin._swap_direct_capability(state)
+    assert conn.getCapabilities.call_count == 4
+    state['zram'].pop('poolGeneration')
+    assert plugin._swap_direct_capability(state)['reasonCode'] == 'SWAP_DIRECT_MANAGED_POOL_REQUIRED'
+    state.pop('bootId')
+    assert plugin._swap_direct_capability(state)['reasonCode'] == 'SWAP_DIRECT_HOST_IDENTITY_UNKNOWN'
+    assert service.calls == before
+    query.assert_not_called(); kernel.assert_not_called()
+    plugin._swap_direct_preflight.assert_not_called(); plugin._probe_swap_type.assert_not_called()
+
+
+@pytest.mark.parametrize('change', ['boot', 'pool', 'daemon-pid', 'daemon-start', 'qemu-start', 'binary'])
+def test_swap_direct_positive_cache_requires_current_process_and_binary_evidence(direct_host, change):
+    plugin, service, world, state, conn, query, kernel, emulator, running, paths = direct_host
+    first = plugin._swap_direct_capability(state)
+    assert first['supported'] is True
+    first['supported'] = False
+    assert plugin._swap_direct_capability(state)['supported'] is True
+    assert (conn.getCapabilities.call_count, kernel.call_count, query.call_count) == (1, 1, 2)
+    if change == 'boot':
+        state['bootId'] = world['boot'] = 'new-boot'
+    elif change == 'pool':
+        state['zram']['poolGeneration'] = state['zram']['pool']['pool_generation'] = 'new-pool'
+    elif change == 'daemon-pid':
+        world['daemon'] = 903
+    elif change in ('daemon-start', 'qemu-start'):
+        pid = 901 if change == 'daemon-start' else 902
+        with open(paths['/proc/%d/stat' % pid], 'w') as stream:
+            stream.write('%d (qemu) ' % pid + ' '.join(['0'] * 19 + ['66']))
+    else:
+        emulator.write_bytes(b'replaced prototype'); running.write_bytes(b'replaced prototype')
+    assert plugin._swap_direct_capability(state)['supported'] is True
+    xml_reads = 1 if change in ('qemu-start', 'binary') else 2
+    assert (conn.getCapabilities.call_count, kernel.call_count, query.call_count) == (xml_reads, 2, 4)
+    assert all(call.args[1] in ('query-migrate-parameters', 'query-migrate-capabilities') for call in query.call_args_list)
+    assert service.calls == []
+
+
+@pytest.mark.parametrize('xml', [
+    '<capabilities><host><migration_features><zstack_swap_direct version="2"/></migration_features></host></capabilities>',
+    '<capabilities><host><migration_features><zstack_swap_direct version="1"/><zstack_swap_direct version="1"/></migration_features></host></capabilities>',
+    '<capabilities><host><zstack_swap_direct version="1"/></host></capabilities>',
+    '<capabilities><host><migration_features><zstack_swap_direct/></migration_features></host></capabilities>',
+    '<capabilities><host><migration_features><zstack_swap_direct version="1"><extra/></zstack_swap_direct></migration_features></host></capabilities>',
+    '<capabilities><host/><host><migration_features><zstack_swap_direct version="1"/></migration_features></host></capabilities>',
+    '<broken'])
+def test_swap_direct_unproven_libvirt_never_reaches_kernel_or_qemu(direct_host, xml):
+    plugin, _, world, state, _, query, kernel, _, _, _ = direct_host
+    world['xml'] = xml
+    result = plugin._swap_direct_capability(state)
+    assert result['supported'] is False and result['reasonCode']
+    kernel.assert_not_called(); query.assert_not_called()
+
+
+def test_swap_direct_libvirt_failure_and_restart_are_not_permanent_negative_evidence(direct_host):
+    plugin, _, world, state, conn, _, _, _, _, paths = direct_host
+    conn.getCapabilities.side_effect = IOError('temporarily unavailable')
+    assert plugin._swap_direct_capability(state)['supported'] is False
+    assert plugin._swap_direct_capability_cache is None
+    def restart():
+        with open(paths['/proc/901/stat'], 'w') as stream:
+            stream.write('901 (libvirtd) ' + ' '.join(['0'] * 19 + ['77']))
+        return world['xml']
+    conn.getCapabilities.side_effect = restart
+    assert plugin._swap_direct_capability(state)['reasonCode'] == 'SWAP_DIRECT_LIBVIRT_IDENTITY_CHANGED'
+    assert plugin._swap_direct_capability_cache is None
+    conn.getCapabilities.side_effect = lambda: world['xml']
+    assert plugin._swap_direct_capability(state)['supported'] is True
+
+
+@pytest.mark.parametrize('missing', ['no-vm', 'qemu-protocol', 'executable-match', 'kernel'])
+def test_swap_direct_marker_does_not_replace_kernel_or_running_qemu_proof(direct_host, missing):
+    plugin, _, world, state, conn, query, kernel, emulator, running, _ = direct_host
+    if missing == 'no-vm':
+        world['active'] = False
+    elif missing == 'qemu-protocol':
+        world['parameters'] = {}
+    elif missing == 'executable-match':
+        emulator.write_bytes(b'unmatched installed binary')
+    else:
+        kernel.side_effect = OSError(errno.ENOTTY, 'unsupported')
+    assert plugin._swap_direct_capability(state)['supported'] is False
+    if missing == 'kernel':
+        assert plugin._swap_direct_capability(state)['supported'] is False
+        assert kernel.call_count == 1
+        query.assert_not_called()
+        state['zram']['poolGeneration'] = state['zram']['pool']['pool_generation'] = 'reloaded-pool'
+        kernel.side_effect = None
+    else:
+        assert plugin._swap_direct_capability_cache is None
+        world['active'] = True
+        world['parameters'] = {'x-swap-direct-type': -1, 'x-swap-direct-zobj': True}
+        emulator.write_bytes(b'prototype')
+    assert plugin._swap_direct_capability(state)['supported'] is True
+    assert conn.getCapabilities.call_count == (2 if missing == 'kernel' else 1)
+
+
+def test_host_observation_publishes_negative_direct_gate_without_preflight(direct_host, monkeypatch):
+    plugin, service, world, _, _, _, _, _, _, _ = direct_host
+    world['xml'] = '<capabilities><host/></capabilities>'
+    monkeypatch.setattr(plugin, '_observe_ksm', lambda: {})
+    monkeypatch.setattr(plugin, '_complete_vm_inventory', lambda native: ({}, True))
+    state = MemoryOptimizationPlugin._observe(plugin)
+    capability = state['capabilities']['swapDirect']
+    assert capability == {'supported': False, 'reasonCode': 'SWAP_DIRECT_LIBVIRT_CAPABILITY_UNCONFIRMED',
+                          'bootId': state['bootId'], 'poolGeneration': state['zram']['poolGeneration']}
+    assert 'migration-hold' not in service.actions()
+    plugin._swap_direct_preflight.assert_not_called()
+
+
+@pytest.mark.parametrize('changed', ['pool', 'daemon-missing'])
+def test_swap_direct_lost_host_identity_invalidates_a_positive_cache(direct_host, changed):
+    plugin, _, world, state, conn, query, kernel, _, _, _ = direct_host
+    assert plugin._swap_direct_capability(state)['supported'] is True
+    if changed == 'pool':
+        state['zram']['pool']['pool_generation'] = 'mismatched-native-pool'
+    else:
+        world['daemon'] = None
+    assert plugin._swap_direct_capability(state)['supported'] is False
+    assert plugin._swap_direct_capability_cache is None
+    assert (conn.getCapabilities.call_count, query.call_count, kernel.call_count) == (1, 2, 1)
+
+
+def test_swap_direct_disappeared_probe_is_rediscovered_in_the_same_observation(direct_host):
+    plugin, _, world, state, conn, query, kernel, _, _, paths = direct_host
+    assert plugin._swap_direct_capability(state)['supported'] is True
+    os.unlink(paths['/proc/902/stat'])
+    world['active'] = False
+    result = plugin._swap_direct_capability(state)
+    assert result['supported'] is False
+    assert result['reasonCode'] == 'SWAP_DIRECT_RUNNING_QEMU_PROTOCOL_UNCONFIRMED'
+    assert plugin._swap_direct_capability_cache is None
+    assert conn.getCapabilities.call_count == 1
+
+
+def test_swap_direct_rechecks_identity_and_forwards_different_local_types(host, monkeypatch):
+    plugin, service, world = host
+    source = {'hostUuid': HOST, 'bootId': 'boot', 'poolGeneration': POOL, 'instanceGeneration': 'vm-generation',
+              'device': 0, 'rdev': '65024', 'swapType': 3, 'compressor': 'lzo-rle', 'qemuSha256': 'qemu-hash',
+              'backendIdentity': {'rdev': '66048'}, 'supported': True}
+    destination = dict(source, hostUuid='2' * 32, swapType=7, device=1, rdev='65025')
+    request = {'operationUuid': OPERATION, 'source': source, 'destination': destination}
+    monkeypatch.setattr(plugin, '_swap_direct_preflight', lambda query, state, **kwargs: dict(source))
+    params = plugin.prepare_swap_direct('3' * 32, request)
+    assert params['x-swap-direct-source-type'] == 3
+    assert params['x-swap-direct-dest-type'] == 7
+    assert params['x-swap-direct-dest-rdev'] == 65025
+    # Java generic maps may round-trip small, exact integral values as doubles.
+    destination['swapType'] = 7.0
+    assert plugin.prepare_swap_direct('3' * 32, request)['x-swap-direct-dest-type'] == 7
+    monkeypatch.setattr(plugin, '_swap_direct_preflight', lambda query, state, **kwargs: dict(source, poolGeneration='new-pool'))
+    with pytest.raises(Rejected, match='PREPARED_IDENTITY_CHANGED:poolGeneration'):
+        plugin.prepare_swap_direct('3' * 32, request)
+
+
+@pytest.mark.parametrize('held', [False, True])
+def test_swap_direct_missing_hold_or_host_proof_does_not_probe_or_touch_devices(host, monkeypatch, held):
+    plugin, service, world = host
+    monkeypatch.setattr(plugin, '_swap_direct_capability', lambda state: {'supported': False, 'reasonCode': 'SWAP_DIRECT_LIBVIRT_CAPABILITY_UNCONFIRMED'})
+    probe = Mock(side_effect=AssertionError('must not probe without hold'))
+    monkeypatch.setattr(plugin, '_probe_swap_type', probe)
+    monkeypatch.setattr(module.platform, 'machine', lambda: 'x86_64')
+    if held:
+        status = {'host_zram': {'pool_generation': POOL},
+                  'lifecycle': {'migrationHolds': [{'operation_id': OPERATION, 'pool_generation': POOL}]}}
+        monkeypatch.setattr(plugin, '_service', lambda action: status)
+    reason = 'LIBVIRT_CAPABILITY_UNCONFIRMED' if held else 'MIGRATION_HOLD_MISSING'
+    with pytest.raises(Rejected, match=reason):
+        plugin._swap_direct_preflight({'operationUuid': OPERATION, 'poolGeneration': POOL},
+                                      {'bootId': 'boot', 'zram': {'poolGeneration': POOL}})
+    probe.assert_not_called()
+
+
+def test_swap_direct_rejects_fractional_or_boolean_swap_type(host, monkeypatch):
+    plugin, service, world = host
+    source = {'hostUuid': HOST, 'supported': True, 'device': 0, 'rdev': '65024', 'swapType': 3, 'compressor': 'lzo'}
+    monkeypatch.setattr(plugin, '_swap_direct_preflight', lambda query, state, **kwargs: dict(source))
+    for value in (True, 1.25, -1, 32):
+        request = {'operationUuid': OPERATION, 'source': source, 'destination': dict(source, swapType=value)}
+        with pytest.raises(Rejected, match='INVALID_DEVICE_IDENTITY'):
+            plugin.prepare_swap_direct('3' * 32, request)
+
+
+@pytest.mark.parametrize('exhausted', ['ram', 'slots', 'pool', 'backend', None])
+def test_swap_direct_capacity_is_checked_before_opening_the_device(host, tmp_path, monkeypatch, exhausted):
+    import io
+    import stat
+    plugin, service, world = host
+    gib = 1 << 30
+    monkeypatch.setattr(plugin, '_swap_direct_capability', lambda state: {'supported': True})
+    status = {'host_zram': {'pool_generation': POOL, 'device': '/dev/zram0',
+                          'backend': {'identity': {'boot_id': 'boot', 'capacity_bytes': gib}}},
+              'lifecycle': {'migrationHolds': [{'operation_id': OPERATION, 'pool_generation': POOL}]}}
+    monkeypatch.setattr(plugin, '_service', lambda action: status)
+    swaps = tmp_path / 'swaps'
+    swaps.write_text('Filename Type Size Used Priority\n/dev/zram0 partition %d %d 100\n' %
+                     (gib // 1024, (gib - 4096) // 1024 if exhausted == 'slots' else 0))
+    monkeypatch.setattr(plugin, 'PROC_SWAPS_PATH', str(swaps))
+    monkeypatch.setattr(plugin, 'SYS_BLOCK_PATH', str(tmp_path))
+    sysfs = tmp_path / 'zram0'; sysfs.mkdir()
+    (sysfs / 'comp_algorithm').write_text('[lzo] lzo-rle')
+    (sysfs / 'backing_dev').write_text('nvme0n1')
+    (sysfs / 'mm_stat').write_text('0 0 %d %d' % (gib if exhausted == 'pool' else 0, gib))
+    (sysfs / 'bd_stat').write_text('%d 0 0' % (gib // 4096 - 1 if exhausted == 'backend' else 0))
+    original_stat = os.lstat
+    monkeypatch.setattr(module.os, 'lstat', lambda path: SimpleNamespace(st_mode=stat.S_IFBLK, st_rdev=65024, st_ino=1)
+                        if path == '/dev/zram0' else original_stat(path))
+    original_open = open
+    monkeypatch.setattr(module, 'open', lambda path, *args, **kwargs:
+                        io.StringIO('MemAvailable: %d kB\n' % (0 if exhausted == 'ram' else 2 * gib // 1024))
+                        if path == '/proc/meminfo' else original_open(path, *args, **kwargs), raising=False)
+    device = Mock(side_effect=RuntimeError('capacity accepted before device open'))
+    monkeypatch.setattr(module, '_Descriptor', device)
+    command = {'operationUuid': OPERATION, 'poolGeneration': POOL, 'swapDirectSource': False,
+               'swapDirectMemoryBytes': str(gib), 'swapDirectColdBytes': str(gib // 8)}
+    if exhausted:
+        with pytest.raises(Rejected, match='DESTINATION_CAPACITY_INSUFFICIENT'):
+            plugin._swap_direct_preflight(command, {'bootId': 'boot'})
+        device.assert_not_called()
+    else:
+        import contextlib
+        import struct
+        import errno
+        device.side_effect = None
+        device.return_value = contextlib.nullcontext(7)
+        monkeypatch.setattr(module.os, 'fstat', lambda fd: SimpleNamespace(st_rdev=65024))
+        operations = []
+        def check_empty_ioctl(fd, operation, batch, mutate):
+            objs, nr, done, compressor = struct.unpack('=QII32s', batch)
+            assert (fd, objs, nr, done, mutate) == (7, 0, 0, 0, True)
+            # GET fills the selected compressor; PUT must reuse that buffer.
+            if operation == 0xc0305aa0:
+                batch[:] = struct.pack('=QII32s', 0, 0, 0, b'lzo')
+            elif compressor.rstrip(b'\0') != b'lzo':
+                raise OSError(errno.EPROTO, 'compressor mismatch')
+            operations.append(operation)
+            return 0
+        monkeypatch.setattr(module.fcntl, 'ioctl', check_empty_ioctl)
+        monkeypatch.setattr(plugin, '_probe_swap_type', Mock(side_effect=RuntimeError('ABI accepted before probe')))
+        with pytest.raises(RuntimeError, match='ABI accepted before probe'):
+            plugin._swap_direct_preflight(command, {'bootId': 'boot'})
+        device.assert_called_once()
+        assert operations == [0xc0305aa0, 0xc0305aa1]
+
+
+@pytest.mark.parametrize('changed, expected', [(False, 1), (True, 0)])
+def test_swap_direct_backing_estimate_counts_only_unchanged_native_wb_pages(host, tmp_path, monkeypatch, changed, expected):
+    import ctypes
+    import struct
+    plugin, service, world = host
+    proc = tmp_path / 'proc'
+    root = proc / '123'
+    root.mkdir(parents=True)
+    (root / 'stat').write_text('123 (qemu) ' + ' '.join(['S'] + ['0'] * 18 + ['321']))
+    (root / 'maps').write_text('1000-5000 rw-p 00000000 00:00 0 \n')
+    # native written back, native compressed, resident, other swap type
+    entries = [(1 << 62) | (9 << 5) | 3, (1 << 62) | (10 << 5) | 3, 1 << 63, (1 << 62) | (11 << 5) | 4]
+    (root / 'pagemap').write_bytes(struct.pack('=5Q', 0, *entries))
+    device = tmp_path / 'zram0'
+    device.write_bytes(b'')
+    def get_objects(fd, command, batch, mutate):
+        assert command == 0xc0305aa0
+        address, count, _, comp = struct.unpack('=QII32s', batch)
+        objs = (ctypes.c_char * (40 * count)).from_address(address)
+        for i in range(count):
+            obj = list(struct.unpack_from('=QQQIIiI', objs, i * 40))
+            assert obj[0] in (9, 10)
+            obj[5] = -errno.EAGAIN if obj[0] == 9 else 0
+            struct.pack_into('=QQQIIiI', objs, i * 40, *obj)
+        batch[:] = struct.pack('=QII32s', address, count, count, comp)
+        if changed:
+            entries[0] = 1 << 63
+            (root / 'pagemap').write_bytes(struct.pack('=5Q', 0, *entries))
+    monkeypatch.setattr(module.fcntl, 'ioctl', get_objects)
+    pages, quality = plugin._swap_direct_backing_pages(123, 16384, str(device), 0, 3, str(proc))
+    assert (pages, quality) == (expected, 'native_get_pagemap')
+    (root / 'maps').write_text('1000-5000 rw-p 00000000 00:00 0 \n6000-a000 rw-p 00000000 00:00 0 \n')
+    assert plugin._swap_direct_backing_pages(123, 16384, str(device), 0, 3, str(proc)) == (0, 'guest_mapping_unconfirmed')
+
+
+def test_swap_direct_quota_is_forwarded_only_through_existing_hold_write(host):
+    plugin, service, world = host
+    hold = json.loads(plugin.migration_hold({module.http.REQUEST_BODY: json.dumps(dict(
+        hostUuid=HOST, operationUuid=OPERATION, resourceUuid='v' * 32, holdAction='acquire',
+        poolGeneration=POOL, writebackPages='625004'))}))
+    assert hold['status'] == 'Succeeded'
+    payload = next(payload for action, payload in service.calls if action == 'migration-hold')
+    assert payload['writeback_pages'] == 625004
+
+
+@pytest.fixture
+def runtime_ksm(host, monkeypatch):
+    plugin, service, world = host
+    from zstacklib.utils import qmp
+    vm = 'b' * 32
+    command = {'hostUuid': HOST, 'resourceUuid': vm, 'action': 'set-ksm',
+               'expectedInstanceGeneration': 'g1', 'operationUuid': OPERATION, 'ksmEnabled': False}
+    merges = {'/objects/guest-node0': True, '/objects/guest-node1': True}
+    calls = []
+    def native(action, payload):
+        calls.append((action, dict(payload)))
+        if action == 'vm-identities':
+            return {'identities': {vm: {'uuid': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'instance_generation': 'g1', 'pid': 1234, 'start_time': 55}}}
+        if action == 'ksm-recovery':
+            return {}
+        if action == 'status':
+            return {'lifecycle': {}}
+        raise AssertionError(action)
+    def monitor(vm_uuid, action, **args):
+        assert vm_uuid == vm
+        calls.append((action, args))
+        if action == 'qom-set':
+            merges[args['path']] = args['value']
+            return {}
+        if action == 'qom-get':
+            return merges[args['path']]
+        raise AssertionError(action)
+    monkeypatch.setattr(plugin, 'service_call', native)
+    monkeypatch.setattr(qmp, 'execute_qmp_command', monitor)
+    monkeypatch.setattr(plugin, '_vm_ksm_backend', lambda value: {
+        'pid': 1234, 'startTime': '55', 'domainId': 7, 'liveNoSharePages': False,
+        'backends': [{'path': path, 'merge': enabled} for path, enabled in sorted(merges.items())]})
+    monkeypatch.setattr(plugin, '_vm_ksm_headroom', lambda *args: {
+        'availableBytes': 8 * 1024 ** 3, 'requiredBytes': 6 * 1024 ** 3})
+    return plugin, command, merges, calls
+
+
+def test_runtime_ksm_disables_all_actual_backends_and_arms_durable_recovery(runtime_ksm):
+    plugin, command, merges, calls = runtime_ksm
+    result = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert result['success'] and result['state']['applied']
+    assert list(merges.values()) == [False, False]
+    operations = [payload['action'] for action, payload in calls if action == 'ksm-recovery']
+    assert operations == ['prepare-ksm-recovery', 'activate-ksm-recovery']
+    assert next(i for i, x in enumerate(calls) if x[0] == 'ksm-recovery') < next(i for i, x in enumerate(calls) if x[0] == 'qom-set')
+    calls[:] = []
+    command['ksmEnabled'] = True
+    result = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert result['success'] and list(merges.values()) == [True, True]
+    assert not any(action == 'ksm-recovery' for action, _ in calls)
+
+
+def test_runtime_ksm_headroom_refusal_and_preflight_have_no_side_effects(runtime_ksm, monkeypatch):
+    plugin, command, merges, calls = runtime_ksm
+    command['action'] = 'check-ksm'
+    assert json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))['success']
+    assert not any(action in ('qom-set', 'ksm-recovery') for action, _ in calls)
+    command['action'] = 'set-ksm'
+    monkeypatch.setattr(plugin, '_vm_ksm_headroom', lambda *args: {'availableBytes': 6, 'requiredBytes': 6})
+    reply = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert not reply['success'] and reply['reasonCode'].startswith('KSM_UNMERGE_INSUFFICIENT_MEMORY')
+    assert all(merges.values())
+    assert not any(action in ('qom-set', 'ksm-recovery') for action, _ in calls)
+
+
+def test_runtime_ksm_unsupported_and_stale_instance_are_not_applied(runtime_ksm, monkeypatch):
+    plugin, command, merges, calls = runtime_ksm
+    command['expectedInstanceGeneration'] = 'old'
+    reply = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert reply['reasonCode'] == 'INSTANCE_GENERATION_CONFLICT'
+    command['expectedInstanceGeneration'] = 'g1'
+    def unsupported(vm):
+        raise Rejected('KSM_RUNTIME_UNSUPPORTED_NEXT_START')
+    monkeypatch.setattr(plugin, '_vm_ksm_backend', unsupported)
+    reply = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert not reply['success'] and reply['reasonCode'] == 'KSM_RUNTIME_UNSUPPORTED_NEXT_START'
+    assert not any(action in ('qom-set', 'ksm-recovery') for action, _ in calls)
+
+
+def test_runtime_ksm_preflight_rejects_another_vm_recovery_before_configuration_save(runtime_ksm, monkeypatch):
+    plugin, command, merges, calls = runtime_ksm
+    original = plugin.service_call
+    active = {'phase': 'Active', 'vm_uuid': 'a' * 32, 'instance_generation': 'g-other',
+              'operation_id': '2' * 32}
+    monkeypatch.setattr(plugin, 'service_call', lambda action, payload:
+                        {'lifecycle': {'ksmRecovery': active}} if action == 'status' else original(action, payload))
+    command['action'] = 'check-ksm'
+    reply = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert not reply['success'] and reply['reasonCode'] == 'KSM_RECOVERY_HOST_BUSY'
+    assert all(merges.values())
+    assert not any(action in ('qom-set', 'ksm-recovery') for action, _ in calls)
+    # Checking a cancellation of this same instance is read-only; applying it restores.
+    active.update(vm_uuid=command['resourceUuid'], instance_generation='g1')
+    for path in merges: merges[path] = False
+    command['ksmEnabled'] = True
+    assert json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))['success']
+    assert not any(action in ('qom-set', 'ksm-recovery') for action, _ in calls)
+    command['action'] = 'set-ksm'
+    assert json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))['success']
+    assert all(merges.values())
+    assert ('ksm-recovery', {'action': 'restore-ksm-recovery', 'operation_id': active['operation_id'],
+                             'reason': 'cancelled'}) in calls
+
+
+def test_runtime_ksm_failure_restores_tuning_and_agent_lifecycle_retries(runtime_ksm, monkeypatch):
+    plugin, command, merges, calls = runtime_ksm
+    from zstacklib.utils import qmp
+    def fail(*args, **kwargs):
+        raise IOError('monitor disconnected')
+    monkeypatch.setattr(qmp, 'execute_qmp_command', fail)
+    reply = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert not reply['success']
+    actions = [payload['action'] for action, payload in calls if action == 'ksm-recovery']
+    assert actions == ['prepare-ksm-recovery', 'restore-ksm-recovery']
+    plugin._restore_ksm_tuning('agent-startup')
+    plugin.stop()
+    assert calls[-2:] == [('ksm-recovery', {'action': 'restore-ksm-recovery', 'reason': 'agent-startup'}),
+                         ('ksm-recovery', {'action': 'restore-ksm-recovery', 'reason': 'agent-stop'})]
+
+
+def test_agent_http_shutdown_restores_temporary_ksm_tuning(host, monkeypatch):
+    plugin, service, world = host
+    engine = Mock()
+    monkeypatch.setattr(module.cherrypy, 'engine', engine)
+    monkeypatch.setattr(module.kvmagent, 'get_http_server', lambda: Mock())
+    calls = []
+    monkeypatch.setattr(plugin, '_service', lambda action, payload: calls.append((action, payload)))
+    plugin.start()
+    event, handler = engine.subscribe.call_args.args
+    assert event == 'stop'
+    handler()
+    assert calls == [
+        ('ksm-recovery', {'action': 'restore-ksm-recovery', 'reason': 'agent-startup'}),
+        ('ksm-recovery', {'action': 'restore-ksm-recovery', 'reason': 'agent-stop'})]
+
+
+@pytest.mark.parametrize('alias', [False, True])
+def test_vm_ksm_headroom_uses_only_mergeable_present_ksm_and_zero_pages(tmp_path, monkeypatch, alias):
+    import struct
+    monkeypatch.setattr(module.linux, 'monotime', time.monotonic)
+    proc = tmp_path
+    root = proc / '1234'
+    root.mkdir()
+    (root / 'smaps').write_text('00001000-00005000 rw-p 00000000 00:00 0\nRss: 8 kB\nVmFlags: rd wr mg\n'
+                               '00005000-00006000 rw-p 00000000 00:00 0\nVmFlags: rd wr\n')
+    entries = [0, (1 << 63) | 1, (1 << 63) | 2, (1 << 63) | (1 if alias else 3), (1 << 62) | 4, (1 << 63) | 4]
+    (root / 'pagemap').write_bytes(struct.pack('=6Q', *entries))
+    flags = [0] * 1024
+    flags[1], flags[2], flags[4] = 1 << 21, 1 << 24, 1 << 21
+    (proc / 'kpageflags').write_bytes(struct.pack('=1024Q', *flags))
+    (root / 'stat').write_text('1234 (qemu) ' + ' '.join(['0'] * 19 + ['55']))
+    # The VMA bound exceeds available, but the counted KSM/zero pages fit.
+    (proc / 'meminfo').write_text('MemAvailable: 4194324 kB\n')
+    result = MemoryOptimizationPlugin._vm_ksm_headroom(1234, '55', str(proc))
+    assert result['ksmBytes'] == (2 if alias else 1) * 4096
+    assert result['zeroPageBytes'] == 4096
+    assert result['requiredBytes'] == 4 * 1024 ** 3 + (18432 if alias else 12288)
+    assert result['requiredBytes'] < result['availableBytes'] == 4 * 1024 ** 3 + 20 * 1024
+    with pytest.raises(Rejected, match='INSTANCE_GENERATION_CONFLICT'):
+        MemoryOptimizationPlugin._vm_ksm_headroom(1234, '54', str(proc))
+
+
+def test_vm_ksm_headroom_fast_bound_covers_zero_mappings_without_page_scan(tmp_path, monkeypatch):
+    monkeypatch.setattr(module.linux, 'monotime', time.monotonic)
+    root = tmp_path / '1234'; root.mkdir()
+    # Zero-page mappings can have zero RSS; all 16GiB must remain in the bound.
+    # A further 32GiB nonmergeable mapping does not contribute.
+    (root / 'smaps').write_text('00000000-400000000 rw-p 00000000 00:00 0\nRss: 0 kB\nVmFlags: rd wr mg\n'
+                               '400000000-c00000000 rw-p 00000000 00:00 0\nRss: 33554432 kB\nVmFlags: rd wr\n')
+    (root / 'stat').write_text('1234 (qemu) ' + ' '.join(['0'] * 19 + ['55']))
+    (tmp_path / 'meminfo').write_text('MemAvailable: 67108864 kB\n')
+    # There is deliberately no pagemap or kpageflags: opening either would fail.
+    result = MemoryOptimizationPlugin._vm_ksm_headroom(1234, '55', str(tmp_path))
+    assert result['unmergeUpperBoundBytes'] == 16 * 1024 ** 3
+    assert result['requiredBytes'] == 28 * 1024 ** 3
+    assert result['ksmBytes'] is None and result['zeroPageBytes'] is None
+    with pytest.raises(Rejected, match='INSTANCE_GENERATION_CONFLICT'):
+        MemoryOptimizationPlugin._vm_ksm_headroom(1234, '54', str(tmp_path))
+
+
+@pytest.mark.parametrize('memory_bytes,budget', [(4 << 30, 20), (16 << 30, 32),
+                                                  (64 << 30, 120), (1024 << 30, 120), (32 << 20, 20)])
+def test_vm_ksm_headroom_scan_timeout_reports_completed_pages(tmp_path, monkeypatch, runtime_ksm, memory_bytes, budget):
+    root = tmp_path / '1234'; root.mkdir()
+    (root / 'smaps').write_text('00000000-%x rw-p 00000000 00:00 0\nVmFlags: rd wr mg\n' % memory_bytes)
+    (root / 'stat').write_text('1234 (qemu) ' + ' '.join(['0'] * 19 + ['55']))
+    (tmp_path / 'meminfo').write_text('MemAvailable: 0 kB\n')
+    (root / 'pagemap').write_bytes(b'\0' * (8192 * 8))
+    (tmp_path / 'kpageflags').write_bytes(b'')
+    clock = iter([0, 1, budget + 1])
+    monkeypatch.setattr(module.linux, 'monotime', lambda: next(clock))
+    with pytest.raises(Rejected, match='KSM_UNMERGE_ESTIMATE_TIMEOUT') as caught:
+        MemoryOptimizationPlugin._vm_ksm_headroom(1234, '55', str(tmp_path))
+    assert str(caught.value) == caught.value.reason == 'KSM_UNMERGE_ESTIMATE_TIMEOUT'
+    assert 'scanned=8192/%d pages' % (memory_bytes // 4096) in caught.value.details
+    assert 'budget=%ds' % budget in caught.value.details
+    assert '%' in caught.value.details
+    plugin, command, merges, calls = runtime_ksm
+    monkeypatch.setattr(module.linux, 'monotime', time.monotonic)
+    monkeypatch.setattr(plugin, '_vm_ksm_headroom', Mock(side_effect=caught.value))
+    reply = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert reply['success'] is False and reply['status'] == 'Failed'
+    assert reply['reasonCode'] == 'KSM_UNMERGE_ESTIMATE_TIMEOUT'
+    assert reply['reason'] == caught.value.details
+    assert all(merges.values())
+    assert not any(action in ('qom-set', 'ksm-recovery') for action, _ in calls)
+
+
+def test_runtime_ksm_scan_budget_does_not_extend_host_lock_wait(runtime_ksm, monkeypatch):
+    from contextlib import contextmanager
+    plugin, command, merges, calls = runtime_ksm
+    waits = []
+    @contextmanager
+    def locked(wait):
+        waits.append(wait)
+        yield
+    monkeypatch.setattr(plugin, '_host_lock', locked)
+    command['communication'] = {'communicationSeconds': 180}
+    result = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert result['success']
+    assert waits == [15]
+
+
+@pytest.mark.parametrize('replacement,unsupported', [(False, False), (True, False), (False, True), (True, True)])
+def test_vm_readback_only_queries_target_and_rejects_replaced_identity(host, monkeypatch, replacement, unsupported):
+    plugin, service, world = host
+    vm = 'b' * 32
+    identity = {'uuid': 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+                'instance_generation': 'g1', 'pid': 1234, 'start_time': 55}
+    calls = []
+
+    def native(action, payload):
+        calls.append((action, payload))
+        if action == 'vm-policy-state':
+            assert payload == {'_resource': vm}
+            return {'identity': identity, 'binding_generation': 'g1', 'binding_mode': 'deny'}
+        if action == 'vm-identities':
+            assert payload == {'vm_uuids': [vm]}
+            return {'identities': {vm: dict(identity, instance_generation='g2' if replacement else 'g1')}}
+        raise AssertionError('unexpected full-host observation: ' + action)
+
+    def backend(value):
+        assert value == vm
+        if unsupported:
+            raise Rejected('KSM_RUNTIME_UNSUPPORTED_NEXT_START')
+        return {'pid': 1234, 'startTime': '55', 'liveNoSharePages': True,
+                'backends': [{'path': '/objects/guest-node0', 'merge': False}]}
+
+    monkeypatch.setattr(plugin, 'service_call', native)
+    monkeypatch.setattr(plugin, '_observe', Mock(side_effect=AssertionError('full host observation')))
+    monkeypatch.setattr(plugin, '_vm_ksm_backend', backend)
+    result = plugin.state({module.http.REQUEST_BODY: json.dumps(
+        {'hostUuid': HOST, 'resourceUuid': vm, 'vmMemoryState': True})})
+    if isinstance(result, str):
+        result = json.loads(result)
+    state = result['state']
+    plugin._observe.assert_not_called()
+    if replacement:
+        assert 'vms' not in state
+        assert state['vmMemoryState']['reasonCode'] == 'VM_MEMORY_STATE_UNKNOWN'
+    else:
+        assert set(state['vms']) == {vm}
+        assert state['vms'][vm] == {'instanceGeneration': 'g1', 'binding_generation': 'g1', 'binding_mode': 'deny'}
+        assert state['vmMemoryState']['supported'] is not unsupported
+    assert len(calls) == 2
+
+
+def test_runtime_ksm_discovers_backend_names_and_requires_merge_capability(host, monkeypatch, tmp_path):
+    import builtins
+    from zstacklib.utils import qmp
+    import libvirt
+    plugin, service, world = host
+    path = tmp_path / 'stat'
+    path.write_text('1234 (qemu) ' + ' '.join(['0'] * 19 + ['55']))
+    real_open = builtins.open
+    monkeypatch.setattr(builtins, 'open', lambda p, *a, **kw: real_open(path if p == '/proc/1234/stat' else p, *a, **kw))
+    domain = SimpleNamespace(isActive=lambda: True, ID=lambda: 7, XMLDesc=lambda flags: '<domain><memoryBacking><nosharepages/></memoryBacking></domain>')
+    conn = SimpleNamespace(lookupByUUIDString=lambda uuid: domain, close=lambda: None)
+    monkeypatch.setattr(libvirt, 'openReadOnly', lambda uri: conn)
+    monkeypatch.setattr(module.linux, 'get_vm_pid', lambda uuid: 1234)
+    supported = [True]
+    def monitor(vm, action, **args):
+        if action == 'query-memdev': return [{'id': 'node-42', 'size': 8192}]
+        if action == 'qom-list' and args['path'] == '/objects': return [{'name': 'node-42', 'type': 'child<memory-backend-ram>'}]
+        if action == 'qom-list': return [{'name': 'merge', 'type': 'bool'}] if supported[0] else []
+        if action == 'qom-get':
+            assert args['path'] == '/objects/node-42'
+            return False
+        raise AssertionError('read-only discovery attempted ' + action)
+    monkeypatch.setattr(qmp, 'execute_qmp_command', monitor)
+    proof = plugin._vm_ksm_backend('b' * 32)
+    assert proof['backends'] == [{'path': '/objects/node-42', 'merge': False}]
+    assert proof['liveNoSharePages'] and proof['startTime'] == '55'
+    supported[0] = False
+    with pytest.raises(Rejected, match='KSM_RUNTIME_UNSUPPORTED_NEXT_START'):
+        plugin._vm_ksm_backend('b' * 32)
+
+
+def test_vm_reclaim_readback_cannot_claim_a_replaced_instance(host, monkeypatch):
+    plugin, service, world = host
+    def changed(action, payload):
+        result = service(action, payload)
+        if action == 'vm-policy-state': return dict(result, instance_generation='replacement')
+        return result
+    monkeypatch.setattr(plugin, 'service_call', changed)
+    command = {'hostUuid': HOST, 'action': 'bind', 'resourceUuid': 'b' * 32,
+               'expectedInstanceGeneration': 'g1', 'participation': 'deny'}
+    reply = json.loads(plugin.vm_efficiency({'body': json.dumps(command)}))
+    assert not reply['success'] and reply['reasonCode'] == 'VM_POLICY_READBACK_MISMATCH'
