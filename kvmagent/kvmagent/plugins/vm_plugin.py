@@ -3689,6 +3689,26 @@ class Vm(object):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
                                     'paused after %s seconds' % (self.uuid, self.get_name(), timeout))
 
+    def _sync_domain_vf_nic_macs(self):
+        if self.domain_xmlobject is None or not hasattr(self.domain_xmlobject, 'devices'):
+            return
+        for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            if getattr(iface, 'type_', None) != 'hostdev':
+                continue
+            if not hasattr(iface, 'mac') or not getattr(iface.mac, 'address_', None):
+                continue
+            if not hasattr(iface, 'source') or not hasattr(iface.source, 'address'):
+                continue
+            addr_dict = {
+                'domain': getattr(iface.source.address, 'domain_', '0x0000'),
+                'bus': getattr(iface.source.address, 'bus_', '0x00'),
+                'slot': getattr(iface.source.address, 'slot_', '0x00'),
+                'function': getattr(iface.source.address, 'function_', '0x0')
+            }
+            pci_addr = normalize_pci_attrs(addr_dict)
+            if pci_addr:
+                Vm._set_vf_mac(pci_addr, iface.mac.address_)
+
     def reboot(self, cmd):
         self.stop(timeout=cmd.timeout)
 
@@ -3702,6 +3722,7 @@ class Vm(object):
         self.domain_xmlobject.os.replace_node('boot', boot_dev)
         self.domain_xml = self.domain_xmlobject.dump()
 
+        self._sync_domain_vf_nic_macs()
         self.start(cmd.timeout)
 
     def restore(self, path):
