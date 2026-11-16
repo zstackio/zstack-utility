@@ -26,7 +26,7 @@ except ImportError:
 from kvmagent import kvmagent
 from kvmagent.plugins import vm_plugin
 from kvmagent.plugins.imagestore import ImageStoreClient
-from zstacklib.utils import http, lvm, ceph, pci, gpu, linux, cpu_frequency
+from zstacklib.utils import http, lvm, ceph, pci, gpu, linux, cpu_frequency, resource_control
 from zstacklib.utils import qemu
 from zstacklib.utils import iptables
 from zstacklib.utils import iproute
@@ -1719,6 +1719,11 @@ class HostPlugin(kvmagent.KvmAgent):
     DEPLOY_COLO_QEMU_PATH = "/deploy/colo/qemu"
     UPDATE_CONFIGURATION_PATH = "/host/update/configuration"
     GET_NUMA_TOPOLOGY_PATH = "/numa/topology"
+    APPLY_RESOURCE_CONTROL_PATH = "/host/resourcecontrol/apply"
+    RELEASE_RESOURCE_CONTROL_PATH = "/host/resourcecontrol/release"
+    GET_MANAGED_SERVICE_USAGE_PATH = "/host/resourcecontrol/services"
+    RESTART_MANAGED_SERVICES_PATH = "/host/resourcecontrol/restart"
+    RESOURCE_CONTROL_ROLE_TYPE = "COMPUTE"
     ATTACH_VOLUME_PATH = "/host/volume/attach"
     DETACH_VOLUME_PATH = "/host/volume/detach"
     UPDATE_VM_CONSOLE_PASSWORD_LIVE_PATH = "/host/vm/updateConsolePassword/live"
@@ -2171,7 +2176,8 @@ class HostPlugin(kvmagent.KvmAgent):
     @in_bash
     def capacity(self, req):
         rsp = HostCapacityResponse()
-        rsp.cpuNum = linux.get_cpu_num()
+        shared_cpu_num = resource_control.ResourceControlManager().get_shared_cpu_num()
+        rsp.cpuNum = shared_cpu_num if shared_cpu_num is not None else linux.get_cpu_num()
         rsp.cpuSpeed = linux.get_cpu_speed()
         (used_cpu, used_memory) = vm_plugin.get_cpu_memory_used_by_running_vms()
         rsp.usedCpu = used_cpu
@@ -4984,59 +4990,75 @@ done
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def apply_resource_control(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        manager = resource_control.ResourceControlManager()
+        rsp = kvmagent.AgentResponse()
+        self._validate_managed_service_command(cmd)
+        result = manager.apply(cmd.roleType, cmd.cpuSet, cmd.handles, cmd.memory, cmd.sliceName, cmd.isolationMode)
+        for key, value in result.items():
+            setattr(rsp, key, value)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def release_resource_control(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        manager = resource_control.ResourceControlManager()
+        rsp = kvmagent.AgentResponse()
+        self._validate_managed_service_command(cmd)
+        result = manager.release(cmd.roleType, cmd.handles, cmd.sliceName)
+        for key, value in result.items():
+            setattr(rsp, key, value)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_managed_service_usage(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        manager = resource_control.ResourceControlManager()
+        self._validate_managed_service_command(cmd)
+        rsp = kvmagent.AgentResponse()
+        rsp.services = manager.inspect(cmd.roleType, cmd.handles, cmd.sliceName)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def restart_managed_services(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        manager = resource_control.ResourceControlManager()
+        self._validate_managed_service_command(cmd)
+        manager.restart(cmd.sliceName, cmd.handles)
+        return jsonobject.dumps(kvmagent.AgentResponse())
+
+    def _validate_managed_service_command(self, cmd):
+        if cmd.roleType != self.RESOURCE_CONTROL_ROLE_TYPE:
+            raise resource_control.ResourceControlError('RoleType[%s] is not supported by the KVM agent' % cmd.roleType)
+        resource_control.ResourceControlManager.validate_service_command(cmd.sliceName, cmd.handles)
+
+    @kvmagent.replyerror
     def get_numa_topology(self, req):
         class NumaTopology:
             def __init__(self):
-                self.nodes = {}
+                self.nodes = resource_control.get_cpu_topology()
                 self.get_topology()
 
             def __call__(self, *args, **kwargs):
                 return self.nodes
 
             def get_topology(self):
-                node_id = 0
-                while True:
-                    node_path = os.path.join(
-                        NODE_INFO_PATH, "node{}".format(node_id))
+                for node_id, node in list(self.nodes.items()):
+                    node_path = os.path.join(NODE_INFO_PATH, "node{}".format(node_id))
                     if not os.path.isdir(node_path):
-                        break
+                        del self.nodes[node_id]
+                        continue
 
-                    cpulist_path = os.path.join(node_path, "cpulist")
                     meminfo_path = os.path.join(node_path, "meminfo")
                     distance_path = os.path.join(node_path, "distance")
 
                     size, free = self.get_meminfo(meminfo_path)
-                    self.nodes[str(node_id)] = {
-                        "cpus": self.get_cpu_list(cpulist_path),
+                    node.update({
                         "free": free,
                         "size": size,
                         "distance": self.get_distance(distance_path)
-                    }
-
-                    node_id += 1
-
-            @staticmethod
-            def get_cpu_list(info_path):
-                data = None
-                with open(info_path, "r") as f:
-                    data = f.read()
-
-                if data is None or (not data):
-                    return
-
-                data = data.strip()
-                cpu_list = []
-                info = data.split(",")
-                for i in info:
-                    if "-" in i:
-                        temp = i.split("-")
-                        cpu_list.extend([str(cpu_id) for cpu_id in range(
-                            int(temp[0]), int(temp[1]) + 1)])
-                    elif "^" in i:
-                        cpu_list.remove(i[1:])
-                    else:
-                        cpu_list.append(i)
-                return cpu_list
+                    })
 
             @staticmethod
             def get_meminfo(info_path):
@@ -5386,6 +5408,10 @@ done
             self.UPDATE_CONFIGURATION_PATH, self.update_host_configuration)
         http_server.register_async_uri(
             self.GET_NUMA_TOPOLOGY_PATH, self.get_numa_topology)
+        http_server.register_async_uri(self.APPLY_RESOURCE_CONTROL_PATH, self.apply_resource_control)
+        http_server.register_async_uri(self.RELEASE_RESOURCE_CONTROL_PATH, self.release_resource_control)
+        http_server.register_async_uri(self.GET_MANAGED_SERVICE_USAGE_PATH, self.get_managed_service_usage)
+        http_server.register_async_uri(self.RESTART_MANAGED_SERVICES_PATH, self.restart_managed_services)
         http_server.register_async_uri(
             self.ATTACH_VOLUME_PATH, self.attach_volume_path)
         http_server.register_async_uri(

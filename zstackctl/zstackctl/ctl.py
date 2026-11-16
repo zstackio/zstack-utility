@@ -27,6 +27,14 @@ from shutil import rmtree
 
 from .utils import linux, lock
 from . import management_network_ipv6
+from .resource_assignment import (
+    GLOBAL_CONFIG_CATEGORY,
+    GLOBAL_CONFIG_NAME,
+    MANAGEMENT_NODE_SERVICE,
+    RESOURCE_ASSIGNMENT_DROP_IN,
+    management_node_systemd_run_arguments,
+    resource_assignment_enabled,
+)
 from .zstacklib import *
 from . import log_collector
 import jinja2
@@ -4016,11 +4024,41 @@ class StartCmd(Command):
                 catalina_opts.append('-Xmx12288M')
 
             with open(setenv_path, 'w') as fd:
+                fd.write('export CATALINA_PID="%s"\n' % os.path.join(
+                    os.path.expanduser('~zstack'), 'management-server.pid'))
                 fd.write('export CATALINA_OPTS=" %s"' % ' '.join(catalina_opts))
+
+        def is_resource_assignment_enabled():
+            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+            query = MySqlCommandLineQuery()
+            query.host = db_hostname
+            query.port = db_port
+            query.user = db_user
+            query.password = db_password
+            query.table = 'zstack'
+            query.sql = (
+                "select value from GlobalConfigVO "
+                "where category='%s' and name='%s' "
+                "order by id desc limit 1" %
+                (GLOBAL_CONFIG_CATEGORY, GLOBAL_CONFIG_NAME))
+            return resource_assignment_enabled(query.query())
 
         def start_mgmt_node():
             log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
-            shell('chown zstack:zstack %s || true; sudo -u zstack sh %s -DappName=zstack' % (log_path, os.path.join(ctl.zstack_home, self.START_SCRIPT)))
+            start_script = os.path.join(ctl.zstack_home, self.START_SCRIPT)
+            shell('chown zstack:zstack %s || true' % log_path)
+            if is_resource_assignment_enabled() or os.path.isfile(RESOURCE_ASSIGNMENT_DROP_IN):
+                shell('systemctl stop %s >/dev/null 2>&1 || true; '
+                      'systemctl reset-failed %s >/dev/null 2>&1 || true' %
+                      (MANAGEMENT_NODE_SERVICE, MANAGEMENT_NODE_SERVICE),
+                      is_exception=False)
+                command = ' '.join(shell_quote(argument) for argument in
+                                   management_node_systemd_run_arguments(
+                                       start_script,
+                                       os.path.join(os.path.expanduser('~zstack'), 'management-server.pid')))
+                shell(command)
+            else:
+                shell('sudo -u zstack sh %s -DappName=zstack' % start_script)
 
             info_and_debug("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 

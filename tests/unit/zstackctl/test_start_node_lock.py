@@ -11,6 +11,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from zstackctl import resource_assignment
+
 
 ROOT = Path(__file__).resolve().parents[3]
 CTL_PATH = ROOT / 'zstackctl/zstackctl/ctl.py'
@@ -61,6 +63,11 @@ def load_start(tmp_path, shell, check_ready, cleanup):
         loop_until_timeout=lambda timeout: lambda func: func,
         create_check_mgmt_node_command=check_ready,
         info=lambda message: None, info_and_debug=lambda message: None,
+        MySqlCommandLineQuery=MagicMock(return_value=SimpleNamespace(query=lambda: [{'value': 'false'}])),
+        GLOBAL_CONFIG_CATEGORY=resource_assignment.GLOBAL_CONFIG_CATEGORY,
+        GLOBAL_CONFIG_NAME=resource_assignment.GLOBAL_CONFIG_NAME,
+        resource_assignment_enabled=resource_assignment.resource_assignment_enabled,
+        RESOURCE_ASSIGNMENT_DROP_IN=str(tmp_path / 'assignment.conf'),
     )
     tree = ast.parse(CTL_PATH.read_text())
     node = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'StartCmd')
