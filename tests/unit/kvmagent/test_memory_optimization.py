@@ -1301,3 +1301,101 @@ def test_a_service_switch_is_named_not_a_bare_boolean(host):
             plugin._set_writeback(wrong)
     assert len(service.calls) == calls, 'a refused switch changes nothing on the service'
     assert cpu['efficiency_enabled'] is False
+
+
+@pytest.mark.parametrize('interval', [300, 301, 600, 86400])
+def test_hot_memory_period_uses_seconds(host, interval):
+    plugin, _, _ = host
+    want = desired()
+    want['hotMemory'] = {'enabled': True, 'interval': interval}
+    assert plugin._desired(want)['hotMemory']['interval'] == interval
+
+
+@pytest.mark.parametrize('interval', [True, 299, 86401, 600.5, '600'])
+def test_invalid_hot_memory_period_has_no_side_effect(host, interval):
+    plugin, service, world = host
+    want = desired()
+    want['hotMemory'] = {'enabled': True, 'interval': interval}
+    assert apply(plugin, 1, want)['reasonCode'] == 'INVALID_DESIRED_CONFIGURATION'
+    assert not service.calls
+
+
+def test_hot_memory_lifecycle_is_independent_and_idempotent(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    config = tmp_path / 'hotmem.json'
+    config.write_text('{"interval_seconds":600}')
+    monkeypatch.setattr(plugin, 'HOT_MEMORY_CONFIG', str(config))
+    unit = {'LoadState': 'loaded', 'ActiveState': 'inactive', 'SubState': 'dead', 'UnitFileState': 'disabled'}
+    calls = []
+    monkeypatch.setattr(plugin, '_unit_properties', lambda name, *keys: dict(unit))
+
+    def run(argv, timeout):
+        calls.append(argv)
+        if argv[1] == 'enable':
+            unit.update(ActiveState='active', SubState='running', UnitFileState='enabled')
+        elif argv[1] == 'disable':
+            unit.update(ActiveState='inactive', SubState='dead', UnitFileState='disabled')
+    monkeypatch.setattr(plugin, '_bounded_command_output', run)
+    monkeypatch.setattr(plugin, '_managed_service_installed', lambda: False)
+    want = desired(control='paused', zram=False)
+    want['hotMemory'] = {'enabled': True, 'interval': 600}
+    assert apply(plugin, 1, want)['status'] == 'Succeeded'
+    assert calls == [['systemctl', 'enable', '--now', plugin.MANAGED_HOT_MEMORY_UNIT]]
+    assert not service.calls
+    calls[:] = []
+    assert apply(plugin, 2, want)['status'] == 'Succeeded'
+    assert not calls
+    want['hotMemory']['interval'] = 900
+    assert apply(plugin, 3, want)['status'] == 'Succeeded'
+    assert json.loads(config.read_text()) == {'interval_seconds': 900}
+    assert calls == [['systemctl', 'restart', plugin.MANAGED_HOT_MEMORY_UNIT]]
+    calls[:] = []
+    want['hotMemory']['enabled'] = False
+    assert apply(plugin, 4, want)['status'] == 'Succeeded'
+    assert calls == [['systemctl', 'disable', '--now', plugin.MANAGED_HOT_MEMORY_UNIT]]
+    assert not service.calls
+
+
+def test_missing_hotmem_package_does_not_block_default_off(host, monkeypatch):
+    plugin, _, _ = host
+    monkeypatch.setattr(plugin, '_unit_properties', lambda *args: {'LoadState': 'not-found'})
+    plugin._converge_hot_memory({'enabled': False})
+    with pytest.raises(Rejected, match='HOT_MEMORY_SERVICE_NOT_INSTALLED'):
+        plugin._converge_hot_memory({'enabled': True})
+
+
+@pytest.mark.parametrize('error, status', [
+    (Rejected('HOT_MEMORY_SERVICE_NOT_INSTALLED'), 'Failed'),
+    (Converging('HOT_MEMORY_SERVICE_STARTING'), 'Converging'),
+    (OSError('start failed'), 'Failed')])
+def test_hot_memory_failure_does_not_block_ksm_or_zram(host, monkeypatch, error, status):
+    plugin, service, world = host
+    def fail(_):
+        raise error
+    monkeypatch.setattr(plugin, '_converge_hot_memory', fail)
+    want = desired(ksm=True)
+    want['hotMemory'] = {'enabled': True, 'interval': 600}
+    result = apply(plugin, 1, want)
+    assert result['status'] == status and result['appliedGeneration'] is None
+    assert world['ksm'] and 'host-cpu' in service.actions() and service.efficiency
+    assert result['state']['hotMemory']['status'] == status
+    assert result['state']['hotMemory']['reasonCode'].startswith('HOT_MEMORY_')
+
+
+@pytest.mark.parametrize('hot_error', [False, True])
+def test_zram_pending_does_not_hide_hot_memory_result(host, monkeypatch, hot_error):
+    plugin, service, world = host
+    world['unit'] = 'starting'
+    calls = []
+    def converge_hot(desired):
+        calls.append(desired)
+        if hot_error:
+            raise Rejected('HOT_MEMORY_SERVICE_NOT_INSTALLED')
+    monkeypatch.setattr(plugin, '_converge_hot_memory', converge_hot)
+    want = desired()
+    want['hotMemory'] = {'enabled': True, 'interval': 600}
+    result = apply(plugin, 1, want)
+    assert result['status'] == 'Converging' and result['reasonCode'] == 'SERVICE_STARTING'
+    assert result['state']['hotMemory']['status'] == ('Failed' if hot_error else 'Succeeded')
+    assert calls == [want['hotMemory']]
+    assert result['appliedGeneration'] is None

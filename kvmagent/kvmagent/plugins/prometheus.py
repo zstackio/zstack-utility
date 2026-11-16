@@ -2,6 +2,7 @@ import functools
 import calendar
 import hashlib
 import json
+import math
 import os.path
 import re
 import shlex
@@ -1683,6 +1684,124 @@ def _read_memory_accounting_report():
         return report
 
 
+
+def _read_hot_memory_report():
+    with closing(_MemoryServiceUnixHTTPConnection(
+            '/run/zstack-hotmem/monitor.sock', MEMORY_ACCOUNTING_TIMEOUT_SECONDS)) as conn:
+        conn.request('GET', '/v1/hot-memory', headers={'Host': 'localhost', 'Connection': 'close'})
+        response = conn.getresponse()
+        payload = response.read(MEMORY_ACCOUNTING_RESPONSE_BYTES + 1)
+        if response.status >= 300 or len(payload) > MEMORY_ACCOUNTING_RESPONSE_BYTES:
+            raise IOError('hot memory report unavailable or too large')
+        report = json.loads(payload.decode('utf-8'))
+        if not isinstance(report, dict):
+            raise ValueError('hot memory report is not an object')
+        return report
+
+
+def _hot_memory_vm_specs():
+    # Libvirt normalizes the platform-created RAM, including hotplugged memory,
+    # into memory. currentMemory follows the balloon target; maxMemory is the
+    # hotplug ceiling. Neither is the VM memory specification.
+    import libvirt
+    from zstacklib.utils import xmlobject
+    result = {}
+    with closing(libvirt.openReadOnly(None)) as conn:
+        for domain in conn.listAllDomains(0):
+            if not domain.isActive():
+                continue
+            xml = xmlobject.loads(domain.XMLDesc(0))
+            memory = xml.memory
+            if memory.unit_ not in ('KiB', 'k'):
+                continue
+            size = int(memory.text_) * 1024
+            if size > 0:
+                result[domain.UUIDString().replace('-', '').lower()] = size
+    return result
+
+
+def collect_hot_memory_statistics(report=None, vm_specs=None, now=None):
+    labels = ['vm_uuid', 'host_boot_id', 'instance_generation', 'cgroup_inode', 'start_time', 'source']
+    fields = {
+        'bytes': 'hot_memory_bytes', '4k_bytes': 'hot_4k_bytes', 'thp_bytes': 'hot_thp_bytes',
+        'observed_resident_bytes': 'observed_resident_bytes', 'unknown_bytes': 'unknown_bytes',
+        'shared_bytes': 'shared_bytes', 'zero_bytes': 'zero_bytes',
+        'nonresident_bytes': 'nonresident_bytes', 'changed_bytes': 'changed_bytes',
+        'sample_timestamp_seconds': 'sampled_at', 'window_seconds': 'window_seconds',
+    }
+    metrics = dict((key, GaugeMetricFamily('host_vm_hot_memory_' + key,
+                   'VM page_idle observation ' + key, labels=labels)) for key in fields)
+    for key in ('ratio', 'interval_seconds', 'identity_info'):
+        metrics[key] = GaugeMetricFamily('host_vm_hot_memory_' + key, 'VM hot-memory ' + key, labels=labels)
+    metrics['quality'] = GaugeMetricFamily('host_vm_hot_memory_quality', 'VM hot-memory observation quality',
+                                           labels=labels + ['quality'])
+    families = list(metrics.values())
+    try:
+        if report is None:
+            report = _read_hot_memory_report()
+        if (not isinstance(report, dict) or report.get('schema_version') != 1 or
+                report.get('source') != 'page_idle_thp_head_v1' or not isinstance(report.get('vms'), list)):
+            return families
+        interval = report.get('interval_seconds')
+        if isinstance(interval, bool) or not isinstance(interval, int) or not 300 <= interval <= 86400:
+            return families
+        if vm_specs is None:
+            vm_specs = _hot_memory_vm_specs()
+        boot = (linux.read_file('/proc/sys/kernel/random/boot_id') or '').strip()
+    except (IOError, OSError, ValueError, TypeError, AttributeError, socket.error, stdlib_http.HTTPException):
+        return families
+    except Exception as exc:
+        logger.debug('hot-memory VM inventory unavailable: %s', exc)
+        return families
+    now = time.time() if now is None else now
+    rows = report['vms']
+    uuids = defaultdict(int)
+    for row in rows:
+        if isinstance(row, dict) and isinstance(row.get('identity'), dict):
+            uuids[str(row['identity'].get('uuid', '')).replace('-', '').lower()] += 1
+    for row in rows:
+        if not isinstance(row, dict) or not isinstance(row.get('identity'), dict):
+            continue
+        identity = row['identity']
+        uuid = str(identity.get('uuid', '')).replace('-', '').lower()
+        generation = identity.get('instance_generation')
+        inode, start = identity.get('cgroup_inode'), identity.get('start_time')
+        if (not re.match(r'^[0-9a-f]{32}$', uuid) or uuids[uuid] != 1 or
+                not boot or identity.get('host_boot_id') != boot or
+                not isinstance(generation, str) or not generation or
+                not isinstance(inode, int) or isinstance(inode, bool) or inode <= 0 or
+                not isinstance(start, int) or isinstance(start, bool) or start <= 0):
+            continue
+        values = [uuid, boot, generation, str(inode), str(start), report['source']]
+        quality = row.get('quality', 'collector_error')
+        sample = row.get('sampled_at')
+        numeric = lambda value: (isinstance(value, (int, float)) and not isinstance(value, bool) and
+                                 not (math.isinf(value) or math.isnan(value)))
+        if quality == 'native' and (not numeric(sample) or not -5 <= now - sample <= 2 * interval):
+            quality = 'stale'
+        size = vm_specs.get(uuid)
+        if quality == 'native' and (not numeric(size) or size <= 0):
+            quality = 'identity_changed'
+        if quality == 'native':
+            if (any(not numeric(row.get(field)) or row[field] < 0 for field in fields.values()) or
+                    row.get('window_seconds') != 60 or
+                    not numeric(row.get('window_start')) or not numeric(row.get('window_end')) or
+                    row['window_end'] - row['window_start'] < 60 or row['sampled_at'] != row['window_end'] or
+                    row['hot_memory_bytes'] != row['hot_4k_bytes'] + row['hot_thp_bytes'] or
+                    row['hot_memory_bytes'] > row['observed_resident_bytes'] or row['hot_memory_bytes'] > size):
+                quality = 'collector_error'
+        metrics['quality'].add_metric(values + [str(quality)], 1)
+        # An invalid current sample keeps its quality, never a numeric zero or
+        # an old cached value. PromQL aligns all series to this exact scrape.
+        if quality != 'native':
+            continue
+        metrics['identity_info'].add_metric(values, 1)
+        metrics['interval_seconds'].add_metric(values, interval)
+        metrics['ratio'].add_metric(values, row['hot_memory_bytes'] / float(size))
+        for key, field in fields.items():
+            metrics[key].add_metric(values, row[field])
+    return families
+
 def collect_memory_optimization_vm_accounting(report, quality):
     """Export identity-qualified ABI-2 VM accounting supplied by the service.
 
@@ -2826,6 +2945,7 @@ kvmagent.register_prometheus_collector(
     collect_physical_network_interface_state)
 kvmagent.register_prometheus_collector(collect_memory_overcommit_statistics)
 kvmagent.register_prometheus_collector(collect_memory_optimization_statistics)
+kvmagent.register_prometheus_collector(collect_hot_memory_statistics)
 
 if misc.isMiniHost():
     kvmagent.register_prometheus_collector(collect_lvm_capacity_statistics)
