@@ -108,6 +108,34 @@ class VfHaPciTest(unittest.TestCase):
                 self.assertEqual(['0x17', '0x18'], [self.source_address(xml)['bus'] for xml in attached])
                 self.assertEqual(original, dumps(cmd))
 
+    def test_user_vm_migration_reconnect_preserves_slots_and_bridge(self):
+        nic=self.nic()
+        bridge=Obj(type_='bridge', mac=Obj(address_=nic.mac),
+                   dump=lambda: '<interface type="bridge"/>', hasattr=lambda _:False)
+        vm=Obj(uuid='vm',state='Running',domain_xmlobject=Obj(devices=Obj(get_child_node_as_list=lambda _:[bridge])))
+        ctx['get_vm_by_uuid']=lambda _:vm
+        changed=[]
+        plugin=Obj(set_domain_network_device=lambda uuid,xml,operate_type:changed.append((operate_type,ET.fromstring(xml))))
+        reply=loads(ha_handler(plugin,{'body':dumps(Obj(vmUuid='vm',nic=nic,haState='Reconnecting',userVmVfBond=True))}))
+        self.assertTrue(reply.success,reply.error)
+        self.assertEqual(['attach','attach'],[c[0] for c in changed])
+        self.assertEqual(['0x08','0x09'],[c[1].find('address').get('slot') for c in changed])
+
+    def test_user_vm_migration_removes_standby_before_primary(self):
+        nic=self.nic()
+        def iface(kind,address):
+            return Obj(type_=kind,mac=Obj(address_=nic.mac),dump=lambda:address,hasattr=lambda _:False)
+        interfaces=[iface('bridge','temporary'),iface('hostdev',nic.pciDeviceAddress),iface('hostdev',nic.extraPciDeviceAddresses[0])]
+        vm=Obj(uuid='vm',state='Running',domain_xmlobject=Obj(devices=Obj(get_child_node_as_list=lambda _:interfaces)))
+        ctx['get_vm_by_uuid']=lambda _:vm
+        ctx['get_interface_source_pci_address']=lambda xml:xml
+        changed=[]
+        plugin=Obj(set_domain_network_device=lambda uuid,xml,operate_type:changed.append((operate_type,xml)),
+                   set_domain_iflink_state=lambda *args:changed.append(('link',args[-1])))
+        reply=loads(ha_handler(plugin,{'body':dumps(Obj(vmUuid='vm',nic=nic,haState='Disconnecting',userVmVfBond=True))}))
+        self.assertTrue(reply.success,reply.error)
+        self.assertEqual([('link','up'),('detach',nic.extraPciDeviceAddresses[0]),('detach',nic.pciDeviceAddress)],changed)
+
 
 if __name__ == '__main__':
     unittest.main()

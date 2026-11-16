@@ -214,4 +214,33 @@ class HostNetworkTransportTest(unittest.TestCase):
    with self.subTest(devices=devices,expected=expected),self.env(ordinary_devices=lambda *a:devices):answer=self.runaction('execute')
    self.assertEqual(passed,answer['requestSubmitted']);self.assertEqual('Succeeded' if passed else 'Checking',answer['state'])
 
+ def test_migration_temporary_device_requires_tap_mac_and_model(self):
+  xml="""<domain><devices><interface type='bridge'><mac address='fa:00:00:00:00:01'/><target dev='vnic1.1'/><model type='virtio'/><address type='pci' domain='0x0000' bus='0x00' slot='0x0d' function='0'/></interface></devices></domain>"""
+  op=dict(temporaryTarget='vnic1.1',target=dict(mac='fa:00:00:00:00:01'))
+  self.assertEqual('0000:00:0d.0',ctx['migration_temporary_pci'](xml,op))
+  for bad in (xml.replace('vnic1.1','vnic2.1'),xml.replace('virtio','e1000'),xml.replace(':01',':02')):
+   self.assertIsNone(ctx['migration_temporary_pci'](bad,op))
+
+ def test_migration_gate_does_not_submit_unverified_devices(self):
+  for stage,temp,expected,delivered,passed in [('prepare',None,None,True,False),('prepare','0000:00:0d.0','0000:00:0d.0',True,True),('reconnect','0000:00:0d.0','0000:00:0d.0',False,False),('finish','0000:00:0d.0','0000:00:0d.0',True,False),('finish',None,None,True,True)]:
+   self.cmd['operation']=dict(action='migration',migrationStage=stage,temporaryPci=expected,target={})
+   with self.subTest(stage=stage,temp=temp),self.env(delivered=lambda *a:delivered,migration_temporary_pci=lambda *a:temp):
+    answer=self.runaction('execute')
+   self.assertEqual(passed,answer['requestSubmitted'])
+
+ def test_transit_requires_both_source_vfs_removed(self):
+  pci='0000:00:0d.0'
+  self.cmd['operation']=dict(action='migration',migrationStage='transit',temporaryPci=pci,target={})
+  for absent in (False,True):
+   with self.env(migration_temporary_pci=lambda *a:pci,migration_vfs_absent=lambda *a:absent):
+    self.assertEqual(absent,self.runaction('execute')['requestSubmitted'])
+
+ def test_source_vf_presence_covers_both_xml_shapes(self):
+  target=dict(hostMembers=['0000:17:10.1','0000:17:10.2'])
+  for tag in ("interface type='hostdev'",'hostdev'):
+   close=tag.split()[0]
+   xml="<domain><devices><%s><source><address domain='0x0000' bus='0x17' slot='0x10' function='0x1'/></source></%s></devices></domain>"%(tag,close)
+   self.assertFalse(ctx['migration_vfs_absent'](xml,target))
+  self.assertTrue(ctx['migration_vfs_absent']('<domain><devices/></domain>',target))
+
 if __name__=='__main__':unittest.main()
