@@ -14,6 +14,7 @@ import os.path
 import tempfile
 import shutil
 import socket
+import time
 
 class BootstrapIsoInfo(object):
     def __init__(self):
@@ -66,34 +67,55 @@ class VirtualRouterPlugin(kvmagent.KvmAgent):
     def stop(self):
         pass
     
+    DEFAULT_BOOTSTRAP_SOCKET_TIMEOUT = 30
+    BOOTSTRAP_SOCKET_RETRY_INTERVAL = 0.5
+
     @kvmagent.replyerror
     def set_bootstrap_info(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        info = jsonobject.dumps(cmd.info, True)
+        raw_info = jsonobject.dumps(cmd.info, True)
         socket_path = cmd.socketPath
-        
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096) #4k
-        if cmd.bootStrapInfoTimeout is not None:
-            timeout = int(cmd['bootStrapInfoTimeout'])
-            s.settimeout(timeout)
-        buf_size = s.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
-        info_len = len(info)
-        # as there is no fflush() in python, we have to create a message
-        # matching to the socket buffer to force it to send the message immediately
-        if info_len % buf_size != 0:
-            padding_len = buf_size * ((info_len // buf_size) + 1) - info_len
-            padding = ' ' * padding_len
-            info = '%s%s' % (info, padding)
 
-        try:
-            logger.debug('send appliance vm bootstrap info to %s, buffer size %d, size:%d' %
-                         (socket_path, buf_size, len(info)))
-            s.connect(socket_path)
-            s.sendall(info.encode())
-        finally:
-            s.close()
-        
+        timeout = self.DEFAULT_BOOTSTRAP_SOCKET_TIMEOUT
+        if cmd.bootStrapInfoTimeout is not None:
+            timeout = max(1, int(cmd['bootStrapInfoTimeout']))
+
+        deadline = time.time() + timeout
+        last_err = None
+        while True:
+            s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 4096) #4k
+                remaining = max(1.0, deadline - time.time())
+                s.settimeout(remaining)
+                buf_size = s.getsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF)
+                info = raw_info
+                info_len = len(info)
+                # as there is no fflush() in python, we have to create a message
+                # matching to the socket buffer to force it to send the message immediately
+                if buf_size > 0 and info_len % buf_size != 0:
+                    padding_len = buf_size * ((info_len // buf_size) + 1) - info_len
+                    padding = ' ' * padding_len
+                    info = '%s%s' % (info, padding)
+
+                logger.debug('send appliance vm bootstrap info to %s, buffer size %d, size:%d' %
+                             (socket_path, buf_size, len(info)))
+                s.connect(socket_path)
+                s.sendall(info.encode())
+                last_err = None
+                break
+            except (socket.error, OSError) as e:
+                last_err = e
+                if time.time() >= deadline:
+                    raise
+                logger.debug('bootstrap socket %s not ready yet (%s), retrying...' % (socket_path, str(e)))
+                time.sleep(self.BOOTSTRAP_SOCKET_RETRY_INTERVAL)
+            finally:
+                s.close()
+
+        if last_err is not None:
+            raise last_err
+
         rsp = PrepareBootstrapInfoRsp()
         return jsonobject.dumps(rsp)
 

@@ -8088,6 +8088,8 @@ class Vm(object):
             brMode = cmd.addons['brMode'] if cmd.addons else None
 
             for index, nic in enumerate(cmd.nics):
+                if nic.type == 'VF' and nic.pciDeviceAddress is not None:
+                    Vm._sync_vf_nic_mac_for_nic(nic)
                 if nic.type in ovs.OvsDpdkSupportVnic:
                     ovsctl = ovs.getOvsCtl(with_dpdk=True)
                     nic.srcPath = ovsctl.createNicBackend(cmd.priorityConfigStruct.vmUuid, nic)
