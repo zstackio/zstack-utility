@@ -5890,7 +5890,7 @@ class Vm(object):
 
         return True
 
-    def _interface_cmd_to_xml(self, cmd, action=None):
+    def _interface_cmd_to_xml(self, cmd, action=None, alias_name=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
         brMode = cmd.addons['brMode'] if cmd.addons else None
 
@@ -5900,9 +5900,9 @@ class Vm(object):
             vhostSrcPath = cmd.nic.srcPath
 
         if cmd.nic.type == "TFVNIC":
-            interface = Vm._build_interface_xml(cmd.nic, action=action, cmd=cmd)
+            interface = Vm._build_interface_xml(cmd.nic, action=action, cmd=cmd, alias_name=alias_name)
         else:
-            interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
+            interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode, alias_name=alias_name)
 
         def addon():
             if cmd.nic.addons and cmd.nic.addons['NicQos'] and cmd.nic.addons['NicQos'][cmd.nic.uuid]:
@@ -6254,6 +6254,53 @@ class Vm(object):
         except Exception as e:
             logger.warning('failed to online CPUs via QGA for vm[uuid:%s]: %s' % (self.uuid, str(e)))
 
+    @staticmethod
+    def _collect_extra_pci_addresses(extra):
+        if not extra:
+            return []
+        if isinstance(extra, (list, tuple)):
+            return [addr for addr in extra if addr]
+        if isinstance(extra, jsonobject.JsonObject):
+            return [val for val in extra.__dict__.values() if val]
+        return [extra]
+
+    @staticmethod
+    def _set_vf_mac(pci_addr, mac):
+        if not pci_addr or not mac:
+            return
+        norm_addr = normalize_pci_address(pci_addr)
+        if not norm_addr:
+            return
+        pf_name = linux.get_pf_name_by_vf_pci_address(norm_addr)
+        if not pf_name:
+            logger.debug('cannot find pf for vf pci address[%s], skip set mac' % norm_addr)
+            return
+        vf_index = linux.get_vf_index_by_pci_address(norm_addr)
+        if vf_index is None:
+            logger.debug('cannot find vf index for pci address[%s], skip set mac' % norm_addr)
+            return
+        rc, out, err = bash.bash_roe('ip link set %s vf %d mac %s' % (pf_name, vf_index, mac))
+        if rc != 0:
+            logger.warn('failed to set mac[%s] for vf[pf:%s, vf:%d, pci:%s]: %s %s' %
+                        (mac, pf_name, vf_index, norm_addr, out, err))
+        else:
+            logger.debug('successfully set mac[%s] for vf[pf:%s, vf:%d, pci:%s]' %
+                         (mac, pf_name, vf_index, norm_addr))
+
+    @staticmethod
+    def _sync_vf_nic_mac_for_nic(nic):
+        if nic is None:
+            return
+        mac = getattr(nic, 'mac', None)
+        if not mac:
+            return
+        base_addr = getattr(nic, 'pciDeviceAddress', None)
+        if base_addr:
+            Vm._set_vf_mac(base_addr, mac)
+        for extra_addr in Vm._collect_extra_pci_addresses(getattr(nic, 'extraPciDeviceAddresses', None)):
+            if extra_addr and extra_addr != base_addr:
+                Vm._set_vf_mac(extra_addr, mac)
+
     @linux.retry(times=3, sleep_time=5)
     def _attach_nic(self, cmd):
         def check_device(_):
@@ -6328,6 +6375,10 @@ class Vm(object):
                     cmd.nic.pci.function = '0x0'
                     logger.debug('assigned PCI slot 0x%02x to nic to avoid conflict with qemu:commandline devices' % free_slot)
 
+            # Sync host PF VF MAC before hotplugging VF / bond slave VFs
+            if cmd.nic.type == 'VF' and cmd.nic.pciDeviceAddress is not None:
+                Vm._sync_vf_nic_mac_for_nic(cmd.nic)
+
             # Attach main nic
             xml = self._interface_cmd_to_xml(cmd, action='Attach')
             logger.debug('attaching nic:\n%s' % xml)
@@ -6344,7 +6395,7 @@ class Vm(object):
                 iproute.config_link_isolated(cmd.nic.nicInternalName)
 
             # Attach extra PCI devices for bond mode (VF HA)
-            extra_pci_list = _collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None))
+            extra_pci_list = Vm._collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None))
             if extra_pci_list and cmd.nic.type == 'VF' and cmd.nic.pciDeviceAddress is not None:
                 if getattr(cmd.nic, 'nicInternalName', None) and '.' in cmd.nic.nicInternalName:
                     alias_base = 'net%s' % cmd.nic.nicInternalName.split('.', 1)[1]
@@ -6370,7 +6421,8 @@ class Vm(object):
                     extra_cmd = _clone_nic(cmd)
                     extra_cmd.put('nic', extra_nic)
 
-                    xml = self._interface_cmd_to_xml(extra_cmd, action='Attach')
+                    alias_name = '%s-slave%d' % (alias_base, extra_index + 1)
+                    xml = self._interface_cmd_to_xml(extra_cmd, action='Attach', alias_name=alias_name)
                     logger.debug('attaching extra nic (slave %d) with PCI %s:\n%s' % (extra_index + 1, extra_addr, xml))
 
                     if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
