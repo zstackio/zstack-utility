@@ -543,6 +543,24 @@ def test_a_drain_waits_for_the_service_to_stop_before_it_starts(host, monkeypatc
     assert result['reasonCode'] == 'SERVICE_STOPPING' and world['started'] == []
 
 
+def test_a_drain_with_no_pool_holds_the_running_service_paused(host, monkeypatch):
+    plugin, service, world = host
+    # A reboot emptied the RAM-only pool, and with no VM running the service opens none.
+    service.pool, service.efficiency = None, True
+    record = {'kept': True}
+    monkeypatch.setattr(plugin, '_no_recorded_pool', lambda: not record['kept'])
+    # A pool still recorded may be one the service has not opened yet: it is not taken as none.
+    assert apply(plugin, 24, desired(control='drained'))['reasonCode'] == 'DRAIN_POOL_IDENTITY_UNKNOWN'
+    record['kept'] = False
+    assert apply(plugin, 24, desired(control='drained'))['status'] == 'Succeeded'
+    # Nothing to withdraw: held paused so that no pool forms, with the service left running.
+    assert service.paused is True and service.efficiency is False
+    assert world['unit'] == 'active' and world['started'] == []
+    # Resume lifts the hold; the pool opens once a VM runs.
+    assert apply(plugin, 25, desired())['reasonCode'] == 'WAITING_FOR_POOL'
+    assert service.paused is False
+
+
 def test_resume_after_drain_prepares_finalizes_and_activates_the_pool(host):
     plugin, service, world = host
     world['unit'], service.paused = 'inactive', True

@@ -1600,10 +1600,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise Converging('DRAIN_EXECUTOR_STATE_UNKNOWN')
         if self._service_unit_state() == 'active':
             status = self._service('status')
-            if not (status.get('host_zram') or {}).get('pool_generation'):
+            pool = (status.get('host_zram') or {}).get('pool_generation')
+            if not pool and not self._no_recorded_pool():
                 raise Rejected('DRAIN_POOL_IDENTITY_UNKNOWN')
             self._service('lifecycle-pause', {'action': 'pause'})
             self._set_efficiency(self._service('host-cpu-state'), EfficiencyMode.DISABLED)
+            if not pool:
+                # No pool (e.g. a reboot emptied a RAM-only one) has nothing to drain;
+                # held paused, as the management node holds such a Host, none forms.
+                return
             self._bounded_command_output(['systemctl', 'stop', self.MANAGED_ZRAM_UNIT], 60)
         if self._service_unit_state() not in ('inactive', 'failed'):
             raise Converging('SERVICE_STOPPING')
