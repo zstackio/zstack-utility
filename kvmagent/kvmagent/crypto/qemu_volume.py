@@ -282,6 +282,25 @@ def convert_qcow2_encryption_to_block(source, target, target_mode, secret_file, 
     verify_luks_open(target, secret_file)
 
 
+def create_encrypted_template(source, target, secret_file):
+    if not secret_file:
+        raise ValueError('LUKS secret file is required')
+    with staged_file(target) as temporary:
+        command = [QEMU_IMG, 'convert', '--object',
+                   'secret,id=luks_sec,format=raw,file=%s' % secret_file]
+        source_options = _source_image_options(source)
+        if source_options:
+            command.extend(['--image-opts', source_options])
+        else:
+            info = json.loads(check_output([QEMU_IMG, 'info', '--output=json', source]))
+            command.extend(['-f', info['format'], source])
+        command.extend(['-O', 'qcow2', '-o', 'encrypt.format=luks,encrypt.key-secret=luks_sec', temporary])
+        run_checked(command)
+        if not is_luks_encrypted_image(temporary):
+            raise RuntimeError('created template is not LUKS encrypted')
+        os.chmod(temporary, 0o660)
+
+
 def rebase_no_check_with_secret(backing, target, secret_file, *, backing_format=None):
     if not secret_file:
         raise ValueError('LUKS secret file is required')
@@ -298,8 +317,21 @@ def rebase_no_check_with_secret(backing, target, secret_file, *, backing_format=
     run_checked(command)
 
 
-def _secret_context(secret_file_or_provider):
-    return secret_file_or_provider() if callable(secret_file_or_provider) else nullcontext(secret_file_or_provider)
+def commit_with_secret(top, base, secret_file):
+    if not secret_file:
+        raise ValueError('LUKS secret file is required')
+    command = [QEMU_IMG, 'commit', '--object',
+               'secret,id=luks_sec,format=raw,file=%s' % secret_file]
+    info = json.loads(check_output([QEMU_IMG, 'info', '--output=json', top]))
+    current_backing = info.get('full-backing-filename') or info.get('backing-filename')
+    if current_backing != base:
+        command.extend(['-b', base])
+    source_options = _source_image_options(top)
+    if source_options:
+        command.extend(['--image-opts', source_options])
+    else:
+        command.append(top)
+    run_checked(command)
 
 
 def resize_with_secret(target, size, secret_file):
@@ -314,3 +346,26 @@ def resize_with_secret(target, size, secret_file):
         command.extend(['-f', 'qcow2', target])
     command.append(str(size))
     run_checked(command)
+
+
+def _secret_context(secret_file_or_provider):
+    return secret_file_or_provider() if callable(secret_file_or_provider) else nullcontext(secret_file_or_provider)
+
+
+def safe_rebase_with_secret(backing, target, secret_file_provider):
+    if not backing or not secret_file_provider:
+        raise ValueError('backing and LUKS secret provider are required')
+    backing_format, backing_arg = _backing_argument(backing)
+    command = [QEMU_IMG, 'rebase', '-F', backing_format, '-b', backing_arg]
+    source_options = _source_image_options(target)
+    if source_options:
+        command.extend(['--image-opts', source_options])
+    else:
+        command.append(target)
+    with _secret_context(secret_file_provider) as channel:
+        run_checked(command[:2] + ['--object',
+            'secret,id=luks_sec,format=raw,file=%s' % channel] + command[2:])
+    if backing_arg != backing:
+        with _secret_context(secret_file_provider) as channel:
+            rebase_no_check_with_secret(backing, target, channel, backing_format=backing_format)
+    verify_luks_open(target, secret_file_provider)

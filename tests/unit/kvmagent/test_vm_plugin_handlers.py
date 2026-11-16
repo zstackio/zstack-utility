@@ -3851,6 +3851,7 @@ class TestLiveVolumeSnapshots:
         vm = vm_plugin.Vm.__new__(vm_plugin.Vm)
         vm.uuid = 'vm-uuid'
         vm.domain = MagicMock()
+        vm.domain_xml = '<domain/>'
         vm.domain.snapshotCreateXML = MagicMock()
         vm.refresh = MagicMock()
         vm.rollback_memory_snapshot = MagicMock()
@@ -3867,6 +3868,8 @@ class TestLiveVolumeSnapshots:
             live=True,
             full=False,
             memory=False,
+            encrypted=False,
+            encryptedDek=None,
             installPath='/path/snap1',
             volume=volume,
             volumeUuid='vol-1',
@@ -3893,7 +3896,9 @@ class TestBaremetalOnlineSnapshotHandler:
         cmd = MagicMock(
             vmUuid='vm-uuid',
             volumeUuid='vol-uuid',
-            volume=MagicMock(deviceId=0),
+            volume=MagicMock(deviceId=0, encrypted=False, luksSecretUuid=None),
+            encrypted=False,
+            encryptedDek=None,
             installPath='/path/snap',
             volumeInstallPath='/path/vol',
             newVolumeInstallPath='/path/new',

@@ -31,5 +31,23 @@ class PlainSharedBlockVolumeDriver(object):
         return linux.qcow2_clone_with_option(
             backing_path, target_path, qcow2_options, self.cmd.virtualSize if self.cmd.virtualSize else '')
 
+    def clone(self, source_path, target_path, volume_size, qcow2_options):
+        return linux.qcow2_clone_with_option(source_path, target_path, qcow2_options)
+
+    def create_template(self, source_path, target_path, shell):
+        return linux.create_template(source_path, target_path, shell=shell)
+
+    def create_template_with_task_daemon(self, source_path, target_path):
+        return qcow2.create_template_with_task_daemon(source_path, target_path, task_spec=self.cmd)
+
+    def rebase(self, backing_path, target_path):
+        return linux.qcow2_rebase(backing_path, target_path)
+
+    def rebase_no_check(self, backing_path, target_path):
+        return linux.qcow2_rebase_no_check(backing_path, target_path)
+
+    def commit(self, top_path, base_path):
+        return linux.qcow2_commit(top_path, base_path)
+
     def resize(self, target_path, volume_size):
         return linux.qemu_img_resize(target_path, volume_size, 'qcow2', self.cmd.force)

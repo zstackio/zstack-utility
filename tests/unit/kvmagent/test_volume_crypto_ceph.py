@@ -263,6 +263,25 @@ class CephCryptoTest(unittest.TestCase):
         write.assert_not_called()
         remove.assert_not_called()
 
+    def test_rbd_auth_uses_host_ceph_config_and_luks_uses_one_shot_secret(self):
+        cmd = SimpleNamespace(psUuid='ps-uuid', installPath='ceph://pool/source',
+                              targetInstallPath='ceph://pool/target', targetEncrypted=False,
+                              encryptedDek='wrapped')
+        with mock.patch.object(ceph.os.path, 'isfile', return_value=True):
+            with mock.patch.object(ceph, '_info', side_effect=[{'format': 'luks'}, {'format': 'raw'}]):
+                with mock.patch.object(ceph, '_rbd_exists', return_value=False):
+                    with mock.patch.object(ceph, '_rbd_rename'):
+                        with mock.patch.object(ceph.secret, 'luks_secret_channel') as secret_channel:
+                            secret_channel.return_value.__enter__.return_value = '/tmp/one-shot-secret'
+                            with mock.patch.object(ceph, 'run_checked') as call:
+                                self.assertFalse(ceph.convert(cmd))
+        command = call.call_args.args[0]
+        self.assertIn('secret,id=luks_sec,format=raw,file=/tmp/one-shot-secret', command)
+        self.assertIn('driver=luks,key-secret=luks_sec,file.driver=rbd,file.pool=pool,file.image=source',
+                      command[command.index('--image-opts') + 1])
+        self.assertTrue(any(arg.startswith('rbd:pool/target-converting-') for arg in command))
+        self.assertNotIn('wrapped', ' '.join(command))
+
     def test_missing_ceph_config_fails_before_any_qemu_write(self):
         cmd = SimpleNamespace(psUuid='ps-uuid', installPath='ceph://pool/target',
                               size=8 * 1024 * 1024, encryptedDek='wrapped')

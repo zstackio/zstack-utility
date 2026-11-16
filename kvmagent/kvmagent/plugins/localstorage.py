@@ -379,7 +379,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.installPath
         rsp = ResizeVolumeRsp()
-        linux.qemu_img_resize(install_path, cmd.size, 'qcow2', cmd.force)
+        driver_factory.get_file_driver(cmd).resize(install_path, cmd.size)
         ret = linux.qcow2_virtualsize(install_path)
         rsp.size = ret
         return jsonobject.dumps(rsp)
@@ -676,9 +676,10 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def rebase_backing_files(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_driver = driver_factory.get_file_driver(cmd)
         for sp in cmd.snapshots:
             if sp.parentPath:
-                linux.qcow2_rebase_no_check(sp.parentPath, sp.path)
+                volume_driver.rebase_no_check(sp.parentPath, sp.path)
 
         return jsonobject.dumps(AgentResponse())
 
@@ -704,7 +705,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         _0()
 
         t_shell = traceable_shell.get_shell(cmd)
-        linux.create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
+        driver_factory.get_file_driver(cmd).create_template(cmd.volumePath, cmd.installPath, shell=t_shell)
 
         logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
@@ -727,7 +728,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.snapshotInstallPath
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
+        driver_factory.get_file_driver(cmd).clone(install_path, new_volume_path)
         size = linux.qcow2_virtualsize(new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
         rsp.size = size
@@ -743,7 +744,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname, 0o775)
 
         new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
+        driver_factory.get_file_driver(cmd).clone(install_path, new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
 
         return jsonobject.dumps(rsp)
@@ -758,7 +759,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         t_shell = traceable_shell.get_shell(cmd)
-        linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
+        driver_factory.get_file_driver(cmd).create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -767,13 +768,14 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def merge_and_rebase_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_driver = driver_factory.get_file_driver(cmd)
         snapshots = cmd.snapshotInstallPaths
         count = len(snapshots)
         for i in range(count):
             if i+1 < count:
                 target = snapshots[i]
                 backing_file = snapshots[i+1]
-                linux.qcow2_rebase_no_check(backing_file, target)
+                volume_driver.rebase_no_check(backing_file, target)
 
         latest = snapshots[0]
         rsp = RebaseAndMergeSnapshotsRsp()
@@ -781,7 +783,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(workspace_dir):
             os.makedirs(workspace_dir)
 
-        linux.create_template(latest, cmd.workspaceInstallPath)
+        volume_driver.create_template(latest, cmd.workspaceInstallPath)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
 
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
@@ -798,11 +800,12 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
             return jsonobject.dumps(rsp)
 
+        volume_driver = driver_factory.get_file_driver(cmd)
         if not cmd.fullRebase:
-            linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
+            volume_driver.rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            qcow2.create_template_with_task_daemon(cmd.destPath, tmp, task_spec=cmd)
+            volume_driver.create_template_with_task_daemon(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         self.imagestore_client.clean_meta(cmd.destPath)
@@ -815,14 +818,15 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     def offline_commit_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = OfflineCommitSnapshotRsp()
+        volume_driver = driver_factory.get_file_driver(cmd)
 
         if linux.qcow2_get_backing_file(cmd.top) != linux.qcow2_get_backing_file(cmd.base):
-            linux.qcow2_commit(cmd.top, cmd.base)
+            volume_driver.commit(cmd.top, cmd.base)
 
         if cmd.topChildrenInstallPathInDb:
             for children in cmd.topChildrenInstallPathInDb:
                 if linux.qcow2_get_backing_file(children) != cmd.base:
-                    linux.qcow2_rebase_no_check(cmd.base, children)
+                    volume_driver.rebase_no_check(cmd.base, children)
 
         self.imagestore_client.clean_meta(cmd.base)
 
@@ -840,7 +844,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def rebase_root_volume_to_backing_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
-        linux.qcow2_rebase_no_check(cmd.backingFilePath, cmd.rootVolumePath)
+        driver_factory.get_file_driver(cmd).rebase_no_check(cmd.backingFilePath, cmd.rootVolumePath)
         return jsonobject.dumps(AgentResponse())
 
     @kvmagent.replyerror

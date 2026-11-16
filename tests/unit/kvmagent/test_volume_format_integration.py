@@ -62,12 +62,13 @@ class VolumeFormatIntegrationTest(unittest.TestCase):
         with mock.patch.object(volume_crypto_plugin.kvmagent, 'get_http_server', return_value=server):
             self.plugin.start()
         routes = [call.args[0] for call in server.register_async_uri.call_args_list]
-        self.assertEqual(11, len(routes))
+        self.assertEqual(18, len(routes))
         self.assertEqual(len(routes), len(set(routes)))
         for prefix in ('localstorage', 'nfsprimarystorage', 'sharedblock'):
             self.assertIn('/%s/volume/encryptinplace' % prefix, routes)
+            self.assertIn('/%s/volume/convertencryption' % prefix, routes)
         for prefix in ('ceph', 'zbs'):
-            for operation in ('lukscreateempty', 'luksclone', 'encryptinplace',
+            for operation in ('lukscreateempty', 'luksclone', 'luksconvert', 'encryptinplace', 'luksresize',
                               'imagestore/encrypteddownload'):
                 self.assertIn('/%s/primarystorage/kvmhost/%s' % (prefix, operation), routes)
 

@@ -416,6 +416,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def rebase_volume_backing_file(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = NfsRebaseVolumeBackingFileRsp()
+        volume_driver = driver_factory.get_file_driver(cmd)
 
         if not cmd.dstImageCacheTemplateFolderPath:
             qcow2s = shell.call("find %s -type f -regex '.*\.qcow2$'" % cmd.dstVolumeFolderPath)
@@ -433,7 +434,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 logger.debug("the backing file[%s] of volume[%s] doesn't exist, skip rebasing" % (new_backing_file, qcow2))
                 continue
 
-            linux.qcow2_rebase_no_check(new_backing_file, qcow2)
+            volume_driver.rebase_no_check(new_backing_file, qcow2)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -442,7 +443,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.installPath
         rsp = ResizeVolumeRsp()
-        linux.qemu_img_resize(install_path, cmd.size, 'qcow2', cmd.force)
+        driver_factory.get_file_driver(cmd).resize(install_path, cmd.size)
         ret = linux.qcow2_virtualsize(install_path)
         rsp.size = ret
         return jsonobject.dumps(rsp)
@@ -569,11 +570,12 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             self._set_capacity_to_response(cmd.uuid, rsp)
             return jsonobject.dumps(rsp)
 
+        volume_driver = driver_factory.get_file_driver(cmd)
         if not cmd.fullRebase:
-            linux.qcow2_rebase(cmd.srcPath, cmd.destPath)
+            volume_driver.rebase(cmd.srcPath, cmd.destPath)
         else:
             tmp = os.path.join(os.path.dirname(cmd.destPath), '%s.qcow2' % uuidhelper.uuid())
-            qcow2.create_template_with_task_daemon(cmd.destPath, tmp, task_spec=cmd)
+            volume_driver.create_template_with_task_daemon(cmd.destPath, tmp)
             shell.call("mv %s %s" % (tmp, cmd.destPath))
 
         self.imagestore_client.clean_meta(cmd.destPath)
@@ -586,14 +588,15 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     def commit_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = OfflineCommitSnapshotRsp()
+        volume_driver = driver_factory.get_file_driver(cmd)
 
         if linux.qcow2_get_backing_file(cmd.top) != linux.qcow2_get_backing_file(cmd.base):
-            linux.qcow2_commit(cmd.top, cmd.base)
+            volume_driver.commit(cmd.top, cmd.base)
 
         if cmd.topChildrenInstallPathInDb:
             for children in cmd.topChildrenInstallPathInDb:
                 if linux.qcow2_get_backing_file(children) != cmd.base:
-                    linux.qcow2_rebase_no_check(cmd.base, children)
+                    volume_driver.rebase_no_check(cmd.base, children)
 
         self.imagestore_client.clean_meta(cmd.base)
 
@@ -621,13 +624,14 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def rebase_and_merge_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_driver = driver_factory.get_file_driver(cmd)
         snapshots = cmd.snapshotInstallPaths
         count = len(snapshots)
         for i in range(count):
             if i+1 < count:
                 target = snapshots[i]
                 backing_file = snapshots[i+1]
-                linux.qcow2_rebase_no_check(backing_file, target)
+                volume_driver.rebase_no_check(backing_file, target)
 
         latest = snapshots[0]
         rsp = RebaseAndMergeSnapshotsResponse()
@@ -636,7 +640,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(workspace_dir)
 
         try:
-            linux.create_template(latest, cmd.workspaceInstallPath)
+            volume_driver.create_template(latest, cmd.workspaceInstallPath)
             rsp.size, rsp.actualSize = cmd.workspaceInstallPath
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
@@ -658,10 +662,10 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         try:
             if cmd.incremental:
-                return linux.qcow2_create_with_backing_file_and_option(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
+                driver_factory.get_file_driver(cmd).create_incremental_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath)
             else:
                 t_shell = traceable_shell.get_shell(cmd)
-                linux.create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
+                driver_factory.get_file_driver(cmd).create_template(cmd.snapshotInstallPath, cmd.workspaceInstallPath, shell=t_shell)
             rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.workspaceInstallPath)
             self._set_capacity_to_response(cmd.uuid, rsp)
         except linux.LinuxError as e:
@@ -735,7 +739,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
             os.makedirs(dirname, 0o775)
 
         new_volume_path = os.path.join(dirname, '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
+        driver_factory.get_file_driver(cmd).clone(install_path, new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
         self._set_capacity_to_response(cmd.uuid, rsp)
         return jsonobject.dumps(rsp)
@@ -747,7 +751,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
 
         install_path = cmd.snapshotInstallPath
         new_volume_path = os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
-        linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
+        driver_factory.get_file_driver(cmd).clone(install_path, new_volume_path)
         rsp.newVolumeInstallPath = new_volume_path
         size = linux.qcow2_virtualsize(new_volume_path)
         rsp.size = size
@@ -904,7 +908,7 @@ class NfsPrimaryStoragePlugin(kvmagent.KvmAgent):
                 os.makedirs(dirname, 0o755)
 
             t_shell = traceable_shell.get_shell(cmd)
-            linux.create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
+            driver_factory.get_file_driver(cmd).create_template(cmd.rootVolumePath, cmd.installPath, shell=t_shell)
             rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
         except linux.LinuxError as e:
             linux.rm_file_force(cmd.installPath)
