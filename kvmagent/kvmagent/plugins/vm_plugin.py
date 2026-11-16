@@ -13641,7 +13641,8 @@ host side snapshot files chian:
             else:
                 # HA members share one logical NIC address; preserve libvirt allocation here.
                 ha_nic = _clone_nic(nic)
-                ha_nic.pci = None
+                if not getattr(cmd, 'userVmVfBond', False):
+                    ha_nic.pci = None
                 interface = Vm._build_interface_xml(ha_nic, action='Update')
                 return etree.tostring(interface, encoding="unicode")
 
@@ -13678,6 +13679,8 @@ host side snapshot files chian:
                 if hasattr(extra_clone, 'extraPciDeviceAddresses'):
                     extra_clone.put('extraPciDeviceAddresses', [])
                 extra_clone.put('pciDeviceAddress', extra_addr)
+                if getattr(cmd, 'userVmVfBond', False):
+                    extra_clone.put('pci', nic.secondaryPci)
                 vf_nics.append(extra_clone)
                 seen.add(extra_norm)
             return vf_nics
@@ -13721,7 +13724,8 @@ host side snapshot files chian:
             self.set_domain_iflink_state(vm.uuid, '%s.1' % nic.nicInternalName, 'up')
 
             # 2. detach all vf devices from vm
-            for vf_nic in _get_all_vf_nics(nic):
+            vf_members = _get_all_vf_nics(nic)
+            for vf_nic in reversed(vf_members) if getattr(cmd, 'userVmVfBond', False) else vf_members:
                 _detach_single_vf(vm, vf_nic)
 
         def _change_vf_ha_state_reconnect(vm, nic):
@@ -13730,6 +13734,9 @@ host side snapshot files chian:
                 _attach_single_vf(vm, vf_nic)
 
             # 2. detach temporary vnic from vm
+            if getattr(cmd, 'userVmVfBond', False):
+                # Guest must confirm the target VF bond before removing the bridge.
+                return
             vnic_xml = _check_nic_is_attached(vm, nic, interface_type='bridge')
             if vnic_xml is not None:
                 self.set_domain_network_device(vm.uuid, vnic_xml, operate_type='detach')

@@ -50,7 +50,35 @@ def ordinary_devices(xml):
     return found
 
 
+def migration_vfs_absent(xml, target):
+    root = ET.fromstring(xml)
+    devices = list(root.findall('./devices/hostdev'))
+    devices += [d for d in root.findall('./devices/interface') if d.get('type') == 'hostdev']
+    host_members = set(p if p.count(':') == 2 else '0000:' + p for p in target['hostMembers'])
+    return not any(d.find('./source/address') is not None and
+                   bdf(d.find('./source/address')) in host_members for d in devices)
+
+
+def migration_temporary_pci(xml, operation):
+    target = operation.get('target') or {}
+    found = []
+    for dev in ET.fromstring(xml).findall('./devices/interface'):
+        tap, mac, model, addr = (dev.find(n) for n in ('target', 'mac', 'model', 'address'))
+        if (dev.get('type') == 'bridge' and tap is not None and
+                tap.get('dev') == operation.get('temporaryTarget') and mac is not None and
+                mac.get('address') == target.get('mac') and model is not None and
+                model.get('type') == 'virtio' and addr is not None and addr.get('type') == 'pci'):
+            found.append(bdf(addr))
+    if len(found) > 1:
+        raise ValueError('ambiguous migration bridge')
+    return found[0] if found else None
+
+
 class VfBondPlugin(kvmagent.KvmAgent):
+    @kvmagent.replyerror
+    def migration_capability(self, req):
+        return json.dumps(dict(success=True, capabilities=['vfBondLiveMigration']))
+
     @kvmagent.replyerror
     def reconcile(self, req):
         cmd = json.loads(req[http.REQUEST_BODY])
@@ -131,6 +159,17 @@ class VfBondPlugin(kvmagent.KvmAgent):
                 if op['action'] == 'reconcile' and not delivered(domain.XMLDesc(0), op['target']):
                     base['reason'] = 'WaitingForDevices'
                     return base
+                if op['action'] == 'migration':
+                    xml = domain.XMLDesc(0)
+                    stage = op.get('migrationStage')
+                    temporary = migration_temporary_pci(xml, op)
+                    if (stage in ('check', 'prepare', 'reconnect', 'finish') and not delivered(xml, op['target']) or
+                            stage == 'transit' and not migration_vfs_absent(xml, op['target']) or
+                            stage in ('prepare', 'transit') and not temporary or
+                            stage == 'finish' and temporary or
+                            temporary != op.get('temporaryPci')):
+                        base['reason'] = 'WaitingForDevices'
+                        return base
                 if op['action'] == 'ports':
                     devices = ordinary_devices(domain.XMLDesc(0))
                     if any(not isinstance(p.get('guestPci'), str) or
@@ -192,6 +231,8 @@ class VfBondPlugin(kvmagent.KvmAgent):
                             reason='ObservationUnavailable: GuestTools diagnostics extension missing')
             if action in ('probe', 'inspect'):
                 base['devices'] = ordinary_devices(domain.XMLDesc(0))
+                if (cmd.get('operation') or {}).get('temporaryTarget'):
+                    base['temporaryPci'] = migration_temporary_pci(domain.XMLDesc(0), cmd['operation'])
             return base
         except Exception as ex:
             reason = 'ObservationUnavailable' if action in ('probe', 'inspect') else (
@@ -221,6 +262,7 @@ class VfBondPlugin(kvmagent.KvmAgent):
         return json.dumps(check_devices(json.loads(req[http.REQUEST_BODY])['devices']))
 
     def start(self):
+        kvmagent.get_http_server().register_async_uri('/host/vfbond/migration-capability', self.migration_capability)
         kvmagent.get_http_server().register_async_uri('/host/vfbond/checkcleanup', self.check_cleanup)
         kvmagent.get_http_server().register_async_uri(PATH, self.reconcile)
 
