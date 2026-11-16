@@ -605,6 +605,8 @@ class VmNicInfo():
     def __init__(self):
         self.deviceAddress = DeviceAddress()
         self.macAddress = None
+        self.nicInternalName = None
+        self.pciDeviceAddress = None
 
 class DeviceAddress():
     def __init__(self):
@@ -6254,24 +6256,68 @@ class Vm(object):
         except Exception as e:
             logger.warning('failed to online CPUs via QGA for vm[uuid:%s]: %s' % (self.uuid, str(e)))
 
+    @staticmethod
+    def _iface_matches_nic(iface, nic):
+        if iface is None or nic is None:
+            return False
+        nic_pci_addr = getattr(nic, 'pciDeviceAddress', None)
+        if nic_pci_addr and getattr(iface, 'type_', None) == 'hostdev':
+            if not hasattr(iface, 'mac') or iface.mac.address_ != nic.mac:
+                return False
+            if hasattr(iface, 'source') and hasattr(iface.source, 'address'):
+                addr_dict = {
+                    'domain': getattr(iface.source.address, 'domain_', '0x0000'),
+                    'bus': getattr(iface.source.address, 'bus_', '0x00'),
+                    'slot': getattr(iface.source.address, 'slot_', '0x00'),
+                    'function': getattr(iface.source.address, 'function_', '0x0')
+                }
+                expected = normalize_pci_address(nic_pci_addr)
+                attached = normalize_pci_attrs(addr_dict)
+                if expected and attached:
+                    return attached == expected
+        nic_internal_name = getattr(nic, 'nicInternalName', None)
+        if nic_internal_name:
+            if hasattr(iface, 'target') and hasattr(iface.target, 'dev_') and iface.target.dev_:
+                return iface.target.dev_ == nic_internal_name
+            if '.' in nic_internal_name and hasattr(iface, 'alias') and hasattr(iface.alias, 'name_') and iface.alias.name_:
+                expected_alias = 'net%s' % nic_internal_name.split('.', 1)[1]
+                return iface.alias.name_ == expected_alias
+        return hasattr(iface, 'mac') and iface.mac.address_ == nic.mac
+
+    def _find_domain_interface(self, nic):
+        for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            if Vm._iface_matches_nic(iface, nic):
+                return iface
+        return None
+
+    @staticmethod
+    def _fill_nic_pci_from_iface(nic, iface):
+        if nic is None or iface is None or getattr(nic, 'pci', None) is not None:
+            return
+        if hasattr(iface, 'address') and iface.address is not None:
+            pci_obj = jsonobject.JsonObject()
+            pci_obj.type = getattr(iface.address, 'type_', 'pci')
+            pci_obj.domain = getattr(iface.address, 'domain_', '0x0000')
+            pci_obj.bus = getattr(iface.address, 'bus_', '0x00')
+            pci_obj.slot = getattr(iface.address, 'slot_', '0x00')
+            pci_obj.function = getattr(iface.address, 'function_', '0x0')
+            nic.pci = pci_obj
+
     @linux.retry(times=3, sleep_time=5)
     def _attach_nic(self, cmd):
         def check_device(_):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                if iface.mac.address_ != cmd.nic.mac:
+                if not Vm._iface_matches_nic(iface, cmd.nic):
                     continue
-
-                if iface.mac.address_ == cmd.nic.mac:
-                    # vf nic doesn't have internal name
-                    if cmd.nic.pciDeviceAddress is not None:
-                        return True
-                    if cmd.nic.type in ovs.OvsDpdkSupportVnic:
-                        return True
-                    if cmd.nic.type == "dpdkvhostuserclient":
-                        return True
-                    else:
-                        return linux.is_network_device_existing(cmd.nic.nicInternalName)
+                # vf nic doesn't have internal name
+                if cmd.nic.pciDeviceAddress is not None:
+                    return True
+                if cmd.nic.type in ovs.OvsDpdkSupportVnic:
+                    return True
+                if cmd.nic.type == "dpdkvhostuserclient":
+                    return True
+                return linux.is_network_device_existing(cmd.nic.nicInternalName)
 
             return False
 
@@ -6413,7 +6459,7 @@ class Vm(object):
         def check_device(_):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                if iface.mac.address_ == cmd.nic.mac:
+                if Vm._iface_matches_nic(iface, cmd.nic):
                     return False
 
             return not iproute.is_device_ifname_exists(cmd.nic.nicInternalName)
@@ -6423,6 +6469,9 @@ class Vm(object):
                 raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
 
         def find_vf_device_xml():
+            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.type_ == 'hostdev' and Vm._iface_matches_nic(iface, cmd.nic):
+                    return iface.dump()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.type_ == 'hostdev' and iface.mac.address_ == cmd.nic.mac:
                     return iface.dump()
@@ -6507,6 +6556,9 @@ class Vm(object):
             if cmd.nic.type == 'VF':
                 xml = find_vf_device_xml()
             else:
+                self.refresh()
+                matched_iface = self._find_domain_interface(cmd.nic)
+                Vm._fill_nic_pci_from_iface(cmd.nic, matched_iface)
                 xml = self._interface_cmd_to_xml(cmd, action='Detach')
             logger.debug('detaching nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
@@ -6538,7 +6590,7 @@ class Vm(object):
     def check_device_exists(self, cmd):
         self.refresh()
         for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-            if iface.mac.address_ == cmd.nic.mac:
+            if Vm._iface_matches_nic(iface, cmd.nic):
                 return False
         return not iproute.is_device_ifname_exists(cmd.nic.nicInternalName)
 
@@ -6583,17 +6635,14 @@ class Vm(object):
         def check_device(nic):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                if iface.mac.address_ == nic.mac:
+                if Vm._iface_matches_nic(iface, nic):
                     return linux.is_network_device_existing(nic.nicInternalName)
 
             return False
 
         def get_interface(nic):
             self.refresh()
-            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                if iface.mac.address_ == nic.mac:
-                    return iface
-            return None
+            return self._find_domain_interface(nic)
 
         def mtu_addon(nic_xml_object, iface):
             if iface is None or iface.hasattr("mtu") is False:
@@ -6609,17 +6658,18 @@ class Vm(object):
 
             e(nic_xml_object, 'mtu', None, attrib={'size': '%d' % int(iface.mtu.size_)})
 
-        def addon(nic_xml_object, nic):
+        def addon(nic_xml_object, nic, iface):
             if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                 qos = cmd.addons['NicQos'][nic.uuid]
                 Vm._add_qos_to_interface(nic_xml_object, qos)
 
-            iface = get_interface(nic)
             mtu_addon(nic_xml_object, iface)
 
         for nic in cmd.nics:
+            matched_iface = get_interface(nic)
+            Vm._fill_nic_pci_from_iface(nic, matched_iface)
             interface = Vm._build_interface_xml(nic, action='Update')
-            addon(interface, nic)
+            addon(interface, nic, matched_iface)
             xml = etree.tostring(interface, encoding="unicode")
             logger.debug('updating nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
@@ -9230,10 +9280,11 @@ class VmPlugin(kvmagent.KvmAgent):
         vm.attach_nic(cmd)
 
         for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
-            if iface.mac.address_ != cmd.nic.mac:
+            if not Vm._iface_matches_nic(iface, cmd.nic):
                 continue
 
             virtualDeviceInfo = VirtualDeviceInfo()
+            virtualDeviceInfo.resourceUuid = getattr(cmd.nic, 'uuid', None)
             virtualDeviceInfo.deviceAddress.bus = iface.address.bus_
             virtualDeviceInfo.deviceAddress.function = iface.address.function_
             virtualDeviceInfo.deviceAddress.type = iface.address.type_
@@ -9381,6 +9432,16 @@ class VmPlugin(kvmagent.KvmAgent):
             vmNicInfo.deviceAddress.domain = iface.address.domain_
             vmNicInfo.deviceAddress.slot = iface.address.slot_
             vmNicInfo.macAddress = iface.mac.address_
+            if hasattr(iface, 'target') and hasattr(iface.target, 'dev_') and iface.target.dev_:
+                vmNicInfo.nicInternalName = iface.target.dev_
+            if getattr(iface, 'type_', None) == 'hostdev' and hasattr(iface, 'source') and hasattr(iface.source, 'address'):
+                addr_dict = {
+                    'domain': getattr(iface.source.address, 'domain_', '0x0000'),
+                    'bus': getattr(iface.source.address, 'bus_', '0x00'),
+                    'slot': getattr(iface.source.address, 'slot_', '0x00'),
+                    'function': getattr(iface.source.address, 'function_', '0x0')
+                }
+                vmNicInfo.pciDeviceAddress = normalize_pci_attrs(addr_dict)
             nicInfos.append(vmNicInfo)
 
         for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
