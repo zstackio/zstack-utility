@@ -392,6 +392,13 @@ class UserNameSpaceEnv(object):
         self.infra_env.delete_dev()
 
 
+def _sync_userdata_default_route(ns_name, inner_dev, has_dhcp4):
+    if has_dhcp4:
+        bash_r('ip netns exec %s ip -4 route del default dev %s > /dev/null 2>&1' % (ns_name, inner_dev))
+    else:
+        bash_errorout('ip netns exec %s ip -4 route replace default dev %s' % (ns_name, inner_dev))
+
+
 class DhcpNameSpaceEnv(object):
     DHCP6_STATEFUL = "Stateful-DHCP"
     DHCP6_STATELESS = "Stateless-DHCP"
@@ -427,7 +434,10 @@ class DhcpNameSpaceEnv(object):
 
     def disable(self):
         # delete ip, iptables, ebtables, stop dnsmasq, etc
-        self._del_bridge_fdb_entry_for_inner_dev()
+        dev = self.infra_env.near_vm_inner
+        userdata_ip = iproute.IpNetnsShell(self.namespace_name).get_userdata_ip_address(dev)
+        if not userdata_ip:
+            self._del_bridge_fdb_entry_for_inner_dev()
         self._del_dhcp4_tables()
         self._del_dhcp6_tables()
         self._del_dhcp_ip_if_exist()
@@ -627,17 +637,23 @@ class DhcpNameSpaceEnv(object):
                 iproute.IpNetnsShell(ns).add_ip_address(link_local, 64, dev)
 
         iproute.IpNetnsShell(ns).set_link_up(dev)
+        if dhcp_ip is not None and prefix_len is not None:
+            _sync_userdata_default_route(ns, dev, has_dhcp4=True)
 
     @in_bash
     def _del_dhcp_ip_if_exist(self):
         ns = self.namespace_name
         dev = self.infra_env.near_vm_inner
-        ip4 = iproute.IpNetnsShell(ns).get_ip_address(4, dev)
-        ip6 = iproute.IpNetnsShell(ns).get_ip_address(6, dev)
+        shell_ns = iproute.IpNetnsShell(ns)
+        ip4 = shell_ns.get_ip_address(4, dev)
+        ip6 = shell_ns.get_ip_address(6, dev)
+        userdata_ip = shell_ns.get_userdata_ip_address(dev)
         if ip4:
-            iproute.IpNetnsShell(ns).del_ip_address(ip4, dev)
+            shell_ns.del_ip_address(ip4, dev)
         if ip6:
-            iproute.IpNetnsShell(ns).del_ip_address(ip6, dev)
+            shell_ns.del_ip_address(ip6, dev)
+        if userdata_ip:
+            _sync_userdata_default_route(ns, dev, has_dhcp4=False)
 
     @in_bash
     def _add_bridge_fdb_entry_for_inner_dev(self, dev):
@@ -1123,6 +1139,8 @@ class DhcpEnv(object):
                 iproute.IpNetnsShell(NAMESPACE_NAME).add_ip_address(link_local, 64, INNER_DEV)
 
         iproute.IpNetnsShell(NAMESPACE_NAME).set_link_up(INNER_DEV)
+        if DHCP_IP is not None and PREFIX_LEN is not None:
+            _sync_userdata_default_route(NAMESPACE_NAME, INNER_DEV, has_dhcp4=True)
 
         if (DHCP_IP is None and DHCP6_IP is None) or (PREFIX_LEN is None and PREFIX6_LEN is None):
             logger.debug("no dhcp ip[{{DHCP_IP}}] or netmask[{{DHCP_NETMASK}}] for {{INNER_DEV}} in {{NAMESPACE_NAME}}, skip ebtables/iptables config")
@@ -1709,9 +1727,9 @@ tag:{{TAG}},option:dns-server,{{DNS}}
         if addr is None:
             iproute.IpNetnsShell(NS_NAME).add_ip_address('169.254.169.254', 32, INNER_DEV)
 
-        r, o = bash_ro('ip netns exec {{NS_NAME}} ip r | wc -l')
-        if not to.hasattr("dhcpServerIp") and int(o) == 0:
-            bash_errorout('ip netns exec {{NS_NAME}} ip r add default dev {{INNER_DEV}}')
+        has_dhcp_server_ip = (to.hasattr("dhcpServerIp") and bool(to.dhcpServerIp)) \
+            or bool(iproute.IpNetnsShell(NS_NAME).get_ip_address(4, INNER_DEV))
+        _sync_userdata_default_route(NS_NAME, INNER_DEV, has_dhcp4=has_dhcp_server_ip)
 
         # set ebtables
         BR_NAME = to.bridgeName
