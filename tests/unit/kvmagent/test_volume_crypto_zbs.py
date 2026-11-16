@@ -148,6 +148,23 @@ class ZbsCryptoTest(unittest.TestCase):
                 zbs.is_encrypted('cbd:physical/logical/source@17')
         probe.assert_not_called()
 
+    def test_decrypt_reads_luks_source_into_precreated_plain_target(self):
+        cmd = SimpleNamespace(installPath='cbd:physical/logical/source',
+                              targetInstallPath='cbd:physical/logical/target',
+                              targetEncrypted=False, encryptedDek='wrapped')
+        with mock.patch.object(zbs, '_encrypted', return_value=True):
+            with mock.patch.object(zbs.secret, 'luks_secret_channel') as channel:
+                channel.return_value.__enter__.return_value = '/tmp/one-shot-secret'
+                with mock.patch.object(zbs, 'run_checked') as call:
+                    with mock.patch.object(zbs, '_verify', return_value=8192):
+                        self.assertEqual(8192, zbs.convert(cmd))
+        command = call.call_args.args[0]
+        self.assertIn('--image-opts', command)
+        self.assertIn('-O', command)
+        self.assertEqual('raw', command[command.index('-O') + 1])
+        self.assertIn('cbd:physical/logical/target_zbs_:/etc/zbs/client.conf', command)
+
+
     def test_encrypted_nbd_chain_download_closes_qsd_and_removes_workspace(self):
         cmd = SimpleNamespace(primaryStorageInstallPath='cbd:physical/logical/target',
                               backupStorageHostname='imagestore', backupStorageNbdPort=10809,

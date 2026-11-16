@@ -10,7 +10,7 @@ from kvmagent.crypto import http_error, qemu_volume as volume
 
 class VolumeStagingTest(unittest.TestCase):
     def test_published_images_survive_temporary_unlink_failure(self):
-        for operation in ('create', 'convert'):
+        for operation in ('create', 'convert', 'template'):
             with self.subTest(operation=operation), tempfile.TemporaryDirectory() as directory:
                 source, target = Path(directory) / 'source', Path(directory) / 'target'
                 source.write_bytes(b'original-source')
@@ -32,8 +32,10 @@ class VolumeStagingTest(unittest.TestCase):
                         mock.patch.object(logging.getLogger(volume.__name__), 'error') as logs:
                     if operation == 'create':
                         volume.create_encrypted_qcow2(str(target), 4096, '/tmp/secret')
-                    else:
+                    elif operation == 'convert':
                         volume.convert_qcow2_encryption(str(source), str(target), volume.EncryptionMode.LUKS, '/tmp/secret')
+                    else:
+                        volume.create_encrypted_template(str(source), str(target), '/tmp/secret')
                 self.assertEqual(b'encrypted-output', target.read_bytes())
                 self.assertEqual(b'original-source', source.read_bytes())
                 self.assertTrue(os.path.samefile(target, temporary[0]))

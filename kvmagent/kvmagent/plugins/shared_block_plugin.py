@@ -4,6 +4,7 @@ import re
 import random
 import traceback
 import difflib
+from contextlib import contextmanager
 
 from kvmagent import kvmagent
 from kvmagent.volume import driver_factory
@@ -1033,6 +1034,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = CreateTemplateFromVolumeRsp()
         volume_abs_path = translate_absolute_path_from_install_path(cmd.volumePath)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
 
         if cmd.sharedVolume:
             lvm.do_active_lv(volume_abs_path, lvm.LvmlockdLockType.SHARE, True)
@@ -1041,11 +1043,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if not lvm.lv_exists(install_abs_path):
                 total_size = self.get_total_required_size(volume_abs_path)
                 lvm.update_pv_allocate_strategy(cmd)
-                lvm.create_lv_from_absolute_path(install_abs_path, total_size,
+                lvm.create_lv_from_absolute_path(install_abs_path, volume_driver.required_allocation_size(total_size),
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 t_shell = traceable_shell.get_shell(cmd)
-                linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
+                volume_driver.create_template(volume_abs_path, install_abs_path, t_shell)
                 logger.debug('successfully created template[%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
                 if cmd.compareQcow2:
@@ -1063,7 +1065,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         volume_abs_path = translate_absolute_path_from_install_path(cmd.volumePath)
 
         with lvm.RecursiveOperateLv(volume_abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
-            rsp.actualSize = linux.qcow2_measure_required_size(volume_abs_path)
+            rsp.actualSize = driver_factory.get_shared_block_driver(cmd).measure_template(volume_abs_path)
             rsp.size, _ = linux.qcow2_size_and_actual_size(volume_abs_path)
 
         return jsonobject.dumps(rsp)
@@ -1074,6 +1076,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         rsp = CreateTemplateFromVolumeRsp()
         volume_abs_path = translate_absolute_path_from_install_path(cmd.volumePath)
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
 
         with lvm.RecursiveOperateLv(volume_abs_path, shared=True, skip_deactivate_tags=[IMAGE_TAG]):
             if not lvm.lv_exists(install_abs_path):
@@ -1082,13 +1085,17 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                 else:
                     total_size = self.get_total_required_size(volume_abs_path)
                 lvm.update_pv_allocate_strategy(cmd)
-                lvm.create_lv_from_absolute_path(install_abs_path, total_size, IMAGE_TAG)
+                lvm.create_lv_from_absolute_path(install_abs_path, volume_driver.required_allocation_size(total_size), IMAGE_TAG)
             with lvm.OperateLv(install_abs_path, shared=False, delete_when_exception=True):
                 if cmd.incremental:
-                    linux.qcow2_create_with_backing_file_and_option(volume_abs_path, install_abs_path)
+                    if getattr(cmd, 'encryptedDek', None):
+                        volume_driver.create_with_backing(
+                            volume_abs_path, install_abs_path, linux.qcow2_virtualsize(volume_abs_path), '')
+                    else:
+                        linux.qcow2_create_with_backing_file_and_option(volume_abs_path, install_abs_path)
                 else:
                     t_shell = traceable_shell.get_shell(cmd)
-                    linux.create_template(volume_abs_path, install_abs_path, shell=t_shell)
+                    volume_driver.create_template(volume_abs_path, install_abs_path, t_shell)
                 logger.debug('successfully created template cache [%s] from volume[%s]' % (cmd.installPath, cmd.volumePath))
 
                 if cmd.compareQcow2 and not cmd.incremental:
@@ -1216,6 +1223,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def revert_volume_from_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
         rsp = RevertVolumeFromSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
         qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
@@ -1228,10 +1236,10 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             size = linux.qcow2_virtualsize(snapshot_abs_path)
             pe_ranges = lvm.get_lv_affinity_sorted_pvs(snapshot_abs_path, cmd)
-            lvm.create_lv_from_cmd(new_volume_path, size, cmd,
+            lvm.create_lv_from_cmd(new_volume_path, volume_driver.required_allocation_size(size), cmd,
                                              "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()), pe_ranges=pe_ranges)
             with lvm.OperateLv(new_volume_path, shared=False, delete_when_exception=True):
-                linux.qcow2_clone_with_option(snapshot_abs_path, new_volume_path, qcow2_options)
+                volume_driver.clone(snapshot_abs_path, new_volume_path, size, qcow2_options)
                 size = linux.qcow2_virtualsize(new_volume_path)
 
         rsp.newVolumeInstallPath = new_volume_path
@@ -1241,6 +1249,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def merge_snapshot(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
         rsp = MergeSnapshotRsp()
         snapshot_abs_path = translate_absolute_path_from_install_path(cmd.snapshotInstallPath)
         workspace_abs_path = translate_absolute_path_from_install_path(cmd.workspaceInstallPath)
@@ -1248,7 +1257,8 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         lvm.update_pv_allocate_strategy(cmd)
         with lvm.RecursiveOperateLv(snapshot_abs_path, shared=True):
             virtual_size = linux.qcow2_virtualsize(snapshot_abs_path)
-            lv_size = max(self.get_total_required_size(snapshot_abs_path), int(lvm.get_lv_size(snapshot_abs_path)))
+            lv_size = volume_driver.required_allocation_size(max(
+                self.get_total_required_size(snapshot_abs_path), int(lvm.get_lv_size(snapshot_abs_path))))
             if not lvm.lv_exists(workspace_abs_path):
                 pe_ranges = lvm.get_lv_affinity_sorted_pvs(snapshot_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(workspace_abs_path, lv_size,
@@ -1257,7 +1267,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                                                  exact_size=True)
             with lvm.OperateLv(workspace_abs_path, shared=False, delete_when_exception=True):
                 t_shell = traceable_shell.get_shell(cmd)
-                linux.create_template(snapshot_abs_path, workspace_abs_path, shell=t_shell)
+                volume_driver.create_template(snapshot_abs_path, workspace_abs_path, shell=t_shell)
                 rsp.size = virtual_size
                 rsp.actualSize = int(lvm.get_lv_size(workspace_abs_path))
 
@@ -1295,6 +1305,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def offline_merge_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
         rsp = OfflineMergeSnapshotRsp()
         src_abs_path = translate_absolute_path_from_install_path(cmd.srcPath) if not cmd.fullRebase else ""
         dst_abs_path = translate_absolute_path_from_install_path(cmd.destPath)
@@ -1312,18 +1323,18 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
                     lvm.extend_lv_from_cmd(dst_abs_path, total_required_size, cmd, extend_thin_by_specified_size=True)
 
                 with lvm.RecursiveOperateLv(src_abs_path, shared=True):
-                    linux.qcow2_rebase(src_abs_path, dst_abs_path)
+                    volume_driver.rebase(src_abs_path, dst_abs_path)
             else:
                 tmp_abs_path = os.path.join(os.path.dirname(dst_abs_path), 'tmp_%s' % uuidhelper.uuid())
                 logger.debug("creating temp lv %s" % tmp_abs_path)
-                lv_size = max(total_required_size, current_size)
+                lv_size = volume_driver.required_allocation_size(max(total_required_size, current_size))
                 pe_ranges = lvm.get_lv_affinity_sorted_pvs(dst_abs_path, cmd)
                 lvm.create_lv_from_absolute_path(tmp_abs_path, lv_size,
                                                  "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()),
                                                  pe_ranges=pe_ranges,
                                                  exact_size=True)
                 with lvm.OperateLv(tmp_abs_path, shared=False, delete_when_exception=True):
-                    qcow2.create_template_with_task_daemon(dst_abs_path, tmp_abs_path, task_spec=cmd)
+                    volume_driver.create_template_with_task_daemon(dst_abs_path, tmp_abs_path)
                     lvm.lv_rename(tmp_abs_path, dst_abs_path, overwrite=True)
             lvm.delete_lv_meta(dst_abs_path)
             rsp.actualSize = lvm.get_lv_size(dst_abs_path)
@@ -1333,20 +1344,21 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def offline_commit_snapshots(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        volume_driver = driver_factory.get_shared_block_driver(cmd)
         rsp = OfflineCommitSnapshotRsp()
         top = translate_absolute_path_from_install_path(cmd.top)
         base = translate_absolute_path_from_install_path(cmd.base)
 
         with lvm.RecursiveOperateLv(top, shared=True):
             if linux.qcow2_get_backing_file(cmd.top) != linux.qcow2_get_backing_file(cmd.base):
-                linux.qcow2_commit(top, base)
+                volume_driver.commit(top, base)
 
             if cmd.topChildrenInstallPathInDb:
                 for childrenInstallPath in cmd.topChildrenInstallPathInDb:
                     child_abs = translate_absolute_path_from_install_path(childrenInstallPath)
                     with lvm.RecursiveOperateLv(child_abs, shared=True):
                         if linux.qcow2_get_backing_file(child_abs) != base:
-                            linux.qcow2_rebase_no_check(base, child_abs)
+                            volume_driver.rebase_no_check(base, child_abs)
 
             lvm.delete_lv_meta(base)
 
@@ -1363,6 +1375,11 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         install_abs_path = translate_absolute_path_from_install_path(cmd.installPath)
         volume_driver = driver_factory.get_shared_block_driver(cmd)
         volume_driver.validate_create_request()
+
+        if getattr(cmd, 'reserveOnly', False):
+            rsp.size = cmd.size
+            with self._reserve_empty_volume(cmd, install_abs_path, volume_driver.required_allocation_size(cmd.size)):
+                return self._empty_volume_response(cmd, rsp, install_abs_path)
 
         if cmd.backingFile:
             qcow2_options = self.calc_qcow2_option(self, cmd.kvmHostAddons, True, cmd.provisioning)
@@ -1397,10 +1414,29 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         else:
             volume_driver.validate_existing_target(install_abs_path)
 
-        logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
+        return self._empty_volume_response(cmd, rsp, install_abs_path)
+
+    @contextmanager
+    def _reserve_empty_volume(self, cmd, path, allocation_size):
+        if lvm.lv_exists(path):
+            raise FileExistsError(path)
+        lvm.create_lv_from_cmd(path, allocation_size, cmd,
+                               "%s::%s::%s" % (VOLUME_TAG, cmd.hostUuid, time.time()))
+        try:
+            yield
+        except Exception:
+            try:
+                lvm.delete_lv(path)
+            except Exception as error:
+                logger.error('SharedBlock reservation rollback left LV path=%r exception=%s',
+                             path, type(error).__name__)
+            raise
+
+    def _empty_volume_response(self, cmd, rsp, install_abs_path):
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         rsp.lunCapacities = lvm.get_lun_capacities_from_vg(cmd.vgUuid, self.vgs_path_and_wwid)
         rsp.actualSize = lvm.get_lv_size(install_abs_path)
+        logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -1781,24 +1817,29 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         abs_path = translate_absolute_path_from_install_path(cmd.installPath)
 
         with lvm.RecursiveOperateLv(abs_path, shared=False):
-            rsp.oldSize, rsp.size = self.shrink_lv_on_qcow2(abs_path)
+            rsp.oldSize, rsp.size = self.shrink_lv_on_qcow2(
+                abs_path, volume_driver=driver_factory.get_shared_block_driver(cmd))
 
         rsp.totalCapacity, rsp.availableCapacity = lvm.get_vg_size(cmd.vgUuid)
         return jsonobject.dumps(rsp)
 
-    def shrink_lv_on_qcow2(self, installPath, extra_size=0):
+    def shrink_lv_on_qcow2(self, installPath, extra_size=0, *, volume_driver=None):
         old_size = int(lvm.get_lv_size(installPath))
         if 'qcow2' != linux.get_img_fmt(installPath):
             return old_size, old_size
 
         virtual_size = linux.qcow2_get_virtual_size(installPath)
-        check_result = qemu_img.get_check_result(installPath)  # type: qemu_img.CheckResult
+        check_snapshot = qemu_img.get_check_result if volume_driver is None else volume_driver.check_snapshot
+        check_result = check_snapshot(installPath)
         if check_result.allocated_clusters is None or check_result.allocated_clusters != check_result.total_clusters:
             new_size = int(check_result.image_end_offset) + extra_size
             if new_size >= old_size:
                 return old_size, old_size
             if new_size > virtual_size:
                 new_size = virtual_size
+            if (volume_driver is not None and volume_driver.preserve_snapshot_image_end
+                    and new_size < check_result.image_end_offset):
+                return old_size, old_size
 
             lvm.resize_lv(installPath, new_size, True)
 

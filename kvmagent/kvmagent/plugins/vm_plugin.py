@@ -48,6 +48,7 @@ from jinja2 import Template
 
 from kvmagent import kvmagent
 from kvmagent.volume import disk_xml as volume_disk_xml
+from kvmagent.volume import snapshots as volume_snapshots
 from kvmagent.plugins.baremetal_v2_gateway_agent import \
     BaremetalV2GatewayAgentPlugin as BmV2GwAgent
 from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
@@ -4808,7 +4809,8 @@ class Vm(object):
             """
             return VmPlugin._get_snapshot_size(install_path)
 
-        logger.debug(vs_structs)
+        logger.debug('snapshot volumes: %s', [struct.volumeUuid for struct in vs_structs])
+        live_snapshots = []
         memory_snapshot_required = False
         for vs_struct in vs_structs:
             if vs_struct.live is False or vs_struct.full is True:
@@ -4852,7 +4854,13 @@ class Vm(object):
             disk_names.append(disk_name)
             source_file = VmPlugin.get_source_file_by_disk(target_disk)
             d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': target_disk.type_})
-            e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': vs_struct.installPath})
+            operation = volume_snapshots.get_snapshot(vs_struct, source_file)
+            live_snapshots.append(operation)
+            operation.validate_live_source(self.domain_xml, disk_name, vs_struct.volume)
+            operation.prepare_live(vs_struct.installPath, vs_struct.volume, target_disk.type_)
+            operation.target = vs_struct.installPath
+            source = e(d, 'source', None, attrib={'file' if target_disk.type_ == 'file' else 'dev': vs_struct.installPath})
+            operation.add_source_encryption(source, vs_struct.volume)
             e(d, 'driver', None, attrib={'type': 'qcow2'})
             return_structs.append(VolumeSnapshotResultStruct(
                 vs_struct.volumeUuid,
@@ -4875,6 +4883,8 @@ class Vm(object):
 
         try:
             self.domain.snapshotCreateXML(xml, snap_flags)
+            for operation in live_snapshots:
+                operation.verify_live(operation.target, self._check_target_disk_existing_by_path)
 
             if memory_snapshot_struct:
                 return_structs.append(VolumeSnapshotResultStruct(
@@ -4899,6 +4909,9 @@ class Vm(object):
                 logger.warn("libvirt return snapshot[path:%s] failure, but it succeed actually!" % r.installPath)
 
             if ret:
+                for operation in live_snapshots:
+                    if any(result.installPath == operation.target for result in ret):
+                        operation.verify_live(operation.target, self._check_target_disk_existing_by_path)
                 return ret
             raise kvmagent.KvmError(
                 'unable to take live snapshot of vm[uuid:{0}] volumes[id:{1}], {2}'.format(self.uuid, disk_names, str(ex)))
@@ -5009,6 +5022,8 @@ class Vm(object):
             os.makedirs(snapshot_dir)
 
         previous_install_path = VmPlugin.get_source_file_by_disk(target_disk)
+        operation = volume_snapshots.get_snapshot(task_spec, previous_install_path)
+        operation.validate_live_source(self.domain_xml, disk_name, volume)
         back_file_len = len(self._get_backfile_chain(previous_install_path))
         # for RHEL, base image's back_file_len == 1; for ubuntu back_file_len == 0
         first_snapshot = full_snapshot and (back_file_len == 1 or back_file_len == 0)
@@ -5024,7 +5039,9 @@ class Vm(object):
             snapshot = etree.Element('domainsnapshot')
             disks = e(snapshot, 'disks')
             d = e(disks, 'disk', None, attrib={'name': disk_name, 'snapshot': 'external', 'type': backing_store_type})
-            e(d, 'source', None, attrib={source_type: install_path})
+            operation.prepare_live(install_path, volume, backing_store_type)
+            source = e(d, 'source', None, attrib={source_type: install_path})
+            operation.add_source_encryption(source, volume)
             e(d, 'driver', None, attrib={'type': 'qcow2'})
 
             # QEMU 2.3 default create snapshots on all devices
@@ -5037,17 +5054,19 @@ class Vm(object):
             xml = etree.tostring(snapshot, encoding="unicode")
             logger.debug('creating snapshot for vm[uuid:{0}] volume[id:{1}]:\n{2}'.format(self.uuid, device_id, xml))
             snap_flags = libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_DISK_ONLY | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_NO_METADATA
-            if os.path.exists(install_path):
+            if operation.should_reuse_target(install_path):
                 snap_flags = snap_flags | libvirt.VIR_DOMAIN_SNAPSHOT_CREATE_REUSE_EXT
 
             try:
                 self.domain.snapshotCreateXML(xml, snap_flags)
+                operation.verify_live(install_path, self._check_target_disk_existing_by_path)
                 return previous_install_path, install_path
             except libvirt.libvirtError as ex:
                 logger.warn(linux.get_exception_stacktrace())
                 if previous_install_path != install_path and \
                         linux.wait_callback_success(self._check_target_disk_existing_by_path, install_path, timeout=5):
                     logger.warn("libvirt return snapshot[path:%s] failure, but it succeed actually!" % install_path)
+                    operation.verify_live(install_path, self._check_target_disk_existing_by_path)
                     return previous_install_path, install_path
 
                 raise kvmagent.KvmError(
@@ -10680,25 +10699,26 @@ class VmPlugin(kvmagent.KvmAgent):
             """
             return VmPlugin._get_snapshot_size(install_path)
 
-        def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path, new_volume_install_path):
+        def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path, new_volume_install_path, snapshot_cmd):
             """
             :rtype: (str, str, long)
             """
             makedir_if_need(install_path)
-            linux.create_template(previous_install_path, install_path)
             new_volume_path = new_volume_install_path if new_volume_install_path is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
-            linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
+            volume_snapshots.take_offline_snapshot(
+                snapshot_cmd, previous_install_path, install_path, new_volume_path, volume_snapshots.SnapshotMode.FULL)
 
             return install_path, new_volume_path, get_size(install_path)
 
-        def take_delta_snapshot_by_qemu_img_convert(previous_install_path, install_path, new_volume_install_path):
+        def take_delta_snapshot_by_qemu_img_convert(previous_install_path, install_path, new_volume_install_path, snapshot_cmd):
             """
             :rtype: (str, str, long)
             """
             new_volume_path = new_volume_install_path if new_volume_install_path is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
-            linux.qcow2_clone_with_cmd(previous_install_path, new_volume_path, cmd)
+            volume_snapshots.take_offline_snapshot(
+                snapshot_cmd, previous_install_path, install_path, new_volume_path, volume_snapshots.SnapshotMode.DELTA)
 
             return previous_install_path, new_volume_path, get_size(install_path)
 
@@ -10728,11 +10748,13 @@ class VmPlugin(kvmagent.KvmAgent):
                     if snapshot_job.full:
                         rsp.snapshots.append(VolumeSnapshotResultStruct(
                             snapshot_job.volumeUuid, *take_full_snapshot_by_qemu_img_convert(
-                                snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath)))
+                                snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath,
+                                volume_snapshots.command_for_job(cmd, snapshot_job))))
                     else:
                         rsp.snapshots.append(VolumeSnapshotResultStruct(
                             snapshot_job.volumeUuid, *take_delta_snapshot_by_qemu_img_convert(
-                                snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath)))
+                                snapshot_job.previousInstallPath, snapshot_job.installPath, snapshot_job.newVolumeInstallPath,
+                                volume_snapshots.command_for_job(cmd, snapshot_job))))
 
         except kvmagent.KvmError as error:
             logger.warn(linux.get_exception_stacktrace())
@@ -10840,18 +10862,19 @@ host side snapshot files chian:
 
         def take_full_snapshot_by_qemu_img_convert(previous_install_path, install_path):
             makedir_if_need(install_path)
-            linux.create_template(previous_install_path, install_path)
             new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
             self.active_volume_if_need(new_volume_path)
-            linux.qcow2_clone_with_cmd(install_path, new_volume_path, cmd)
+            volume_snapshots.take_offline_snapshot(
+                cmd, previous_install_path, install_path, new_volume_path, volume_snapshots.SnapshotMode.FULL)
             return install_path, new_volume_path
 
         def take_delta_snapshot_by_qemu_img_convert(previous_install_path, install_path):
             Vm.ensure_delta_snapshot_not_exceed(previous_install_path)
             new_volume_path = cmd.newVolumeInstallPath if cmd.newVolumeInstallPath is not None else os.path.join(os.path.dirname(install_path), '{0}.qcow2'.format(uuidhelper.uuid()))
             makedir_if_need(new_volume_path)
-            linux.qcow2_clone_with_cmd(previous_install_path, new_volume_path, cmd)
+            volume_snapshots.take_offline_snapshot(
+                cmd, previous_install_path, install_path, new_volume_path, volume_snapshots.SnapshotMode.DELTA)
             return previous_install_path, new_volume_path
 
         try:

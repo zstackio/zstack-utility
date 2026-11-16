@@ -205,6 +205,25 @@ def clone(cmd):
     return _verify(target, EncryptionMode.LUKS, encrypted_dek=cmd.encryptedDek)
 
 
+def convert(cmd):
+    target_mode = EncryptionMode.from_target_encrypted(cmd.targetEncrypted)
+    source, target = cmd.installPath, cmd.targetInstallPath
+    if _path(source) == _path(target):
+        raise ValueError('source and target CBD paths must differ')
+    if _encrypted(source) == (target_mode is EncryptionMode.LUKS):
+        raise ValueError('source and target encryption states are identical')
+    if target_mode is EncryptionMode.LUKS:
+        size = int(cmd.virtualSize)
+        _initialize(target, size, cmd.encryptedDek)
+        _write_plain_to_luks(_path(source), target, cmd.encryptedDek)
+    else:
+        with secret.luks_secret_channel(cmd.encryptedDek) as secret_file:
+            run_checked([QEMU_IMG, 'convert', '-n', '--object',
+                         'secret,id=luks_sec,format=raw,file=%s' % secret_file,
+                         '--image-opts', _luks_options(_path(source)), '-O', 'raw', _path(target)])
+    return _verify(target, target_mode, cmd.encryptedDek)
+
+
 def encrypt_in_place(cmd):
     source, target = cmd.installPath, cmd.targetInstallPath
     if _path(source) == _path(target):
@@ -215,6 +234,11 @@ def encrypt_in_place(cmd):
     _initialize(target, size, cmd.encryptedDek)
     _write_plain_to_luks(_path(source), target, cmd.encryptedDek)
     return target, _verify(target, EncryptionMode.LUKS, encrypted_dek=cmd.encryptedDek)
+
+
+def resize(cmd):
+    _resize_luks(cmd.installPath, cmd.virtualSize, cmd.encryptedDek)
+    return _verify(cmd.installPath, EncryptionMode.LUKS, encrypted_dek=cmd.encryptedDek)
 
 
 def _qsd_start_failure_reason(log_path):

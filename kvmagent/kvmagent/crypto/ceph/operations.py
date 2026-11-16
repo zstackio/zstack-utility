@@ -206,6 +206,22 @@ def clone(cmd):
     return True
 
 
+def convert(cmd):
+    target_mode = EncryptionMode.from_target_encrypted(cmd.targetEncrypted)
+    config = _config(cmd)
+    source = _image_path(cmd.installPath)
+    target = _image_path(cmd.targetInstallPath)
+    source_mode = _source_mode(source, config)
+    if source_mode is target_mode:
+        raise ValueError('source and target encryption states are identical')
+    trash_path = getattr(cmd, 'sourceTrashInstallPath', None)
+    trash = _image_path(trash_path) if trash_path else '%s-trash-%s' % (source, uuid.uuid4().hex[:8])
+    _publish_conversion(source, target, trash, config, target_mode=target_mode,
+                        encrypted_dek=cmd.encryptedDek, source_mode=source_mode,
+                        virtual_size=getattr(cmd, 'virtualSize', None))
+    return cmd.targetEncrypted
+
+
 def encrypt_in_place(cmd):
     config = _config(cmd)
     source = _image_path(cmd.installPath)
@@ -279,6 +295,12 @@ def _resize(image, config, size, encrypted_dek):
                      'secret,id=luks_sec,format=raw,file=%s' % secret_file,
                      '--image-opts', _image_options(image, config), str(size)])
     _verified_state(image, config, EncryptionMode.LUKS, encrypted_dek)
+
+
+def resize(cmd):
+    config = _config(cmd)
+    _resize(_image_path(cmd.installPath), config, cmd.virtualSize, cmd.encryptedDek)
+    return True
 
 
 def download_encrypted_imagestore(cmd, client):

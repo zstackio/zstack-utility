@@ -24,11 +24,11 @@ import pytest
 @pytest.fixture
 def configured_volume_extensions():
     from kvmagent.plugins.volume_crypto_plugin import VolumeCryptoPlugin
-    from kvmagent.volume import disk_xml, driver_registry, imagestore_commands
+    from kvmagent.volume import disk_xml, driver_registry, imagestore_commands, snapshots
 
     with ExitStack() as stack:
         for registry in (disk_xml._disk_xml_extensions, driver_registry._driver_registrations,
-                         imagestore_commands._command_extensions):
+                         imagestore_commands._command_extensions, snapshots._snapshot_extensions):
             stack.enter_context(patch.dict(registry, {}, clear=True))
         VolumeCryptoPlugin().configure()
         yield
@@ -36,9 +36,10 @@ def configured_volume_extensions():
 
 @pytest.fixture
 def plain_volume_metadata(monkeypatch):
-    from kvmagent.crypto import vm_xml
+    from kvmagent.crypto import snapshots, vm_xml
 
     monkeypatch.setattr(vm_xml, '_file_chain', lambda path: iter([(path, 'qcow2', False)]))
+    monkeypatch.setattr(snapshots, '_encrypted_chain', lambda path: False)
 
 
 # ---------------------------------------------------------------------------
