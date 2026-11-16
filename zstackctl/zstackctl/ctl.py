@@ -72,6 +72,8 @@ IP6TABLES_COMMAND = 'ip6tables'
 IPTABLES_IPV4_LOOPBACK = '127.0.0.1'
 IPTABLES_IPV6_LOOPBACK = '::1'
 UI_LOCAL_WEBHOOK_HOST = IPTABLES_IPV4_LOOPBACK
+DEFAULT_LICENSE_SERVER_PORT = 18201
+DEFAULT_ZCF_LICENSE_UI_PORT = '8114'
 
 
 def colorize_output(text, color):
@@ -79,12 +81,25 @@ def colorize_output(text, color):
     return colored(text, color, no_color=no_color, force_color=True)
 
 
+def build_ipv4_firewall_accept_command(port, distro):
+    rule = '-A INPUT -p tcp -m tcp --dport %s -j ACCEPT' % port
+    add_rule = 'iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT' % port
+    command = 'iptables-save | grep -- "%s" > /dev/null || ' % rule
+    if distro in RPM_BASED_OS:
+        save_cmd = '(systemctl list-unit-files iptables.service 2>/dev/null | grep -q "^iptables\\.service" || [ -f /etc/init.d/iptables ]) && service iptables save || true'
+        return command + '(%s && (%s))' % (add_rule, save_cmd)
+    if distro in DEB_BASED_OS:
+        return command + '(%s && /etc/init.d/iptables-persistent save)' % add_rule
+    return command + add_rule
+
+
 def build_ui_ipv6_firewall_accept_command(server_port, distro):
     rule = '-A INPUT -p tcp -m tcp --dport %s -j ACCEPT' % server_port
     add_rule = 'ip6tables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT' % server_port
     command = 'ip6tables-save | grep -- "%s" > /dev/null || ' % rule
     if distro in RPM_BASED_OS:
-        return command + '(%s && service ip6tables save)' % add_rule
+        save_cmd = '(systemctl list-unit-files ip6tables.service 2>/dev/null | grep -q "^ip6tables\\.service" || [ -f /etc/init.d/ip6tables ]) && service ip6tables save || true'
+        return command + '(%s && (%s))' % (add_rule, save_cmd)
     if distro in DEB_BASED_OS:
         return command + '(%s && /etc/init.d/iptables-persistent save)' % add_rule
     return command + add_rule
@@ -12334,18 +12349,17 @@ class StartUiCmd(Command):
         #    return
 
         distro = map_distro_id(platform.freedesktop_os_release())
-        if distro in RPM_BASED_OS:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && service iptables save)' % args.server_port)
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.server_port, args.server_port))
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && service iptables save)' % (args.webhook_port, args.webhook_port))
-        elif distro in DEB_BASED_OS:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT && /etc/init.d/iptables-persistent save)' % args.server_port)
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.server_port, args.server_port))
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || (iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT && /etc/init.d/iptables-persistent save)' % (args.webhook_port, args.webhook_port))
-        else:
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport 5000 -j ACCEPT ' % args.server_port)
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.server_port, args.server_port))
-            shell('iptables-save | grep -- "-A INPUT -p tcp -m tcp --dport %s -j ACCEPT" > /dev/null || iptables -I INPUT -p tcp -m tcp --dport %s -j ACCEPT ' % (args.webhook_port, args.webhook_port))
+        ui_firewall_ports = ['5000', str(args.server_port), str(args.webhook_port)]
+        zcf_license_manifest = os.path.join(zstackui, 'zstack-ui', 'zcf-license', 'mf-manifest.json')
+        if os.path.isfile(zcf_license_manifest) and not ctl.read_ui_property('zcf-license.host'):
+            zcf_license_ui_port = ctl.read_ui_property('zcf-license.ui_port') or DEFAULT_ZCF_LICENSE_UI_PORT
+            ui_firewall_ports.append(str(zcf_license_ui_port))
+        seen_ports = set()
+        for ui_port in ui_firewall_ports:
+            if not ui_port or ui_port in seen_ports:
+                continue
+            seen_ports.add(ui_port)
+            shell(build_ipv4_firewall_accept_command(ui_port, distro))
         enableSSL = 'false'
         with open(StartUiCmd.HTTP_FILE, 'w') as fd:
             fd.write('http')
@@ -13799,7 +13813,7 @@ WantedBy=multi-user.target
 
 
 class LicenseServerService(ExtraService):
-    default_port = 8201
+    default_port = DEFAULT_LICENSE_SERVER_PORT
     https_health_url = "https://127.0.0.1:%d/healthz" % default_port
     http_health_url = "http://127.0.0.1:%d/healthz" % default_port
     ready_url = None
@@ -13807,7 +13821,17 @@ class LicenseServerService(ExtraService):
     def service_name(self):
         return "zstack-license-server"
 
+    def _allow_firewall_port(self):
+        distro = map_distro_id(platform.freedesktop_os_release())
+        fw_cmd = build_ipv4_firewall_accept_command(self.default_port, distro)
+        if shell_return('which iptables >/dev/null 2>&1') == 0:
+            shell(fw_cmd)
+        if self.zsha2_utils:
+            self.zsha2_utils.execute_on_peer(
+                'which iptables >/dev/null 2>&1 && (%s) || true' % fw_cmd)
+
     def start(self, do_init=False):
+        self._allow_firewall_port()
         shell_no_pipe("systemctl enable --now %s" % self.service_name())
         self.ready_url = self._wait_for_license_server([self.https_health_url, self.http_health_url])
         if self.zsha2_utils:
