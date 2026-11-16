@@ -274,6 +274,7 @@ class FenceVmOnSuspectHostCmd(kvmagent.AgentCommand):
         self.vmUuid = None
         self.targetHostUuid = None
         self.targetHostIp = None
+        self.targetHostExtraIps = None
         self.targetHostUsername = None
         self.targetHostPrivateKey = None
         self.targetHostSshPort = None
@@ -3079,6 +3080,7 @@ class HaPlugin(kvmagent.KvmAgent):
         unreachable_errors = [
             "Connection timed out",
             "No route to host",
+            "Network is unreachable",
             "Connection refused",
         ]
         return any(e in output for e in unreachable_errors)
@@ -3090,9 +3092,11 @@ class HaPlugin(kvmagent.KvmAgent):
 
         vm_uuid = cmd.vmUuid
         target_ip = cmd.targetHostIp.strip() if cmd.targetHostIp else ""
-        if not target_ip:
+        target_ips = ([target_ip] if target_ip else []) + (cmd.targetHostExtraIps or [])
+
+        if not target_ips:
             rsp.success = False
-            rsp.error = "targetHostIp is required to fence vm[%s] on suspect host" % vm_uuid
+            rsp.error = "targetHostIp or targetHostExtraIps is required to fence vm[%s] on suspect host" % vm_uuid
             logger.warn(rsp.error)
             return jsonobject.dumps(rsp)
 
@@ -3111,41 +3115,49 @@ class HaPlugin(kvmagent.KvmAgent):
 
         private_key_file = linux.write_to_temp_file(target_private_key if target_private_key else "")
         os.chmod(private_key_file, 0o600)
-        ssh_argv = (
-            "timeout %d ssh -i %s -p %d "
-            "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
-            "-o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "
-            "-o BatchMode=no %s@%s %s"
-        ) % (ssh_timeout, private_key_file, target_port, target_user, target_ip,
-             linux.shellquote(remote_cmd))
-
-        logger.info("fence vm[%s] on suspect host[%s] via this peer" % (vm_uuid, target_ip))
+        errors = []
         try:
-            try:
-                s = shell.ShellCmd(ssh_argv)
-                s(False)
-            except Exception as e:
-                rsp.success = False
-                rsp.error = "failed to execute ssh command for suspect host[%s]: %s" % (target_ip, str(e))
-                logger.warn(rsp.error)
-                return jsonobject.dumps(rsp)
-            rc, out, err = s.return_code, s.stdout, s.stderr
+            for target_ip in target_ips:
+                ssh_argv = (
+                    "timeout %d ssh -i %s -p %d "
+                    "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+                    "-o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "
+                    "-o BatchMode=no %s@%s %s"
+                ) % (ssh_timeout, private_key_file, target_port, target_user, target_ip,
+                     linux.shellquote(remote_cmd))
 
-            if rc == 0:
-                logger.info("vm[%s] confirmed dead on suspect host[%s]" % (vm_uuid, target_ip))
-            elif rc == 2:
-                rsp.success = False
-                rsp.error = "qemu still alive on %s after force-destroy attempt" % target_ip
-            elif self._is_pre_fence_ssh_unreachable(rc, out, err):
-                logger.info("ssh to suspect host[%s] failed (rc=%s, err=%s), treat as unreachable"
-                            % (target_ip, rc, err))
-            else:
-                rsp.success = False
-                rsp.error = "failed to fence vm[%s] on suspect host[%s], ssh rc=%s, stdout=%s, stderr=%s" % (
-                    vm_uuid, target_ip, rc, out, err)
-                logger.warn(rsp.error)
+                logger.info("fence vm[%s] on suspect host[%s] via this peer" % (vm_uuid, target_ip))
+                try:
+                    s = shell.ShellCmd(ssh_argv)
+                    s(False)
+                except Exception as e:
+                    error = "failed to execute ssh command for suspect host[%s]: %s" % (target_ip, str(e))
+                    errors.append(error)
+                    logger.error(error)
+                    continue
+
+                rc, out, err = s.return_code, s.stdout, s.stderr
+                if rc == 0:
+                    logger.info("vm[%s] confirmed dead on suspect host[%s]" % (vm_uuid, target_ip))
+                    return jsonobject.dumps(rsp)
+                elif self._is_pre_fence_ssh_unreachable(rc, out, err):
+                    logger.info("ssh to suspect host[%s] failed (rc=%s, err=%s), treat as unreachable"
+                                % (target_ip, rc, err))
+                    continue
+                elif rc == 2:
+                    error = "qemu still alive on %s after force-destroy attempt" % target_ip
+                else:
+                    error = "failed to fence vm[%s] on suspect host[%s], ssh rc=%s, stdout=%s, stderr=%s" % (
+                        vm_uuid, target_ip, rc, out, err)
+                errors.append(error)
+                logger.error(error)
         finally:
             linux.rm_file_force(private_key_file)
+
+        if errors:
+            rsp.success = False
+            rsp.error = "pre-fence failures: [%s]" % "; ".join(errors)
+            logger.error(rsp.error)
 
         return jsonobject.dumps(rsp)
 
