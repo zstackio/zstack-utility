@@ -13,10 +13,10 @@ def _command_output(*command):
 
 
 def _field(output, name):
-    values = re.findall(r"^\s*" + re.escape(name) + r"\s*:\s*(\S+)\s*$", output, re.MULTILINE)
+    values = re.findall(r"^[ \t]*" + re.escape(name) + r"[ \t]*:[ \t]*([^\r\n]*)\r?$", output, re.MULTILINE)
     if len(values) > 1:
         raise ValueError("ambiguous NPU field: " + name)
-    return values[0] if values else None
+    return values[0].strip() if values else None
 
 
 def _link_status(command_output, device_id):

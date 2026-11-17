@@ -316,10 +316,18 @@ def test_duplicate_roce_addresses_do_not_hide_independent_valid_hccs_endpoints()
     assert all(device['hccs']['linkStatus'] == 'UP' for device in devices)
 
 
-def test_ambiguous_hccs_link_fields_cannot_be_advertised_as_up():
+@pytest.mark.parametrize("extra_status", ["DOWN", "NOT SUPPORTED", ""])
+def test_ambiguous_hccs_link_fields_cannot_be_advertised_as_up(extra_status):
     hardware = _dual_die_output([])
     def output(*command):
         original = hardware(*command)
-        return original + 'vnic link status: DOWN\n' if '-vnic' in command else original
+        return original + 'vnic link status: ' + extra_status + '\n' if '-vnic' in command else original
     devices = hccn.collect_devices(output)
     assert all('error' in device['hccs'] and 'ambiguous' in device['hccs']['error'] for device in devices)
+
+
+def test_hccs_driver_crlf_output_keeps_complete_chip_identities():
+    hardware = _dual_die_output([])
+    devices = hccn.collect_devices(lambda *command: hardware(*command).replace('\n', '\r\n'))
+    assert {device['physicalId'] for device in devices} == {12, 13}
+    assert all(device['hccs']['linkStatus'] == 'UP' for device in devices)
