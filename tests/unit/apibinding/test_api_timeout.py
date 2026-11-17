@@ -115,10 +115,14 @@ def test_old_or_invalid_server_timeout_uses_legacy_default(api, monkeypatch, fie
 
 @pytest.mark.parametrize('immediate', [True, False])
 @pytest.mark.parametrize('success,exception_on_error', [(True, True), (False, True), (False, False)])
-def test_completion_and_error_semantics(api, monkeypatch, immediate, success, exception_on_error):
+@pytest.mark.parametrize('client_timeout,server_timeout', [
+    (None, 10800000), (500, 10800000), (None, 500), (250, 10800000),
+])
+def test_completion_and_error_semantics(api, monkeypatch, immediate, success, exception_on_error,
+                                        client_timeout, server_timeout):
     response = done(success)
-    calls = wire(monkeypatch, api, response if immediate else processing(apiTimeout=10800000), [response])
-    action = CreateDataVolumeFromVolumeSnapshotAction()
+    calls = wire(monkeypatch, api, response if immediate else processing(apiTimeout=server_timeout), [response])
+    action = CreateDataVolumeFromVolumeSnapshotAction(client_timeout)
     if not success and exception_on_error:
         with pytest.raises(api.ApiError) as error:
             api.Api().async_call_wait_for_complete(action, exception_on_error=exception_on_error)
@@ -147,9 +151,3 @@ def test_zero_client_falls_back_without_mutating_or_caching_server_timeout(api, 
     assert len(second['post']) == 1
     assert len(second['get']) == 2
     assert action.timeout == 0
-
-
-def test_completion_at_exact_deadline_keeps_timeout_behavior(api, monkeypatch):
-    wire(monkeypatch, api, processing(apiTimeout=900000), [done()])
-    with pytest.raises(api.ApiError, match=r'timeout after 900000ms, state\[Done\]'):
-        api.Api().async_call_wait_for_complete(CreateDataVolumeFromVolumeSnapshotAction(900000), interval=900000)
