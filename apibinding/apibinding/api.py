@@ -245,7 +245,7 @@ class Api(object):
             rsp = self._get_response(ret_uuid)
             curr += interval
 
-        if curr >= timeout:
+        if rsp.state != 'Done':
             raise ApiError('API call[%s] timeout after %dms, state[%s]. Request result url for details: %s' % (
                 apicmd.FULL_NAME, timeout, rsp.state, self._get_async_result_url(ret_uuid)))
 
