@@ -159,7 +159,9 @@ class AgentManager(object):
             bm_uuid=instance_obj.uuid,
             port_mac=[x.mac for x in network_obj.ports])
         LOG.info(msg)
-        self.driver.detach_port(instance_obj, network_obj)
+        provision_nic_restored = self.driver.detach_port(instance_obj, network_obj)
+        if provision_nic_restored is True:
+            return
         # provision nic detached from bond, config static ip for provision nic
         if instance_obj.provision_mac == network_obj.ports[0].mac:
             port = network_obj.ports[0]

@@ -1,3 +1,4 @@
+import copy
 import os.path
 
 from oslo_concurrency import processutils
@@ -13,6 +14,7 @@ from .centos_network_config import CentOSNetworkConfig as config
 from .centos import CentOSDriver
 
 LOG = logging.getLogger(__name__)
+BOND_DRACUT_CONFIG_PATH = '/etc/dracut.conf.d/bonding.conf'
 
 
 class KylinDriver(CentOSDriver):
@@ -33,69 +35,78 @@ class KylinDriver(CentOSDriver):
 
 
     def detach_port(self, instance_obj, network_obj):
+        provision_nic_restored = False
         for port in network_obj.ports:
             # Ensure that the conf file exist because command ifdown
             # requires it.
             if port.type == port.PORT_TYPE_BOND:
-                raise exception.NewtorkInterfaceConfigParasInvalid(
-                    exception_msg="port type {} is not support".format(port.type))
+                if port.mac != instance_obj.provision_mac:
+                    raise exception.NewtorkInterfaceConfigParasInvalid(
+                        exception_msg="port type {} is not support".format(port.type))
+                self._detach_provision_bond(port)
+                provision_nic_restored = True
+                continue
             self._detach_port(port)
+        return provision_nic_restored
+
+    def _detach_provision_bond(self, port):
+        physical_port = copy.copy(port)
+        physical_port.type = port.PORT_TYPE_PHY
+        physical_port.iface_name = agent_utils.get_interface_by_mac(port.mac)
+        old_config = None
+        if os.path.exists(BOND_DRACUT_CONFIG_PATH):
+            with open(BOND_DRACUT_CONFIG_PATH) as stream:
+                old_config = stream.read()
+        try:
+            self._detach_port(port)
+            self._attach_port(physical_port)
+            with open(BOND_DRACUT_CONFIG_PATH, 'w') as stream:
+                stream.write(
+                    'add_dracutmodules+=" network "\n'
+                    'kernel_cmdline+=" ip={interface}:dhcp bootdev={interface}"\n'.format(
+                        interface=physical_port.iface_name))
+            subprocess.check_call(['timeout', '-k', '5', '300', 'dracut', '-f'])
+        except Exception as error:
+            # The backend retains the Bond on failure, so restore its OS state.
+            restore_errors = []
+            try:
+                if old_config is None:
+                    agent_utils.remove_file(BOND_DRACUT_CONFIG_PATH)
+                else:
+                    with open(BOND_DRACUT_CONFIG_PATH, 'w') as stream:
+                        stream.write(old_config)
+            except Exception as restore_error:
+                restore_errors.append(str(restore_error))
+            try:
+                self._attach_port(port)
+            except Exception as restore_error:
+                restore_errors.append(str(restore_error))
+            if restore_errors:
+                raise RuntimeError('failed to detach Bond: {}; failed to restore: {}'.format(
+                    error, '; '.join(restore_errors)))
+            raise
 
     def _write_bond_to_dracut_config(self, port):
-        output_file = "/etc/dracut.conf.d/bonding.conf"
         bonding_config = "/etc/sysconfig/network-scripts/ifcfg-%s" % port.iface_name
         if not os.path.exists(bonding_config):
             return
 
         slave_interfaces = self._read_slaves_from_sys(port.iface_name)
         bonding_opts = self._read_bonding_opts_from_ifcfg(bonding_config)
-        new_config_content = (
+        content = (
             'add_dracutmodules+=" network "\n'
-            'kernel_cmdline+=" bond={name}:{slaves}:{bonding_opts} ip={name}:dhcp bootdev={name}"'
+            'kernel_cmdline+=" bond={name}:{slaves}:{bonding_opts} ip={name}:dhcp bootdev={name}"\n'
         ).format(
             name=port.iface_name,
             slaves=slave_interfaces,
             bonding_opts=bonding_opts
         )
 
-        if os.path.exists(output_file):
-            try:
-                with open(output_file, "r") as f:
-                    existing_content = f.read()
-
-                add_dracutmodules_pattern = re.compile(r'add_dracutmodules\s*\+=\s*"\s*network\s*"')
-
-                if add_dracutmodules_pattern.search(existing_content):
-                    kernel_cmdline_pattern = re.compile(r'kernel_cmdline\s*\+=\s*" bond=[^"]+"')
-                    existing_kernel_cmdline_match = kernel_cmdline_pattern.search(existing_content)
-                    if existing_kernel_cmdline_match:
-                        existing_kernel_cmdline = existing_kernel_cmdline_match.group(0)
-                        new_kernel_cmdline = (
-                            'kernel_cmdline+=" bond={name}:{slaves}:{bonding_opts} '
-                            'ip={name}:dhcp"'
-                        ).format(
-                            name=port.iface_name,
-                            slaves=slave_interfaces,
-                            bonding_opts=bonding_opts
-                        )
-
-                        if existing_kernel_cmdline != new_kernel_cmdline:
-                            with open(output_file, "a") as f:
-                                f.write("\n" + new_kernel_cmdline + "\n")
-                    else:
-                        with open(output_file, "a") as f:
-                            f.write("\n" + new_config_content + "\n")
-                else:
-                    with open(output_file, "a") as f:
-                        f.write(new_config_content + "\n")
-            except IOError as e:
-                LOG.info("fail to get config, error :%s" % e)
-        else:
-            try:
-                with open(output_file, "w") as f:
-                    f.write(new_config_content)
-            except IOError as e:
-                LOG.info("write config has error :%s" % e)
+        try:
+            with open(BOND_DRACUT_CONFIG_PATH, 'w') as stream:
+                stream.write(content)
+        except IOError as e:
+            LOG.info("write config has error :%s" % e)
 
     def _read_slaves_from_sys(self, bond_name):
         slaves_file_path = '/sys/class/net/{}/bonding/slaves'.format(bond_name)
