@@ -455,6 +455,293 @@ class TestHostPluginResourceControl:
 
 
 @pytest.mark.kvmagent
+class TestHostPluginFactKvmModuleParameters:
+    @pytest.fixture
+    def fact_runtime(self):
+        plugin = _make_plugin()
+        plugin.IS_YUM = False
+        plugin._get_features_in_libvirt = MagicMock(return_value=None)
+        plugin._get_host_cpu_model = MagicMock(return_value='TestCPU')
+        plugin._get_cpu_cache = MagicMock(return_value=[64, 256, 8192])
+        plugin._collect_ipmi_info = MagicMock()
+        runtime = {
+            'flag': 'vmx',
+            'model': 'Intel Xeon',
+            'files': {
+                '/sys/module/kvm_intel/parameters/ept': 'Y\n',
+                '/sys/module/kvm_intel/parameters/nested': 'N\n',
+                '/sys/module/kvm_amd/parameters/nested': '1\n',
+            },
+        }
+
+        def shell_run(command):
+            if command == 'grep vmx /proc/cpuinfo':
+                return 0 if runtime['flag'] == 'vmx' else 1
+            if command == 'grep svm /proc/cpuinfo':
+                return 0 if runtime['flag'] == 'svm' else 1
+            if command == 'grep -w ept /proc/cpuinfo':
+                return 0
+            if command == 'dmidecode':
+                return 1
+            raise AssertionError('unexpected command: %s' % command)
+
+        def shell_call(command, **kwargs):
+            if command.startswith('qemu-img '):
+                return '4.2.0\n'
+            if command.startswith('grep -m2 '):
+                return runtime['model'] + '\n2400.000\n'
+            if '/per socket/' in command or '/per cluster/' in command:
+                return '4'
+            if '/per core/' in command:
+                return '2'
+            if '/max MHz/' in command:
+                return '2400.000'
+            if '/Model name/' in command:
+                return runtime['model']
+            if command == 'dmidecode -s processor-frequency':
+                return '2400 MHz'
+            if command == 'uptime -s':
+                return '2026-11-20 00:00:00'
+            raise AssertionError('unexpected command: %s' % command)
+
+        def read_parameter(path, mode):
+            assert mode == 'r'
+            value = runtime['files'][path]
+            if isinstance(value, Exception):
+                raise value
+            return io.StringIO(value)
+
+        reader = MagicMock(side_effect=read_parameter)
+        plugin._set_intel_ept = MagicMock(
+            side_effect=AssertionError('fact must not write EPT')
+        )
+        with patch.multiple(
+            host_plugin, host_arch='x86_64', IS_AARCH64=False,
+            IS_MIPS64EL=False, IS_LOONGARCH64=False,
+        ), patch.multiple(
+            host_plugin.shell, run=shell_run, call=shell_call,
+            ShellCmd=lambda cmd: MagicMock(return_code=1),
+        ), patch.multiple(
+            host_plugin.linux, get_libvirt_package_version=lambda: '6.0.0',
+            get_iscsi_initiator_name=lambda: 'iqn.test',
+            get_socket_num=lambda: 2,
+            get_cpu_model=MagicMock(
+                side_effect=AssertionError('unexpected vendor lookup')
+            ),
+        ), patch.object(
+            host_plugin.platform, 'machine', lambda: host_plugin.host_arch
+        ), patch.object(
+            host_plugin.network_ipv6, 'collect_reportable_agent_addresses',
+            lambda iproute: ['192.0.2.1'],
+        ), patch.object(
+            host_plugin.qemu, 'get_version_from_exe_file', lambda path: '4.2.0'
+        ), patch.object(
+            host_plugin.misc, 'isHyperConvergedHost', lambda: False
+        ), patch.object(
+            host_plugin.cpu_frequency, 'get_static_cpu_ghz',
+            lambda model, frequencies: '2.40',
+        ), patch.object(
+            host_plugin.os, 'listdir',
+            side_effect=AssertionError('unexpected module scan'),
+        ), patch('builtins.open', reader):
+            yield plugin, runtime, reader
+
+    def test_response_defaults_to_unknown(self):
+        assert host_plugin.HostFactResponse().kvmModuleParameters is None
+
+    @pytest.mark.parametrize('ept, nested, enabled, nested_enabled', [
+        ('Y\n', 'N\n', True, False), ('N\n', 'Y\n', False, True),
+        ('1\n', '0\n', True, False), ('0\n', '1\n', False, True),
+        (' y \n', ' n \n', True, False),
+    ])
+    def test_vmx_fact_reports_runtime_booleans(
+            self, fact_runtime, ept, nested, enabled, nested_enabled):
+        plugin, runtime, _ = fact_runtime
+        runtime['files']['/sys/module/kvm_intel/parameters/ept'] = ept
+        runtime['files']['/sys/module/kvm_intel/parameters/nested'] = nested
+
+        rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp['hvmCpuFlag'] == 'vmx'
+        assert rsp['eptFlag'] == 'ept'
+        assert rsp['kvmModuleParameters'] == {
+            'ept': enabled, 'nested': nested_enabled,
+        }
+        assert rsp['qemuImgVersion'] == '4.2.0'
+        assert rsp['ipAddresses'] == ['192.0.2.1']
+
+    def test_zhaoxin_vmx_uses_intel_parameters(self, fact_runtime):
+        plugin, runtime, reader = fact_runtime
+        runtime['model'] = 'ZHAOXIN KaiXian CPU'
+        runtime['files']['/sys/module/kvm_intel/parameters/ept'] = 'N\n'
+
+        rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp['hostCpuModelName'] == 'ZHAOXIN KaiXian CPU'
+        assert rsp['kvmModuleParameters'] == {'ept': False, 'nested': False}
+        assert [call.args[0] for call in reader.call_args_list] == [
+            '/sys/module/kvm_intel/parameters/ept',
+            '/sys/module/kvm_intel/parameters/nested',
+        ]
+
+    @pytest.mark.parametrize('model, nested, enabled', [
+        ('AMD EPYC', '1\n', True), ('Hygon CPU', 'N\n', False),
+    ])
+    def test_svm_fact_reports_only_nested(
+            self, fact_runtime, model, nested, enabled):
+        plugin, runtime, reader = fact_runtime
+        runtime['flag'] = 'svm'
+        runtime['model'] = model
+        runtime['files']['/sys/module/kvm_amd/parameters/nested'] = nested
+
+        rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp['hvmCpuFlag'] == 'svm'
+        assert rsp['kvmModuleParameters'] == {'nested': enabled}
+        reader.assert_called_once_with(
+            '/sys/module/kvm_amd/parameters/nested', 'r'
+        )
+
+    @pytest.mark.parametrize('arch', ['aarch64', 'mips64el', 'loongarch64'])
+    def test_non_x86_fact_reports_empty_parameters(self, fact_runtime, arch):
+        plugin, _, reader = fact_runtime
+        with patch.multiple(
+            host_plugin, host_arch=arch, IS_AARCH64=arch == 'aarch64',
+            IS_MIPS64EL=arch == 'mips64el',
+            IS_LOONGARCH64=arch == 'loongarch64',
+        ):
+            rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp['kvmModuleParameters'] == {}
+        reader.assert_not_called()
+
+    def test_unknown_cpu_flag_keeps_fact_successful(self, fact_runtime):
+        plugin, runtime, reader = fact_runtime
+        runtime['flag'] = None
+        with patch.object(host_plugin.logger, 'warning') as warning:
+            rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp.get('kvmModuleParameters') is None
+        assert rsp['qemuImgVersion'] == '4.2.0'
+        reader.assert_not_called()
+        warning.assert_called_once()
+
+    @pytest.mark.parametrize('parameter', ['ept', 'nested'])
+    @pytest.mark.parametrize('value', ['', ' \n', 'unknown', '2', 'YES'])
+    def test_invalid_parameter_keeps_fact_successful(
+            self, fact_runtime, parameter, value):
+        plugin, runtime, _ = fact_runtime
+        path = '/sys/module/kvm_intel/parameters/' + parameter
+        runtime['files'][path] = value
+        with patch.object(host_plugin.logger, 'warning') as warning:
+            rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp.get('kvmModuleParameters') is None
+        assert rsp['qemuImgVersion'] == '4.2.0'
+        warning.assert_called_once()
+
+    @pytest.mark.parametrize('module, parameter', [
+        ('kvm_intel', 'ept'), ('kvm_intel', 'nested'), ('kvm_amd', 'nested'),
+    ])
+    @pytest.mark.parametrize('errno', [2, 13])
+    def test_unreadable_parameter_keeps_fact_successful(
+            self, fact_runtime, module, parameter, errno):
+        plugin, runtime, _ = fact_runtime
+        runtime['flag'] = 'svm' if module == 'kvm_amd' else 'vmx'
+        path = '/sys/module/%s/parameters/%s' % (module, parameter)
+        runtime['files'][path] = IOError(errno, 'unavailable', path)
+        with patch.object(host_plugin.logger, 'warning') as warning:
+            rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp.get('kvmModuleParameters') is None
+        assert rsp['qemuImgVersion'] == '4.2.0'
+        warning.assert_called_once()
+
+    def test_read_error_keeps_fact_successful(self, fact_runtime):
+        plugin, _, _ = fact_runtime
+        reader = mock_open()
+        reader.return_value.read.side_effect = IOError('sysfs read failed')
+        with patch('builtins.open', reader):
+            rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp.get('kvmModuleParameters') is None
+
+    def test_unexpected_collection_error_fails_host_fact(self, fact_runtime):
+        plugin, _, _ = fact_runtime
+        with patch.object(plugin, '_get_intel_ept', side_effect=RuntimeError):
+            rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is False
+
+    def test_fact_reads_fresh_runtime_parameters(self, fact_runtime):
+        plugin, runtime, reader = fact_runtime
+        first = json.loads(plugin.fact(_make_req()))
+        runtime['files']['/sys/module/kvm_intel/parameters/ept'] = 'N\n'
+        runtime['files']['/sys/module/kvm_intel/parameters/nested'] = 'Y\n'
+        second = json.loads(plugin.fact(_make_req()))
+
+        assert first['kvmModuleParameters'] == {'ept': True, 'nested': False}
+        assert second['kvmModuleParameters'] == {'ept': False, 'nested': True}
+        assert reader.call_count == 4
+
+
+@pytest.mark.kvmagent
+class TestHostPluginIntelEptWriter:
+    @pytest.mark.parametrize('value, desired, reload_module', [
+        ('Y\n', True, False), ('N\n', False, False),
+        ('Y\n', False, True), ('N\n', True, True),
+        ('1\n', True, False), ('0\n', False, False),
+    ])
+    def test_writer_preserves_boolean_behavior(
+            self, value, desired, reload_module):
+        plugin = _make_plugin()
+        reader = mock_open(read_data=value)
+        with patch('builtins.open', reader), patch.object(
+            host_plugin.shell, 'run', return_value=0
+        ) as shell_run:
+            assert plugin._set_intel_ept(desired) is None
+
+        if reload_module:
+            assert [call.args[0] for call in shell_run.call_args_list] == [
+                'modprobe -r kvm-intel', 'modprobe kvm-intel ept=%d' % desired,
+            ]
+            reader.return_value.write.assert_called_once_with(
+                'options kvm_intel ept=%d' % desired
+            )
+        else:
+            shell_run.assert_not_called()
+            reader.return_value.write.assert_not_called()
+
+    @pytest.mark.parametrize('value', ['', 'unknown', '2'])
+    def test_writer_does_not_change_module_after_invalid_read(self, value):
+        reader = mock_open(read_data=value)
+        with patch('builtins.open', reader), \
+                patch.object(host_plugin.shell, 'run') as shell_run:
+            with pytest.raises(ValueError):
+                _make_plugin()._set_intel_ept(True)
+
+        shell_run.assert_not_called()
+        reader.return_value.write.assert_not_called()
+
+    def test_writer_does_not_change_module_after_read_failure(self):
+        error = IOError('sysfs read failed')
+        with patch('builtins.open', side_effect=error), \
+                patch.object(host_plugin.shell, 'run') as shell_run:
+            with pytest.raises(IOError):
+                _make_plugin()._set_intel_ept(True)
+
+        shell_run.assert_not_called()
+
+
+@pytest.mark.kvmagent
 class TestHostPluginConnect:
     """Test host_plugin.connect handler."""
 

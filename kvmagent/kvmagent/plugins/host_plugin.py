@@ -138,6 +138,7 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.cpuModelName = None
         self.systemSerialNumber = None
         self.eptFlag = None
+        self.kvmModuleParameters = None
         self.libvirtCapabilities = []
         self.virtualizerInfo = vm_plugin.VirtualizerInfoTO()
         self.iscsiInitiatorName = None
@@ -2112,6 +2113,11 @@ class HostPlugin(kvmagent.KvmAgent):
             cpu_cache_list = self._get_cpu_cache()
             rsp.cpuCache = ",".join(str(cache) for cache in cpu_cache_list)
 
+        try:
+            rsp.kvmModuleParameters = self._get_kvm_parameters(rsp.hvmCpuFlag)
+        except (IOError, ValueError) as err:
+            logger.warning("Cannot read KVM module parameters: %s", err)
+
         # get virtualizer info
         rsp.virtualizerInfo.uuid = self.config.get(kvmagent.HOST_UUID)
         rsp.virtualizerInfo.virtualizer = "qemu-kvm"
@@ -2206,11 +2212,31 @@ class HostPlugin(kvmagent.KvmAgent):
             fd.write(jsonobject.dumps(hb))
         return True
 
+    def _get_kvm_parameters(self, hvm_cpu_flag):
+        if host_arch != 'x86_64':
+            return {}
+
+        if hvm_cpu_flag == 'vmx':
+            return {
+                'ept': self._get_intel_ept(),
+                'nested': self._read_kvm_bool('kvm_intel', 'nested'),
+            }
+        if hvm_cpu_flag == 'svm':
+            return {'nested': self._read_kvm_bool('kvm_amd', 'nested')}
+
+        logger.warning("Unknown virtualization flag: %r", hvm_cpu_flag)
+        return None
+
+    def _read_kvm_bool(self, module, parameter):
+        path = '/sys/module/%s/parameters/%s' % (module, parameter)
+        with open(path, 'r') as reader:
+            value = reader.read().strip().upper()
+        if value not in ('Y', 'N', '1', '0'):
+            raise ValueError('Invalid KVM value %r in %s' % (value, path))
+        return value in ('Y', '1')
+
     def _get_intel_ept(self):
-        text = None
-        with open('/sys/module/kvm_intel/parameters/ept', 'r') as reader:
-            text = reader.read()
-        return text is None or text.strip() == "Y"
+        return self._read_kvm_bool('kvm_intel', 'ept')
 
     def _set_intel_ept(self, new_ept):
         error = None
