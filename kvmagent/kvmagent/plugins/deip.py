@@ -25,6 +25,12 @@ logger = log.get_logger(__name__)
 EBTABLES_CMD = ebtables.get_ebtables_cmd()
 IPTABLES_CMD = iptables.get_iptables_cmd()
 IP6TABLES_CMD = iptables.get_ip6tables_cmd()
+if not hasattr(time, "monotonic"):
+    time.monotonic = getattr(linux, "monotime", time.time)
+
+
+def get_ebtables_cmd():
+    return EBTABLES_CMD
 IPV6_DAD_TIMEOUT = 3
 IPV6_DAD_INTERVAL = 0.1
 
@@ -433,8 +439,55 @@ class Eip(object):
                     return True
         return False
 
+    @staticmethod
+    def _normalize_ip_for_iptables(address, ip_version):
+        if not address:
+            return ""
+        try:
+            return str(netaddr.IPAddress(address, ip_version))
+        except Exception:
+            return str(address).strip()
+
+    def _has_expected_namespace_rules(self, eip, eip_suffix, ns_rules_output):
+        if not ns_rules_output:
+            return False
+        ip_version = int(getattr(eip, 'ipVersion', 4))
+        raw_vip = (getattr(eip, 'vip', None) or '').strip()
+        raw_nic_ip = (getattr(eip, 'nicIp', None) or '').strip()
+        if not raw_vip or not raw_nic_ip:
+            return False
+        vip = self._normalize_ip_for_iptables(raw_vip, ip_version)
+        nic_ip = self._normalize_ip_for_iptables(raw_nic_ip, ip_version)
+        pub_idev = "%s_ei" % eip_suffix
+        pri_idev = "%s_i" % eip_suffix
+        if ip_version == 4:
+            host_prefix = 32
+            dnat_chain = "DNAT-%s" % raw_vip
+            snat_chain = "SNAT-%s" % raw_vip
+            fwd_chain = "FWD-%s" % raw_vip
+        else:
+            host_prefix = 128
+            dnat_chain = "EIP6-DNAT-%s" % eip_suffix
+            snat_chain = "EIP6-SNAT-%s" % eip_suffix
+            fwd_chain = "EIP6-FWD-%s" % eip_suffix
+        required_rules = (
+            "PREROUTING -d %s/%d -j %s" % (vip, host_prefix, dnat_chain),
+            "%s -j DNAT --to-destination %s" % (dnat_chain, nic_ip),
+            "POSTROUTING -s %s/%d -j %s" % (nic_ip, host_prefix, snat_chain),
+            "%s -j SNAT --to-source %s" % (snat_chain, vip),
+            "FORWARD -i %s -o %s -j %s" % (pri_idev, pub_idev, fwd_chain),
+            "FORWARD -i %s -o %s -j %s" % (pub_idev, pri_idev, fwd_chain),
+            "%s -j ACCEPT" % fwd_chain,
+        )
+        return all(
+            re.search(r'(?m)^-A\s+%s(?:\s|$)' % re.escape(rule), ns_rules_output)
+            is not None
+            for rule in required_rules
+        )
+
     def is_eip_present(
-            self, eip, existing_netns, ebtables_nat_output=None, fdb_output=None):
+            self, eip, existing_netns, ebtables_nat_output=None,
+            fdb_output=None, ns_rules_output=None):
         ns_name = self.generate_namespace_name(eip.publicBridgeName, eip.vip)
         if ns_name not in existing_netns:
             return False
@@ -464,6 +517,18 @@ class Eip(object):
             if not self._has_expected_fdb_entry(
                     pri_mac, eip.physicalNic, fdb_output):
                 return False
+        if ns_rules_output is None:
+            save_cmd = (
+                'iptables-save'
+                if int(getattr(eip, 'ipVersion', 4)) == 4
+                else 'ip6tables-save'
+            )
+            r, ns_rules_output = bash_ro('ip netns exec %s %s' % (ns_name, save_cmd))
+            if r != 0:
+                return False
+        if not self._has_expected_namespace_rules(
+                eip, eip_suffix, ns_rules_output):
+            return False
         return True
 
     @bash.in_bash

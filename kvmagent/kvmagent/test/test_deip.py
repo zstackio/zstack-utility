@@ -1,3 +1,4 @@
+import inspect
 import sys
 import unittest
 import mock
@@ -7,6 +8,13 @@ except ImportError:
     class SimpleNamespace(object):
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
+
+if not hasattr(inspect, "unwrap"):
+    inspect.unwrap = lambda func: getattr(func, "__wrapped__", func)
+if not hasattr(unittest.TestCase, "assertCountEqual"):
+    unittest.TestCase.assertCountEqual = unittest.TestCase.assertItemsEqual
+if not hasattr(unittest.TestCase, "assertRaisesRegex"):
+    unittest.TestCase.assertRaisesRegex = unittest.TestCase.assertRaisesRegexp
 
 from kvmagent.plugins.deip import DEip, Eip
 
@@ -1122,6 +1130,45 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
             lines.append("Bridge chain: %s, entries: 1, policy: RETURN" % chain)
         return "\n".join(lines) + "\n"
 
+    @staticmethod
+    def _healthy_ns_rules_output(eip):
+        suffix = eip.eipUuid[-9:]
+        pub_idev = "%s_ei" % suffix
+        pri_idev = "%s_i" % suffix
+        ip_version = int(getattr(eip, "ipVersion", 4))
+        vip = eip.vip
+        nic_ip = eip.nicIp
+        if ip_version == 4:
+            host_prefix = 32
+            dnat_chain = "DNAT-%s" % vip
+            snat_chain = "SNAT-%s" % vip
+            fwd_chain = "FWD-%s" % vip
+        else:
+            host_prefix = 128
+            dnat_chain = "EIP6-DNAT-%s" % suffix
+            snat_chain = "EIP6-SNAT-%s" % suffix
+            fwd_chain = "EIP6-FWD-%s" % suffix
+        return "\n".join([
+            "*nat",
+            ":PREROUTING ACCEPT [0:0]",
+            ":POSTROUTING ACCEPT [0:0]",
+            ":%s - [0:0]" % dnat_chain,
+            ":%s - [0:0]" % snat_chain,
+            "-A PREROUTING -d %s/%d -j %s" % (vip, host_prefix, dnat_chain),
+            "-A POSTROUTING -s %s/%d -j %s" % (nic_ip, host_prefix, snat_chain),
+            "-A %s -j DNAT --to-destination %s" % (dnat_chain, nic_ip),
+            "-A %s -j SNAT --to-source %s" % (snat_chain, vip),
+            "COMMIT",
+            "*filter",
+            ":FORWARD ACCEPT [0:0]",
+            ":%s - [0:0]" % fwd_chain,
+            "-A FORWARD -i %s -o %s -j %s" % (pri_idev, pub_idev, fwd_chain),
+            "-A FORWARD -i %s -o %s -j %s" % (pub_idev, pri_idev, fwd_chain),
+            "-A %s -j ACCEPT" % fwd_chain,
+            "COMMIT",
+            "",
+        ])
+
     @mock.patch("kvmagent.plugins.deip.bash_o")
     def test_sync_prunes_multiple_orphan_eips_including_same_vm_and_missing_netns(
             self, bash_o):
@@ -1215,12 +1262,19 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
         )
 
         nat_out = self._healthy_ebtables_nat_output(healthy.eipUuid, healthy.nicName)
+        healthy_ns_rules = self._healthy_ns_rules_output(healthy)
+
+        def fake_bash_ro(cmd):
+            if "iptables-save" in cmd:
+                return (0, healthy_ns_rules)
+            return (0, nat_out)
+
         with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
                 mock.patch("kvmagent.plugins.deip.linux") as mock_linux, \
                 mock.patch("kvmagent.plugins.deip.get_ebtables_cmd",
                            return_value="ebtables"), \
                 mock.patch("kvmagent.plugins.deip.bash_ro",
-                           return_value=(0, nat_out)):
+                           side_effect=fake_bash_ro):
             mock_iproute.IpNetnsShell.list_netns.return_value = [
                 "br_eth0_192_168_1_100",
                 "br_eth0_192_168_1_102",
@@ -1240,6 +1294,50 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
         del_eip.assert_not_called()
         self.assertEqual([mock.call(passive), mock.call(missing)], apply_eip.call_args_list)
         self.assertEqual([passive.vipUuid, missing.vipUuid], applied_vips)
+        self.assertEqual([], errors)
+
+    @mock.patch("kvmagent.plugins.deip.bash_o")
+    def test_sync_reapplies_expected_eip_when_dnat_rule_missing(self, bash_o):
+        degraded = _make_eip()
+        degraded.eipUuid = "abcdef111111111"
+        degraded.vip = "192.168.1.100"
+        degraded.vipUuid = "vip-missing-dnat"
+
+        bash_o.return_value = "10: 111111111_eo alias %s\n" % self._alias(
+            degraded.eipUuid, degraded.vip, degraded.nicName
+        )
+        nat_out = self._healthy_ebtables_nat_output(degraded.eipUuid, degraded.nicName)
+        missing_dnat_rules = self._healthy_ns_rules_output(degraded).replace(
+            "-A DNAT-192.168.1.100 -j DNAT --to-destination 10.0.0.100\n", ""
+        )
+
+        def fake_bash_ro(cmd):
+            if "iptables-save" in cmd:
+                return (0, missing_dnat_rules)
+            return (0, nat_out)
+
+        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
+                mock.patch("kvmagent.plugins.deip.linux") as mock_linux, \
+                mock.patch("kvmagent.plugins.deip.get_ebtables_cmd",
+                           return_value="ebtables"), \
+                mock.patch("kvmagent.plugins.deip.bash_ro",
+                           side_effect=fake_bash_ro):
+            mock_iproute.IpNetnsShell.list_netns.return_value = [
+                "br_eth0_192_168_1_100"
+            ]
+            mock_iproute.IpNetnsShell.return_value.get_mac.return_value = (
+                "aa:bb:cc:dd:ee:ff"
+            )
+            mock_linux.is_network_device_up.return_value = True
+            with mock.patch.object(Eip, "apply_eip") as apply_eip:
+                with mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
+                    applied_vips, errors = inspect.unwrap(DEip._sync_eips)(
+                        self.plugin, [degraded], [], 30
+                    )
+
+        del_eip.assert_not_called()
+        apply_eip.assert_called_once_with(degraded)
+        self.assertEqual([degraded.vipUuid], applied_vips)
         self.assertEqual([], errors)
 
     @mock.patch("kvmagent.plugins.deip.bash_o")
@@ -1372,12 +1470,19 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
         nat_out = self._healthy_ebtables_nat_output(
             active_shared.eipUuid, active_shared.nicName
         )
+        shared_ns_rules = self._healthy_ns_rules_output(active_shared)
+
+        def fake_bash_ro(cmd):
+            if "iptables-save" in cmd:
+                return (0, shared_ns_rules)
+            return (0, nat_out)
+
         with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
                 mock.patch("kvmagent.plugins.deip.linux") as mock_linux, \
                 mock.patch("kvmagent.plugins.deip.get_ebtables_cmd",
                            return_value="ebtables"), \
                 mock.patch("kvmagent.plugins.deip.bash_ro",
-                           return_value=(0, nat_out)), \
+                           side_effect=fake_bash_ro), \
                 mock.patch.object(Eip, "delete_orphan_fdb_if_needed") as del_fdb, \
                 mock.patch.object(Eip, "delete_eip_with_ns") as del_eip:
             mock_iproute.IpNetnsShell.list_netns.return_value = [
@@ -1474,6 +1579,7 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
         missing_arp_nat = full_nat.replace("-p ARP -o vnic1.0 -j eip-vnic1.0-arp\n", "")
         good_fdb = "aa:bb:cc:dd:ee:ff dev eth0 self permanent\n"
         missing_fdb = "aa:bb:cc:dd:ee:ff dev eth1 self permanent\n"
+        healthy_ns_rules = self._healthy_ns_rules_output(eip)
 
         with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
                 mock.patch("kvmagent.plugins.deip.linux") as mock_linux:
@@ -1483,18 +1589,76 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
             )
             self.assertFalse(
                 eip_cmd.is_eip_present(
-                    eip, existing_netns, missing_arp_nat, good_fdb
+                    eip, existing_netns, missing_arp_nat, good_fdb, healthy_ns_rules
                 )
             )
             self.assertFalse(
                 eip_cmd.is_eip_present(
-                    eip, existing_netns, full_nat, missing_fdb
+                    eip, existing_netns, full_nat, missing_fdb, healthy_ns_rules
                 )
             )
             self.assertTrue(
                 eip_cmd.is_eip_present(
-                    eip, existing_netns, full_nat, good_fdb
+                    eip, existing_netns, full_nat, good_fdb, healthy_ns_rules
                 )
+            )
+
+    def test_is_eip_present_detects_missing_namespace_nat_rules(self):
+        eip = _make_eip()
+        eip.eipUuid = "abcdef111111111"
+        eip.vip = "192.168.1.100"
+        eip.nicName = "vnic1.0"
+
+        eip_v6 = _make_eip(ipVersion=6)
+        eip_v6.eipUuid = "abcdef111111111"
+        eip_v6.nicName = "vnic1.0"
+
+        eip_cmd = Eip()
+        existing_netns = {"br_eth0_192_168_1_100", "br_eth0_fd00:1::100"}
+        full_nat = self._healthy_ebtables_nat_output(eip.eipUuid, eip.nicName)
+        full_ns_rules = self._healthy_ns_rules_output(eip)
+        missing_dnat = full_ns_rules.replace(
+            "-A DNAT-192.168.1.100 -j DNAT --to-destination 10.0.0.100\n", ""
+        )
+        missing_snat = full_ns_rules.replace(
+            "-A SNAT-192.168.1.100 -j SNAT --to-source 192.168.1.100\n", ""
+        )
+        missing_fwd = full_ns_rules.replace(
+            "-A FORWARD -i 111111111_i -o 111111111_ei -j FWD-192.168.1.100\n", ""
+        )
+
+        v6_nat = "\n".join([
+            "Bridge table: nat",
+            "Bridge chain: PREROUTING, entries: 1, policy: ACCEPT",
+            "-i vnic1.0 -j eip-vnic1.0-gw",
+            "Bridge chain: eip-vnic1.0-gw, entries: 1, policy: RETURN",
+            "",
+        ])
+        full_v6_ns_rules = self._healthy_ns_rules_output(eip_v6)
+        missing_v6_dnat = full_v6_ns_rules.replace(
+            "-A EIP6-DNAT-111111111 -j DNAT --to-destination fd00:2::100\n", ""
+        )
+
+        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
+                mock.patch("kvmagent.plugins.deip.linux") as mock_linux:
+            mock_linux.is_network_device_up.return_value = True
+            mock_iproute.IpNetnsShell.return_value.get_mac.return_value = (
+                "aa:bb:cc:dd:ee:ff"
+            )
+            self.assertFalse(
+                eip_cmd.is_eip_present(eip, existing_netns, full_nat, None, missing_dnat)
+            )
+            self.assertFalse(
+                eip_cmd.is_eip_present(eip, existing_netns, full_nat, None, missing_snat)
+            )
+            self.assertFalse(
+                eip_cmd.is_eip_present(eip, existing_netns, full_nat, None, missing_fwd)
+            )
+            self.assertFalse(
+                eip_cmd.is_eip_present(eip_v6, existing_netns, v6_nat, None, missing_v6_dnat)
+            )
+            self.assertTrue(
+                eip_cmd.is_eip_present(eip_v6, existing_netns, v6_nat, None, full_v6_ns_rules)
             )
 
 
