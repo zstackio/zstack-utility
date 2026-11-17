@@ -1214,7 +1214,8 @@ def qcow2_convert(src, dst, dst_format='qcow2', shell=shell, progress_output=Non
     if bitmap:
         ext_opts.extend(["--bitmap", shellquote(bitmap)])
 
-    shell.call('qemu-img convert %s -f qcow2 -O %s %s %s %s' % (" ".join(ext_opts), dst_format, src, dst, redirect))
+    shell.call('qemu-img convert %s -f qcow2 -O %s %s %s %s' %
+               (" ".join(ext_opts), dst_format, shellquote(src), shellquote(dst), redirect))
 
 def qcow2_commit(top, base):
     shell.call('%s -f qcow2 -b %s %s' % (qemu_img.subcmd('commit'), base, top))
