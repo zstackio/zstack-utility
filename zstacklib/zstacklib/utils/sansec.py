@@ -12,7 +12,10 @@ def converge_driver():
 
 
 def probe(device, context):
-    return sansec_utils.supported_device(device.vendorId, device.deviceId)
+    if not sansec_utils.supported_device(device.vendorId, device.deviceId):
+        return False
+    return (device.deviceId.lower().removeprefix('0x') == sansec_utils.VF_DEVICE_ID
+            or not sansec_utils.is_companion_function(os.path.join(SYSFS_DEVICES, device.pciDeviceAddress)))
 
 
 def init(device, context):

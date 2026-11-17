@@ -54,6 +54,18 @@ def supported_device(vendor, device):
     return vendor.lower().removeprefix('0x') == VENDOR_ID and device.lower().removeprefix('0x') in DEVICE_IDS
 
 
+def is_companion_function(path):
+    slot, function = path.rsplit('.', 1)
+    primary = slot + '.0'
+    if function not in ('1', '2', '3') or os.path.exists(os.path.join(path, 'sriov_totalvfs')):
+        return False
+    if not os.path.exists(os.path.join(primary, 'sriov_totalvfs')):
+        return False
+    with open(os.path.join(primary, 'vendor')) as vendor, open(os.path.join(primary, 'device')) as device:
+        return (vendor.read().strip().lower().removeprefix('0x') == VENDOR_ID
+                and device.read().strip().lower().removeprefix('0x') == PF_DEVICE_ID)
+
+
 def parse_int(value, base=10):
     try:
         return int(value, base)

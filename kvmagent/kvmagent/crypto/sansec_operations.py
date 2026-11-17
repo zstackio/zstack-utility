@@ -145,7 +145,9 @@ class SansecOperations(object):
         if not isinstance(sriov, dict) or sriov.get('enabled') is not True or sriov.get('restoreVfnum') != -1:
             raise ValidationError('Sansec SR-IOV requires an explicit enabled profile with restoreVfnum=-1')
         pfs, bound = self.inventory()
-        if set(record['pciDeviceAddresses']) != set(pfs):
+        managed = {address for address in pfs
+                   if not sansec_utils.is_companion_function(os.path.join(sansec_health.SYSFS_DEVICES, address))}
+        if set(record['pciDeviceAddresses']) != managed:
             raise ValidationError('Operation scope must cover every Sansec PF on the host')
         covered = set(pfs)
         for device in pfs.values():
@@ -169,8 +171,8 @@ class SansecOperations(object):
         if not pfs[target]['total'] or desired > pfs[target]['total']:
             raise ValidationError('Target PF has insufficient SR-IOV capacity')
         if record['operation'] == 'Split':
-            if desired not in profile['supportedVfCounts'] or pfs[target]['vfs']:
-                raise ValidationError('Use a configured VF count on an unsplit PF')
+            if desired <= 0 or pfs[target]['vfs']:
+                raise ValidationError('Use a positive VF count on an unsplit PF')
         elif not pfs[target]['vfs']:
             raise ValidationError('Target PF is not split')
         if any(device['total'] and expected[address] != desired for address, device in pfs.items()):

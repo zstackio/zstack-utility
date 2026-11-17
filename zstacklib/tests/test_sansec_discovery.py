@@ -27,6 +27,53 @@ def test_unloaded_driver_is_still_discovered_without_claiming_health(tmp_path, m
     assert to.iommuGroup == ''
 
 
+def test_one_multifunction_card_reports_one_crypto_pf_and_retains_pci_dependencies(tmp_path, monkeypatch):
+    monkeypatch.setattr(sansec, 'SYSFS_DEVICES', str(tmp_path))
+    addresses = ['0000:b3:00.%s' % index for index in range(4)]
+    devices = []
+    for address in addresses:
+        path = tmp_path / address
+        path.mkdir()
+        (path / 'vendor').write_text('0x1ed4')
+        (path / 'device').write_text('0x7011')
+        to = device(address=address)
+        to.dependentDevices = [other for other in addresses if other != address]
+        devices.append(to)
+    (tmp_path / addresses[0] / 'sriov_totalvfs').write_text('64')
+    (tmp_path / addresses[0] / 'sriov_numvfs').write_text('0')
+
+    for to in devices:
+        pci.pci_device_probe(to, None)
+
+    assert [to.pciDeviceAddress for to in devices if to.type == 'Crypto_Controller'] == [addresses[0]], \
+        'One physical card must not become four independent crypto PF resources'
+    assert all(to.type == 'Generic' and not to.addonInfo for to in devices[1:])
+    assert devices[0].addonInfo['cryptoQualification'] == 'DriverUnavailable', \
+        'Driver absence must not hide the physical card'
+    assert devices[0].dependentDevices == addresses[1:], 'Companion functions remain PCI dependencies'
+    assert pci.pci_device_probe(device('1001', address='0000:b3:01.1'), None), \
+        'A VF function number must not be mistaken for a companion PF'
+
+
+@pytest.mark.parametrize('layout', ['another_sriov_pf', 'no_primary', 'no_primary_sriov', 'different_vendor'])
+def test_discovery_does_not_hide_a_function_without_a_known_companion_layout(tmp_path, monkeypatch, layout):
+    monkeypatch.setattr(sansec, 'SYSFS_DEVICES', str(tmp_path))
+    primary = tmp_path / '0000:b3:00.0'
+    primary.mkdir()
+    (primary / 'vendor').write_text('0x10de' if layout == 'different_vendor' else '0x1ed4')
+    (primary / 'device').write_text('0x7011')
+    if layout != 'no_primary_sriov':
+        (primary / 'sriov_totalvfs').write_text('64')
+    address = '0000:b4:00.1' if layout == 'no_primary' else '0000:b3:00.1'
+    path = tmp_path / address
+    path.mkdir()
+    if layout == 'another_sriov_pf':
+        (path / 'sriov_totalvfs').write_text('64')
+    to = device(address=address)
+    assert pci.pci_device_probe(to, None)
+    assert to.type == 'Crypto_Controller', 'Only positively identified companion functions may be excluded'
+
+
 def test_vf_reports_pf_driver_even_while_bound_to_vfio(tmp_path, monkeypatch):
     pf = tmp_path / '0000:b3:00.0'
     vf = tmp_path / '0000:b3:01.0'

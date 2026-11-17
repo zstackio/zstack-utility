@@ -195,7 +195,11 @@ class SansecHealthDetector(object):
                 if version != profile['driverVersion']:
                     report['reason'] = 'Sansec driver version differs from the configured profile'
                     continue
-                selected[address] = profile
+                with open(os.path.join(SYSFS_DEVICES, address.lower(), 'sriov_totalvfs')) as source:
+                    capacity = sansec_utils.parse_int(source.read())
+                if capacity <= 0:
+                    raise ValidationError('Sansec primary function must provide SR-IOV')
+                selected[address] = dict(profile, supportedVfCounts=list(range(1, capacity + 1)))
             if selected:
                 self.check_sdk_endpoint(present, selected)
                 result = self.probe(dict(config, devices=selected))
