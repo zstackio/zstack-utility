@@ -43,6 +43,7 @@ def detector(tmp_path, monkeypatch, library):
     pf.mkdir(parents=True)
     (pf / 'vendor').write_text('0x1ed4')
     (pf / 'device').write_text('0x7011')
+    (pf / 'sriov_totalvfs').write_text('64')
     driver = tmp_path / 'drivers/swcsm'
     (driver / 'module').mkdir(parents=True)
     (driver / 'module/version').write_text('test-driver')
@@ -84,7 +85,7 @@ def test_real_ctypes_worker_reads_identity_checks_vector_and_closes_handles(dete
     result = report(detector)
     assert result['healthStatus'] == 'Normal'
     assert result['qualification'] == 'Qualified' and result['serialNumber'] == 'TEST-SERIAL'
-    assert result['firmwareVersion'] == 'test-firmware' and result['supportedVfCounts'] == [2]
+    assert result['firmwareVersion'] == 'test-firmware' and result['supportedVfCounts'] == list(range(1, 65))
     assert (detector.test_path / 'trace').read_text().splitlines() == [
         'open', 'session', 'info', 'firmware', 'library', 'init', 'update', 'final', 'close_session', 'close_device']
 
@@ -331,7 +332,7 @@ def test_srcversion_identity_is_explicit_and_drift_prevents_sdk_access(detector)
 
 @pytest.mark.parametrize('problem', ['missing_config', 'bad_json', 'bad_shape', 'bad_profile', 'missing_library',
                                    'no_symbols', 'no_driver', 'wrong_vendor', 'vf', 'duplicate_serial',
-                                   'no_vf_contract'])
+                                   'no_vf_capacity'])
 def test_installation_and_configuration_errors_are_unknown(detector, problem):
     path = detector.test_path
     if problem == 'missing_config':
@@ -359,9 +360,8 @@ def test_installation_and_configuration_errors_are_unknown(detector, problem):
     elif problem == 'duplicate_serial':
         detector.test_config['devices'][OTHER] = detector.test_config['devices'][ADDRESS]
         configure(detector)
-    elif problem == 'no_vf_contract':
-        detector.test_config['devices'][ADDRESS]['supportedVfCounts'] = []
-        configure(detector)
+    elif problem == 'no_vf_capacity':
+        (path / 'pci' / ADDRESS / 'sriov_totalvfs').unlink()
     result = report(detector)
     assert result['healthStatus'] == 'Unknown' and result['qualification'] == 'Unverified'
 
@@ -379,13 +379,36 @@ def test_cleanup_failure_does_not_report_normal(detector, monkeypatch):
 
 
 @pytest.mark.parametrize('field', ['serialNumber', 'firmwareVersion', 'libraryVersion', 'driverVersion',
-                                   'compatible', 'pollInterval', 'validityPeriod', 'recoveryInterval',
-                                   'supportedVfCounts'])
+                                   'compatible', 'pollInterval', 'validityPeriod', 'recoveryInterval'])
 def test_missing_profile_field_is_reported_without_entering_sdk(detector, field):
     del detector.test_config['devices'][ADDRESS][field]
     configure(detector)
     result = report(detector)
     assert result['healthStatus'] == 'Unknown'
+    assert not (detector.test_path / 'trace').exists()
+
+
+@pytest.mark.parametrize('legacy_counts', [None, [2], [64]])
+@pytest.mark.parametrize('capacity', [8, 64])
+def test_vf_capability_comes_from_pf_instead_of_installation_profile(detector, legacy_counts, capacity):
+    profile = detector.test_config['devices'][ADDRESS]
+    if legacy_counts is None:
+        del profile['supportedVfCounts']
+    else:
+        profile['supportedVfCounts'] = legacy_counts
+    configure(detector)
+    (detector.test_path / 'pci' / ADDRESS / 'sriov_totalvfs').write_text(str(capacity))
+    result = report(detector)
+    assert result['healthStatus'] == 'Normal' and result['qualification'] == 'Qualified', result
+    assert result['supportedVfCounts'] == list(range(1, capacity + 1))
+
+
+@pytest.mark.parametrize('capacity', ['0', '-1', 'invalid'])
+def test_invalid_pf_capacity_cannot_qualify_from_a_legacy_profile(detector, capacity):
+    (detector.test_path / 'pci' / ADDRESS / 'sriov_totalvfs').write_text(capacity)
+    result = report(detector)
+    assert result['healthStatus'] == 'Unknown' and result['qualification'] == 'Unverified', result
+    assert 'supportedVfCounts' not in result
     assert not (detector.test_path / 'trace').exists()
 
 

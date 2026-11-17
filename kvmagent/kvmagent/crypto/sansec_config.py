@@ -34,9 +34,6 @@ def read_config(path):
                 raise ValidationError('Invalid Sansec timing profile')
         if profile['pollInterval'] <= timeout or profile['validityPeriod'] <= profile['pollInterval']:
             raise ValidationError('Sansec requires timeout < pollInterval < validityPeriod')
-        counts = profile.get('supportedVfCounts')
-        if not isinstance(counts, list) or not counts or any(type(n) is not int or n <= 0 for n in counts):
-            raise ValidationError('Sansec supportedVfCounts must be explicitly configured')
     if len(serials) != len(set(serials)):
         raise ValidationError('Sansec serial-to-PCI mapping must be unique; PF selection is not documented')
     return config

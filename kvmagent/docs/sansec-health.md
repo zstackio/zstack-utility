@@ -18,8 +18,8 @@ adapter configuration as root-owned; it selects a native library to execute:
 `/var/lib/zstack/crypto/sansec-health.json`.
 
 The following is an illustrative schema, **not a certified hardware profile**.
-Replace all identity/version fields with verified values. VF counts and timing
-parameters require joint validation; the example values are not vendor defaults.
+Replace all identity/version fields with verified values. Timing parameters
+require joint validation; the example values are not vendor defaults.
 Set `compatible` to true only after the complete host/card/software combination
 and use of the probe while VFs are active have been verified.
 
@@ -34,7 +34,6 @@ and use of the probe while VFs are active have been verified.
       "firmwareVersion": "ACTUAL-FIRMWARE",
       "libraryVersion": "ACTUAL-LIBRARY",
       "compatible": false,
-      "supportedVfCounts": [2],
       "pollInterval": 60,
       "validityPeriod": 180,
       "recoveryInterval": 120
@@ -45,9 +44,12 @@ and use of the probe while VFs are active have been verified.
 
 Times are seconds. Require `1 <= timeout <= 30`,
 `timeout < pollInterval < validityPeriod`, and `recoveryInterval >= 0`.
-Supported VF counts must be explicitly supplied; the 64-VF maximum is not
-interpreted as proof that every count from 1 to 64 is legal. Missing/invalid
-configuration returns Unknown and does not load the SDK. A valid configuration
+Supported VF counts are read from the primary PF's `sriov_totalvfs`: integers from
+1 through that capacity. Health reporting and split validation use this hardware
+limit; legacy `supportedVfCounts` entries in the local configuration are ignored.
+Missing, invalid or nonpositive capacity returns Unknown without loading the SDK.
+The hardware limit does not certify guest cryptographic workloads at every count.
+Missing/invalid configuration returns Unknown and does not load the SDK. A valid configuration
 enables probing even when `compatible` is false; that flag controls eligibility,
 not whether the diagnostic runs. Remove the configuration to disable SDK probes.
 

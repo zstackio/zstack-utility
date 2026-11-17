@@ -76,6 +76,73 @@ def test_unsplit_uses_minus_one_and_verifies_zero_vfs(operations):
     assert (operations.test_root / 'modprobe.conf').read_text() == 'options swcsm VFnum=-1\n'
 
 
+@pytest.mark.parametrize('legacy_counts', [None, [2]])
+@pytest.mark.parametrize('count', [1, 3, 32, 64])
+def test_split_uses_pf_capacity_with_new_and_legacy_profiles(operations, legacy_counts, count):
+    profile = operations.detector.test_config['devices'][ADDRESS]
+    if legacy_counts is None:
+        del profile['supportedVfCounts']
+    else:
+        profile['supportedVfCounts'] = legacy_counts
+    configure(operations.detector)
+    cmd = command()
+    cmd.vfCount = count
+    result = operations.submit(cmd)
+    assert result['status'] == 'Succeeded' and result['vfCounts'] == {ADDRESS: count}, result
+    assert (operations.test_root / 'modprobe.conf').read_text() == 'options swcsm VFnum=%s\n' % count
+
+
+def test_split_cannot_exceed_actual_capacity_even_if_profile_allows_it(operations):
+    (operations.test_root / 'pci' / ADDRESS / 'sriov_totalvfs').write_text('1')
+    result = operations.submit(command())
+    assert result['status'] == 'Failed' and 'insufficient SR-IOV capacity' in result['reason'], result
+    assert not operations.calls
+
+
+@pytest.fixture
+def multifunction_operations(operations):
+    root = operations.test_root
+    for index in range(1, 4):
+        path = root / 'pci' / ('0000:b3:00.%s' % index)
+        path.mkdir()
+        (path / 'vendor').write_text('0x1ed4')
+        (path / 'device').write_text('0x7011')
+        (path / 'driver').symlink_to(root / 'drivers/swcsm')
+        (path / 'iommu_group').symlink_to(root / 'groups/10')
+    return operations
+
+
+def test_one_card_scope_splits_and_restores_all_driver_functions(multifunction_operations):
+    operations = multifunction_operations
+    result = operations.submit(command())
+    assert result['status'] == 'Succeeded', result
+    assert result['vfCounts'] == {ADDRESS: 2, '0000:b3:00.1': 0, '0000:b3:00.2': 0, '0000:b3:00.3': 0}
+    for index in range(2):
+        vf = operations.test_root / 'pci' / ('0000:b3:01.%s' % index)
+        vf.mkdir()
+        (vf / 'vendor').write_text('0x1ed4')
+        (vf / 'device').write_text('0x1001')
+        (vf / 'physfn').symlink_to(operations.test_root / 'pci' / ADDRESS)
+        (vf / 'iommu_group').symlink_to(operations.test_root / 'groups/10')
+    result = operations.submit(command('Unsplit'))
+    assert result['status'] == 'Succeeded' and set(result['vfCounts'].values()) == {0}, result
+
+
+def test_companion_function_remains_protected_from_reload(multifunction_operations):
+    operations = multifunction_operations
+    group = operations.test_root / 'groups/11'
+    group.mkdir()
+    companion_group = operations.test_root / 'pci/0000:b3:00.1/iommu_group'
+    companion_group.unlink()
+    companion_group.symlink_to(group)
+    fd = operations.test_root / 'proc/123/fd'
+    fd.mkdir(parents=True)
+    (fd / '5').symlink_to('/dev/vfio/11')
+    result = operations.submit(command())
+    assert result['status'] == 'Failed' and 'active VFIO' in result['reason'], result
+    assert not any(call[0] == 'modprobe' for call in operations.calls)
+
+
 def test_split_uses_the_same_explicit_srcversion_identity_as_health(operations):
     module = operations.test_root / 'drivers/swcsm/module'
     (module / 'version').unlink()
@@ -91,7 +158,7 @@ def test_failed_preconditions_never_reload_driver(operations, change):
     cmd = command()
     detector = operations.detector
     if change == 'count':
-        cmd.vfCount = 3
+        cmd.vfCount = 65
     elif change == 'profile':
         detector.test_config['sriov']['enabled'] = False
         configure(detector)
