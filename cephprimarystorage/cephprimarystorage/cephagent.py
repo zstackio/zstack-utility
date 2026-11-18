@@ -1,3 +1,4 @@
+import errno
 import math
 import tempfile
 import time
@@ -1119,16 +1120,18 @@ class CephAgent(plugin.TaskManager):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         path = self._normalize_install_path(cmd.installPath)
         rsp = CheckIsBitsExistingRsp()
-        try:
-            shell.call('rbd info %s' % path)
-        except Exception as e:
-            if 'No such file or directory' in str(e):
-                rsp.existing = False
-                return jsonobject.dumps(rsp)
-            else:
-                raise e
-        rsp.existing = True
+        rsp.existing = self._rbd_exists(path)
         return jsonobject.dumps(rsp)
+
+    @staticmethod
+    def _rbd_exists(path):
+        info = shell.ShellCmd('rbd info %s' % linux.shellquote(path))
+        info(False)
+        if info.return_code == errno.ENOENT:
+            return False
+        if info.return_code != 0:
+            info.raise_error()
+        return True
 
     @replyerror
     def clone(self, req):
@@ -1776,8 +1779,30 @@ class CephAgent(plugin.TaskManager):
         uri = cmd.remoteTargetUri
         dst_path = self._normalize_install_path(cmd.primaryStorageInstallPath)
 
+        def cleanup_failed_download():
+            try:
+                if not self._ensure_existing_volume_has_no_snapshot(dst_path):
+                    return
+                if self._get_watcher(dst_path):
+                    raise Exception(
+                        'unable to delete %s after remote download failure, '
+                        'the volume is in use' % dst_path)
+                self.get_driver(cmd).do_deletion(cmd, dst_path)
+            except Exception as error:
+                logger.warning(
+                    'failed to clean up RBD %s '
+                    'after remote download failure: %s', dst_path, error)
+
         target = remotetarget.get_remote_target_from_uri(uri)
-        target.download("rbd:%s" % dst_path)
+        if self._rbd_exists(dst_path):
+            rsp.set_err('File exists: %s' % dst_path)
+            return jsonobject.dumps(rsp)
+
+        try:
+            target.download("rbd:%s" % dst_path)
+        except Exception:
+            cleanup_failed_download()
+            raise
         rsp.diskSize = self._get_file_size(dst_path)
         return jsonobject.dumps(rsp)
 

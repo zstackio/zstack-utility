@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import importlib
 import json
 import sys
@@ -581,34 +582,36 @@ class TestCephPrimaryCommitImage:
         assert rsp["success"] is True
 
 
+@pytest.fixture
+def rbd_info(monkeypatch):
+    info = MagicMock(return_code=errno.ENOENT)
+    monkeypatch.setattr(module.shell, 'ShellCmd', MagicMock(return_value=info))
+    return info
+
+
 # ---------------------------------------------------------------------------
 # check_bits
 # ---------------------------------------------------------------------------
 @pytest.mark.ceph
 class TestCephPrimaryCheckBits:
-    def test_check_bits_existing(self):
-        agent = _make_agent()
-        shell_mod = _mock_shell()
-        shell_mod.call = MagicMock(return_value="rbd image info")
+    @pytest.mark.parametrize('rc, existing',
+                             [(0, True), (errno.ENOENT, False)])
+    def test_check_bits(self, rbd_info, rc, existing):
+        rbd_info.return_code = rc
+        rsp = _load_rsp(_make_agent().check_bits(_make_req({
+            'installPath': 'ceph://pool/vol-001',
+        })))
+        assert rsp['success'] is True
+        assert rsp['existing'] is existing
 
-        result = agent.check_bits(_make_req({
-            "installPath": "ceph://pool/vol-001",
-        }))
-        rsp = _load_rsp(result)
-        assert rsp["success"] is True
-        assert rsp["existing"] is True
-
-    def test_check_bits_not_existing(self):
-        agent = _make_agent()
-        shell_mod = _mock_shell()
-        shell_mod.call = MagicMock(side_effect=Exception("No such file or directory"))
-
-        result = agent.check_bits(_make_req({
-            "installPath": "ceph://pool/vol-missing",
-        }))
-        rsp = _load_rsp(result)
-        assert rsp["success"] is True
-        assert rsp["existing"] is False
+    def test_check_bits_reports_query_error(self, rbd_info):
+        rbd_info.return_code = errno.EACCES
+        rbd_info.raise_error.side_effect = RuntimeError('Permission denied')
+        rsp = _load_rsp(_make_agent().check_bits(_make_req({
+            'installPath': 'ceph://pool/vol-001',
+        })))
+        assert not rsp['success']
+        assert rsp['error'] == 'Permission denied'
 
 
 # ---------------------------------------------------------------------------
@@ -1085,20 +1088,175 @@ class TestCephPrimaryGetDownloadProgress:
 # ---------------------------------------------------------------------------
 @pytest.mark.ceph
 class TestCephPrimaryDownloadFromRemoteTarget:
-    def test_download_from_remote_target_success(self):
+    @pytest.fixture
+    def download(self, monkeypatch, rbd_info):
         agent = _make_agent()
-        remotetarget_mod = sys.modules["zstacklib.utils.remotetarget"]
         target = MagicMock()
-        remotetarget_mod.get_remote_target_from_uri = MagicMock(return_value=target)
+        driver = MagicMock()
+        monkeypatch.setattr(
+            module.remotetarget, 'get_remote_target_from_uri',
+            MagicMock(return_value=target))
+        agent._get_snapshots = MagicMock(return_value=[])
+        agent._get_watcher = MagicMock(return_value=None)
+        agent.get_driver = MagicMock(return_value=driver)
         agent._get_file_size = MagicMock(return_value=2147483648)
+        return agent, target, driver
 
-        result = agent.download_from_remote_target(_make_req({
-            "remoteTargetUri": "iscsi://10.0.0.1/target/lun1",
-            "primaryStorageInstallPath": "ceph://pool/vol-001",
-        }))
-        rsp = _load_rsp(result)
-        assert rsp["success"] is True
-        assert rsp["diskSize"] == 2147483648
+    @pytest.mark.parametrize('name', ['image-001', 'data-volume-001'])
+    def test_existing_target_is_preserved(self, download, rbd_info, name):
+        agent, target, driver = download
+        rbd_info.return_code = 0
+        rsp = _load_rsp(agent.download_from_remote_target(_make_req({
+            'remoteTargetUri': 'nbd://source/export',
+            'primaryStorageInstallPath': 'ceph://pool/' + name,
+        })))
+
+        assert not rsp['success']
+        assert rsp['error'] == 'File exists: pool/' + name
+        target.download.assert_not_called()
+        driver.do_deletion.assert_not_called()
+
+    def test_failed_target_check_stops_download(self, download, rbd_info):
+        agent, target, driver = download
+        rbd_info.return_code = errno.EACCES
+        rbd_info.raise_error.side_effect = RuntimeError('Permission denied')
+        rsp = _load_rsp(agent.download_from_remote_target(_make_req({
+            'remoteTargetUri': 'nbd://source/export',
+            'primaryStorageInstallPath': 'ceph://pool/vol-001',
+        })))
+
+        assert not rsp['success']
+        assert rsp['error'] == 'Permission denied'
+        target.download.assert_not_called()
+        driver.do_deletion.assert_not_called()
+
+    @pytest.mark.parametrize('name', ['image-001', 'data-volume-001'])
+    def test_successful_download_does_not_clean_target(self, download, name):
+        agent, target, driver = download
+        rsp = _load_rsp(agent.download_from_remote_target(_make_req({
+            'remoteTargetUri': 'nbd://source/export',
+            'primaryStorageInstallPath': 'ceph://pool/' + name,
+        })))
+
+        assert rsp['success'] is True
+        assert rsp['diskSize'] == 2147483648
+        target.download.assert_called_once_with('rbd:pool/' + name)
+        agent._get_snapshots.assert_not_called()
+        agent._get_watcher.assert_not_called()
+        driver.do_deletion.assert_not_called()
+
+    @pytest.mark.parametrize('name', ['image-001', 'data-volume-001'])
+    @pytest.mark.parametrize('error', [
+        'NBD connection lost', 'Disk quota exceeded',
+    ])
+    def test_download_failure_cleans_target_and_preserves_error(
+            self, download, name, error):
+        agent, target, driver = download
+        order = []
+
+        def fail_download(_):
+            order.append('download')
+            raise RuntimeError(error)
+
+        target.download.side_effect = fail_download
+        driver.do_deletion.side_effect = lambda *_: order.append('delete')
+        rsp = _load_rsp(agent.download_from_remote_target(_make_req({
+            'remoteTargetUri': 'nbd://source/export',
+            'primaryStorageInstallPath': 'ceph://pool/' + name,
+        })))
+
+        assert not rsp['success']
+        assert rsp['error'] == error
+        assert order == ['download', 'delete']
+        assert driver.do_deletion.call_args.args[1] == 'pool/' + name
+        agent._get_file_size.assert_not_called()
+
+    @pytest.mark.parametrize('blocked', [
+        'snapshot', 'watcher', 'inspection', 'delete',
+    ])
+    def test_cleanup_failure_preserves_original_download_error(
+            self, download, blocked, monkeypatch):
+        agent, target, driver = download
+        target.download.side_effect = RuntimeError('original download error')
+        warning = MagicMock()
+        monkeypatch.setattr(module.logger, 'warning', warning)
+        if blocked == 'snapshot':
+            agent._get_snapshots.return_value = [{'name': 'image-001'}]
+        if blocked == 'watcher':
+            agent._get_watcher.return_value = 'watcher=client.1'
+        if blocked == 'inspection':
+            agent._get_snapshots.side_effect = RuntimeError(
+                'cannot reach monitors')
+        if blocked == 'delete':
+            driver.do_deletion.side_effect = RuntimeError('RBD removal failed')
+
+        rsp = _load_rsp(agent.download_from_remote_target(_make_req({
+            'remoteTargetUri': 'nbd://source/export',
+            'primaryStorageInstallPath': 'ceph://pool/vol-001',
+        })))
+
+        assert not rsp['success']
+        assert rsp['error'] == 'original download error'
+        target.download.assert_called_once()
+        agent._get_file_size.assert_not_called()
+        warning.assert_called_once()
+        if blocked == 'watcher':
+            assert 'after remote download failure' in str(
+                warning.call_args.args[2])
+        if blocked != 'delete':
+            driver.do_deletion.assert_not_called()
+
+    def test_retry_after_failed_download_succeeds(self, download):
+        agent, target, driver = download
+        target.download.side_effect = [
+            RuntimeError('NBD connection lost'), None,
+        ]
+        request = _make_req({
+            'remoteTargetUri': 'nbd://source/export',
+            'primaryStorageInstallPath': 'ceph://pool/image-001',
+        })
+
+        failed = _load_rsp(agent.download_from_remote_target(request))
+        assert not failed['success']
+        assert failed['error'] == 'NBD connection lost'
+        driver.do_deletion.assert_called_once()
+
+        retried = _load_rsp(agent.download_from_remote_target(request))
+        assert retried['success']
+        driver.do_deletion.assert_called_once()
+        assert target.download.call_count == 2
+
+    def test_invalid_source_does_not_clean_target(self, download, monkeypatch):
+        agent, target, driver = download
+        monkeypatch.setattr(
+            module.remotetarget, 'get_remote_target_from_uri',
+            MagicMock(side_effect=RuntimeError('unsupported protocol')))
+
+        rsp = _load_rsp(agent.download_from_remote_target(_make_req({
+            'remoteTargetUri': 'unknown://source',
+            'primaryStorageInstallPath': 'ceph://pool/image-001',
+        })))
+
+        assert not rsp['success']
+        agent._get_snapshots.assert_not_called()
+        driver.do_deletion.assert_not_called()
+        target.download.assert_not_called()
+
+    def test_download_failure_with_no_target_preserves_error(self, download):
+        agent, target, driver = download
+        target.download.side_effect = RuntimeError(
+            'cannot connect to NBD source')
+        agent._get_snapshots.side_effect = RuntimeError(
+            'No such file or directory')
+        rsp = _load_rsp(agent.download_from_remote_target(_make_req({
+            'remoteTargetUri': 'nbd://source/export',
+            'primaryStorageInstallPath': 'ceph://pool/image-001',
+        })))
+
+        assert not rsp['success']
+        assert rsp['error'] == 'cannot connect to NBD source'
+        agent._get_watcher.assert_not_called()
+        driver.do_deletion.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
