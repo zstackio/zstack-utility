@@ -78,7 +78,8 @@ def serialize_response(response):
 
 def has_request(raw):
     try:
-        return isinstance(json.loads(raw), dict) and 'hccnBootstrap' in json.loads(raw)
+        parsed = json.loads(raw, parse_int=lambda _: 0, parse_float=lambda _: 0)
+        return isinstance(parsed, dict) and 'hccnBootstrap' in parsed
     except (ValueError, TypeError):
         return False
 
@@ -204,7 +205,16 @@ class GuestTransport(object):
             error.agent_unresponsive = callable(get_code) and get_code() in (VIR_ERR_AGENT_UNRESPONSIVE,
                                                                            VIR_ERR_AGENT_COMMAND_TIMEOUT)
             raise error
-        _require(time.monotonic() <= deadline, 'QGA deadline exceeded', 'transport')
+        if time.monotonic() > deadline:
+            error = BootstrapError('QGA deadline exceeded', 'transport')
+            if operation == 'guest-file-open':
+                try:
+                    opened = parse_json(response, 4 * ((LIMIT + 2) // 3) + 4096)
+                    if isinstance(opened, dict) and set(opened) == {'return'} and _integer(opened['return'], 0, 2 ** 63 - 1):
+                        self.call('guest-file-close', {'handle': opened['return']}, time.monotonic() + 1)
+                except BootstrapError as cleanup:
+                    error.errors.extend(cleanup.errors)
+            raise error
         parsed = parse_json(response, 4 * ((LIMIT + 2) // 3) + 4096)
         if isinstance(parsed, dict) and set(parsed) == {'error'}:
             error = parsed['error']
@@ -498,7 +508,7 @@ def dispatch(raw_request, lookup_domain):
         if error.truncated:
             envelope['truncated'] = True
         response['error'] = str(error.errors[0].get('reason', 'strict bootstrap failed'))[:4096]
-    encoded = json.dumps(response, allow_nan=False).encode('utf-8')
+    encoded = serialize_response(response).encode('utf-8')
     if len(encoded) > LIMIT:
         response['success'] = False
         envelope.update(result=None, truncated=True)
