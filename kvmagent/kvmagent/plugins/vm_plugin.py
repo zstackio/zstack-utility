@@ -11547,7 +11547,7 @@ host side snapshot files chian:
     @kvmagent.replyerror
     def export_nbd_volumes(self, req):
         def _export_nbd(nbd_port, format, volume_path, volume_uuid):
-            process = qemu_nbd.export(nbd_port, "-b", "0.0.0.0", "-f", format, volume_path, "-x", volume_uuid)
+            process = qemu_nbd.export(nbd_port, "-t", "-b", "0.0.0.0", "-f", format, volume_path, "-x", volume_uuid)
             if not linux.check_socket_available('0.0.0.0', int(nbd_port)):
                 process.terminate()
                 _, stderr = process.communicate()
@@ -11591,6 +11591,9 @@ host side snapshot files chian:
             found = qemu_nbd.kill_nbd_process_by_flag(real_path) == 0
             if not found and real_path != volume.installPath:
                 qemu_nbd.kill_nbd_process_by_flag(volume.installPath)
+            if volume.primaryStorageType == 'SharedBlock' and lvm.lv_in_use(real_path):
+                logger.debug('volume[path:%s] is still open, skip deactivation after NBD cleanup', real_path)
+                continue
             self.deactive_volume_if_need(real_path, False)
 
         rsp.success = True
