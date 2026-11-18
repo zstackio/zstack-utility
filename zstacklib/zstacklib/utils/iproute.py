@@ -901,8 +901,9 @@ class VnicInfo:
 
 
 class IpNetnsShell:
-    def __init__(self, netns):
+    def __init__(self, netns, raise_on_error=False):
         self.netns = netns
+        self.raise_on_error = raise_on_error
         self.ns_id = 0
 
     @classmethod
@@ -963,6 +964,8 @@ class IpNetnsShell:
             o = shell.call("ip netns exec %s ip address" % self.netns)
         except Exception as e:
             logger.debug("get ip link of namespace:%s  failed, ret:%s" % (self.netns, e))
+            if self.raise_on_error:
+                raise
             return nics
         """
         # ip netns exec br_vx_170_cf2ac70c6f3a43f9bbddb6926fbc3b0c ip a

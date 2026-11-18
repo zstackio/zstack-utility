@@ -435,7 +435,7 @@ class DhcpNameSpaceEnv(object):
     def disable(self):
         # delete ip, iptables, ebtables, stop dnsmasq, etc
         dev = self.infra_env.near_vm_inner
-        userdata_ip = iproute.IpNetnsShell(self.namespace_name).get_userdata_ip_address(dev)
+        userdata_ip = iproute.IpNetnsShell(self.namespace_name, raise_on_error=True).get_userdata_ip_address(dev)
         if not userdata_ip:
             self._del_bridge_fdb_entry_for_inner_dev()
         self._del_dhcp4_tables()
@@ -644,7 +644,7 @@ class DhcpNameSpaceEnv(object):
     def _del_dhcp_ip_if_exist(self):
         ns = self.namespace_name
         dev = self.infra_env.near_vm_inner
-        shell_ns = iproute.IpNetnsShell(ns)
+        shell_ns = iproute.IpNetnsShell(ns, raise_on_error=True)
         ip4 = shell_ns.get_ip_address(4, dev)
         ip6 = shell_ns.get_ip_address(6, dev)
         userdata_ip = shell_ns.get_userdata_ip_address(dev)
@@ -653,6 +653,8 @@ class DhcpNameSpaceEnv(object):
         if ip6:
             shell_ns.del_ip_address(ip6, dev)
         if userdata_ip:
+            if shell_ns.get_ip_address(4, dev):
+                raise RuntimeError('DHCPv4 address is still present on %s in namespace %s' % (dev, ns))
             _sync_userdata_default_route(ns, dev, has_dhcp4=False)
 
     @in_bash

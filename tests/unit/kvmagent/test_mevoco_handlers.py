@@ -1913,3 +1913,107 @@ class TestMevocoRefreshDnsmasqThreshold:
 
         assert restarted == [("ns-threshold", "/tmp/conf")]
         assert plugin.signal_count == 0
+
+
+@pytest.fixture
+def real_netns_shell():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[3] / 'zstacklib' / 'zstacklib' / 'utils' / 'iproute.py'
+    spec = importlib.util.spec_from_file_location('_dhcp_real_iproute', str(path))
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, {name: MagicMock() for name in
+                                 ['pyroute2', 'pyroute2.netns', 'pyroute2.netlink', 'pyroute2.netlink.rtnl']}):
+        spec.loader.exec_module(module)
+    return module
+
+
+_NETNS_DHCP_ADDRESS = '''9: inner0@if10: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP
+    link/ether fa:16:3e:00:00:01 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.100.10/24 scope global inner0
+    inet 169.254.169.254/32 scope global inner0
+'''
+
+
+def test_disable_dhcp_query_failure_preserves_fdb(real_netns_shell):
+    env = mevoco.DhcpNameSpaceEnv('br_eth0', 'ns0')
+    env.infra_env.near_vm_inner = 'inner0'
+    env._del_bridge_fdb_entry_for_inner_dev = MagicMock()
+    env._del_dhcp4_tables = MagicMock()
+    env._del_dhcp6_tables = MagicMock()
+    env._del_dhcp_ip_if_exist = MagicMock()
+    with patch.object(mevoco.iproute, 'IpNetnsShell', real_netns_shell.IpNetnsShell), \
+         patch.object(real_netns_shell.shell, 'call', side_effect=RuntimeError('address query failed')):
+        with pytest.raises(RuntimeError, match='address query failed'):
+            env.disable()
+    env._del_bridge_fdb_entry_for_inner_dev.assert_not_called()
+    env._del_dhcp_ip_if_exist.assert_not_called()
+
+
+@pytest.mark.parametrize('failure', ['initial-query', 'delete-query', 'delete-command', 'readback', 'still-present'])
+def test_dhcp_removal_failure_does_not_restore_userdata_route(real_netns_shell, failure):
+    env = mevoco.DhcpNameSpaceEnv('br_eth0', 'ns0')
+    env.infra_env.near_vm_inner = 'inner0'
+    queries = [0]
+    deleted = [False]
+
+    def execute(command):
+        if command.endswith(' ip address'):
+            queries[0] += 1
+            if (failure == 'initial-query' and queries[0] == 1 or
+                    failure == 'delete-query' and queries[0] == 4 or
+                    failure == 'readback' and queries[0] == 5):
+                raise RuntimeError('address query failed')
+            if deleted[0]:
+                return _NETNS_DHCP_ADDRESS.replace('    inet 192.168.100.10/24 scope global inner0\n', '')
+            return _NETNS_DHCP_ADDRESS
+        if ' address del ' in command:
+            if failure == 'delete-command':
+                raise RuntimeError('address delete failed')
+            deleted[0] = failure != 'still-present'
+            return ''
+        raise AssertionError('unexpected command: %s' % command)
+
+    with patch.object(mevoco.iproute, 'IpNetnsShell', real_netns_shell.IpNetnsShell), \
+         patch.object(real_netns_shell.shell, 'call', side_effect=execute), \
+         patch.object(mevoco, '_sync_userdata_default_route') as sync_route:
+        with pytest.raises(Exception):
+            env._del_dhcp_ip_if_exist()
+        sync_route.assert_not_called()
+
+
+def test_netns_optional_strict_query_preserves_legacy_behavior(real_netns_shell):
+    with patch.object(real_netns_shell.shell, 'call', side_effect=RuntimeError('query failed')):
+        assert real_netns_shell.IpNetnsShell('ns0').get_links() == []
+        with pytest.raises(RuntimeError, match='query failed'):
+            real_netns_shell.IpNetnsShell('ns0', raise_on_error=True).get_links()
+
+
+def test_dhcp_removal_restores_route_after_verified_deletion(real_netns_shell):
+    env = mevoco.DhcpNameSpaceEnv('br_eth0', 'ns0')
+    env.infra_env.near_vm_inner = 'inner0'
+    deleted = [False]
+    commands = []
+
+    def execute(command):
+        commands.append(command)
+        if command.endswith(' ip address'):
+            if deleted[0]:
+                return _NETNS_DHCP_ADDRESS.replace('    inet 192.168.100.10/24 scope global inner0\n', '')
+            return _NETNS_DHCP_ADDRESS
+        assert command == 'ip netns exec ns0 ip address del 192.168.100.10/24 dev inner0'
+        deleted[0] = True
+        return ''
+
+    with patch.object(mevoco.iproute, 'IpNetnsShell', real_netns_shell.IpNetnsShell), \
+         patch.object(real_netns_shell.shell, 'call', side_effect=execute), \
+         patch.object(mevoco, '_sync_userdata_default_route') as sync_route:
+        env._del_dhcp_ip_if_exist()
+        assert deleted[0]
+        assert commands[-1] == 'ip netns exec ns0 ip address'
+        sync_route.assert_called_once_with('ns0', 'inner0', has_dhcp4=False)
+        sync_route.reset_mock()
+        env._del_dhcp_ip_if_exist()
+        sync_route.assert_called_once_with('ns0', 'inner0', has_dhcp4=False)
+        assert sum(' address del ' in c for c in commands) == 1

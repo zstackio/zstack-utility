@@ -1,3 +1,6 @@
+import os
+import shutil
+import tempfile
 import unittest
 
 import mock
@@ -213,6 +216,11 @@ class TestDhcpUserdataRouteLifecycle(unittest.TestCase):
         from zstacklib.utils import jsonobject
 
         plugin = mevoco.Mevoco.__new__(mevoco.Mevoco)
+        plugin.USERDATA_ROOT = tempfile.mkdtemp(prefix='userdata-route-test-')
+        self.addCleanup(shutil.rmtree, plugin.USERDATA_ROOT)
+        mkdir_patch = mock.patch.object(mevoco.linux, 'mkdir', side_effect=lambda path, mode=0o755: os.makedirs(path, mode, exist_ok=True))
+        mkdir_mock = mkdir_patch.start()
+        self.addCleanup(mkdir_patch.stop)
         plugin.config = {}
         plugin.userData_vms = {}
         plugin.work_userdata_iptables = mock.MagicMock()
@@ -291,6 +299,11 @@ class TestDhcpUserdataRouteLifecycle(unittest.TestCase):
             for cmd in bash_r_calls
         ))
         self.assertNotIn('ip netns exec br_eth0_l3uuid ip -4 route replace default dev inner0', bash_err_calls)
+
+        self.assertTrue(os.path.isdir(os.path.join(plugin.USERDATA_ROOT, 'br_eth0_l3uuid', 'html')))
+        self.assertTrue(mkdir_mock.called)
+        for call in mkdir_mock.call_args_list:
+            self.assertTrue(call[0][0].startswith(plugin.USERDATA_ROOT + os.sep))
 
 
 if __name__ == "__main__":
