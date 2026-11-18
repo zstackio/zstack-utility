@@ -409,8 +409,20 @@ def test_an_unset_capacity_matches_the_service_default_without_rewriting_it(host
     plugin, service, world = host
     service.efficiency = True
     service.capacity = {'logical_capacity': {'percent_of_host': 50.0},
+                        'physical_memory_limit': {'percent_of_logical': 100.0}}
+    result = apply(plugin, 6, desired())
+    assert result['status'] == 'Succeeded' and service.actions() == []
+    assert world['started'] == []
+
+
+def test_a_pool_on_the_earlier_default_ram_limit_keeps_it(host):
+    plugin, service, world = host
+    service.efficiency = True
+    # The service stores its default as percentages; the earlier one limited the RAM to half the logical capacity.
+    service.capacity = {'logical_capacity': {'percent_of_host': 50.0},
                         'physical_memory_limit': {'percent_of_logical': 50.0}}
     result = apply(plugin, 6, desired())
+    # An unset capacity still matches it: the pool is not drained and rebuilt unasked.
     assert result['status'] == 'Succeeded' and service.actions() == []
     assert world['started'] == []
 
@@ -478,7 +490,7 @@ def test_a_pool_reconciling_unknown_operations_is_not_drained(host):
     plugin, service, world = host
     service.efficiency = True
     service.capacity = {'logical_capacity': {'percent_of_host': 50.0},
-                        'physical_memory_limit': {'percent_of_logical': 50.0}}
+                        'physical_memory_limit': {'percent_of_logical': 100.0}}
     service.capacity_state, service.capacity_reason = 'RECONCILING', 'UNKNOWN_OPERATION_REQUIRES_RECONCILIATION'
     result = apply(plugin, 7, desired())
     # The running service reconciles them itself; a drain is refused until then.
