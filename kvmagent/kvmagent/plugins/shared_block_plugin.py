@@ -615,7 +615,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             disks.add(disk)
             diskPaths.add(disk.get_path())
 
-        for diskUuid in cmd.allSharedBlockUuids:
+        disk_uuids = set(cmd.allSharedBlockUuids)
+        disk_uuids.update(cmd.preserveDiskUuids or [])
+        for diskUuid in disk_uuids:
             disk = CheckDisk(diskUuid)
             p = disk.get_path(raise_exception=False)
             if p is not None:
@@ -859,7 +861,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
         allDiskPaths = set()
         allDisks = set()
 
-        for diskUuid in cmd.allSharedBlockUuids:
+        disk_uuids = set(cmd.allSharedBlockUuids)
+        disk_uuids.update(cmd.preserveDiskUuids or [])
+        for diskUuid in disk_uuids:
             _disk = CheckDisk(diskUuid)
             p = _disk.get_path(raise_exception=False)
             if p is not None:
@@ -908,7 +912,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
             if cmd.force:
                 lvm.resize_lv(install_abs_path, cmd.size, True)
             else:
-                lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd)
+                lvm.extend_lv_from_cmd(install_abs_path, cmd.size, cmd, skip_if_sufficient=True)
             fmt = linux.get_img_fmt(install_abs_path)
             if not cmd.live and fmt == 'qcow2':
                 linux.qemu_img_resize(install_abs_path, cmd.size, 'qcow2', cmd.force)
@@ -1171,7 +1175,7 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         self.imagestore_client.download_from_imagestore(None, cmd.hostname, cmd.backupStorageInstallPath,
                                                         cmd.primaryStorageInstallPath, cmd.concurrency,
-                                                        failure_action=clean)
+                                                        failure_action=clean, task_spec=cmd)
         self.do_active_lv(cmd.primaryStorageInstallPath, cmd.lockType, True)
         rsp = AgentRsp()
         return jsonobject.dumps(rsp)
@@ -1704,7 +1708,9 @@ class SharedBlockPlugin(kvmagent.KvmAgent):
 
         allDiskPaths = set()
 
-        for diskUuid in cmd.allSharedBlockUuids:
+        disk_uuids = set(cmd.allSharedBlockUuids)
+        disk_uuids.update(cmd.preserveDiskUuids or [])
+        for diskUuid in disk_uuids:
             disk = CheckDisk(diskUuid)
             p = disk.get_path(raise_exception=False)
             if p is not None:

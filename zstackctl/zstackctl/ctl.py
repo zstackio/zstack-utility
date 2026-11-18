@@ -49,6 +49,7 @@ from .timeline import TaskTimeline, __doc__ as timeline_doc
 from zstackctl.keycloak_config import KeycloakAdminClient, KeycloakAdminError, read_admin_password
 from zstackctl.keycloak_config import restore_file, rotate_admin_password, snapshot_file
 from zstackctl.keycloak_config import validate_admin_password, write_admin_password
+from zstackctl.morph_config import configure_ha_database, validate_database_hosts
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.serialization import pkcs12
 
@@ -2389,8 +2390,8 @@ class Zsha2Utils(object):
         if peer_port == '':
             peer_port = 22
         scmd = ShellCmd(
-            "sudo -u %s ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s -p %s %s \"%s\"" % (
-                self.ssh_exec_user, self.config['peerip'], peer_port, "sudo" if useSudo else "", script))
+            "sudo -u %s ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null %s -p %s %s %s" % (
+                self.ssh_exec_user, self.config['peerip'], peer_port, "sudo" if useSudo else "", shell_quote(script)))
         scmd(False)
         if scmd.return_code != 0:
             scmd.raise_error()
@@ -2694,18 +2695,13 @@ class ShowStatusCmd(Command):
         def show_hci_version():
             full_version = get_hci_full_version()
             if not full_version:
+                detail_version = get_hci_detail_version()
+                if detail_version:
+                    name, version = detail_version.rsplit('-', 1)
+                    info('%s version: %s' % (name, version))
                 return
-            version = full_version.strip()
-            detailed_version = get_detail_version().split()[1]
-            new_version = detailed_version[:detailed_version.rfind('.')]
-            if version is not None:
-                if version[0].isdigit():
-                    info('Cube version: 2.%s (Cube 2.%s)' % (new_version, new_version))
-                else:
-                    list = version.split('-')
-                    hci_version = list[-3]
-                    hci_name = version.split("-%s-" % hci_version)
-                    info(hci_name[0] + ' version: 2.%s (%s-2.%s-%s)' % (new_version, hci_name[0], new_version, hci_name[1]))
+            name, version = full_version.rsplit('-', 2)[0].rsplit('-', 1)
+            info('%s version: %s (%s)' % (name, version, full_version))
 
         def show_zsv_version():
             zsv_version = get_zsv_version()
@@ -3139,6 +3135,7 @@ class ConfigureCmd(Command):
         self.description = "configure zstack.properties"
         self.reportPath = "/progress/configure/properties"
         self.properties_algorithm = "sha256"
+        self.properties_integrity_node_type = "managementNode"
         ctl.register_command(self)
 
     def install_argparse_arguments(self, parser):
@@ -3181,7 +3178,67 @@ EOF
 
         shell('cp -f %s %s' % (path, ctl.properties_file_path))
 
+    def _mysql_cmd(self, sql):
+        hostname_ports, db_user, db_password = ctl.get_database_portal()
+        ha_config_file = '/etc/zsha2.conf'
+        if os.path.isfile(ha_config_file):
+            with open(ha_config_file) as stream:
+                ha_vip = simplejson.load(stream).get('dbvip')
+            if (any(host == ha_vip and str(port) == '3306' for host, port in hostname_ports)
+                    and not any(host in ('127.0.0.1', 'localhost') and str(port) == '3306' for host, port in hostname_ports)):
+                hostname_ports = hostname_ports + [('127.0.0.1', 3306)]
+        env = os.environ.copy()
+        env['MYSQL_PWD'] = db_password or ''
+        last_error = CtlError('No database portal configured')
+        for db_hostname, db_port in hostname_ports:
+            try:
+                return subprocess.check_output(
+                    ['mysql', '--batch', '--skip-column-names', '--connect-timeout', '2',
+                     '--user', db_user, '--host', db_hostname, '--port', str(db_port), 'zstack', '-e', sql],
+                    env=env, stderr=subprocess.PIPE, timeout=10).decode()
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+                last_error = error
+        raise last_error
+
+    def _delete_property_integrity_records(self):
+        state_file = '/var/lib/zstack/management-server-id.properties'
+        if not (ctl.read_property('DB.user') or ctl.read_property('DbFacadeDataSource.user')
+                or ctl.read_property('managementServerId') or os.path.isfile(state_file)):
+            return
+
+        if not self._mysql_cmd("SHOW TABLES LIKE 'FileIntegrityVerificationVO'").strip():
+            return
+
+        paths = {ctl.properties_file_path, os.path.realpath(ctl.properties_file_path)}
+        where = "WHERE nodeType='%s' AND hexType='%s' AND path IN (%s)" % (
+            self.properties_integrity_node_type, self.properties_algorithm,
+            ','.join('0x' + path.encode('utf-8').hex() for path in sorted(paths)))
+        if not self._mysql_cmd("SELECT nodeUuid FROM FileIntegrityVerificationVO " + where).strip():
+            return
+
+        node_uuid = ctl.read_property('managementServerId')
+        if os.path.isfile(state_file):
+            persisted_uuid = PropertyFile(state_file, use_zstack=False).read_property('managementServerId')
+            if node_uuid and persisted_uuid and node_uuid.lower() != persisted_uuid.lower():
+                raise CtlError('Cannot identify the local management node: configured and persisted '
+                               'managementServerId differ; properties integrity records were left unchanged')
+            node_uuid = node_uuid or persisted_uuid
+        if not node_uuid or not re.fullmatch(r'[0-9a-fA-F]{32}', node_uuid):
+            raise CtlError('Cannot identify the local management node; properties integrity records were left unchanged')
+
+        self._mysql_cmd("DELETE FROM FileIntegrityVerificationVO " + where + " AND nodeUuid='%s'" % node_uuid)
+        info("removed stale properties integrity records for management node %s" % node_uuid)
+
     def _report_property_updated(self):
+        if not ctl.read_property('management.server.ip') or not (
+                ctl.read_property('managementServerId') or os.path.isfile('/var/lib/zstack/management-server-id.properties')):
+            return
+
+        pool_uuid = self._mysql_cmd("SELECT COALESCE(value, 'None') FROM GlobalConfigVO WHERE category='securityMachine' "
+                                    "AND name='crypto.dataProtect.resourcePoolUuid'").strip()
+        if pool_uuid in ('', 'None'):
+            return
+
         config_cmd = UpdatePropertyCmd()
         config_cmd.propertiesDigestValue = file_hex_digest(self.properties_algorithm, ctl.properties_file_path)
         config_cmd.mnIp = ctl.read_property('management.server.ip')
@@ -3190,13 +3247,16 @@ EOF
         mn_port = ctl.read_property('RESTFacade.port')
         if not mn_port:
             mn_port = 8080
-        ShellCmd(ctl.http_call_cmd % (
-            self.reportPath,
-            simplejson.dumps(config_cmd),
-            format_url_host(config_cmd.mnIp),
-            mn_port,
-        ))
-        logger.debug('report properties updated, propertiesDigestValue: %s, mnIp: %s' % (config_cmd.propertiesDigestValue, config_cmd.mnIp))
+        report_template = ctl.http_call_cmd.replace('--retry 5', '--retry 0 --connect-timeout 2 --max-time 10 --fail')
+        report_cmd = ShellCmd(report_template % (self.reportPath, simplejson.dumps(config_cmd._asdict()), format_url_host(config_cmd.mnIp), mn_port))
+        report_cmd(False)
+        if report_cmd.return_code == 0:
+            logger.debug('report properties updated, propertiesDigestValue: %s, mnIp: %s' % (config_cmd.propertiesDigestValue, config_cmd.mnIp))
+            return
+
+        warn('failed to report properties update to management node[%s:%s], remove local stale properties integrity records instead' %
+             (config_cmd.mnIp, mn_port))
+        self._delete_property_integrity_records()
 
     def console_proxy_property_for_ip(self, ip):
         ip_version = get_ip_version(ip)
@@ -3277,6 +3337,7 @@ EOF
     def run(self, args):
         if args.use_file:
             self._use_file(args)
+            self._report_property_updated()
             return
 
         if args.duplicate_to_remote:
@@ -7155,6 +7216,8 @@ class DumpMysqlCmd(Command):
         parser.add_argument('--append-sql-file',
                             help="specify a append sql to operate zstack database",
                             required=False)
+        parser.add_argument('--skip-table-data', action='append', default=[], metavar='DATABASE.TABLE',
+                            help="Skip data but keep the table definition. Repeat for multiple tables.")
         parser.add_argument('--remote-keep-amount', type=int,
                             help="The amount of files you want to keep on remote host, older files will be deleted, default number is 60",
                             required=False)
@@ -7243,7 +7306,22 @@ class DumpMysqlCmd(Command):
     def get_morph_db_user_info(self):
         return "morph", "morph123"
 
+    def _skip_table_data(self, dump_command, databases, skip_data_tables):
+        skip_data_tables = {table for table in skip_data_tables if table.split('.')[0] in databases}
+        if not skip_data_tables:
+            return dump_command
+
+        schema_command = dump_command + ' -d'
+        filtered_command = dump_command
+        for table in sorted(skip_data_tables):
+            filtered_command += ' --ignore-table=%s' % shell_quote(table)
+        return '%s && %s' % (schema_command, filtered_command)
+
     def run(self, args):
+        for table in args.skip_table_data:
+            if table.count('.') != 1 or not all(part.strip() for part in table.split('.')):
+                error('Invalid table name %r: expected database.table' % table)
+        skip_data_tables = set(args.skip_table_data)
         (db_hostname, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
         (ui_db_hostname, ui_db_port, ui_db_user, ui_db_password) = ctl.get_live_mysql_portal(ui=True)
         file_name = args.file_name
@@ -7270,16 +7348,20 @@ class DumpMysqlCmd(Command):
             error("Please specify remote host info with '--host' before you want to delete remote host expired files")
 
         mysqldump_options = "--single-transaction --quick"
+        main_db_skip_options = mysqldump_skip_tables
+        for table in sorted(skip_data_tables):
+            if table.split('.')[0] in ['zstack', 'zstack_rest']:
+                main_db_skip_options += ' --ignore-table=%s' % shell_quote(table)
         if db_hostname == "localhost" or db_hostname == "127.0.0.1":
             command_1 = "mysqldump --databases -u %s --password='%s' -P %s %s -d zstack zstack_rest" \
                         % (db_user, db_password, db_port, mysqldump_options)
             command_2 = "mysqldump --databases -u %s --password='%s' -P %s %s zstack zstack_rest %s" \
-                        % (db_user, db_password, db_port, mysqldump_options, mysqldump_skip_tables)
+                        % (db_user, db_password, db_port, mysqldump_options, main_db_skip_options)
         else:
             command_1 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -d zstack zstack_rest" \
                         % (db_user, db_password, db_hostname, db_port, mysqldump_options)
             command_2 = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s zstack zstack_rest %s" \
-                        % (db_user, db_password, db_hostname, db_port, mysqldump_options, mysqldump_skip_tables)
+                        % (db_user, db_password, db_hostname, db_port, mysqldump_options, main_db_skip_options)
 
         if ui_db_hostname == "localhost" or ui_db_hostname == "127.0.0.1":
             command_3 = "mysqldump --databases -u %s --password='%s' -P %s %s -f zstack_ui zstack_mini" \
@@ -7300,6 +7382,15 @@ class DumpMysqlCmd(Command):
         keycloak_cmd = build_mysqldump_cmd(keycloak_db_user, keycloak_db_pwd, db_hostname, db_port, "keycloak")
         morph_cmd = build_mysqldump_cmd(morph_db_user, morph_db_pwd, db_hostname, db_port, "morph")
 
+        if any(table.split('.')[0] in ['zstack_ui', 'zstack_mini'] for table in skip_data_tables):
+            ui_commands = []
+            for database in ['zstack_ui', 'zstack_mini']:
+                dump_command = build_mysqldump_cmd(ui_db_user, ui_db_password, ui_db_hostname, ui_db_port, database)
+                ui_commands.append(self._skip_table_data(dump_command, [database], skip_data_tables))
+            command_3 = '; '.join(ui_commands)
+        keycloak_cmd = self._skip_table_data(keycloak_cmd, ['keycloak'], skip_data_tables)
+        morph_cmd = self._skip_table_data(morph_cmd, ['morph'], skip_data_tables)
+
         if args.append_sql_file:
             append_sql_command = "echo 'USE `zstack`;\n'; cat %s;" % args.append_sql_file
         else:
@@ -7318,6 +7409,7 @@ class DumpMysqlCmd(Command):
                 zstone_backup_cmd = "mysqldump --databases -u %s --password='%s' --host %s -P %s %s -f zstone %s" \
                         % (zstone_db_user, zstone_db_pwd, db_hostname, db_port, mysqldump_options, zstone_db_dump_skip_tables)
 
+            zstone_backup_cmd = self._skip_table_data(zstone_backup_cmd, ['zstone'], skip_data_tables)
             cmd = ShellCmd("(%s) | gzip > %s" % (zstone_backup_cmd, zstone_backup_file_path))
             cmd(True)
             info("Successfully backed up zstone database. You can check the file at %s" % zstone_backup_file_path)
@@ -8526,17 +8618,7 @@ class CollectLogCmd(Command):
 
 
 def is_hyper_converged_host():
-    if not os.path.exists("/usr/local/hyperconverged"):
-        return False
-
-    # Compatible with lower versions
-    if os.path.exists("/usr/local/hyperconverged/conf/host_info.json"):
-        return True
-
-    if os.path.exists("/usr/local/hyperconverged/conf/deployed_info"):
-        return True
-
-    return False
+    return ctl.read_property('deploy_mode') == 'cube'
 
 def is_zsv_env():
     properties_file_path = os.path.join(os.environ['ZSTACK_HOME'], 'WEB-INF/classes/zstack.properties')
@@ -8544,16 +8626,20 @@ def is_zsv_env():
     return properties.read_property('deploy_mode') == 'zsv'
 
 def get_hci_full_version():
-    detailed_version_file = "/usr/local/hyperconverged/conf/VERSION"
-    if os.path.exists(detailed_version_file):
-        with open(detailed_version_file, 'r') as fd:
-            return fd.read().strip()
-    else:
+    version = get_hci_detail_version()
+    build_time_file = os.path.join(ctl.zstack_home, 'BUILD_TIME')
+    if not version or not os.path.exists(build_time_file):
         return None
 
+    with open(build_time_file, 'r') as fd:
+        return '%s-%s' % (version, fd.read().strip())
+
 def get_hci_detail_version():
-    full_version = get_hci_full_version()
-    return None if full_version is None else full_version.rsplit("-", 2)[0]
+    detailed_version = get_detail_version()
+    if not detailed_version:
+        return None
+    version = detailed_version.split()[1]
+    return 'Cube-2.%s' % version.rsplit('.', 1)[0]
 
 def get_zsv_version():
     detailed_version_file = os.path.join(os.environ['ZSTACK_HOME'], 'WEB-INF', 'classes', 'zsphere_config', 'version')
@@ -9278,6 +9364,8 @@ class ChangeIpCmd(Command):
         else:
             info("Didn't find %s, skip update new ip" % zstack_conf_file  )
             return 1
+
+        ctl.commands['configure']._report_property_updated()
 
         info("update iptables rules successfully")
         info("Change ip successfully")
@@ -10185,7 +10273,7 @@ class InstallZstackUiCmd(Command):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
         install_script = install_script+" "+params
         info('found installation script at %s, start installing ZStack web UI' % install_script)
-        shell("runuser -l root -s /bin/bash -c 'bash %s > %s'" % (install_script, os.path.join(ui_install_log,'ui-install.log')))
+        shell("runuser -l root -s /bin/bash -c 'bash %s &> %s'" % (install_script, os.path.join(ui_install_log,'ui-install.log')))
 
     def install_mini_ui(self):
         mini_bin = "/opt/zstack-dvd/{}/{}/zstack_mini_server.bin".format(ctl.BASEARCH, ctl.ZS_RELEASE)
@@ -12764,7 +12852,7 @@ class GetZStackVersion(Command):
         hostname, port, user, password = ctl.get_live_mysql_portal()
         return get_zstack_version(hostname, port, user, password)
 
-    # cube:  'AliyunHCI-Z 1.1.0'
+    # cube:  'Cube 2.5.4.16'
     # zsv:   'ZSphere 4.0.0'
     # cloud: ''
     def get_additional_version(self):
@@ -13428,6 +13516,7 @@ class MorphService(ExtraService):
     default_ui_proxy_port = 80
     default_ip = get_default_ip()
     default_morph_service_path = "/etc/systemd/system/morph.service"
+    allow_custom_database_endpoint = False
     default_morph_service_content = '''
 [Unit]
 Description=Morph Application Service
@@ -13471,15 +13560,105 @@ WantedBy=multi-user.target
     def service_name(self):
         return "morph"
 
+    def _check_ha_database_endpoint(self, host, port):
+        try:
+            with socket.create_connection((host, port), timeout=5):
+                pass
+            script = 'import socket; socket.create_connection((%r, %d), timeout=5).close()' % (host, port)
+            self.zsha2_utils.execute_on_peer('%s -c %s' % (shell_quote(sys.executable), shell_quote(script)), True)
+        except Exception:
+            raise CtlError('Cannot verify TCP connectivity to Morph HA database VIP %s:%d '
+                           'from both nodes; refusing Morph activation' % (host, port))
+
+    def _configure_ha_database(self):
+        if not hasattr(self, '_ha_region_snapshot'):
+            self._ha_region_snapshot = snapshot_file(self.default_morph_database_config)
+        changed = configure_ha_database(
+            self.default_morph_config, self.default_morph_database_config, self.zsha2_utils.config.get('dbvip'),
+            local_hosts=(self.zsha2_utils.config.get('nodeip'), self.zsha2_utils.config.get('peerip')),
+            allow_custom_endpoint=self.allow_custom_database_endpoint, check_endpoint=self._check_ha_database_endpoint)
+        if changed:
+            info('Original Morph configuration retained in protected .morph-ha-before-* directories under %s' %
+                 os.path.dirname(self.default_morph_database_config))
+        return changed
+
+    def _backup_ha_peer_configuration(self):
+        if getattr(self, '_ha_peer_backup_directory', None):
+            return
+        if not self.allow_custom_database_endpoint:
+            script = ('import json,os,yaml; from urllib.parse import urlsplit; '
+                      'application=yaml.safe_load(open(%r)) if os.path.exists(%r) else {}; '
+                      'region=yaml.safe_load(open(%r)) if os.path.exists(%r) else {}; '
+                      'spring=region.get("spring", {}); defaults=application.get("spring", {}); '
+                      'urls=[spring.get("datasource", {}).get("url") or defaults.get("datasource", {}).get("url"), '
+                      'spring.get("flyway", {}).get("url") or defaults.get("flyway", {}).get("url")]; '
+                      'print(json.dumps([urlsplit(value[5:]).hostname for value in urls if value]))' %
+                      (self.default_morph_config, self.default_morph_config,
+                       self.default_morph_database_config, self.default_morph_database_config))
+            hosts = yaml.safe_load(self.zsha2_utils.execute_on_peer(
+                '%s -c %s' % (shell_quote(sys.executable), shell_quote(script)), True))
+            if not isinstance(hosts, list):
+                raise CtlError('Invalid Morph peer database configuration')
+            validate_database_hosts(hosts, self.zsha2_utils.config.get('dbvip'),
+                                    (self.zsha2_utils.config.get('nodeip'), self.zsha2_utils.config.get('peerip')))
+        parent = os.path.dirname(self.default_morph_database_config)
+        script = ('import os,subprocess,tempfile\n'
+                  'directory=tempfile.mkdtemp(prefix=".morph-ha-before-", dir=%r)\n'
+                  'for source in %r:\n'
+                  '    if os.path.lexists(source):\n'
+                  '        subprocess.check_call(["cp", "-a", "--", source, directory])\n'
+                  '    else:\n'
+                  '        open(os.path.join(directory, ".missing-" + os.path.basename(source)), "x").close()\n'
+                  'print(directory)' % (parent, (self.default_morph_config, self.default_morph_database_config)))
+        command = '%s -c %s' % (shell_quote(sys.executable), shell_quote(script))
+        directory = self.zsha2_utils.execute_on_peer(command, True).strip()
+        if os.path.dirname(directory) != parent or not os.path.basename(directory).startswith('.morph-ha-before-'):
+            raise CtlError('Invalid Morph peer configuration backup path')
+        self._ha_peer_backup_directory = directory
+        info('Original peer Morph configuration retained at %s' % directory)
+
+    def _restore_prepared_ha_configuration(self):
+        if hasattr(self, '_ha_region_snapshot'):
+            try:
+                restore_file(self.default_morph_database_config, self._ha_region_snapshot)
+            except Exception as e:
+                warn('Failed to restore local Morph configuration: %s' % str(e))
+        backup = getattr(self, '_ha_peer_backup_directory', None)
+        if backup:
+            for destination in (self.default_morph_config, self.default_morph_database_config):
+                source = os.path.join(backup, os.path.basename(destination))
+                marker = os.path.join(backup, '.missing-' + os.path.basename(destination))
+                temporary = '%s.restore-%s' % (destination, uuid.uuid4())
+                try:
+                    self.zsha2_utils.execute_on_peer('if test -e %s; then rm -f -- %s; '
+                        'else cp -a -- %s %s && mv -fT -- %s %s; fi' % (
+                        shell_quote(marker), shell_quote(destination), shell_quote(source), shell_quote(temporary),
+                        shell_quote(temporary), shell_quote(destination)), True)
+                except Exception as e:
+                    warn('Failed to restore peer Morph configuration; original retained at %s: %s' % (backup, str(e)))
+        self._clear_ha_configuration_checkpoint()
+
+    def _clear_ha_configuration_checkpoint(self):
+        for name in ('_ha_region_snapshot', '_ha_peer_backup_directory'):
+            if hasattr(self, name):
+                delattr(self, name)
+
     def init(self):
+        try:
+            self._init()
+        except Exception:
+            if self.zsha2_utils:
+                self._restore_prepared_ha_configuration()
+            raise
+
+    def _init(self):
         if self.zsha2_utils:
             try:
                 vip_address = self.zsha2_utils.config.get('dbvip')
-                if vip_address and vip_address != self.default_ip:
-                    info('[zsha2] VIP address %s detected, consider updating default_ip if needed' % vip_address)
-                    self.default_ip = vip_address
+                self._configure_ha_database()
+                self.default_ip = vip_address
             except Exception as e:
-                warn('[zsha2] Failed to get VIP configuration: %s' % str(e))
+                raise CtlError('Failed to configure Morph HA database: %s' % str(e))
 
         data = OrderedDict()
 
@@ -13516,12 +13695,12 @@ WantedBy=multi-user.target
                 if not isinstance(data, dict):
                     data = OrderedDict()
         except IOError as e:
-            error('Failed to load morph region_config.yml: %s' % str(e))
+            raise CtlError('Failed to load morph region_config.yml: %s' % str(e))
         except yaml.YAMLError as exc:
             if hasattr(exc, 'problem_mark'):
                 mark = exc.problem_mark
-                error("Error at line: %s column: %s" % (mark.line + 1, mark.column + 1))
-            error('Failed to parse morph region_config.yml')
+                raise CtlError("Error at line: %s column: %s" % (mark.line + 1, mark.column + 1))
+            raise CtlError('Failed to parse morph region_config.yml')
 
         if 'extension' in data:
             if 'morphAddress' in data['extension']:
@@ -13533,41 +13712,74 @@ WantedBy=multi-user.target
                 ordered_dump(data, f, default_flow_style=False)
             info('morph region_config.yml write success')
         except IOError:
-            error('morph region_config.yml write failed')
+            raise CtlError('morph region_config.yml write failed')
 
         try:
             with open(self.default_morph_service_path, 'w') as f:
                 f.write(self.default_morph_service_content)
             info('morph morph.service write success')
         except IOError:
-            error('morph morph.service write failed')
+            raise CtlError('morph morph.service write failed')
 
         warn(
             '**** IMPORTANT: Please verify region_config.yml configuration after morph service initialization. Check database connection, IP settings, and service dependencies. ***')
 
-        shell_no_pipe("systemctl daemon-reload")
-        shell_no_pipe("systemctl enable %s" % self.service_name())
-        shell_no_pipe("systemctl start %s" % self.service_name())
-
-        if self.zsha2_utils:
-            try:
+        try:
+            shell_no_pipe("systemctl daemon-reload")
+            shell_no_pipe("systemctl enable %s" % self.service_name())
+            if self.zsha2_utils:
+                self._backup_ha_peer_configuration()
                 self.zsha2_utils.scp_to_peer(self.default_morph_config, self.default_morph_config)
-                self.zsha2_utils.scp_to_peer(self.default_morph_database_config, self.default_morph_database_config)
                 self.zsha2_utils.scp_to_peer(self.default_morph_jar, self.default_morph_jar)
                 self.zsha2_utils.scp_to_peer(self.default_morph_service_path, self.default_morph_service_path)
                 self.zsha2_utils.execute_on_peer("systemctl daemon-reload")
                 self.zsha2_utils.execute_on_peer("systemctl enable %s" % self.service_name())
-                self.zsha2_utils.execute_on_peer("systemctl start %s" % self.service_name())
-            except Exception as e:
-                error("Failed to sync morph service to peer node: %s" % str(e))
+                self.zsha2_utils.scp_to_peer(self.default_morph_database_config, self.default_morph_database_config)
+        except Exception as e:
+            raise CtlError("Failed to initialize morph service: %s" % str(e))
 
 
 
     def start(self, do_init=False):
-        shell_no_pipe("systemctl start %s" % self.service_name())
-        self._wait_for_morph("http://%s:%d/actuator/health" % (format_url_host(self.default_ip), self.default_port))
+        local_restart = peer_restart = bool(do_init and self.zsha2_utils)
+        local_ip = self.default_ip
         if self.zsha2_utils:
-            self.zsha2_utils.execute_on_peer("systemctl start %s" % self.service_name())
+            try:
+                changed = self._configure_ha_database()
+                local_restart = local_restart or changed
+                peer_restart = peer_restart or changed
+                with open(self.default_morph_database_config, 'rb') as stream:
+                    digest = hashlib.sha256(stream.read()).hexdigest()
+                peer_digest = self.zsha2_utils.execute_on_peer(
+                    'sha256sum %s' % shell_quote(self.default_morph_database_config), True).split()[0]
+                if peer_digest != digest:
+                    self._backup_ha_peer_configuration()
+                    self.zsha2_utils.scp_to_peer(self.default_morph_database_config, self.default_morph_database_config)
+                    peer_restart = True
+                local_ip = self.zsha2_utils.config['nodeip']
+                if peer_restart:
+                    self.zsha2_utils.execute_on_peer("systemctl stop %s" % self.service_name())
+            except Exception as e:
+                self._restore_prepared_ha_configuration()
+                raise CtlError('Failed to configure Morph HA database: %s' % str(e))
+        try:
+            shell_no_pipe("systemctl %s %s" % ('restart' if local_restart else 'start', self.service_name()))
+            self._wait_for_morph("http://%s:%d/actuator/health" % (format_url_host(local_ip), self.default_port))
+            if self.zsha2_utils:
+                self.zsha2_utils.execute_on_peer("systemctl %s %s" % ('restart' if peer_restart else 'start', self.service_name()))
+                self._wait_for_morph("http://%s:%d/actuator/health" % (format_url_host(self.zsha2_utils.config['peerip']), self.default_port))
+        except Exception:
+            if self.zsha2_utils:
+                warn('Morph activation failed; keeping shared database configuration because migrations may already have run. '
+                     'Original configurations are retained in protected .morph-ha-before-* directories.')
+            if peer_restart:
+                try:
+                    self.zsha2_utils.execute_on_peer("systemctl start %s" % self.service_name())
+                except Exception as e:
+                    warn("Failed to restore peer Morph service: %s" % str(e))
+            self._clear_ha_configuration_checkpoint()
+            raise
+        self._clear_ha_configuration_checkpoint()
 
     def _wait_for_morph(self, url, timeout=600):
         info_and_debug("Waiting for %s to become available at: %s" % (self.service_name(), url))
@@ -13575,7 +13787,7 @@ WantedBy=multi-user.target
 
         while time.time() - begin < timeout:
             try:
-                result = shell("curl -s -o /dev/null -w '%%{http_code}' %s" % url)
+                result = shell("curl --connect-timeout 5 --max-time 10 -s -o /dev/null -w '%%{http_code}' %s" % url)
                 if result.strip() == "200":
                     info_and_debug("%s is ready." % self.service_name())
                     return True
@@ -13583,8 +13795,7 @@ WantedBy=multi-user.target
                 pass
             time.sleep(5)
 
-        error("%s did not become ready within %d seconds." % (self.service_name(), timeout))
-        return False
+        raise CtlError("%s did not become ready within %d seconds." % (self.service_name(), timeout))
 
 
 class LicenseServerService(ExtraService):
@@ -13646,6 +13857,9 @@ class StartExtraServicesCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--name', required=True, help='Specify a single service to start, e.g. --name iam')
         parser.add_argument('--init', action='store_true', default=False, help='Initialize configuration before starting the service')
+        parser.add_argument('--confirm-morph-db-vip', action='store_true', default=False,
+                            help='Allow --name morph --init to replace custom database endpoints with the HA DB VIP; '
+                                 'configuration is backed up, database data is not migrated')
         parser.add_argument(
             '--change_admin_password', required=False,
             help='Change the existing Keycloak admin password after starting IAM')
@@ -13663,10 +13877,19 @@ class StartExtraServicesCmd(Command):
         if args.current_admin_password is not None and args.change_admin_password is None:
             error("--current_admin_password requires --change_admin_password")
             return
+        confirm_morph_database = getattr(args, 'confirm_morph_db_vip', False)
+        if confirm_morph_database and (args.name != 'morph' or not args.init):
+            error('--confirm-morph-db-vip requires --name morph --init')
+            return
 
         try:
             service_class = self.EXTRA_SERVICE_REGISTRY[args.name]
             service_instance = service_class()
+            if args.name == 'morph':
+                if confirm_morph_database and not service_instance.zsha2_utils:
+                    error('--confirm-morph-db-vip is only supported for Morph HA')
+                    return
+                service_instance.allow_custom_database_endpoint = confirm_morph_database
             if args.init:
                 service_instance.init()
             service_instance.start(args.init)

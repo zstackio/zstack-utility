@@ -102,6 +102,9 @@ class Daemon(object):
     def delpid(self):
         linux.rm_file_force(self.pidfile)
 
+    def _process_exists(self, pid):
+        return linux.process_exists(pid)
+
     def start(self):
         """
         Start the daemon
@@ -120,7 +123,7 @@ class Daemon(object):
         except IOError:
             pid = None
 
-        if pid and linux.process_exists(pid):
+        if pid and self._process_exists(pid):
             message = "Daemon already running, pid is %s\n" % pid
             Daemon._log_and_dump_message(message, sys.stderr)
             sys.exit(0)
@@ -160,7 +163,7 @@ class Daemon(object):
         except IOError:
             pid = None
 
-        if pid and linux.process_exists(pid):
+        if pid and self._process_exists(pid):
             self.stop_agent_by_pid(pid, wait_stop)
         else:
             message = "pidfile %s does not exist. Daemon not running?\n" % self.pidfile
@@ -198,7 +201,7 @@ class Daemon(object):
         for pid in pids.split('\n'):
             if pid and int(pid) != os.getpid():
                 pid = int(pid)
-                if linux.process_exists(pid):
+                if self._process_exists(pid):
                     message = "Daemon already running, pid is %s\n" % pid
                     Daemon._log_and_dump_message(message)
                     sys.exit(0)
@@ -207,7 +210,7 @@ class Daemon(object):
         # Try killing the daemon process
         start_time = time.time()
         while 1:
-            if linux.process_exists(pid):
+            if self._process_exists(pid):
                 curr_time = time.time()
                 if (curr_time - start_time) > wait_stop:
                     os.kill(pid, SIGKILL)

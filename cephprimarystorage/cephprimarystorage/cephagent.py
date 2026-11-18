@@ -1,6 +1,7 @@
 import math
 import tempfile
 import time
+import shlex
 
 __author__ = 'frank'
 
@@ -81,7 +82,7 @@ class CleanTrashRsp(AgentResponse):
 
 
 class CephToCephMigrateVolumeSegmentCmd(AgentCommand):
-    @log.sensitive_fields("dstMonSshPassword")
+    @log.sensitive_fields("dstMonSshPassword", "dstMonCandidates")
     def __init__(self):
         super(CephToCephMigrateVolumeSegmentCmd, self).__init__()
         self.parentUuid = None
@@ -92,6 +93,7 @@ class CephToCephMigrateVolumeSegmentCmd(AgentCommand):
         self.dstMonSshUsername = None
         self.dstMonSshPassword = None
         self.dstMonSshPort = None  # type:int
+        self.dstMonCandidates = None
 
 
 class CheckIsBitsExistingRsp(AgentResponse):
@@ -875,6 +877,30 @@ class CephAgent(plugin.TaskManager):
             return cmd_string + " --image-shared"
         return cmd_string
 
+    @staticmethod
+    def _copy_concurrency_option(cmd):
+        concurrency = cmd.rbdConcurrentManagementOps
+        if concurrency is None:
+            return ''
+        if type(concurrency) is not int:
+            logger.warn('ignore invalid rbdConcurrentManagementOps: %s' % concurrency)
+            return ''
+        if concurrency < 1:
+            return ''
+
+        try:
+            probe = shell.ShellCmd('timeout -s KILL 30s rbd --show-config')
+            probe(False)
+            supported = probe.return_code == 0 and any(
+                line.partition('=')[0].strip() == 'rbd_concurrent_management_ops'
+                for line in probe.stdout.splitlines())
+            if supported:
+                return ' --rbd_concurrent_management_ops=%s' % concurrency
+            logger.warn('skip rbd concurrency option: unsupported or probe failed, return code %s' % probe.return_code)
+        except Exception as e:
+            logger.warn('skip rbd concurrency option: probe failed: %s' % e)
+        return ''
+
     @replyerror
     def cp(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -913,8 +939,9 @@ class CephAgent(plugin.TaskManager):
             return "deep cp" if shell.run("rbd help deep cp > /dev/null") == 0 else "cp"
 
         t_shell = traceable_shell.get_shell(cmd)
+        concurrency_option = self._copy_concurrency_option(cmd)
         _, _, err = t_shell.bash_progress_1(
-            self._wrap_shareable_cmd(cmd, 'rbd %s %s %s 2> %s' % (_get_cp_cmd(), src_path, dst_path, PFILE)),
+            self._wrap_shareable_cmd(cmd, 'rbd %s%s %s %s 2> %s' % (_get_cp_cmd(), concurrency_option, src_path, dst_path, PFILE)),
             _get_progress)
 
         if os.path.exists(PFILE):
@@ -1460,11 +1487,51 @@ class CephAgent(plugin.TaskManager):
             return -1, err
         return 0, None
 
+    def _probe_migration_target(self, candidate, timeout):
+        password_file = linux.write_to_temp_file(candidate.sshPassword)
+        try:
+            os.chmod(password_file, 0o600)
+            command = ('timeout --signal=TERM --kill-after=2 %ds sshpass -f %s ssh '
+                       '-n -p %d -o ConnectTimeout=3 -o ConnectionAttempts=1 '
+                       '-o NumberOfPasswordPrompts=1 -o StrictHostKeyChecking=no '
+                       '-o UserKnownHostsFile=/dev/null %s true' % (
+                           timeout, shlex.quote(password_file), candidate.sshPort,
+                           shlex.quote(linux.format_ssh_target(candidate.sshUsername, candidate.ip))))
+            return shell.run(command)
+        finally:
+            linux.rm_file_force(password_file)
+
+    def _select_migration_target(self, cmd):
+        deadline = get_deadline(cmd)
+        failures = []
+        for candidate in cmd.dstMonCandidates:
+            timeout = 10
+            if deadline:
+                timeout = min(timeout, int(deadline - time.time()) - 2)
+                if timeout <= 0:
+                    raise Exception('migration network precheck exceeded task deadline')
+            rc = self._probe_migration_target(candidate, timeout)
+            if rc == 0:
+                cmd.dstMonHostname = candidate.ip
+                cmd.dstMonSshUsername = candidate.sshUsername
+                cmd.dstMonSshPassword = candidate.sshPassword
+                cmd.dstMonSshPort = candidate.sshPort
+                return None
+            failures.append('%s:%s(%s, exit=%s)' % (
+                candidate.ip, candidate.sshPort, candidate.networkType, rc))
+        return 'source MON[%s] cannot SSH to any migration target: %s' % (cmd.monUuid, ', '.join(failures))
+
     @replyerror
     @in_bash
     def migrate_volume_segment(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = AgentResponse()
+        if cmd.dstMonCandidates is not None:
+            error = self._select_migration_target(cmd)
+            if error:
+                rsp.set_err(error)
+                rsp.networkPrecheckFailed = True
+                return jsonobject.dumps(rsp)
         src_install_path = self._normalize_install_path(cmd.srcInstallPath)
         dst_install_path = self._normalize_install_path(cmd.dstInstallPath)
         src_size = self._get_file_size(src_install_path)

@@ -36,6 +36,7 @@ import libvirt
 import xml.dom.minidom as minidom
 #from typing import List, Any, Union
 from collections import Counter
+from enum import Enum
 from zstacklib.utils.version import NumericVersion
 from collections import deque
 
@@ -116,6 +117,12 @@ PMU_OFF_UNSUPPORTED_DIST = {
 ZS_XML_NAMESPACE = 'http://zstack.org'
 
 etree.register_namespace('zs', ZS_XML_NAMESPACE)
+
+
+class ScsiLunDiskMode(Enum):
+    VIRTIO_BLK = 'virtio-blk'
+    SCSI_HD = 'scsi-hd'
+    SCSI_BLOCK = 'scsi-block'
 
 
 def _get_shmem_size_mb(shmem_size):
@@ -1974,6 +1981,9 @@ def get_machineType(machine_type):
             return "loongson7a"
     return machine_type if machine_type else "pc"
 
+def is_i440fx_machine_type(machine_type):
+    return machine_type == 'pc' or (machine_type and machine_type.startswith('pc-i440fx'))
+
 def get_sgio_value():
     device_name = [x for x in os.listdir("/sys/block") if not x.startswith("loop")][0]
     return "unfiltered" if os.path.isfile("/sys/block/{}/queue/unpriv_sgio".format(device_name)) else "filtered"
@@ -3421,7 +3431,7 @@ class Vm(object):
             return bool(persisted_address and persisted_address.type == address_type)
 
         def set_drive_address(controller, unit):
-            e(disk_element, 'address', None, {'type': 'drive', 'controller': controller, 'unit': str(unit)})
+            return e(disk_element, 'address', None, {'type': 'drive', 'controller': controller, 'unit': str(unit)})
 
         match bus:
             case 'virtio':
@@ -3459,7 +3469,12 @@ class Vm(object):
 
             case 'sata' | 'ide':
                 if has_persisted_address_type('drive'):
-                    set_drive_address(persisted_address.controller, persisted_address.unit)
+                    address = set_drive_address(persisted_address.controller, persisted_address.unit)
+                    if bus == 'ide':
+                        if persisted_address.bus not in (None, ''):
+                            address.set('bus', str(persisted_address.bus))
+                        if persisted_address.target not in (None, ''):
+                            address.set('target', str(persisted_address.target))
 
     @staticmethod
     def _can_reuse_persisted_scsi_drive_address(vol):
@@ -3692,7 +3707,36 @@ class Vm(object):
         self.start(cmd.timeout)
 
     def restore(self, path):
-        self._patch_cpu_xml_from_saved_image(path)
+        self._patch_disk_xml_order_from_saved_image(path)
+        self._patch_xml_from_saved_image(path)
+        self._remove_legacy_virtio_blk_discard_if_absent_in_saved_image(path)
+
+        tree = etree.fromstring(self.domain_xml)
+        vcpu = tree.find('vcpu')
+        vcpus = tree.findall('vcpus/vcpu')
+        if vcpu is not None:
+            maximum = int(vcpu.text)
+            for cpu in vcpus:
+                vcpu_id = int(cpu.get('id'))
+                if vcpu_id < 0 or vcpu_id >= maximum:
+                    raise kvmagent.KvmError('saved vCPU id[%s] is outside configured capacity[%s]' %
+                                           (vcpu_id, maximum))
+            for cell in tree.findall('cpu/numa/cell'):
+                numa_cpus = set()
+                for cpu_range in (cell.get('cpus') or '').split(','):
+                    cpu_range = cpu_range.strip()
+                    if not cpu_range:
+                        continue
+                    bounds = cpu_range.lstrip('^').split('-')
+                    cpu_ids = range(int(bounds[0]), int(bounds[-1]) + 1)
+                    if cpu_range.startswith('^'):
+                        numa_cpus.difference_update(cpu_ids)
+                    else:
+                        numa_cpus.update(cpu_ids)
+                if numa_cpus and max(numa_cpus) >= maximum:
+                    raise kvmagent.KvmError('saved NUMA CPU id[%s] is outside configured capacity[%s]; '
+                                           'restore the original NUMA/CPU configuration before retrying' %
+                                           (max(numa_cpus), maximum))
 
         @LibvirtAutoReconnect
         def restore_from_file(conn):
@@ -3708,56 +3752,256 @@ class Vm(object):
         define_xml()
         restore_from_file()
 
-    def _patch_cpu_xml_from_saved_image(self, path):
-        """Patch CPU XML for host-model VMs restoring from memory snapshot.
+    def _remove_legacy_virtio_blk_discard_if_absent_in_saved_image(self, path):
+        qemu_namespace = '{http://libvirt.org/schemas/domain/qemu/1.0}'
+        root = etree.fromstring(self.domain_xml)
+        os_type = root.find('./os/type')
+        if os_type is None or not is_i440fx_machine_type(os_type.get('machine')):
+            return
 
-        When a VM uses host-model CPU mode, libvirt internally expands it to
-        mode='custom' with a concrete CPU model and check='full' in the saved
-        image. If we pass a freshly built XML with mode='host-model', libvirt's
-        restoreFlags rejects it because the CPU mode/check don't match.
+        commandlines = root.findall('%scommandline' % qemu_namespace)
+        if not any(arg.get('value') == 'virtio-blk-pci.discard=on'
+                   for commandline in commandlines
+                   for arg in commandline.findall('%sarg' % qemu_namespace)):
+            return
 
-        Fix: extract the CPU element from the saved image XML and replace the
-        agent-built one so that source and target are identical.
-        """
+        @LibvirtAutoReconnect
+        def get_saved_xml(conn):
+            return conn.saveImageGetXMLDesc(path, 0)
+
+        saved_root = etree.fromstring(get_saved_xml())
+        if any(arg.get('value') == 'virtio-blk-pci.discard=on'
+               for commandline in saved_root.findall('%scommandline' % qemu_namespace)
+               for arg in commandline.findall('%sarg' % qemu_namespace)):
+            return
+
+        for commandline in commandlines:
+            args = commandline.findall('%sarg' % qemu_namespace)
+            for arg in reversed(args):
+                if arg.get('value') != 'virtio-blk-pci.discard=on':
+                    continue
+
+                index = list(commandline).index(arg)
+                commandline.remove(arg)
+                if index > 0:
+                    previous = list(commandline)[index - 1]
+                    if previous.tag == '%sarg' % qemu_namespace and previous.get('value') == '-global':
+                        commandline.remove(previous)
+
+            if not list(commandline):
+                root.remove(commandline)
+        self.domain_xml = etree.tostring(root, encoding='unicode')
+
+    @staticmethod
+    def _disk_matches(current, saved):
+        if current.get('device') != saved.get('device'):
+            return False
+
+        current_serial = (current.findtext('serial') or '').strip()
+        saved_serial = (saved.findtext('serial') or '').strip()
+        if current_serial and saved_serial:
+            return current_serial == saved_serial
+
+        current_target = current.find('target')
+        saved_target = saved.find('target')
+        if current_target is not None and saved_target is not None:
+            return bool(current_target.get('dev')) and all(
+                current_target.get(attr) == saved_target.get(attr) for attr in ['dev', 'bus'])
+
+        current_source = current.find('source')
+        saved_source = saved.find('source')
+        if current_source is not None and saved_source is not None:
+            return current_source.get('protocol') == saved_source.get('protocol') and any(
+                current_source.get(attr) and current_source.get(attr) == saved_source.get(attr)
+                for attr in ['file', 'dev', 'name'])
+
+        return False
+
+    @staticmethod
+    def _reorder_disk_xml_by_saved_image(current_xml, saved_xml):
+        current_tree = etree.fromstring(current_xml)
+        saved_tree = etree.fromstring(saved_xml)
+        current_devices = current_tree.find('devices')
+        saved_devices = saved_tree.find('devices')
+
+        if current_devices is None or saved_devices is None:
+            return current_xml
+
+        current_disks = [dev for dev in list(current_devices) if dev.tag == 'disk']
+        saved_disks = [dev for dev in list(saved_devices) if dev.tag == 'disk']
+        if len(current_disks) < 2 or len(saved_disks) < 2:
+            return current_xml
+
+        ordered_disks = []
+        used_disk_ids = set()
+        for saved_disk in saved_disks:
+            matched_disks = [disk for disk in current_disks if id(disk) not in used_disk_ids
+                             and Vm._disk_matches(disk, saved_disk)]
+            if len(matched_disks) != 1:
+                continue
+
+            disk = matched_disks[0]
+            ordered_disks.append(disk)
+            used_disk_ids.add(id(disk))
+
+        if not ordered_disks:
+            return current_xml
+
+        for disk in current_disks:
+            if id(disk) not in used_disk_ids:
+                ordered_disks.append(disk)
+
+        if [id(disk) for disk in ordered_disks] == [id(disk) for disk in current_disks]:
+            return current_xml
+
+        first_disk_index = list(current_devices).index(current_disks[0])
+        for disk in current_disks:
+            current_devices.remove(disk)
+
+        for index, disk in enumerate(ordered_disks):
+            current_devices.insert(first_disk_index + index, disk)
+
+        return etree.tostring(current_tree, encoding='unicode')
+
+    def _patch_disk_xml_order_from_saved_image(self, path):
         try:
-            current_tree = etree.fromstring(self.domain_xml)
-            current_cpu = current_tree.find('cpu')
-            if current_cpu is None or current_cpu.get('mode') != 'host-model':
-                return
-
             @LibvirtAutoReconnect
             def get_saved_xml(conn):
                 return conn.saveImageGetXMLDesc(path, 0)
 
             saved_xml = get_saved_xml()
-            saved_tree = etree.fromstring(saved_xml)
-            saved_cpu = saved_tree.find('cpu')
-
-            if saved_cpu is None:
+            patched_xml = Vm._reorder_disk_xml_by_saved_image(self.domain_xml, saved_xml)
+            if patched_xml == self.domain_xml:
                 return
 
-            logger.debug('patching CPU xml for host-model memory snapshot restore, '
+            self.domain_xml = patched_xml
+            logger.debug('patched disk xml order from saved image for memory snapshot restore')
+        except Exception as ex:
+            logger.warn('failed to patch disk xml order from saved image, '
+                        'falling back to original xml: %s' % str(ex))
+
+    def _patch_xml_from_saved_image(self, path):
+        """Restore the saved CPU ABI and hotplug layout."""
+        try:
+            @LibvirtAutoReconnect
+            def get_saved_xml(conn):
+                return conn.saveImageGetXMLDesc(path, 0)
+
+            saved_tree = etree.fromstring(get_saved_xml())
+            current_tree = etree.fromstring(self.domain_xml)
+
+            patched = []
+            if self._patch_cpu_from_saved_image(current_tree, saved_tree):
+                patched.append('cpu')
+            if self._patch_vcpus_from_saved_image(current_tree, saved_tree):
+                patched.append('vcpus')
+            if self._patch_memory_devices_from_saved_image(current_tree, saved_tree):
+                patched.append('memory devices')
+
+            if not patched:
+                return
+
+            self.domain_xml = etree.tostring(current_tree, encoding='unicode')
+            logger.debug('patched %s from saved image for memory snapshot restore' % ', '.join(patched))
+        except Exception as ex:
+            logger.warn('failed to patch xml from saved image, '
+                        'falling back to original xml: %s' % str(ex))
+
+    @staticmethod
+    def _patch_cpu_from_saved_image(current_tree, saved_tree):
+        current_cpu = current_tree.find('cpu')
+        saved_cpu = saved_tree.find('cpu')
+        if current_cpu is None or saved_cpu is None:
+            return False
+
+        current_mode = current_cpu.get('mode') or 'custom'
+        if current_mode == 'host-model' or (
+                current_mode == 'custom' and
+                (saved_cpu.get('mode') or 'custom') == 'custom' and saved_cpu.get('check') == 'full'):
+            logger.debug('patching CPU xml for memory snapshot restore, '
                          'saved cpu mode=%s, agent cpu mode=%s'
                          % (saved_cpu.get('mode'), current_cpu.get('mode')))
 
             # preserve topology and numa from agent-built xml if not in saved xml
             for tag in ('topology', 'numa'):
                 agent_elem = current_cpu.find(tag)
-                saved_elem = saved_cpu.find(tag)
-                if agent_elem is not None and saved_elem is None:
+                if agent_elem is not None and saved_cpu.find(tag) is None:
                     saved_cpu.append(agent_elem)
 
             # cpu is a direct child of the root <domain> element
-            root = current_tree
-            cpu_index = list(root).index(current_cpu)
-            root.remove(current_cpu)
-            root.insert(cpu_index, saved_cpu)
-            self.domain_xml = etree.tostring(root, encoding='unicode')
+            cpu_index = list(current_tree).index(current_cpu)
+            current_tree.remove(current_cpu)
+            current_tree.insert(cpu_index, saved_cpu)
+            return True
 
-            logger.debug('patched CPU xml from saved image for host-model restore')
-        except Exception as ex:
-            logger.warn('failed to patch CPU xml from saved image, '
-                        'falling back to original xml: %s' % str(ex))
+        # the agent sizes the numa cell with the total memory, while the saved
+        # image keeps the boot memory in the cell and the rest in dimm devices
+        current_numa = current_cpu.find('numa')
+        saved_numa = saved_cpu.find('numa')
+        if current_numa is None or saved_numa is None:
+            return False
+
+        def numa_layout(node):
+            return (node.tag, sorted(node.attrib.items()), (node.text or '').strip(),
+                    [numa_layout(child) for child in node])
+
+        if numa_layout(current_numa) == numa_layout(saved_numa):
+            return False
+
+        numa_index = list(current_cpu).index(current_numa)
+        current_cpu.remove(current_numa)
+        current_cpu.insert(numa_index, saved_numa)
+        return True
+
+    @staticmethod
+    def _patch_vcpus_from_saved_image(current_tree, saved_tree):
+        saved_vcpus = saved_tree.find('vcpus')
+        if saved_vcpus is None:
+            return False
+
+        current_vcpus = current_tree.find('vcpus')
+        if current_vcpus is not None:
+            if (current_vcpus.attrib == saved_vcpus.attrib and
+                    [v.attrib for v in current_vcpus] == [v.attrib for v in saved_vcpus]):
+                return False
+            index = list(current_tree).index(current_vcpus)
+            current_tree.remove(current_vcpus)
+        else:
+            vcpu = current_tree.find('vcpu')
+            index = list(current_tree).index(vcpu) + 1 if vcpu is not None else len(current_tree)
+        current_tree.insert(index, saved_vcpus)
+        return True
+
+    @staticmethod
+    def _patch_memory_devices_from_saved_image(current_tree, saved_tree):
+        saved_memory_devices = [device for device in saved_tree.findall('devices/memory')
+                                if device.get('model') in ('dimm', 'nvdimm')]
+        devices = current_tree.find('devices')
+        if not saved_memory_devices or devices is None:
+            return False
+
+        for device in devices.findall('memory'):
+            if device.get('model') in ('dimm', 'nvdimm'):
+                devices.remove(device)
+        for device in saved_memory_devices:
+            devices.append(device)
+
+        saved_max_memory = saved_tree.find('maxMemory')
+        if current_tree.find('maxMemory') is None and saved_max_memory is not None:
+            current_tree.insert(0, saved_max_memory)
+
+        current_cpu = current_tree.find('cpu')
+        saved_numa = saved_tree.find('cpu/numa')
+        if current_cpu is not None and current_cpu.find('numa') is None and saved_numa is not None:
+            current_cpu.append(saved_numa)
+
+        current_memory = current_tree.find('currentMemory')
+        saved_current_memory = saved_tree.find('currentMemory')
+        if current_memory is not None and saved_current_memory is not None:
+            index = list(current_tree).index(current_memory)
+            current_tree.remove(current_memory)
+            current_tree.insert(index, saved_current_memory)
+        return True
 
     def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
@@ -3786,7 +4030,20 @@ class Vm(object):
         dumpformat = libvirt.VIR_DOMAIN_CORE_DUMP_FORMAT_KDUMP_ZLIB
         self.domain.coreDumpWithFormat(path, dumpformat, flags)
 
-    def stop(self, strategy='grace', timeout=5, undefine=True):
+    @staticmethod
+    def _get_undefine_flags(keep_nvram, include_cleanup_flags=True):
+        nvram_flag_name = "VIR_DOMAIN_UNDEFINE_KEEP_NVRAM" if keep_nvram else "VIR_DOMAIN_UNDEFINE_NVRAM"
+        attrs = [nvram_flag_name]
+        if include_cleanup_flags:
+            attrs = ["VIR_DOMAIN_UNDEFINE_MANAGED_SAVE", "VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA"] + attrs
+
+        flags = 0
+        for attr in attrs:
+            if hasattr(libvirt, attr):
+                flags |= getattr(libvirt, attr)
+        return flags
+
+    def stop(self, strategy='grace', timeout=5, undefine=True, keep_nvram=True):
         def cleanup_addons():
             for chan in self.domain_xmlobject.devices.get_child_node_as_list('channel'):
                 if chan.type_ == 'unix':
@@ -3831,7 +4088,11 @@ class Vm(object):
 
             def force_undefine():
                 try:
-                    self.domain.undefine()
+                    flags = self._get_undefine_flags(keep_nvram, include_cleanup_flags=False)
+                    if flags:
+                        self.domain.undefineFlags(flags)
+                    else:
+                        self.domain.undefine()
                 except:
                     logger.warn('cannot undefine the VM[uuid:%s]' % self.uuid)
                     pid = linux.find_process_by_cmdline(['qemu', self.uuid])
@@ -3840,11 +4101,7 @@ class Vm(object):
                         linux.kill_process(pid, is_exception=False)
 
             try:
-                flags = 0
-                for attr in [ "VIR_DOMAIN_UNDEFINE_MANAGED_SAVE", "VIR_DOMAIN_UNDEFINE_SNAPSHOTS_METADATA", "VIR_DOMAIN_UNDEFINE_NVRAM" ]:
-                    if hasattr(libvirt, attr):
-                        flags |= getattr(libvirt, attr)
-                self.domain.undefineFlags(flags)
+                self.domain.undefineFlags(self._get_undefine_flags(keep_nvram))
             except libvirt.libvirtError as ex:
                 logger.warn('undefine domain[%s] failed: %s' % (self.uuid, str(ex)))
                 if 'transient' in str(ex).lower():
@@ -3900,7 +4157,7 @@ class Vm(object):
             raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
     def destroy(self):
-        self.stop(strategy='cold')
+        self.stop(strategy='cold', keep_nvram=False)
 
     def pause(self, timeout=5):
         def loop_suspend(_):
@@ -4024,6 +4281,24 @@ class Vm(object):
             e(io_tune, 'total_iops_sec', str(qos.totalIOPS))
 
     @staticmethod
+    def make_scsi_lun_disk(volume, dev_letter):
+        disk_mode = volume.diskMode or ScsiLunDiskMode.SCSI_BLOCK.value
+        try:
+            mode = ScsiLunDiskMode(disk_mode)
+        except ValueError:
+            raise kvmagent.KvmError('unsupported SCSI LUN disk mode[%s]' % disk_mode)
+        passthrough = mode == ScsiLunDiskMode.SCSI_BLOCK
+        attributes = {'type': 'block', 'device': 'lun' if passthrough else 'disk'}
+        if passthrough:
+            attributes['sgio'] = get_sgio_value()
+        disk = etree.Element('disk', attrib=attributes)
+        e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
+        e(disk, 'source', None, {'dev': volume.installPath})
+        bus = 'virtio' if mode == ScsiLunDiskMode.VIRTIO_BLK else 'scsi'
+        e(disk, 'target', None, {'dev': Vm._get_disk_target_dev_format(bus) % dev_letter, 'bus': bus})
+        return disk
+
+    @staticmethod
     def set_volume_serial_id(vol_uuid, volume_xml_obj):
         vol_type = volume_xml_obj.get('type')
         if vol_type == 'vhostuser':
@@ -4087,13 +4362,7 @@ class Vm(object):
             return disk
 
         def scsilun_volume():
-            # default value of sgio is 'filtered'
-            #NOTE(weiw): scsi lun not support aio or qos
-            disk = etree.Element('disk', attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
-            e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
-            e(disk, 'source', None, {'dev': volume.installPath})
-            e(disk, 'target', None, {'dev': 'sd%s' % dev_letter, 'bus': 'scsi'})
-            return disk
+            return Vm.make_scsi_lun_disk(volume, dev_letter)
 
         def iscsibased_volume():
             # type: () -> etree.Element
@@ -6987,7 +7256,6 @@ class Vm(object):
                 e(os, 'type', 'hvm', attrib={'arch': 'loongarch64', 'machine': machine_type})
                 e(os, 'loader', loader_path, attrib={'readonly': 'yes', 'type': 'rom'})
 
-            VmPlugin.clean_vm_firmware_flash(cmd.vmInstanceUuid)
             eval("on_{}".format(host_arch))()
 
             if cmd.useBootMenu:
@@ -8043,11 +8311,10 @@ class Vm(object):
             devices = elements['devices']
             for volume in storageDevices:
                 if match_storage_device(volume.installPath):
-                    disk = e(devices, 'disk', None, attrib={'type': 'block', 'device': 'lun', 'sgio': get_sgio_value()})
-                    e(disk, 'driver', None, {'name': 'qemu', 'type': 'raw', 'cache': 'none'})
-                    e(disk, 'source', None, {'dev': volume.installPath})
-                    e(disk, 'target', None, {'dev': 'sd%s' % Vm.DEVICE_LETTERS[volume.deviceId], 'bus': 'scsi'})
+                    disk = Vm.make_scsi_lun_disk(volume, Vm.DEVICE_LETTERS[volume.deviceId])
                     Vm.set_device_address(disk, volume)
+                    Vm.set_volume_serial_id(volume.volumeUuid, disk)
+                    devices.append(disk)
 
         def make_pci_device(pciDevices):
             devices = elements['devices']
@@ -8345,6 +8612,16 @@ class Vm(object):
         if cmd.additionalQmp:
             make_qemu_commandline()
 
+        if HOST_ARCH == 'x86_64' and cmd.bootMode not in ('UEFI', 'UEFI_WITH_CSM') and is_i440fx_machine_type(machine_type):
+            qemu_args = [arg.strip('"') for arg in (cmd.addons['qemuCommandLine'] or [])] if cmd.additionalQmp else []
+            if not any(qemu_args[i - 1] == '-global' and qemu_args[i].startswith('virtio-blk-pci.discard=')
+                       for i in range(1, len(qemu_args))):
+                qcmd = elements['root'].find('qemu:commandline')
+                if qcmd is None:
+                    qcmd = e(elements['root'], 'qemu:commandline')
+                e(qcmd, 'qemu:arg', attrib={'value': '-global'})
+                e(qcmd, 'qemu:arg', attrib={'value': 'virtio-blk-pci.discard=on'})
+
         if use_numa_memory_backing or cmd.useHugePage or cmd.MemAccess == "shared" or cmd.noSharePages or vm_artifact_views:
             make_memory_backing()
 
@@ -8379,6 +8656,7 @@ class Vm(object):
             device_attr = {'type': iftype}
         elif nic.type == "MACVLAN":
             iftype = 'direct'
+            device_attr = {'type': iftype}
         elif nic.type == 'TFVNIC':
             iftype = 'ethernet'
             device_attr = {'type': iftype}
@@ -8866,11 +9144,6 @@ class VmPlugin(kvmagent.KvmAgent):
 
     def _start_vm(self, cmd):
         try:
-            if os.path.exists(os.path.join(LIBVIRT_DEFINED_XML_DIR, cmd.vmInstanceUuid + ".xml")) \
-                    and not linux.get_vm_pid(cmd.vmInstanceUuid):
-                # undefine previous
-                shell.run("virsh undefine %s" % cmd.vmInstanceUuid)
-
             vm = get_vm_by_uuid_no_retry(cmd.vmInstanceUuid, False)
 
             if vm:
@@ -8881,7 +9154,7 @@ class VmPlugin(kvmagent.KvmAgent):
                     logger.debug('vm[uuid:%s, name:%s] is already running' % (cmd.vmInstanceUuid, vm.get_name()))
                     return
                 else:
-                    vm.destroy()
+                    vm.stop(strategy='cold')
 
             vm = Vm.from_StartVmCmd(cmd)
             if getattr(cmd, 'HostMinimumFreeMemorySize', None):
@@ -9980,6 +10253,7 @@ class VmPlugin(kvmagent.KvmAgent):
                         ]
                         notify_vrouter(vrouter_cmd)
                 logger.debug('successfully destroyed vm[uuid:%s]' % cmd.uuid)
+            self.clean_vm_firmware_flash(cmd.uuid)
         except kvmagent.KvmError as e:
             logger.warn(linux.get_exception_stacktrace())
             rsp.error = str(e)
@@ -10548,6 +10822,25 @@ class VmPlugin(kvmagent.KvmAgent):
             valid = check_install_path_by_qmp(vmUuid, d.alias.name_, target_install_path)
             return (True, None) if valid else (False, "fail to find disk[install_path=%s] in VM[uuid=%s] by qemu-monitor-command" % (target_install_path, vmUuid))
 
+        def abort_unfinished_copy_job(domain):
+            job = domain.blockJobInfo(disk_name, 0)
+            if not job or job.get('type') != libvirt.VIR_DOMAIN_BLOCK_JOB_TYPE_COPY:
+                return False
+
+            logger.warn("abort unfinished block copy job of vm[uuid:%s] disk[%s]: %s" % (vmUuid, disk_name, job))
+            domain.blockJobAbort(disk_name, 0)
+            if not linux.wait_callback_success(lambda _: not domain.blockJobInfo(disk_name, 0), timeout=60):
+                raise kvmagent.KvmError("block copy job of vm[uuid:%s] disk[%s] still exists after abort"
+                                        % (vmUuid, disk_name))
+            return True
+
+        def pivoted_to_new_volume():
+            try:
+                return check_volume()[0]
+            except Exception as e:
+                logger.warn("failed to check volume of vm[uuid:%s] disk[%s]: %s" % (vmUuid, disk_name, e))
+                return False
+
         job_over = False
         @thread.AsyncThread
         @linux.retry(times=10, sleep_time=0.5)
@@ -10565,7 +10858,8 @@ class VmPlugin(kvmagent.KvmAgent):
             _touch_qmp_socket()
 
         logger.info("start copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
-        with BlockCopyDaemon(task_spec, get_vm_by_uuid(vmUuid).domain, disk_name):
+        domain = get_vm_by_uuid(vmUuid).domain
+        with BlockCopyDaemon(task_spec, domain, disk_name):
             bandwidth = ' --bandwidth {}'.format(task_spec.bandwidth) if task_spec.bandwidth > 0 else ''
             cmd = 'virsh blockcopy --domain {} {} --xml {} --pivot --wait --transient-job --reuse-external{}'.format(
                 vmUuid, disk_name, disk_xml, bandwidth)
@@ -10581,11 +10875,31 @@ class VmPlugin(kvmagent.KvmAgent):
                 elif "Unknown driver 'rbd'" in shell_cmd.stderr:
                     shell_cmd.stderr = 'the qemu version running on the vm is later than that on the host,' \
                                        ' upgrade the qemu running on the virtual machine and try again.'
-                logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, shell_cmd.stderr))
-                return False, shell_cmd.stderr
-            valid, errText = check_volume()
-            if not valid:
-                return False, errText
+                error = shell_cmd.stderr.strip()
+                if not error:
+                    rc = shell_cmd.return_code
+                    error = 'virsh blockcopy was killed by signal %d' % -rc if rc < 0 \
+                        else 'virsh blockcopy exited with return code %d' % rc
+                logger.debug("block copy failed from %s:%s to %s: %s" % (vmUuid, disk_name, task_spec.newVolume.installPath, error))
+                try:
+                    if abort_unfinished_copy_job(domain):
+                        return False, error
+                except Exception as e:
+                    error = '%s; %s' % (error, e)
+                    # Pivot may finish before abort; verify state before reporting failure.
+                    try:
+                        if domain.blockJobInfo(disk_name, 0):
+                            return False, error
+                    except Exception as recheck_error:
+                        return False, '%s; failed to recheck block job: %s' % (error, recheck_error)
+                if not pivoted_to_new_volume():
+                    return False, error
+                logger.warn("virsh blockcopy failed after vm[uuid:%s] disk[%s] pivoted to %s, treat it as success"
+                            % (vmUuid, disk_name, task_spec.newVolume.installPath))
+            else:
+                valid, errText = check_volume()
+                if not valid:
+                    return False, errText
 
         logger.info("completed copying %s:%s to %s ..." % (vmUuid, disk_name, task_spec.newVolume.installPath))
         return True, None

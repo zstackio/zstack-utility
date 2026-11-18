@@ -662,18 +662,21 @@ def convert_disk_state_to_int(state):
     :type state: str
     """
     state = state.lower().strip()
+    # Match failures before the broad normal substrings ("ready"/"raw"/...) so a
+    # compound State like "Offline - not ready" is not masked as Normal(0).
+    if "failed" in state or "offline" in state or "offln" == state:
+        return 10
+    if "missing" in state:
+        return 20
+    if "rebuild" in state or "rbld" == state:
+        return 5
+    if "not ready" in state:
+        return 100
     if "online" in state or "jbod" in state or "ready" in state or "optimal" in state or "hot-spare" in state \
             or "hot spare" in state or "raw" in state or "onln" == state or "ghs" == state or "dhs" == state \
             or "ugood" == state or "cpybck" == state:
         return 0
-    elif "rebuild" in state or "rbld" == state:
-        return 5
-    elif "failed" in state or "offline" in state or "offln" == state:
-        return 10
-    elif "missing" in state:
-        return 20
-    else:
-        return 100
+    return 100
 
 
 def collect_raid_state():
@@ -750,7 +753,7 @@ def collect_arcconf_raid_state(metrics, infos):
                 k = l.split(":")[0].strip().lower()
                 v = ":".join(l.split(":")[1:]).strip()
                 if "state" == k:
-                    drive_state = v.split(" ")[0].strip()
+                    drive_state = v.strip()
                 elif "serial number" in k:
                     serial_number = v
                 elif "reported location" in k and "Enclosure" in v and "Slot" in v:
@@ -804,7 +807,7 @@ def collect_sas_raid_state(metrics, infos):
             elif "Slot #" == k:
                 slot_number = v
             elif "State" == k:
-                state = v.split(" ")[0].strip()
+                state = v.strip()
             elif "Serial No" == k:
                 serial_number = v
             elif "Drive Type" == k:

@@ -38,8 +38,10 @@ esac
 ARCH=`uname -m`
 if [ x"$ARCH" == x"x86_64" ]; then
   LABLE=".${AGENT_OS}-amd64"
+  AGENT_FILE="zwatch-vm-agent"
 else
   LABLE=".${AGENT_OS}-${ARCH}"
+  AGENT_FILE="zwatch-vm-agent_${ARCH}"
 fi
 BIN_NAME="zwatch-vm-agent${LABLE}"
 
@@ -81,7 +83,7 @@ download_agent_tools() {
     mkdir $TEMP_PATH
   fi
   cd $TEMP_PATH
-  curl ftp://$DEPLOY_SERVER/zwatch-vm-agent --silent -o zwatch-vm-agent.download
+  curl ftp://$DEPLOY_SERVER/$AGENT_FILE --silent -o zwatch-vm-agent.download
   cd - &> /dev/null
 }
 

@@ -623,13 +623,26 @@ upgrade_mini_zwatch_webhook(){
 
 # configure deploy_mode if it is cube
 do_config_deploy_mode(){
-    if [ -f "/usr/local/hyperconverged/conf/deployed_info" ]; then
-        zstack-ctl configure deploy_mode="cube" > /dev/null 2>&1
+    local configuration
+    if ! configuration=$(zstack-ctl show_configuration 2>>"$ZSTACKCTL_INSTALL_LOG"); then
+        fail2 "Failed to read deploy_mode configuration."
+    fi
+    if grep -q '^[[:space:]]*deploy_mode[[:space:]]*=' <<< "$configuration"; then
         return
     fi
 
-    if [ -f "/usr/local/hyperconverged/license/sds.info" ]; then
-        zstack-ctl configure deploy_mode="cube" > /dev/null 2>&1
+    if [ -f "/usr/local/hyperconverged/conf/deployed_info" ] || [ -f "/usr/local/hyperconverged/license/sds.info" ]; then
+        zstack-ctl configure deploy_mode="cube" >>"$ZSTACKCTL_INSTALL_LOG" 2>&1 || fail2 "Failed to configure deploy_mode=cube."
+    fi
+}
+
+set_cube_display_version(){
+    local configuration additional_version
+    configuration=$(zstack-ctl show_configuration 2>>"$ZSTACKCTL_INSTALL_LOG") || return 0
+    if grep -q '^[[:space:]]*deploy_mode[[:space:]]*=[[:space:]]*cube[[:space:]]*$' <<< "$configuration"; then
+        if additional_version=$(zstack-ctl get_version -a 2>>"$ZSTACKCTL_INSTALL_LOG") && [ -n "$additional_version" ]; then
+            VERSION=${additional_version##* }
+        fi
     fi
 }
 
@@ -1775,6 +1788,7 @@ upgrade_zstack(){
     [ $? -ne 0 ] && zstack-ctl configure RepoVersion.Strategy="permissive"
 
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
+        do_config_deploy_mode
         return
     fi
 
@@ -2005,10 +2019,13 @@ is_install_general_libs_rh(){
     trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
 
     # Fix upgrade dependency conflicts
+    local nodejs_version
+    if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" || "$ZSTACK_RELEASE" = "h2203sp1o" || "$ZSTACK_RELEASE" = "alinux4" ]] &&
+       nodejs_version=$(rpm -q --qf '%{VERSION}' nodejs 2>/dev/null) && [ "${nodejs_version%%.*}" -lt 24 ]; then
+        yum remove -y nodejs >>$ZSTACK_INSTALL_LOG 2>&1 || fail "remove old nodejs failed."
+    fi
     if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" ]]; then
-      vercomp "20.16.0" `rpm -q nodejs | awk -F '-' '{print $2}'`
-      [ $? -eq 1 ] && removeable="nodejs" || removeable=""
-      yum remove -y redis5 $removeable >>$ZSTACK_INSTALL_LOG 2>&1
+        yum remove -y redis5 >>$ZSTACK_INSTALL_LOG 2>&1
     fi
 
     # Just install what is not installed
@@ -2062,7 +2079,7 @@ is_install_general_libs_rh(){
         deps_list="${deps_list} java-21-openjdk-devel"
     fi
 
-    always_update_list="openssh"
+    always_update_list="openssh nodejs"
     if [[ "$KYLIN_V10_OS" =~ "$ZSTACK_RELEASE" ]] && rpm -q keepalived >/dev/null 2>&1; then
         always_update_list="${always_update_list} keepalived"
     fi
@@ -5182,13 +5199,6 @@ if [ x"$UPGRADE" = x'y' ]; then
     cd /; rm -rf $upgrade_folder
     cleanup_function
 
-    # this is a temporary way to change cube product display final version
-    # real global VERSION is given by gen_setup.sh PRODUCT_VERSION, input from zstack VERSION file
-    # top banner is shown by product_title_file created when iso building ,also given by zstack VERSION file
-    CUBE_ENV_COUNT=`grep "hyper_converged" /etc/rc.local |wc -l`
-    [[ "$CUBE_ENV_COUNT" -gt 0 ]] && CUBE_ENV='y' || CUBE_ENV='n'
-    [ x"$CUBE_ENV" = x'y' -a -f /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version ] && VERSION=`cat /opt/zstack-dvd/$BASEARCH/$ZSTACK_RELEASE/release_version | rev | cut -d '-' -f3 | rev`
-
     if [ ! -z $ONLY_UPGRADE_CTL ]; then
         echo_star_line
         echo -e "$(tput setaf 2)${PRODUCT_NAME,,}-ctl has been upgraded to version: ${VERSION}$(tput sgr0)"
@@ -5201,6 +5211,7 @@ if [ x"$UPGRADE" = x'y' ]; then
 
     # Cloud & ZSV read VERSION
     [ -z $VERSION ] && VERSION=`awk '{print $NF}' $ZSTACK_VERSION`
+    set_cube_display_version
 
     echo ""
     echo_star_line

@@ -392,7 +392,7 @@ class ImageStoreClient(object):
 
         return jsonobject.dumps(rsp)
 
-    def download_from_imagestore(self, cachedir, host, bs_path, ps_path, concurrency=1, failure_action=None):
+    def download_from_imagestore(self, cachedir, host, bs_path, ps_path, concurrency=1, failure_action=None, task_spec=None):
         self._check_zstore_cli()
 
         name, imageid = self._parse_image_reference(bs_path)
@@ -408,7 +408,8 @@ class ImageStoreClient(object):
         logger.debug('pulling %s:%s from image store' % (name, imageid))
 
         try:
-            shell.call(cmdstr)
+            t_shell = traceable_shell.get_shell(task_spec) if task_spec is not None else shell
+            t_shell.call(cmdstr)
         except Exception as ex:
             if failure_action:
                 failure_action()

@@ -127,10 +127,20 @@ def test_command_followed_by_space_completes_parameters(mock_buf):
 
 @pytest.mark.parametrize('keys, expected', [
     (b'LogIn\t\n', 'LogIn '),
-    (b'LogIn\t\t\n', 'LogInByAccount '),
+    (b'LogIn\t\t\n', 'LogInByUser '),
     (b'login\t\n', 'LogIn '),
-    (b'Vm\t\n', 'QueryVmInstance '),
+    (b'LOGIN\t\n', 'LogIn '),
+    (b'LogInBy\t\n', 'LogInByUser '),
+    (b'loginby\t\t\n', 'LogInByAccount '),
+    (b'LogInBy\t\t\t\n', 'GetLogInByProcedure '),
+    (b'Vm\t\n', 'StopVmInstance '),
+    (b'Vm\t\t\n', 'QueryVmInstance '),
+    (b'QueryZon\t\n', 'QueryZone '),
+    (b'XyzNotExist\t\t\t\n', 'XyzNotExist'),
+    (b'QueryModelSer\t\t\t\t\n', 'QueryModelService '),
     (b'LogIn\t\nLogIn \t\n', 'LogIn \nLogIn loginType='),
+    (b'LogIn\t\nLogIn \t\nLogIn\t\n',
+     'LogIn \nLogIn loginType=\nLogIn '),
 ])
 def test_tab_completion_in_terminal(keys, expected):
     test_file = Path(__file__).resolve()
@@ -140,8 +150,11 @@ import runpy
 import sys
 sys.path.insert(0, sys.argv[1])
 make_cli = runpy.run_path(sys.argv[2])['make_cli']
-cli = make_cli(['GetLoginCaptcha', 'GetLoginProcedures', 'LogIn',
-                'LogInByAccount', 'QueryVmInstance', 'StartVmInstance'])
+cli = make_cli(['GetLoginCaptcha', 'GetLoginProcedures',
+                'GetLogInByProcedure', 'LogIn', 'LogInByUser',
+                'LogInByAccount', 'StopVmInstance', 'QueryVmInstance',
+                'StartVmInstance', 'QueryModelService',
+                'QueryModelServiceInstanceGroup', 'QueryZone'])
 cli.api_class_params = {'APILogInMsg': ['username', 'password', 'loginType']}
 readline.parse_and_bind('tab: menu-complete')
 readline.parse_and_bind('set completion-ignore-case on')
