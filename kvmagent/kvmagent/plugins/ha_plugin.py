@@ -2570,6 +2570,8 @@ class HaPlugin(kvmagent.KvmAgent):
 
             def _kill_vm(vm):
                 try:
+                    if not_exec_kill_vm(cmd.strategy, vm.uuid, host_storage_name):
+                        return
                     linux.kill_process(vm.pid, is_graceful=not res.io_timeout)
                     logger.warn(
                         'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.' % (vm.uuid, vm.pid))
