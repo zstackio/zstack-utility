@@ -22,7 +22,6 @@ from zstacklib.gpu.base import (
     GPU_TYPE_COMMUNICATION_CONTROLLER,
     GPU_TYPE_3D_CONTROLLER,
 )
-from zstacklib.utils.qga import VmQga
 
 logger = log.get_logger(__name__)
 
@@ -68,6 +67,8 @@ def apply_explicit_virt_metadata(pci_device_to, capability_info):
 
 
 def shut_persistenced_by_guesttool(domain):
+    from zstacklib.utils.qga import VmQga
+
     vm_uuid = domain.name()
     qga = VmQga(domain)
     if qga.state != VmQga.QGA_STATE_RUNNING:

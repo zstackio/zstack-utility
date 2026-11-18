@@ -2,20 +2,26 @@
 
 set -e
 
-temp=`mktemp -d`
+agent_dir=/var/lib/zstack/baremetalv2/bm-instance-agent
+mkdir -p "$agent_dir"
+temp=$(mktemp -d "$agent_dir/.install-XXXXXX")
+trap 'rm -rf "$temp"' EXIT
 
-sed -n -e '1,/^exit 0$/!p' $0 > ${temp}/bm-instance-agent.tar.gz 2>/dev/null
+sed -n -e '1,/^exit 0$/!p' "$0" > "$temp/bm-instance-agent.tar.gz" 2>/dev/null
 
 # Check md5sum
-pushd ${temp}
+pushd "$temp"
 echo 'MD5_SUM' > md5sum
 md5sum -c md5sum
 
-pkill -9 shellinaboxd || true
-
 tar -zxf bm-instance-agent.tar.gz
+# Verify the bundled runtime before replacing a running agent.
+if ! PEX_INTERPRETER=1 ./bm-instance-agent.pex -c 'from bm_instance_agent import manager'; then
+    echo "Cannot load bm-instance-agent on this host" >&2
+    exit 1
+fi
 
-mkdir -p /var/lib/zstack/baremetalv2/bm-instance-agent/
+pkill -9 shellinaboxd || true
 mkdir -p /var/log/zstack/baremetalv2/
 yes | cp ${temp}/bm-instance-agent.pex /var/lib/zstack/baremetalv2/bm-instance-agent/
 yes | cp ${temp}/shellinaboxd-`uname -m` /var/lib/zstack/baremetalv2/bm-instance-agent/
@@ -141,7 +147,7 @@ EOF
 fi
 
 chmod +x /var/lib/zstack/baremetalv2/bm-instance-agent/zwatch-vm-agent-`uname -m`
-/var/lib/zstack/baremetalv2/bm-instance-agent/zwatch-vm-agent-`uname -m` -i
+TMPDIR="$temp" "${agent_dir}/zwatch-vm-agent-$(uname -m)" -i
 if [ $? != 0 ]; then
      echo "install zwatch-vm-agent fail"
 fi
@@ -154,7 +160,5 @@ if [ $? != 0 ]; then
 fi
 
 echo "start zwatch-vm-agent successfully"
-
-rm -rf ${temp}
 
 exit 0
