@@ -2022,7 +2022,7 @@ class TestHostPluginHccnNativeFailures:
     @staticmethod
     def _output(case):
         def output(command, **kwargs):
-            assert kwargs == {'stderr': -2, 'text': True, 'timeout': 5}
+            assert kwargs == {'stderr': -2, 'text': True, 'timeout': 10 if command[0] == 'npu-smi' else 5}
             if command == ('npu-smi', 'info', '-l'):
                 if isinstance(case, Exception):
                     raise case
@@ -2070,7 +2070,7 @@ class TestHostPluginHccnNativeFailures:
         from zstacklib.utils import hccn
         errors = {
             'nonzero': subprocess.CalledProcessError(191, ('npu-smi', 'info', '-l'), output='dcmi initialize failed -8001'),
-            'timeout': subprocess.TimeoutExpired(('npu-smi', 'info', '-l'), 5),
+            'timeout': subprocess.TimeoutExpired(('npu-smi', 'info', '-l'), 10),
             'oserror': OSError(2, 'npu-smi not installed'),
             'subprocess': subprocess.SubprocessError('native command channel unavailable'),
         }
@@ -2086,6 +2086,22 @@ class TestHostPluginHccnNativeFailures:
     def test_unknown_failure_keeps_original_untyped_decorator_response(self):
         rsp = self._invoke(self._output(RuntimeError('unexpected collector defect')))
         assert rsp == {'success': False, 'error': 'unexpected collector defect'}
+
+    def test_transient_dcmi_failure_does_not_remove_a_recoverable_host(self):
+        import subprocess
+        normal = self._output('normal')
+        failed = []
+
+        def output(command, **kwargs):
+            if command == ('npu-smi', 'info', '-l') and not failed:
+                failed.append(command)
+                raise subprocess.CalledProcessError(191, command, output='dcmi initialize failed -8001')
+            return normal(command, **kwargs)
+
+        rsp = self._invoke(output)
+        assert rsp['success'] is True
+        assert len(rsp['devices']) == 2
+        assert 'nativeFailureKind' not in rsp
 
     @pytest.mark.parametrize('case,link', [('normal', 'UP'), ('link_unobservable', 'UNKNOWN')])
     def test_success_and_unknown_link_keep_original_success_shape(self, case, link):

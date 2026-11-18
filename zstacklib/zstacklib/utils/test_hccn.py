@@ -23,11 +23,12 @@ def test_board_query_accepts_mcu_recovery_after_five_seconds(slow_npu_smi, monke
     assert "card-4" in hccn._command_output("npu-smi", "info", "-t", "board", "-i", "4", "-c", "1")
 
 
-def test_stuck_board_query_still_fails_after_ten_seconds(slow_npu_smi, monkeypatch):
+def test_stuck_board_query_stops_after_two_ten_second_attempts(slow_npu_smi, monkeypatch):
     monkeypatch.setenv("NPU_TEST_DELAY", "20")
-    with pytest.raises(subprocess.TimeoutExpired) as raised:
+    start = time.monotonic()
+    with pytest.raises(subprocess.SubprocessError, match="timed out after 10 seconds.*timed out after 10 seconds"):
         hccn._command_output("npu-smi", "info", "-t", "board", "-i", "7")
-    assert raised.value.timeout == 10
+    assert time.monotonic() - start < 24
 
 
 def test_hccn_tool_keeps_its_five_second_deadline(monkeypatch):
@@ -363,3 +364,54 @@ def test_hccs_driver_crlf_output_keeps_complete_chip_identities():
     devices = hccn.collect_devices(lambda *command: hardware(*command).replace('\n', '\r\n'))
     assert {device['physicalId'] for device in devices} == {12, 13}
     assert all(device['hccs']['linkStatus'] == 'UP' for device in devices)
+
+
+@pytest.mark.parametrize('query', ['-l', '-m', 'board', 'spod-info'])
+@pytest.mark.parametrize('failure', ['timeout', 'dcmi'])
+def test_transient_npu_query_does_not_discard_a_recoverable_host(monkeypatch, query, failure):
+    hardware, failed, attempts = _dual_die_output([]), [], []
+
+    def execute(command, **kwargs):
+        if command[0] == 'npu-smi' and query in command:
+            attempts.append(command)
+            if not failed:
+                failed.append(command)
+                if failure == 'timeout':
+                    raise subprocess.TimeoutExpired(command, 10)
+                raise subprocess.CalledProcessError(191, command, output='dcmi module initialize failed. ret is -8001')
+        return hardware(*command)
+
+    monkeypatch.setattr(hccn.subprocess, 'check_output', execute)
+    devices = hccn.collect_devices()
+    assert len(devices) == 2
+    assert all(device['hccs']['linkStatus'] == 'UP' for device in devices)
+    assert attempts.count(failed[0]) == 2
+
+
+def test_persistent_npu_failure_is_bounded_and_preserves_both_causes(monkeypatch):
+    calls = []
+
+    def execute(command, **kwargs):
+        calls.append(command)
+        raise subprocess.CalledProcessError(191, command, output='dcmi module initialize failed: cause-%s' % len(calls))
+
+    monkeypatch.setattr(hccn.subprocess, 'check_output', execute)
+    with pytest.raises(subprocess.SubprocessError, match=r'cause-1.*cause-2'):
+        hccn.collect_devices()
+    assert len(calls) == 2
+
+
+def test_host_survey_retries_cannot_exceed_the_sixty_second_rpc_budget(monkeypatch):
+    clock, calls = [100.0], []
+    hardware = _dual_die_output([])
+    monkeypatch.setattr(hccn.time, 'monotonic', lambda: clock[0])
+
+    def output(*command):
+        calls.append(command)
+        clock[0] += 11
+        return hardware(*command)
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        hccn.collect_devices(output)
+    assert len(calls) == 5
+    assert clock[0] == 155.0

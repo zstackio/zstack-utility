@@ -1,16 +1,40 @@
 import ipaddress
+import logging
 import re
 import subprocess
 import threading
+import time
 from collections import Counter
 
 
 _SURVEY_LOCK = threading.Lock()
 
 
-def _command_output(*command):
+def _command_output(*command, deadline=None):
     timeout = 10 if command[0] == "npu-smi" else 5
-    return subprocess.check_output(command, stderr=subprocess.STDOUT, text=True, timeout=timeout)
+    failures = []
+    for _ in range(2):
+        try:
+            remaining = timeout if deadline is None else min(timeout, deadline - time.monotonic())
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(command, 0)
+            return subprocess.check_output(command, stderr=subprocess.STDOUT, text=True, timeout=remaining)
+        except (subprocess.TimeoutExpired, subprocess.CalledProcessError, OSError) as error:
+            detail = _probe_error(error)
+            if failures:
+                failure = subprocess.SubprocessError("NPU query %r failed: %s; %s" %
+                                                     (command, failures[0], detail))
+                failure.cmd = command
+                failure.returncode = getattr(error, 'returncode', None)
+                raise failure from error
+            transient = isinstance(error, subprocess.TimeoutExpired) or (
+                isinstance(error, subprocess.CalledProcessError) and re.search(
+                    r"\bdcmi(?: module)? (?:initialize|initialization|init) fail", detail, re.IGNORECASE))
+            if command[:2] != ("npu-smi", "info") or not transient:
+                raise
+            failures.append(detail)
+            logging.getLogger(__name__).warning("NPU query failed; retrying once: %s", detail)
+            time.sleep(1 if deadline is None else min(1, max(0, deadline - time.monotonic())))
 
 
 def _field(output, name):
@@ -101,8 +125,22 @@ def _identities(command_output, ids):
 
 def collect_devices(command_output=_command_output):
     """Read device addresses while the host driver still owns the NPUs."""
-    with _SURVEY_LOCK:
-        return _collect_devices(command_output)
+    deadline = time.monotonic() + 55
+    if not _SURVEY_LOCK.acquire(timeout=55):
+        raise subprocess.TimeoutExpired('HCCN survey lock', 55)
+    try:
+        def output(*command):
+            if time.monotonic() >= deadline:
+                raise subprocess.TimeoutExpired(command, 55)
+            if command_output is _command_output:
+                return command_output(*command, deadline=deadline)
+            return command_output(*command)
+        devices = _collect_devices(output)
+        if time.monotonic() >= deadline:
+            raise subprocess.TimeoutExpired('HCCN survey', 55)
+        return devices
+    finally:
+        _SURVEY_LOCK.release()
 
 
 def _network_address(output, prefix="", network="HCCN"):
