@@ -18,8 +18,6 @@ if 'oslo_config' not in sys.modules:
     sys.modules['oslo_config'] = MagicMock()
 
 # Mock bm_instance_agent.common.utils (has OS-level deps like get_interfaces)
-if 'bm_instance_agent.common' not in sys.modules:
-    sys.modules['bm_instance_agent.common'] = MagicMock()
 if 'bm_instance_agent.common.utils' not in sys.modules:
     sys.modules['bm_instance_agent.common.utils'] = MagicMock()
 

@@ -960,3 +960,253 @@ def test_cleanup_host_model_cache_clears_registry_when_directory_already_gone(tm
     assert result['bytesReclaimed'] == 0
     assert registry_file.is_file()
     assert json.loads(registry_file.read_text()) == {}
+
+
+def test_hccn_release_probe_reads_fixed_small_bytes_without_prepare(tmp_path, monkeypatch):
+    payload = b'{"schemaVersion":1,"note":"raw bytes"}\n'
+    monkeypatch.setattr(virtiofs_source, 'MODEL_CENTER_PROVIDER_ROOT', str(tmp_path / 'mounts'))
+    def mount(_url, mount_path, subdir):
+        assert subdir == 'services'
+        import pathlib
+        target = pathlib.Path(mount_path) / 'service/llama-factory_0.9.5'
+        target.mkdir(parents=True)
+        (target / 'hccn-bootstrap.release.json').write_bytes(payload)
+    def unmount(mount_path):
+        import pathlib
+        import shutil
+        for child in pathlib.Path(mount_path).iterdir():
+            shutil.rmtree(str(child))
+    monkeypatch.setattr(virtiofs_source, '_mount_model_center', mount)
+    monkeypatch.setattr(virtiofs_source, '_unmount_model_center', unmount)
+    for name in ('cache_entry', 'directory_size', 'remote_directory_meta', 'prepare_copy_source', '_register_model_center_cache'):
+        monkeypatch.setattr(virtiofs_source, name, lambda *a, **k: pytest.fail('probe must not prepare/scan/cache'))
+    request = dict(schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private',
+                   storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5', contentVersion='v1')
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is True, result
+    import base64
+    import hashlib
+    release = result['hccnBootstrapRelease']
+    assert base64.b64decode(release['contentBase64']) == payload
+    assert release['sha256'] == hashlib.sha256(payload).hexdigest()
+    assert result['cleanupIncomplete'] is False
+    assert result['residualMountPath'] is None
+
+
+@pytest.fixture
+def release_probe(tmp_path, monkeypatch):
+    import pathlib
+    import shutil
+    request = dict(schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private-secret',
+                   storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5', contentVersion='v1')
+    state = {'content': b'{"schemaVersion":1}', 'symlink': False}
+    monkeypatch.setattr(virtiofs_source, 'MODEL_CENTER_PROVIDER_ROOT', str(tmp_path / 'mounts'))
+    def mount(_url, mount_path, subdir):
+        target = pathlib.Path(mount_path) / request['artifactRelativePath']
+        target.mkdir(parents=True)
+        manifest = target / 'hccn-bootstrap.release.json'
+        if state['symlink']:
+            manifest.symlink_to(tmp_path / 'outside-manifest')
+        else:
+            manifest.write_bytes(state['content'])
+    def unmount(mount_path):
+        if not pathlib.Path(mount_path).exists():
+            return
+        for child in pathlib.Path(mount_path).iterdir():
+            shutil.rmtree(str(child))
+    monkeypatch.setattr(virtiofs_source, '_mount_model_center', mount)
+    monkeypatch.setattr(virtiofs_source, '_unmount_model_center', unmount)
+    for name in ('_open_flock', 'cache_entry', 'directory_size', 'remote_directory_meta', 'prepare_copy_source', '_register_model_center_cache'):
+        monkeypatch.setattr(virtiofs_source, name, lambda *a, **k: pytest.fail('must not lock/scan/copy/register'))
+    return request, state
+
+
+@pytest.mark.parametrize('size,success', [(0, False), (1, True), (65536, True), (65537, False)])
+def test_hccn_release_exact_raw_size_boundary(release_probe, size, success):
+    request, state = release_probe
+    state['content'] = b'\xff' * size
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is success, result
+    assert result['cleanupIncomplete'] is False
+    if success:
+        import base64
+        assert base64.b64decode(result['hccnBootstrapRelease']['contentBase64']) == state['content']
+    else:
+        assert '1..65536' in result['errors'][0]['reason']
+
+
+@pytest.mark.parametrize('field,value', [
+    ('schemaVersion', True), ('schemaVersion', 2), ('filename', 'other.json'),
+    ('path', '/etc/passwd'), ('sourceRoot', '/cache'), ('sourcePath', '/cache/pkg'),
+    ('registerCache', False), ('storageSubdir', '../services'),
+    ('artifactRelativePath', '/tmp/llama-factory_0.9.5'),
+    ('artifactRelativePath', 'other-package'), ('contentVersion', ''),
+])
+def test_hccn_release_invalid_source_never_starts_worker(release_probe, monkeypatch, field, value):
+    request, _ = release_probe
+    request[field] = value
+    monkeypatch.setattr(virtiofs_source, '_run_hccn_release_worker', lambda *a: pytest.fail('invalid request starts worker'))
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is False
+    assert result['cleanupIncomplete'] is False
+    assert result['hccnBootstrapRelease'] is None
+
+
+def test_hccn_release_symlink_escape_is_rejected(release_probe, tmp_path):
+    request, state = release_probe
+    (tmp_path / 'outside-manifest').write_bytes(b'secret-not-read')
+    state['symlink'] = True
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is False
+    assert result['cleanupIncomplete'] is False
+    assert 'secret-not-read' not in str(result)
+
+
+def test_hccn_release_read_and_cleanup_causes_remain_ordered(release_probe, monkeypatch):
+    request, state = release_probe
+    state['content'] = b''
+    def fail_unmount(_):
+        raise RuntimeError('cleanup failed original')
+    monkeypatch.setattr(virtiofs_source, '_unmount_model_center', fail_unmount)
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is False
+    assert result['errorCount'] == 2
+    assert '1..65536' in result['errors'][0]['reason']
+    assert result['errors'][1]['reason'] == 'cleanup failed original'
+    assert result['cleanupIncomplete'] is True
+    assert '/hccn-release-probes/' in result['residualMountPath']
+    assert request['storageUrl'] not in str(result)
+
+
+def test_hccn_release_blocked_reader_is_killed_and_cleanup_is_bounded(release_probe, monkeypatch, tmp_path):
+    import time
+    request, _ = release_probe
+    pid_file = tmp_path / 'reader-pid'
+    def blocked_read(*_):
+        pid_file.write_text(str(os.getpid()))
+        time.sleep(10)
+        raise AssertionError('blocked reader should have been killed')
+    monkeypatch.setattr(virtiofs_source, '_read_hccn_release_file', blocked_read)
+    monkeypatch.setattr(virtiofs_source, 'HCCN_RELEASE_WORK_TIMEOUT', 0.08)
+    monkeypatch.setattr(virtiofs_source, 'HCCN_RELEASE_TOTAL_TIMEOUT', 0.5)
+    started = time.monotonic()
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert time.monotonic() - started < 0.7
+    assert result['success'] is False
+    assert 'deadline exceeded' in result['errors'][0]['reason']
+    assert result['cleanupIncomplete'] is False
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pid_file.read_text()), 0)
+
+
+def test_hccn_release_blocked_mount_and_cleanup_report_unique_residual(release_probe, monkeypatch):
+    import time
+    request, _ = release_probe
+    def blocked(*_):
+        time.sleep(10)
+    monkeypatch.setattr(virtiofs_source, '_mount_model_center', blocked)
+    monkeypatch.setattr(virtiofs_source, '_unmount_model_center', blocked)
+    monkeypatch.setattr(virtiofs_source, 'HCCN_RELEASE_WORK_TIMEOUT', 0.04)
+    monkeypatch.setattr(virtiofs_source, 'HCCN_RELEASE_TOTAL_TIMEOUT', 0.2)
+    start = time.monotonic()
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert time.monotonic() - start < 0.5
+    assert result['success'] is False
+    assert result['errorCount'] == 2
+    assert result['cleanupIncomplete'] is True
+    assert '/hccn-release-probes/' in result['residualMountPath']
+
+
+def test_hccn_release_unproven_old_worker_cannot_claim_cleanup_complete(release_probe, monkeypatch):
+    request, _ = release_probe
+    stop = virtiofs_source._stop_hccn_release_worker
+    calls = [0]
+    def unproven_once(process, deadline):
+        stopped = stop(process, deadline)
+        calls[0] += 1
+        return False if calls[0] == 1 else stopped
+    monkeypatch.setattr(virtiofs_source, '_stop_hccn_release_worker', unproven_once)
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is False
+    assert result['cleanupIncomplete'] is True
+    assert result['residualMountPath']
+
+
+def test_hccn_release_concurrent_probes_use_distinct_private_mounts(release_probe, monkeypatch):
+    import concurrent.futures
+    request, _ = release_probe
+    def read(mount_path, _):
+        return mount_path.encode()
+    monkeypatch.setattr(virtiofs_source, '_read_hccn_release_file', read)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(virtiofs_source.probe_hccn_bootstrap_release, [request, request]))
+    assert all(result['success'] for result in results), results
+    assert len({result['hccnBootstrapRelease']['contentBase64'] for result in results}) == 2
+
+
+def test_hccn_release_timeout_terminates_mount_command_process_group(release_probe, monkeypatch, tmp_path):
+    import pathlib
+    import sys
+    import time
+    request, _ = release_probe
+    pid_file = tmp_path / 'mount-command-pid'
+    script = 'import os,pathlib,time;pathlib.Path(%r).write_text(str(os.getpid()));time.sleep(30)' % str(pid_file)
+    def blocked_mount(*_):
+        virtiofs_source._run_process([sys.executable, '-c', script], 'mount command failed')
+    monkeypatch.setattr(virtiofs_source, '_mount_model_center', blocked_mount)
+    monkeypatch.setattr(virtiofs_source, 'HCCN_RELEASE_WORK_TIMEOUT', 1)
+    monkeypatch.setattr(virtiofs_source, 'HCCN_RELEASE_TOTAL_TIMEOUT', 2)
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is False
+    assert result['cleanupIncomplete'] is False
+    pid = int(pid_file.read_text())
+    status = pathlib.Path('/proc/%s/stat' % pid)
+    # An orphan already killed but awaiting init's reap is also non-running.
+    assert not status.exists() or status.read_text().split()[2] == 'Z'
+
+
+def test_hccn_release_trusts_the_opened_file_not_a_prior_path_check(release_probe, tmp_path, monkeypatch):
+    # The manifest can be replaced between any path check and the read; only the opened file may decide.
+    request, state = release_probe
+    (tmp_path / 'outside-manifest').write_bytes(b'secret-not-read')
+    state['symlink'] = True
+    real_lstat = os.lstat
+    real_read = virtiofs_source._read_hccn_release_file
+    regular = real_lstat(str(tmp_path / 'outside-manifest'))
+
+    def read_with_stale_path_checks(mount_path, relative_path):
+        os.lstat = lambda p: regular if str(p).endswith('hccn-bootstrap.release.json') else real_lstat(p)
+        try:
+            return real_read(mount_path, relative_path)
+        finally:
+            os.lstat = real_lstat
+    monkeypatch.setattr(virtiofs_source, '_read_hccn_release_file', read_with_stale_path_checks)
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert result['success'] is False
+    assert result['cleanupIncomplete'] is False
+    assert 'secret-not-read' not in str(result)
+
+
+def test_hccn_release_rejects_artifact_dir_swapped_after_checks(release_probe, tmp_path, monkeypatch):
+    # O_NOFOLLOW guards only the last component; a swapped parent must still be caught on the opened fd.
+    import shutil
+    request, _ = release_probe
+    outside = tmp_path / 'outside-dir'
+    outside.mkdir()
+    (outside / 'hccn-bootstrap.release.json').write_bytes(b'secret-not-read')
+    real_ensure = virtiofs_source.ensure_under
+    swapped = tmp_path / 'swapped'
+
+    def ensure_then_swap(path, root, field_name, allow_root=True):
+        resolved = real_ensure(path, root, field_name, allow_root)
+        if field_name == 'release manifest' and not swapped.exists():
+            swapped.write_text('1')
+            artifact = os.path.dirname(path)
+            shutil.rmtree(artifact)
+            os.symlink(str(outside), artifact)
+        return resolved
+    monkeypatch.setattr(virtiofs_source, 'ensure_under', ensure_then_swap)
+    result = virtiofs_source.probe_hccn_bootstrap_release(request)
+    assert swapped.exists()
+    assert result['success'] is False
+    assert 'secret-not-read' not in str(result)

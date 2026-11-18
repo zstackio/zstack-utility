@@ -479,16 +479,18 @@ class TestVirtiofsAttachHandler:
         # Should return error response
         assert rsp.get('success') is False or rsp.get('error') is not None
 
+    @patch('kvmagent.plugins.virtiofs_plugin.check_guest_virtiofs_support', return_value=(True, None))
     @patch('kvmagent.plugins.virtiofs_plugin.get_virtiofsd_path', return_value='/usr/libexec/virtiofsd')
     @patch('kvmagent.plugins.virtiofs_plugin.mount_virtiofs_in_vm', return_value=(False, 'QGA not connected'))
     @patch('kvmagent.plugins.virtiofs_plugin.check_vm_memory_backing', return_value=(True, None))
     @patch('kvmagent.plugins.virtiofs_plugin.get_vm_domain')
     @patch('kvmagent.plugins.virtiofs_plugin._ensure_source_for_attach')
-    def test_attach_qga_failure_is_best_effort(self, mock_ensure_source, mock_get_domain,
+    def test_attach_qga_failure_returns_error_without_rollback(self, mock_ensure_source, mock_get_domain,
                                                mock_memory_backing, mock_mount_qga,
-                                               mock_get_virtiofsd_path):
+                                               mock_get_virtiofsd_path, mock_check_guest):
         mock_ensure_source.return_value = MagicMock(path='/var/lib/zstack/aios/vm-views/vm-uuid')
         mock_domain = MagicMock()
+        mock_domain.XMLDesc.return_value = '<domain><devices/></domain>'
         mock_conn = MagicMock()
         mock_get_domain.return_value = (mock_domain, mock_conn)
 
@@ -505,7 +507,8 @@ class TestVirtiofsAttachHandler:
         result = plugin.attach_virtiofs(req)
         rsp = json.loads(result)
 
-        assert rsp.get('success') is True
+        assert rsp.get('success') is False
+        assert rsp.get('error') == 'QGA not connected'
         assert rsp.get('qgaMountAttempted') is True
         assert rsp.get('qgaMountSuccess') is False
         assert rsp.get('qgaMountError') == 'QGA not connected'
@@ -515,6 +518,7 @@ class TestVirtiofsAttachHandler:
         assert "queue='2048'" in xml_str
         assert "<cache mode='none'/>" in xml_str
 
+    @patch('kvmagent.plugins.virtiofs_plugin.check_guest_virtiofs_support', return_value=(True, None))
     @patch('kvmagent.plugins.virtiofs_plugin.get_virtiofsd_path', return_value='/usr/libexec/virtiofsd')
     @patch('kvmagent.plugins.virtiofs_plugin.mount_virtiofs_in_vm', return_value=(True, None))
     @patch('kvmagent.plugins.virtiofs_plugin.check_vm_memory_backing', return_value=(True, None))
@@ -522,9 +526,10 @@ class TestVirtiofsAttachHandler:
     @patch('kvmagent.plugins.virtiofs_plugin._ensure_source_for_attach')
     def test_attach_uses_default_cache_and_queue(self, mock_ensure_source, mock_get_domain,
                                                  mock_memory_backing, mock_mount_qga,
-                                                 mock_get_virtiofsd_path):
+                                                 mock_get_virtiofsd_path, mock_check_guest):
         mock_ensure_source.return_value = MagicMock(path='/var/lib/zstack/aios/vm-views/vm-uuid')
         mock_domain = MagicMock()
+        mock_domain.XMLDesc.return_value = '<domain><devices/></domain>'
         mock_conn = MagicMock()
         mock_get_domain.return_value = (mock_domain, mock_conn)
 
@@ -1019,3 +1024,135 @@ class TestUnmountVirtiofsInVm:
 
         assert success is False
         assert "VM guest agent is not running" in error
+
+
+def test_release_probe_has_own_uri_and_sensitive_command_registration(monkeypatch):
+    server = MagicMock()
+    monkeypatch.setattr(virtiofs_plugin, '_init_virtiofsd_path', lambda: None)
+    monkeypatch.setattr(virtiofs_plugin.kvmagent, 'get_http_server', lambda: server)
+    plugin = virtiofs_plugin.VirtiofsPlugin()
+    plugin.start()
+    call = next(c for c in server.register_async_uri.call_args_list
+                if c.args[0] == '/host/model-cache/hccn-release/probe')
+    assert call.args[1] == plugin.probe_hccn_bootstrap_release
+    assert isinstance(call.kwargs['cmd'], virtiofs_plugin.ProbeHccnBootstrapReleaseCmd)
+    assert plugin.HOST_MODEL_CACHE_PREPARE_PATH == '/virtiofs/host-model-cache/prepare'
+
+
+def test_release_probe_handler_never_routes_to_prepare(monkeypatch):
+    request = dict(schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private',
+                   storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5', contentVersion='v1')
+    expected = dict(success=True, error='', hccnBootstrapRelease=dict(schemaVersion=1, contentBase64='e30=', sha256='a' * 64),
+                    errorCount=0, errors=[], cleanupIncomplete=False, residualMountPath=None)
+    calls = []
+    def probe(cmd, started):
+        calls.append(cmd)
+        assert type(started) is float
+        return expected
+    monkeypatch.setattr(virtiofs_plugin.virtiofs_source, 'probe_hccn_bootstrap_release', probe)
+    monkeypatch.setattr(virtiofs_plugin.virtiofs_source, 'prepare_model_center_cache',
+                        lambda *a: pytest.fail('must never fall back to full prepare'))
+    result = json.loads(virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release({http.REQUEST_BODY: json.dumps(request)}))
+    assert calls == [request]
+    assert result == expected
+
+
+def test_release_probe_duplicate_json_is_rejected_without_worker(monkeypatch):
+    monkeypatch.setattr(virtiofs_plugin.virtiofs_source, 'probe_hccn_bootstrap_release',
+                        lambda *a: pytest.fail('bad JSON must not start worker'))
+    raw = '{"schemaVersion":1,"schemaVersion":1}'
+    result = json.loads(virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release({http.REQUEST_BODY: raw}))
+    assert result['success'] is False
+    assert result['errorCount'] == 1
+    assert result['hccnBootstrapRelease'] is None
+    assert result['cleanupIncomplete'] is False
+
+
+def test_release_probe_parse_error_preserves_first_cause():
+    result = json.loads(virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release({
+        http.REQUEST_BODY: '{"schemaVersion":1,"schemaVersion":1}'}))
+    assert result['success'] is False
+    assert result['errors'][0]['reason'] == 'duplicate JSON key: schemaVersion'
+    assert result['error'] == result['errors'][0]['reason']
+
+
+def test_release_probe_bad_key_diagnostics_stay_within_wire_limit():
+    key = 'k' * 524260
+    raw = '{"%s":1,"%s":2}' % (key, key)
+    assert len(raw.encode()) <= 1048576
+    response = virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release({http.REQUEST_BODY: raw})
+    assert len(response.encode()) <= 1048576
+    assert json.loads(response)['success'] is False
+
+
+@pytest.mark.parametrize('addons', [{}, {'standardExtension': {'enabled': True}}])
+def test_release_probe_real_handler_accepts_kvm_transport_metadata(tmp_path, monkeypatch, addons):
+    import base64
+    import hashlib
+    import pathlib
+    import shutil
+    source = virtiofs_plugin.virtiofs_source
+    payload = b'{"schemaVersion":1}\n'
+    monkeypatch.setattr(source, 'MODEL_CENTER_PROVIDER_ROOT', str(tmp_path / 'mounts'))
+
+    def mount(_url, mount_path, subdir):
+        assert subdir == 'services'
+        target = pathlib.Path(mount_path) / 'service/llama-factory_0.9.5'
+        target.mkdir(parents=True)
+        (target / source.HCCN_RELEASE_FILE).write_bytes(payload)
+
+    def unmount(mount_path):
+        for child in pathlib.Path(mount_path).iterdir():
+            shutil.rmtree(str(child))
+
+    monkeypatch.setattr(source, '_mount_model_center', mount)
+    monkeypatch.setattr(source, '_unmount_model_center', unmount)
+    monkeypatch.setattr(source, 'prepare_model_center_cache',
+                        lambda *args: pytest.fail('release probe must not prepare the package'))
+    request = dict(schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private',
+                   storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5',
+                   contentVersion='v1', kvmHostAddons=addons)
+    result = json.loads(virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release(
+        {http.REQUEST_BODY: json.dumps(request)}))
+    assert result['success'] is True, result
+    assert base64.b64decode(result['hccnBootstrapRelease']['contentBase64']) == payload
+    assert result['hccnBootstrapRelease']['sha256'] == hashlib.sha256(payload).hexdigest()
+    assert result['errorCount'] == 0
+    assert result['errors'] == []
+    assert result['cleanupIncomplete'] is False
+    assert result['residualMountPath'] is None
+
+
+@pytest.mark.parametrize('extra', [
+    {'kvmHostAddons': None}, {'kvmHostAddons': False}, {'kvmHostAddons': []},
+    {'kvmHostAddons': 1}, {'kvmHostAddons': 'invalid'},
+    {'kvmHostAddons': {}, 'unexpectedSourceField': 'forbidden'},
+    {'kvmHostAddons': {}, 'schemaVersion': True},
+])
+def test_release_probe_metadata_does_not_relax_source_or_type_validation(tmp_path, monkeypatch, extra):
+    source = virtiofs_plugin.virtiofs_source
+    mount_root = tmp_path / 'must-not-mount'
+    monkeypatch.setattr(source, 'MODEL_CENTER_PROVIDER_ROOT', str(mount_root))
+    request = dict(schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private',
+                   storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5',
+                   contentVersion='v1')
+    request.update(extra)
+    result = json.loads(virtiofs_plugin.VirtiofsPlugin().probe_hccn_bootstrap_release(
+        {http.REQUEST_BODY: json.dumps(request)}))
+    assert result['success'] is False
+    assert result['errorCount'] == 1
+    assert result['error'] == result['errors'][0]['reason']
+    assert result['errors'][0]['stage'] == 'release-probe'
+    assert result['hccnBootstrapRelease'] is None
+    assert result['cleanupIncomplete'] is False
+    assert not mount_root.exists()
+
+
+def test_release_source_helper_still_rejects_transport_metadata_directly():
+    result = virtiofs_plugin.virtiofs_source.probe_hccn_bootstrap_release(dict(
+        schemaVersion=1, modelCenterUuid='mc1', storageUrl='rediss://private',
+        storageSubdir='services', artifactRelativePath='service/llama-factory_0.9.5',
+        contentVersion='v1', kvmHostAddons={}))
+    assert result['success'] is False
+    assert result['errorCount'] == 1
+    assert result['error'] == 'release probe requires exactly the fixed source fields'

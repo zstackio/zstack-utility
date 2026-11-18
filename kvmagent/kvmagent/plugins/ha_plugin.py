@@ -2541,12 +2541,12 @@ class HaPlugin(kvmagent.KvmAgent):
 
             # kill all vms with root volume on this VG
             vms = lvm.get_running_vm_root_volume_on_vg(vg)
+            vms = [vm for vm in vms if not not_exec_kill_vm(cmd.strategy, vm.uuid, host_storage_name)]
             killed_vm_uuids = []
-            for vm in vms:
-                try:
-                    if not_exec_kill_vm(cmd.strategy, vm.uuid, host_storage_name):
-                        continue
 
+            @thread.AsyncThread
+            def _kill_vm(vm):
+                try:
                     linux.kill_process(vm.pid, is_graceful=not res.io_timeout)
                     logger.warn(
                         'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.' % (vm.uuid, vm.pid))
@@ -2556,6 +2556,11 @@ class HaPlugin(kvmagent.KvmAgent):
                     logger.warn(
                         'failed to kill the vm[uuid:%s, pid:%s] %s\n%s' % (vm.uuid, vm.pid, e, traceback.format_exc()))
 
+            kill_threads = [_kill_vm(vm) for vm in vms]
+            for kill_thread in kill_threads:
+                kill_thread.join()
+
+            for vm in vms:
                 for volume in vm.volumes:
                     used_process = linux.linux_lsof(volume)
                     if len(used_process) == 0:
