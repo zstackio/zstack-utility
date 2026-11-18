@@ -45,11 +45,12 @@ class Api(object):
         url = '%s%s' % (self.api_result_url, ret_uuid)
         return url
 
-    def _get_response(self, ret_uuid):
+    def _get_response(self, ret_uuid, poll_headers):
         url = self._get_async_result_url(ret_uuid)
-        jstr = http.json_dump_get(url, print_curl=self.curl)
-        rsp = jsonobject.loads(jstr)
-        return rsp
+        if self.curl:
+            http.print_curl_command(url, 'GET', dict(poll_headers, Authorization='OAuth <sessionUuid>'), None)
+        jstr = http.json_dump_get(url, headers=poll_headers)
+        return jsonobject.loads(jstr)
 
     # Constants for error formatting
     _MAX_INDENT_LEVEL = 4
@@ -233,12 +234,19 @@ class Api(object):
                 raise ApiError('API call[%s] failed because %s' % (name, self._error_code_to_string(event.error)))
             return name, event
 
+        session = getattr(apicmd, 'session', None)
+        session_uuid = getattr(session, 'uuid', None)
+        if not session_uuid:
+            raise ApiError('A valid session is required to query an API result')
+        poll_headers = {name: value for name, value in headers.items() if name.lower() != 'authorization'}
+        poll_headers['Authorization'] = 'OAuth ' + session_uuid
+
         curr = 0
         finterval = float(float(interval) / float(1000))
         ret_uuid = rsp.uuid
         while rsp.state != 'Done' and curr < timeout:
             time.sleep(finterval)
-            rsp = self._get_response(ret_uuid)
+            rsp = self._get_response(ret_uuid, poll_headers)
             curr += interval
 
         if curr >= timeout:

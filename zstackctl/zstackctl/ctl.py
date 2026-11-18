@@ -1227,12 +1227,9 @@ def shell_quote(s):
 
 def run_flyway_precheck(flyway_path, db_user, db_password, db_url, upgrading_schema_dir):
     schema_path = 'filesystem:%s' % upgrading_schema_dir
-    if db_password:
-        out = shell('bash %s info -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (
-            flyway_path, db_user, db_password, db_url, schema_path))
-    else:
-        out = shell('bash %s info -outOfOrder=true -user=%s -url=%s -locations=%s' % (
-            flyway_path, db_user, db_url, schema_path))
+    password_arg = ' -password=%s' % shell_quote(db_password) if db_password else ''
+    out = shell('bash %s info -outOfOrder=true -user=%s%s -url=%s -locations=%s' % (
+        shell_quote(flyway_path), shell_quote(db_user), password_arg, shell_quote(db_url), shell_quote(schema_path)))
     for line in out.splitlines():
         if '| Fail' in line or '| FutFail' in line:
             raise CtlError('Flyway pre-check failed. There are failed migrations:\n%s' % out)
@@ -1830,11 +1827,11 @@ class Ctl(object):
             raise CtlError("cannot find zstack_ui db url in %s. please set db_url" % self.ui_properties_file_path)
         return db_url
 
-    def get_live_mysql_portal(self, ui=False):
+    def get_live_mysql_portal(self, ui=False, db_url=None):
         if ui:
             hostname_ports, user, password = self.get_ui_database_portal()
         else:
-            hostname_ports, user, password = self.get_database_portal()
+            hostname_ports, user, password = self.get_database_portal(db_url)
 
         last_ip = ctl.get_env(self.LAST_ALIVE_MYSQL_IP)
         last_port = ctl.get_env(self.LAST_ALIVE_MYSQL_PORT)
@@ -1873,7 +1870,7 @@ class Ctl(object):
 
         raise CtlError('\n'.join(errors))
 
-    def get_database_portal(self):
+    def get_database_portal(self, db_url=None):
         db_user = self.read_property("DB.user")
         if not db_user:
             db_user = self.read_property('DbFacadeDataSource.user')
@@ -1891,7 +1888,7 @@ class Ctl(object):
         if cipher.is_encrypted(db_password):
             db_password = cipher.decrypt(db_password)
 
-        db_url = self.get_db_url()
+        db_url = db_url or self.get_db_url()
         host_name_ports = []
 
         def parse_hostname_ports(prefix):
@@ -10516,6 +10513,21 @@ class UpgradeDbCmd(Command):
         if not os.path.exists(upgrading_schema_dir):
             raise CtlError('cannot find %s. Have you run upgrade_management_node?' % upgrading_schema_dir)
 
+        rest_schema_dir = os.path.join(ctl.zstack_home, 'WEB-INF/classes/db/upgrade-rest/')
+        # The installer's pre-upgrade dry-run can still see the previous WAR.
+        upgrade_rest = os.path.isdir(rest_schema_dir)
+        if not upgrade_rest and not args.dry_run:
+            raise CtlError('cannot find %s. Have you run upgrade_management_node?' % rest_schema_dir)
+        if upgrade_rest:
+            rest_db_url = ctl.read_property('RESTApiDataSource.jdbcUrl')
+            if not rest_db_url:
+                rest_base_url = (ctl.read_property('DB.url') or 'jdbc:mysql://localhost:3306').rstrip('/')
+                rest_db_url = (rest_base_url.replace('{database}', 'zstack_rest').strip()
+                               if '{database}' in rest_base_url else rest_base_url + '/zstack_rest')
+            rest_database = rest_db_url.split('?', 1)[0].rsplit('/', 1)[-1]
+            if not rest_database:
+                raise CtlError('invalid native API result database name')
+
         ctl.check_if_management_node_has_stopped(args.force)
 
         if args.precheck_tables:
@@ -10523,6 +10535,8 @@ class UpgradeDbCmd(Command):
 
         if args.dry_run:
             run_flyway_precheck(flyway_path, db_user, db_password, db_url, upgrading_schema_dir)
+            if upgrade_rest:
+                run_flyway_precheck(flyway_path, db_user, db_password, rest_db_url, rest_schema_dir)
             info('Dry run finished. Flyway validation succeeded.')
             return True
 
@@ -10551,6 +10565,12 @@ class UpgradeDbCmd(Command):
                 shell('mysqldump -u %s --host %s --port %s zstack %s >> %s' % (db_user, db_hostname, db_port, mysqldump_skip_tables, db_backup_path))
 
             info('successfully backup the database to %s' % db_backup_path)
+            rest_backup_path = os.path.join(os.path.dirname(db_backup_path), 'rest_backup.sql')
+            rest_host, rest_port, _, _ = ctl.get_live_mysql_portal(db_url=rest_db_url)
+            rest_mysql_args = '--host=%s --port=%s --user=%s --password=%s' % (
+                shell_quote(rest_host), rest_port, shell_quote(db_user), shell_quote(db_password or ''))
+            shell('mysqldump %s --databases -- %s > %s' % (
+                rest_mysql_args, shell_quote(rest_database), shell_quote(rest_backup_path)))
 
         def create_schema_version_table_if_needed():
             if db_password:
@@ -10580,26 +10600,13 @@ class UpgradeDbCmd(Command):
                 shell('''mysql -u %s --host %s --port %s -t zstack -e "%s"''' %
                             (db_user, db_hostname, db_port, sql))
 
-        def migrate():
-            # set wait_timeout to 28800s(8 hours) to avoid 'MySQL has gone away' error
-            # because the database upgrading process may cost a long time
-            # init_sql = "set wait_timeout=28800; set interactive_timeout=28800;"
-
-            try:
-                schema_path = 'filesystem:%s' % upgrading_schema_dir
-
-                if db_password:
-                    shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -password=%s -url=%s -locations=%s' % (
-                    flyway_path, db_user, db_password, db_url, schema_path))
-                else:
-                    shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s -url=%s -locations=%s' % (
-                    flyway_path, db_user, db_url, schema_path))
-            except Exception as e:
-                sql = "update schema_version set checksum = 249136114 where script = 'V3.5.0.1__schema.sql' and checksum = -1670610242"
-                execute_sql(sql)
-                raise e
-
-            info('Successfully upgraded the database to the latest version.\n')
+        def migrate(database_url, schema_dir, baseline_version=None):
+            password_arg = ' -password=%s' % shell_quote(db_password) if db_password else ''
+            baseline_arg = (' -baselineOnMigrate=true -baselineVersion=%s' % baseline_version
+                            if baseline_version is not None else '')
+            shell_no_pipe('bash %s migrate -outOfOrder=true -user=%s%s -url=%s -locations=%s%s' % (
+                shell_quote(flyway_path), shell_quote(db_user), password_arg,
+                shell_quote(database_url), shell_quote('filesystem:' + schema_dir), baseline_arg))
 
         update_db_config()
         backup_current_database()
@@ -10615,7 +10622,15 @@ class UpgradeDbCmd(Command):
         execute_sql(update_sql)
 
         run_flyway_precheck(flyway_path, db_user, db_password, db_url, upgrading_schema_dir)
-        migrate()
+        run_flyway_precheck(flyway_path, db_user, db_password, rest_db_url, rest_schema_dir)
+        try:
+            migrate(db_url, upgrading_schema_dir)
+        except Exception:
+            sql = "update schema_version set checksum = 249136114 where script = 'V3.5.0.1__schema.sql' and checksum = -1670610242"
+            execute_sql(sql)
+            raise
+        migrate(rest_db_url, rest_schema_dir, baseline_version='0.6')
+        info('Successfully upgraded the database to the latest version.\n')
 
 class UpgradeUIDbCmd(Command):
     def __init__(self):

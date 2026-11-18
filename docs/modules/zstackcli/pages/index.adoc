@@ -47,7 +47,7 @@ admin >>>AttachNetworkServiceToL3Network l3NetworkUuid=e6fa7d7b49834ab2a67bb4f5b
 Copy as cURL: curl http://localhost:8080/zstack/api/ -X POST -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:262'  -d '{"org.zstack.header.network.service.APIAttachNetworkServiceToL3NetworkMsg": {"session": {"uuid": "bedcf8e7dd3c40559695e98ad6283fe1"}, "networkServices": {"3ac7627766f54d3e885614e16859b37b": ["DHCP", "SNAT"]}, "l3NetworkUuid": "e6fa7d7b49834ab2a67bb4f5be873381"}}' <.>
 
 
-Copy as cURL: curl http://localhost:8080/zstack/api/result/e6b54057a63746a3bea68b353d96f986 -X GET -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:0' <.>
+Copy as cURL: curl http://localhost:8080/zstack/api/result/e6b54057a63746a3bea68b353d96f986 -X GET -H 'Authorization:OAuth <sessionUuid>' -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:0' <.>
 
 API call[org.zstack.header.message.APIEvent] failed because [code: SYS.1003, description: A resource can not be found, details: invalid field[l3NetworkUuid], resource[uuid:e6fa7d7b49834ab2a67bb4f5be873381, type:L3NetworkVO] not found]
 
@@ -56,7 +56,7 @@ admin >>>AttachNetworkServiceToL3Network l3NetworkUuid=fd68d026278b4169a5353477d
 Copy as cURL: curl http://localhost:8080/zstack/api/ -X POST -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:262'  -d '{"org.zstack.header.network.service.APIAttachNetworkServiceToL3NetworkMsg": {"session": {"uuid": "bedcf8e7dd3c40559695e98ad6283fe1"}, "networkServices": {"3ac7627766f54d3e885614e16859b37b": ["DHCP", "SNAT"]}, "l3NetworkUuid": "fd68d026278b4169a5353477d69df545"}}'
 
 
-Copy as cURL: curl http://localhost:8080/zstack/api/result/2bb498ba1bbe4d9c8a5a0bd457a70014 -X GET -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:0'
+Copy as cURL: curl http://localhost:8080/zstack/api/result/2bb498ba1bbe4d9c8a5a0bd457a70014 -X GET -H 'Authorization:OAuth <sessionUuid>' -H 'Connection:close' -H 'Content-Type:application/json' -H 'Content-Length:0'
 
 API call[org.zstack.header.message.APIEvent] failed because [code: SYS.1007, description: One or more API argument is invalid, details: cannot find network service provider[uuid:3ac7627766f54d3e885614e16859b37b] or it provides no services]
 admin >>>GetMetricData namespace=ZStack/VM metricName=DiskAllReadBytes functions=sort(by=\"value\"\\,direction=\"desc\")
