@@ -28,17 +28,20 @@ pkg_zstacklib = ""
 yum_server = ""
 trusted_host = ""
 
-RPM_BASED_OS = ["centos", "redhat", "alibaba", "alinux", "kylin10", "uos1021a", "uos20r", "rocky", "helix"]
+RPM_BASED_OS = ["centos", "redhat", "alibaba", "alinux", "kylin", "kylin10", "uos1021a", "uos20r", "rocky", "helix"]
 DEB_BASED_OS = ["ubuntu", "kylin4.0.2", "uos", "debian", "uniontech"]
 DISTRO_WITH_RPM_DEB = ["kylin"]
 
 
 def map_distro_id(os_release):
     distro = os_release.get('ID', '').lower()
+    version_id = os_release.get('VERSION_ID', '')
     if distro == 'uos':
-        version_id = os_release.get('VERSION_ID', '')
         if version_id.endswith('r'):
             return 'uos20r'
+    elif distro == 'kylin':
+        if version_id.startswith('4.'):
+            return 'kylin4.0.2'
     return distro
 
 
