@@ -446,3 +446,26 @@ def test_config_attach_race_only_succeeds_when_persisted_device_matches(
     if not success:
         assert 'concurrent CONFIG write failed original' in response['error']
     assert domain.attachDeviceFlags.call_count == 1
+
+
+@pytest.mark.parametrize('concurrent_settings,success', [({}, True), ({'queue': 512}, False), (None, False)])
+def test_live_attach_race_only_succeeds_when_existing_device_matches(
+        stateful_attach, concurrent_settings, success):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    state['failures_left'] = 0
+    original_attach = domain.attachDeviceFlags.side_effect
+    def concurrent_live_write(xml, flags):
+        if flags == virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_LIVE:
+            if concurrent_settings is not None:
+                state['live_xml'] = virtiofs_plugin.build_virtiofs_xml(
+                    'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid', **concurrent_settings)
+                state['config_xml'] = state['live_xml']
+            raise RuntimeError('concurrent LIVE write failed original')
+        return original_attach(xml, flags)
+    domain.attachDeviceFlags.side_effect = concurrent_live_write
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is success, response.get('error')
+    assert response['qgaMountAttempted'] is success
+    if not success:
+        assert 'concurrent LIVE write failed original' in response['error']

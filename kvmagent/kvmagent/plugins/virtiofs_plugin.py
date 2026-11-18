@@ -665,30 +665,34 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
                 'expected_cache': virtiofs_device.normalize_cache_mode(
                     _get_cmd_attr(cmd, 'cacheMode', _get_cmd_attr(cmd, 'cache', VIRTIOFS_DEFAULT_CACHE_MODE)))
             }
+
+            def attach_device(xml, affect_flag, xml_flags):
+                try:
+                    domain.attachDeviceFlags(xml, affect_flag)
+                except Exception:
+                    try:
+                        device_matches = has_attached_virtiofs(
+                            domain, cmd.tag, resolved_path, xml_flags, **settings)
+                    except Exception:
+                        device_matches = False
+                    if not device_matches:
+                        raise
+
             persistent = domain.isPersistent()
             config_attached = persistent and has_attached_virtiofs(
                 domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE, **settings)
             if has_attached_virtiofs(domain, cmd.tag, resolved_path, **settings):
                 if persistent and not config_attached:
-                    try:
-                        domain.attachDeviceFlags(device_xml(), libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-                    except Exception:
-                        try:
-                            config_matches = has_attached_virtiofs(
-                                domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE, **settings)
-                        except Exception:
-                            config_matches = False
-                        if not config_matches:
-                            raise
+                    attach_device(device_xml(), libvirt.VIR_DOMAIN_AFFECT_CONFIG, libvirt.VIR_DOMAIN_XML_INACTIVE)
                 logger.info("Reusing attached virtiofs device in VM[%s], tag=%s" % (
                     cmd.vmInstanceUuid, cmd.tag))
             else:
                 xml_str = device_xml()
-                domain.attachDeviceFlags(xml_str, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                attach_device(xml_str, libvirt.VIR_DOMAIN_AFFECT_LIVE, 0)
 
                 if not config_attached:
                     try:
-                        domain.attachDeviceFlags(xml_str, libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                        attach_device(xml_str, libvirt.VIR_DOMAIN_AFFECT_CONFIG, libvirt.VIR_DOMAIN_XML_INACTIVE)
                     except Exception as e:
                         logger.warning("Failed to attach virtiofs to config: %s" % str(e))
 
