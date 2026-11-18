@@ -10273,7 +10273,7 @@ class InstallZstackUiCmd(Command):
             raise CtlError('cannot find %s, please make sure you have installed ZStack management node' % install_script)
         install_script = install_script+" "+params
         info('found installation script at %s, start installing ZStack web UI' % install_script)
-        shell("runuser -l root -s /bin/bash -c 'bash %s > %s'" % (install_script, os.path.join(ui_install_log,'ui-install.log')))
+        shell("runuser -l root -s /bin/bash -c 'bash %s &> %s'" % (install_script, os.path.join(ui_install_log,'ui-install.log')))
 
     def install_mini_ui(self):
         mini_bin = "/opt/zstack-dvd/{}/{}/zstack_mini_server.bin".format(ctl.BASEARCH, ctl.ZS_RELEASE)
