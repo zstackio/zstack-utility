@@ -2,6 +2,7 @@
 # encoding: utf-8
 import subprocess
 import datetime
+import errno
 import functools
 import logging
 import re
@@ -16,7 +17,47 @@ try:
 except ImportError:
     from pipes import quote as shell_quote
 
-from ansible import constants as ansible_constants
+from ansible.errors import AnsibleError
+
+def _load_ansible_constants():
+    try:
+        from ansible import constants as ansible_constants
+    except (AnsibleError, OSError) as error:
+        cause = error
+        while cause is not None and not isinstance(cause, OSError):
+            cause = (getattr(cause, 'orig_exc', None) or getattr(cause, '__cause__', None)
+                     or getattr(cause, '__context__', None))
+        if not isinstance(cause, OSError) or cause.errno != errno.ENOSPC or not cause.filename:
+            raise
+        local_tmp = os.path.abspath(os.fsdecode(cause.filename))
+        probe_path = local_tmp
+        while not os.path.exists(probe_path):
+            parent = os.path.dirname(probe_path)
+            if parent == probe_path:
+                raise error
+            probe_path = parent
+        try:
+            stats = os.statvfs(probe_path)
+        except OSError:
+            stats = None
+        if stats is None:
+            raise
+        if stats.f_favail == 0:
+            reason = 'inode exhaustion'
+        elif stats.f_bavail == 0:
+            reason = 'disk space exhaustion'
+        else:
+            reason = 'insufficient disk space or inodes'
+        raise AnsibleError(
+            "Management node cannot create Ansible local temporary directory [%s]: %s "
+            "(available bytes: %s, available inodes: %s). "
+            "Check df -h and df -i for this directory and free space or inodes before retrying."
+            % (local_tmp, reason, stats.f_bavail * stats.f_frsize, stats.f_favail), orig_exc=error)
+    return ansible_constants
+
+
+ansible_constants = _load_ansible_constants()
+
 from ansible import context as ansible_context
 from ansible.executor import task_queue_manager as ansible_tqm
 from ansible.module_utils.common import collections as ansible_collections
