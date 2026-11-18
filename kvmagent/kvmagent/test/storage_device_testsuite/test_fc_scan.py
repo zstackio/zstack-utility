@@ -224,6 +224,7 @@ class TestFcScan(unittest.TestCase):
                    '/dev/dm-0' if path == '/dev/mapper/mpatha' else path)
         self.patch(lvm.os, 'listdir', return_value=['sda'])
         self.patch(lvm.linux, 'read_file', return_value='nvme-wwid\n')
+        self.patch(lvm.linux, 'read_file_strip', return_value='mpath-scsi-a')
 
         def shell_cmd(command):
             result = mock.Mock(return_code=0)
