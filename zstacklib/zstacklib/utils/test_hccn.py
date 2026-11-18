@@ -1,10 +1,42 @@
 import subprocess
 import threading
+import os
+import sys
 import time
 
 import pytest
 
 from zstacklib.utils import hccn
+
+
+@pytest.fixture
+def slow_npu_smi(tmp_path, monkeypatch):
+    tool = tmp_path / "npu-smi"
+    tool.write_text("#!%s\nimport os, time\ntime.sleep(float(os.environ['NPU_TEST_DELAY']))\n"
+                    "print('Serial Number : card-4')\n" % sys.executable)
+    tool.chmod(0o755)
+    monkeypatch.setenv("PATH", str(tmp_path) + os.pathsep + os.environ.get("PATH", ""))
+
+
+def test_board_query_accepts_mcu_recovery_after_five_seconds(slow_npu_smi, monkeypatch):
+    monkeypatch.setenv("NPU_TEST_DELAY", "5.2")
+    assert "card-4" in hccn._command_output("npu-smi", "info", "-t", "board", "-i", "4", "-c", "1")
+
+
+def test_stuck_board_query_still_fails_after_ten_seconds(slow_npu_smi, monkeypatch):
+    monkeypatch.setenv("NPU_TEST_DELAY", "20")
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        hccn._command_output("npu-smi", "info", "-t", "board", "-i", "7")
+    assert raised.value.timeout == 10
+
+
+def test_hccn_tool_keeps_its_five_second_deadline(monkeypatch):
+    def stuck(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+    monkeypatch.setattr(subprocess, "check_output", stuck)
+    with pytest.raises(subprocess.TimeoutExpired) as raised:
+        hccn._command_output("/usr/local/Ascend/driver/tools/hccn_tool", "-i", "4", "-ip", "-g")
+    assert raised.value.timeout == 5
 
 
 def test_collects_pci_serial_and_address_before_passthrough():

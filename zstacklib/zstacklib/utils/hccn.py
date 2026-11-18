@@ -9,7 +9,8 @@ _SURVEY_LOCK = threading.Lock()
 
 
 def _command_output(*command):
-    return subprocess.check_output(command, stderr=subprocess.STDOUT, text=True, timeout=5)
+    timeout = 10 if command[0] == "npu-smi" else 5
+    return subprocess.check_output(command, stderr=subprocess.STDOUT, text=True, timeout=timeout)
 
 
 def _field(output, name):
