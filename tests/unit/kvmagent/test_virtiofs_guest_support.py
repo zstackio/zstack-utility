@@ -309,3 +309,23 @@ def test_reusing_transient_device_does_not_write_config(stateful_attach):
     response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
     assert response['success'] is True
     domain.attachDeviceFlags.assert_not_called()
+
+
+@pytest.mark.parametrize('settings', [{'queue': 512}, {'cacheMode': 'always'}])
+@pytest.mark.parametrize('config_present', [False, True])
+def test_reusing_device_rejects_changed_effective_settings(stateful_attach, settings, config_present):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    state['live_xml'] = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid')
+    state['config_xml'] = state['live_xml'] if config_present else None
+    state['failures_left'] = 0
+    request = make_attach_request()
+    command = json.loads(request[http.REQUEST_BODY])
+    command.update(settings)
+    request[http.REQUEST_BODY] = json.dumps(command)
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(request))
+    assert response['success'] is False
+    assert 'conflict' in response['error'].lower()
+    domain.attachDeviceFlags.assert_not_called()
+    domain.detachDeviceFlags.assert_not_called()

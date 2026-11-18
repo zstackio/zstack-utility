@@ -308,7 +308,7 @@ def check_vm_memory_backing(domain):
         return True, None
 
 
-def has_attached_virtiofs(domain, tag, source_path, xml_flags=0):
+def has_attached_virtiofs(domain, tag, source_path, xml_flags=0, expected_queue=None, expected_cache=None):
     import xml.etree.ElementTree as ET
 
     root = ET.fromstring(domain.XMLDesc(xml_flags))
@@ -323,6 +323,11 @@ def has_attached_virtiofs(domain, tag, source_path, xml_flags=0):
                 or os.path.realpath(source.get('dir')) != source_path):
             raise Exception("Existing filesystem device conflicts with virtiofs tag[%s], source[%s]" % (
                 tag, source_path))
+        cache = fs.find('binary/cache')
+        if ((expected_queue is not None and
+             virtiofs_device.normalize_queue(driver.get('queue'), -1) != expected_queue) or
+                (expected_cache is not None and (cache is None or cache.get('mode') != expected_cache))):
+            raise Exception("Existing virtiofs settings conflict with request for tag[%s]" % tag)
         return True
     return False
 
@@ -634,9 +639,14 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
                 queue = _get_cmd_attr(cmd, 'queue', VIRTIOFS_DEFAULT_QUEUE)
                 return build_virtiofs_xml(cmd.tag, resolved_path, cache_mode, queue)
 
-            if has_attached_virtiofs(domain, cmd.tag, resolved_path):
+            settings = {
+                'expected_queue': virtiofs_device.normalize_queue(_get_cmd_attr(cmd, 'queue', VIRTIOFS_DEFAULT_QUEUE)),
+                'expected_cache': virtiofs_device.normalize_cache_mode(
+                    _get_cmd_attr(cmd, 'cacheMode', _get_cmd_attr(cmd, 'cache', VIRTIOFS_DEFAULT_CACHE_MODE)))
+            }
+            if has_attached_virtiofs(domain, cmd.tag, resolved_path, **settings):
                 if domain.isPersistent() and not has_attached_virtiofs(
-                        domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE):
+                        domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE, **settings):
                     domain.attachDeviceFlags(device_xml(), libvirt.VIR_DOMAIN_AFFECT_CONFIG)
                 logger.info("Reusing attached virtiofs device in VM[%s], tag=%s" % (
                     cmd.vmInstanceUuid, cmd.tag))
