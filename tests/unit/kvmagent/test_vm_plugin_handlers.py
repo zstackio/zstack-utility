@@ -3143,6 +3143,22 @@ class TestUnexportNbdVolumesHandler:
         kill_nbd.assert_called_once_with('/path/vol')
         plugin.deactive_volume_if_need.assert_called_once_with('/path/vol', False)
 
+    def test_unexport_nbd_volumes_keeps_open_sharedblock_lv_active(self):
+        plugin = _make_vm_plugin()
+        plugin.deactive_volume_if_need = MagicMock()
+        volume = MagicMock(installPath='/dev/vg/vol', primaryStorageType='SharedBlock')
+        cmd = MagicMock(volumes=[volume])
+
+        with patch.object(vm_plugin.jsonobject, 'loads', return_value=cmd), \
+                patch.object(vm_plugin.qemu_nbd, 'kill_nbd_process_by_flag', return_value=0), \
+                patch.object(vm_plugin.lvm, 'lv_in_use', return_value=True) as lv_in_use:
+            result = plugin.unexport_nbd_volumes(_make_req({}))
+            rsp = json.loads(result)
+
+        assert rsp['success'] is True
+        lv_in_use.assert_called_once_with('/dev/vg/vol')
+        plugin.deactive_volume_if_need.assert_not_called()
+
     def test_unexport_nbd_volumes_does_not_deactivate_when_kill_times_out(self):
         plugin = _make_vm_plugin()
         plugin.get_cbt_volume_actual_install_path = MagicMock(return_value='/path/vol')

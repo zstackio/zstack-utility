@@ -11508,6 +11508,9 @@ host side snapshot files chian:
             found = qemu_nbd.kill_nbd_process_by_flag(real_path) == 0
             if not found and real_path != volume.installPath:
                 qemu_nbd.kill_nbd_process_by_flag(volume.installPath)
+            if volume.primaryStorageType == 'SharedBlock' and lvm.lv_in_use(real_path):
+                logger.debug('volume[path:%s] is still open, skip deactivation after NBD cleanup', real_path)
+                continue
             self.deactive_volume_if_need(real_path, False)
 
         rsp.success = True
