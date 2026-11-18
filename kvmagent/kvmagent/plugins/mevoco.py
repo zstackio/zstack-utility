@@ -432,6 +432,8 @@ class DhcpNameSpaceEnv(object):
         self.infra_env.prepare_dev()
         self._prepare_ip_iptables_ebtables_fdb()
 
+    @lock.lock('prepare_dhcp_namespace')
+    @lock.file_lock('/run/xtables.lock')
     def disable(self):
         # delete ip, iptables, ebtables, stop dnsmasq, etc
         dev = self.infra_env.near_vm_inner
