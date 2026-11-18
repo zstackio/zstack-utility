@@ -6284,7 +6284,7 @@ class Vm(object):
                     logger.warning('timed out waiting for guest to enumerate hotplugged CPUs '
                                    'for vm[uuid:%s], missing CPUs %s'
                                    % (self.uuid, sorted(missing_cpu_ids)))
-                    return
+                    break
                 time.sleep(_QGA_CPU_ENUM_RETRY_INTERVAL)
 
             offline_cpus = []
