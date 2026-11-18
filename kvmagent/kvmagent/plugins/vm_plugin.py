@@ -6284,7 +6284,9 @@ class Vm(object):
         if iface is None or nic is None:
             return False
         nic_pci_addr = getattr(nic, 'pciDeviceAddress', None)
-        if nic_pci_addr and getattr(iface, 'type_', None) == 'hostdev':
+        if nic_pci_addr and getattr(nic, 'srcPath', None) is None:
+            if getattr(iface, 'type_', None) != 'hostdev':
+                return False
             if not hasattr(iface, 'mac') or iface.mac.address_ != nic.mac:
                 return False
             if hasattr(iface, 'source') and hasattr(iface.source, 'address'):
@@ -6296,8 +6298,8 @@ class Vm(object):
                 }
                 expected = normalize_pci_address(nic_pci_addr)
                 attached = normalize_pci_attrs(addr_dict)
-                if expected and attached:
-                    return attached == expected
+                return bool(expected and attached and attached == expected)
+            return False
         nic_internal_name = getattr(nic, 'nicInternalName', None)
         if nic_internal_name:
             if hasattr(iface, 'target') and hasattr(iface.target, 'dev_') and iface.target.dev_:
@@ -6531,8 +6533,13 @@ class Vm(object):
 
     @linux.retry(times=3, sleep_time=5)
     def _detach_nic(self, cmd):
+        hostdev = getattr(cmd.nic, 'pciDeviceAddress', None) is not None and getattr(cmd.nic, 'srcPath', None) is None
+        vf_addresses = [cmd.nic.pciDeviceAddress] + Vm._collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None)) if hostdev else []
+
         def check_device(_):
             self.refresh()
+            if hostdev:
+                return all(find_vf_device_xml_by_pci(addr) is None for addr in vf_addresses)
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if Vm._iface_matches_nic(iface, cmd.nic):
                     return False
@@ -6544,6 +6551,8 @@ class Vm(object):
                 raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
 
         def find_vf_device_xml():
+            if hostdev:
+                return find_vf_device_xml_by_pci(cmd.nic.pciDeviceAddress)
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.type_ == 'hostdev' and Vm._iface_matches_nic(iface, cmd.nic):
                     return iface.dump()
@@ -6635,11 +6644,12 @@ class Vm(object):
                 matched_iface = self._find_domain_interface(cmd.nic)
                 Vm._fill_nic_pci_from_iface(cmd.nic, matched_iface)
                 xml = self._interface_cmd_to_xml(cmd, action='Detach')
-            logger.debug('detaching nic:\n%s' % xml)
-            if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
-                self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
-            else:
-                self.domain.detachDevice(xml)
+            if xml is not None:
+                logger.debug('detaching nic:\n%s' % xml)
+                if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
+                    self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                else:
+                    self.domain.detachDevice(xml)
 
             wait_for_detach()
         except libvirt.libvirtError as e:

@@ -295,3 +295,113 @@ def test_same_mac_multi_nic_device_info_update_and_detach():
     assert len(attach_rsp.virtualDeviceInfoList) == 1
     assert attach_rsp.virtualDeviceInfoList[0].resourceUuid == 'nic-1-uuid'
     assert attach_rsp.virtualDeviceInfoList[0].deviceAddress.slot == '0x04'
+
+
+def _vf_test_vm(addresses, include_bridge=True):
+    import importlib.util
+    from pathlib import Path
+    from unittest.mock import MagicMock
+
+    path = Path(__file__).resolve().parents[3] / 'zstacklib' / 'zstacklib' / 'utils' / 'xmlobject.py'
+    spec = importlib.util.spec_from_file_location('_vf_test_xmlobject', str(path))
+    xmlobject = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(xmlobject)
+    vm = vm_plugin.Vm()
+    vm.uuid = 'vf-test-vm'
+    vm.state = vm_plugin.Vm.VM_STATE_RUNNING
+    vm.domain = MagicMock()
+    vm.timeout_object = MagicMock()
+    vm._has_qemu_commandline_devices = lambda: False
+
+    def refresh():
+        interfaces = ["<interface type='bridge'><mac address='fa:16:3e:88:99:aa'/><target dev='vnic10.0'/><address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/></interface>"]
+        if not include_bridge:
+            interfaces = []
+        for index, addr in enumerate(addresses):
+            domain, bus, slot_fn = addr.split(':')
+            slot, function = slot_fn.split('.')
+            interfaces.append("<interface type='hostdev'><mac address='fa:16:3e:88:99:aa'/><source><address domain='0x%s' bus='0x%s' slot='0x%s' function='0x%s'/></source><address type='pci' domain='0x0000' bus='0x00' slot='0x%02x' function='0x0'/></interface>" % (domain, bus, slot, function, index + 4))
+        vm.domain_xml = '<domain><devices>%s</devices></domain>' % ''.join(interfaces)
+        vm.domain_xmlobject = xmlobject.loads(vm.domain_xml)
+    vm.refresh = refresh
+    refresh()
+    return vm
+
+
+def _vf_test_command():
+    from zstacklib.utils import jsonobject
+    return jsonobject.loads(jsonobject.dumps({
+        'vmUuid': 'vf-test-vm', 'addons': None,
+        'nic': {'uuid': 'vf-nic', 'mac': 'fa:16:3e:88:99:aa', 'type': 'VF',
+                'pciDeviceAddress': '0000:3b:02.0', 'nicInternalName': None,
+                'extraPciDeviceAddresses': ['0000:af:02.0'],
+                'cleanTraffic': False, 'isolated': False}}))
+
+
+def test_vf_attach_does_not_match_same_mac_bridge():
+    addresses = []
+    vm = _vf_test_vm(addresses)
+    cmd = _vf_test_command()
+    cmd.nic.extraPciDeviceAddresses = []
+    vm.domain.attachDeviceFlags.side_effect = lambda *args: addresses.append(cmd.nic.pciDeviceAddress)
+    with patch.object(vm_plugin.Vm, '_sync_vf_nic_mac_for_nic'), \
+         patch.object(vm_plugin.linux, 'wait_callback_success', side_effect=lambda callback, **kwargs: callback(None)), \
+         patch.object(vm_plugin, 'get_vm_by_uuid', return_value=vm):
+        vm._attach_nic(cmd)
+        vm.domain.attachDeviceFlags.assert_called_once()
+        plugin = vm_plugin.VmPlugin.__new__(vm_plugin.VmPlugin)
+        vm.attach_nic = lambda _: None
+        rsp = vm_plugin.jsonobject.loads(plugin.attach_nic({vm_plugin.http.REQUEST_BODY: vm_plugin.jsonobject.dumps(cmd)}))
+    assert len(rsp.virtualDeviceInfoList) == 1
+    assert rsp.virtualDeviceInfoList[0].resourceUuid == 'vf-nic'
+    assert rsp.virtualDeviceInfoList[0].deviceAddress.slot == '0x04'
+
+
+def test_vf_identity_rejects_missing_source_but_preserves_srcpath_backend():
+    vm = _vf_test_vm([])
+    bridge = vm.domain_xmlobject.devices.interface
+    cmd = _vf_test_command()
+    assert not vm_plugin.Vm._iface_matches_nic(bridge, cmd.nic)
+    bridge.type_ = 'hostdev'
+    assert not vm_plugin.Vm._iface_matches_nic(bridge, cmd.nic)
+    bridge.type_ = 'bridge'
+    cmd.nic.srcPath = '/run/vhost.sock'
+    cmd.nic.nicInternalName = 'vnic10.0'
+    assert vm_plugin.Vm._iface_matches_nic(bridge, cmd.nic)
+
+
+@pytest.mark.parametrize('failure_mode', ['exception', 'timeout'])
+def test_vf_detach_retries_slave_after_primary_disappears(failure_mode):
+    class DetachError(Exception):
+        pass
+
+    primary, secondary, unrelated = '0000:3b:02.0', '0000:af:02.0', '0000:cd:02.0'
+    addresses = [primary, secondary, unrelated]
+    vm = _vf_test_vm(addresses, include_bridge=False)
+    cmd = _vf_test_command()
+    fail_slave = [True]
+    detached = []
+
+    def detach(xml, flags):
+        root = vm_plugin.etree.fromstring(xml)
+        addr = vm_plugin.normalize_pci_attrs(root.find('source/address').attrib)
+        detached.append(addr)
+        if addr == secondary and fail_slave[0]:
+            if failure_mode == 'exception':
+                raise DetachError('slave busy')
+            return
+        addresses.remove(addr)
+
+    vm.domain.detachDeviceFlags.side_effect = detach
+    with patch.object(vm_plugin.libvirt, 'libvirtError', DetachError), \
+         patch.object(vm_plugin.iproute, 'is_device_ifname_exists', return_value=False), \
+         patch.object(vm_plugin.linux, 'wait_callback_success', side_effect=lambda callback, **kwargs: callback(None)):
+        with pytest.raises(Exception, match='still attached'):
+            vm._detach_nic(cmd)
+        assert addresses == [secondary, unrelated]
+        fail_slave[0] = False
+        vm._detach_nic(cmd)
+        assert addresses == [unrelated]
+        assert detached == [secondary, primary, secondary]
+        vm._detach_nic(cmd)
+        assert detached == [secondary, primary, secondary]
