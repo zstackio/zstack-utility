@@ -670,7 +670,16 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
                 domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE, **settings)
             if has_attached_virtiofs(domain, cmd.tag, resolved_path, **settings):
                 if persistent and not config_attached:
-                    domain.attachDeviceFlags(device_xml(), libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                    try:
+                        domain.attachDeviceFlags(device_xml(), libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                    except Exception:
+                        try:
+                            config_matches = has_attached_virtiofs(
+                                domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE, **settings)
+                        except Exception:
+                            config_matches = False
+                        if not config_matches:
+                            raise
                 logger.info("Reusing attached virtiofs device in VM[%s], tag=%s" % (
                     cmd.vmInstanceUuid, cmd.tag))
             else:

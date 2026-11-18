@@ -417,3 +417,32 @@ def test_unknown_inactive_queue_is_rejected_before_attaching_live(stateful_attac
     assert 'Cannot determine virtiofs queue from inactive XML' in response['error']
     assert state['live_xml'] is None
     domain.attachDeviceFlags.assert_not_called()
+
+
+@pytest.mark.parametrize('concurrent_settings,success', [
+    ({}, True), ({'queue': 512}, False), ({'cache_mode': 'always'}, False),
+    (None, False), ('invalid-xml', False),
+])
+def test_config_attach_race_only_succeeds_when_persisted_device_matches(
+        stateful_attach, concurrent_settings, success):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    state['live_xml'] = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid')
+    state['failures_left'] = 0
+    def concurrent_config_write(xml, flags):
+        assert flags == virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_CONFIG
+        if isinstance(concurrent_settings, dict):
+            state['config_xml'] = virtiofs_plugin.build_virtiofs_xml(
+                'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid', **concurrent_settings)
+        elif concurrent_settings == 'invalid-xml':
+            state['config_xml'] = 'not-domain-xml'
+        raise RuntimeError('concurrent CONFIG write failed original')
+    domain.attachDeviceFlags.side_effect = concurrent_config_write
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is success, response.get('error')
+    assert response['qgaMountAttempted'] is success
+    assert state['live_xml'].find("queue='1024'") >= 0
+    if not success:
+        assert 'concurrent CONFIG write failed original' in response['error']
+    assert domain.attachDeviceFlags.call_count == 1
