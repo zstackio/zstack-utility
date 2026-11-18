@@ -605,7 +605,7 @@ def _strict_pci_hostdevs(xml):
     if not isinstance(xml, str) or len(xml.encode('utf-8')) > 1048576:
         raise ValueError('invalid/oversized active domain XML')
     tree = ET.fromstring(xml)
-    expected, hosts = {}, set()
+    expected, hosts, layout = {}, set(), {}
     for device in tree.findall('./devices/hostdev'):
         if device.get('type') == 'usb':
             continue
@@ -620,16 +620,18 @@ def _strict_pci_hostdevs(xml):
             raise ValueError('duplicate active XML alias/host BDF')
         # XML bus is the controller index; the guest BDF comes from QMP below.
         expected[alias] = {'alias': alias, 'hostPciAddress': host}
+        address = device.find('address')
+        layout[alias] = None if address is None else tuple(sorted(address.attrib.items()))
         hosts.add(host)
     if not expected:
         raise ValueError('strict PCI observation has no hostdev devices')
-    return expected
+    return expected, layout
 
 
 def get_strict_pci_passthrough_observation(vm_dom):
     if not vm_dom.isActive() or type(vm_dom.ID()) is not int or vm_dom.ID() < 0:
         raise ValueError('strict PCI observation requires active runtime')
-    expected = _strict_pci_hostdevs(vm_dom.XMLDesc())
+    expected, layout = _strict_pci_hostdevs(vm_dom.XMLDesc())
     runtime_id, vm_uuid, vm_name = vm_dom.ID(), vm_dom.UUIDString(), vm_dom.name()
     # One complete observation: never merge partial mappings across retries.
     rc, output, error = _query_pci_info_by_qmp(vm_uuid, timeout=5)
@@ -654,7 +656,7 @@ def get_strict_pci_passthrough_observation(vm_dom):
             addresses.add(current)
     if set(observed) != set(expected):
         raise ValueError('incomplete single QMP observation')
-    if _strict_pci_hostdevs(vm_dom.XMLDesc()) != expected:
+    if _strict_pci_hostdevs(vm_dom.XMLDesc()) != (expected, layout):
         raise ValueError('PCI allocation changed during QMP observation')
     if not vm_dom.isActive() or (vm_dom.ID(), vm_dom.UUIDString(), vm_dom.name()) != (runtime_id, vm_uuid, vm_name):
         raise ValueError('active runtime changed during QMP observation')

@@ -754,9 +754,17 @@ def test_response_limit_uses_the_compact_wire_encoding(raw_qga):
 
 
 def test_large_json_integer_stays_on_the_strict_route():
+    import sys
+    if not hasattr(sys, 'set_int_max_str_digits'):
+        pytest.skip('runtime has no configurable integer conversion limit')
     raw = '{"hccnBootstrap":{"schemaVersion":1,"operation":"capability","capabilityScope":"host"},"n":' + '9' * 5000 + '}'
-    assert bootstrap.has_request(raw) is True
-    response = bootstrap.dispatch(raw, lambda _: pytest.fail('strict parse failure must not query a VM'))
+    original_limit = sys.get_int_max_str_digits()
+    try:
+        sys.set_int_max_str_digits(4300)
+        assert bootstrap.has_request(raw) is True
+        response = bootstrap.dispatch(raw, lambda _: pytest.fail('strict parse failure must not query a VM'))
+    finally:
+        sys.set_int_max_str_digits(original_limit)
     assert response['success'] is False
     assert response['hccnBootstrap']['result'] is None
     assert response['hccnBootstrap']['errors']
@@ -773,6 +781,20 @@ def test_pci_hotplug_during_qmp_invalidates_one_observation(actual_pci, monkeypa
     def query(*_, **__):
         changed[0] = True
         return 0, qmp_output() + '\nBus 153, device 0, function 0:\n  id "extra"', ''
+    monkeypatch.setattr(actual_pci, '_query_pci_info_by_qmp', query)
+    with pytest.raises(ValueError, match='allocation changed'):
+        actual_pci.get_strict_pci_passthrough_observation(ChangingDomain())
+
+
+def test_same_alias_and_host_moved_to_another_virtual_slot_invalidates_qmp(actual_pci, monkeypatch):
+    changed = [False]
+    class ChangingDomain(PciDomain):
+        def XMLDesc(self):
+            xml = pci_xml()
+            return xml.replace('bus="0x95" slot="0x00"', 'bus="0x95" slot="0x01"') if changed[0] else xml
+    def query(*_, **__):
+        changed[0] = True
+        return 0, qmp_output(), ''
     monkeypatch.setattr(actual_pci, '_query_pci_info_by_qmp', query)
     with pytest.raises(ValueError, match='allocation changed'):
         actual_pci.get_strict_pci_passthrough_observation(ChangingDomain())
