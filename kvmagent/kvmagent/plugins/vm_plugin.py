@@ -8680,7 +8680,8 @@ class Vm(object):
                 alias_value = alias_name
             e(interface, 'alias', None, {'name': alias_value})
 
-        if iftype != 'hostdev' and iftype != "direct" and nic.type not in ovs.OvsDpdkSupportVnic and nic.type != "dpdkvhostuserclient":
+        if (iftype not in ('hostdev', 'direct') and nic.type not in ovs.OvsDpdkSupportVnic
+                and nic.type != 'dpdkvhostuserclient' and nic.mtu is not None):
             e(interface, 'mtu', None, attrib={'size': '%d' % nic.mtu})
 
         # logger.warn("nic.state : [%s]" % nic.state)

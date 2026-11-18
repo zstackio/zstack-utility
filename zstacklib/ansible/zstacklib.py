@@ -985,7 +985,7 @@ def yum_remove_package(name, host_post_info):
             runner_args = ZstackRunnerArg()
             runner_args.host_post_info = host_post_info
             runner_args.module_name = 'yum'
-            runner_args.module_args = 'name=' + name + ' state=absent'
+            runner_args.module_args = 'name=' + name + ' state=absent disablerepo=*'
             zstack_runner = ZstackRunner(runner_args)
             result = zstack_runner.run()
             logger.debug(result)
