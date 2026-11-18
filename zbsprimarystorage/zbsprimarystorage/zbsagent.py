@@ -1,6 +1,7 @@
 __author__ = 'Xingwei Yu'
 
 import base64
+import os
 import pprint
 import traceback
 
@@ -10,11 +11,14 @@ import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import daemon
 from zstacklib.utils import iproute
 from zstacklib.utils import plugin
+from zstacklib.utils import resource_control
+from zstacklib.utils import shell
 from zstacklib.utils import traceable_shell
 from zstacklib.utils.bash import *
 from zstacklib.utils.report import *
 
 logger = log.get_logger(__name__)
+_physical_server_serial_number = None
 
 
 class AgentResponse(object):
@@ -37,6 +41,32 @@ class SyncMetadataRsp(AgentResponse):
     def __init__(self):
         super(SyncMetadataRsp, self).__init__()
         self.externalAddr = None
+        self.physicalServerSerialNumber = None
+
+
+class ResourceUsageRsp(AgentResponse):
+    def __init__(self):
+        super(ResourceUsageRsp, self).__init__()
+        self.physicalServerSerialNumber = None
+        self.usages = []
+
+
+def read_physical_server_serial_number():
+    global _physical_server_serial_number
+    if _physical_server_serial_number is not None:
+        return _physical_server_serial_number
+
+    if os.path.isfile('/sys/class/dmi/id/product_serial'):
+        with open('/sys/class/dmi/id/product_serial') as serial_file:
+            serial_number = serial_file.read().strip()
+            if serial_number:
+                _physical_server_serial_number = serial_number
+                return _physical_server_serial_number
+
+    serial_number = shell.call('dmidecode -s system-serial-number', exception=False).strip()
+    if serial_number:
+        _physical_server_serial_number = serial_number
+    return _physical_server_serial_number
 
 
 class CbdToNbdRsp(AgentResponse):
@@ -206,6 +236,7 @@ class ZbsAgent(plugin.TaskManager):
     PING_PATH = "/zbs/primarystorage/ping"
     GET_FACTS_PATH = "/zbs/primarystorage/facts"
     SYNC_METADATA_PATH = "/zbs/primarystorage/metadata/sync"
+    GET_RESOURCE_USAGE_PATH = "/zbs/primarystorage/resource/usage"
     DEPLOY_CLIENT_PATH = "/zbs/primarystorage/client/deploy"
     GET_CAPACITY_PATH = "/zbs/primarystorage/capacity"
     COPY_PATH = "/zbs/primarystorage/copy"
@@ -226,6 +257,7 @@ class ZbsAgent(plugin.TaskManager):
     VHOST_TARGET_HEALTH_PATH = "/zbs/primarystorage/vhost/target/health"
     CREATE_VHOST_BDEV_PATH = "/zbs/primarystorage/vhost/bdev/create"
     DELETE_VHOST_BDEV_PATH = "/zbs/primarystorage/vhost/bdev/delete"
+    RESOURCE_USAGE_CGROUP_NAMES = frozenset(['zstone.share.slice', 'zstone.cs.slice', 'zstone.vhost.slice'])
 
     http_server = http.HttpServer(port=7763)
     http_server.logfile_path = log.get_logfile_path()
@@ -238,6 +270,7 @@ class ZbsAgent(plugin.TaskManager):
         self.http_server.register_async_uri(self.PING_PATH, self.ping)
         self.http_server.register_async_uri(self.GET_FACTS_PATH, self.get_facts)
         self.http_server.register_async_uri(self.SYNC_METADATA_PATH, self.sync_metadata)
+        self.http_server.register_async_uri(self.GET_RESOURCE_USAGE_PATH, self.get_resource_usage)
         self.http_server.register_async_uri(self.DEPLOY_CLIENT_PATH, self.deploy_client)
         self.http_server.register_async_uri(self.GET_CAPACITY_PATH, self.get_capacity)
         self.http_server.register_async_uri(self.COPY_PATH, self.copy)
@@ -299,8 +332,30 @@ class ZbsAgent(plugin.TaskManager):
             rsp.error = 'cannot found external address of mds[%s]' % cmd.addr
             return jsonobject.dumps(rsp)
 
+        rsp.physicalServerSerialNumber = read_physical_server_serial_number()
         self.SUPPORT_GET_VOLUME_CLIENTS = zbsutils.is_support_get_volume_clients()
         self.agent_version = cmd.agentVersion
+        return jsonobject.dumps(rsp)
+
+    @replyerror
+    def get_resource_usage(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        names = cmd.cgroupNames
+        if (not isinstance(names, list) or not names
+                or any(not isinstance(name, str) for name in names)
+                or len(names) != len(set(names))
+                or any(name not in self.RESOURCE_USAGE_CGROUP_NAMES for name in names)):
+            raise resource_control.ResourceControlError(
+                'Cgroup names must be a non-empty unique subset of the '
+                'configured ZBS cgroups')
+
+        serial_number = read_physical_server_serial_number()
+        if not serial_number:
+            raise resource_control.ResourceControlError('Physical server serial number is unavailable')
+
+        rsp = ResourceUsageRsp()
+        rsp.physicalServerSerialNumber = serial_number
+        rsp.usages = resource_control.ResourceControlManager().inspect_systemd_slices(names)
         return jsonobject.dumps(rsp)
 
     @replyerror

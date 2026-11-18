@@ -887,7 +887,7 @@ def test_license_server_post_start_log_brackets_ipv6_default_ip(monkeypatch):
     service.post_start_log()
 
     assert logs == [
-        'License Server service has been started. Access it at: https://[fd00:5:5:28::116:84]:8201'
+        'License Server service has been started. Access it at: https://[fd00:5:5:28::116:84]:18201'
     ]
 
 

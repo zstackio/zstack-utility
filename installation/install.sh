@@ -127,6 +127,7 @@ LICENSE_SERVER_DB_USER='license_server'
 LICENSE_SERVER_DEFAULT_DB_PASSWORD='zstack.ls.password'
 LICENSE_SERVER_DATA_DIR='/var/lib/zstack/zstack-license-server'
 LICENSE_SERVER_SERVICE_PATH='/usr/lib/systemd/system/zstack-license-server.service'
+LICENSE_SERVER_PORT='18201'
 
 get_default_route_interface_by_family() {
     local family="$1"
@@ -3037,6 +3038,25 @@ append_license_server_installer_output() {
     sed 's/^/      /' "$output_file" >>$ZSTACK_INSTALL_LOG
 }
 
+allow_license_server_firewall_port() {
+    local port="${LICENSE_SERVER_PORT:-18201}"
+
+    if command -v firewall-cmd >/dev/null 2>&1 && systemctl is-active --quiet firewalld 2>/dev/null; then
+        firewall-cmd --query-port="${port}/tcp" >/dev/null 2>&1 || \
+            firewall-cmd --add-port="${port}/tcp" >>$ZSTACK_INSTALL_LOG 2>&1
+        firewall-cmd --permanent --query-port="${port}/tcp" >/dev/null 2>&1 || \
+            firewall-cmd --permanent --add-port="${port}/tcp" >>$ZSTACK_INSTALL_LOG 2>&1
+    fi
+
+    if command -v iptables >/dev/null 2>&1; then
+        iptables-save 2>/dev/null | grep -Eq -- "-A INPUT (.* )?-p tcp (.* )?--dport ${port} -j ACCEPT" || \
+            iptables -I INPUT -p tcp -m tcp --dport "${port}" -j ACCEPT >>$ZSTACK_INSTALL_LOG 2>&1
+        if systemctl list-unit-files iptables.service 2>/dev/null | grep -q '^iptables\.service' || [ -f /etc/init.d/iptables ]; then
+            service iptables save >>$ZSTACK_INSTALL_LOG 2>&1
+        fi
+    fi
+}
+
 install_license_server() {
     local management_ip=''
     local installer_bin=`license_server_installer_bin`
@@ -3066,6 +3086,7 @@ install_license_server() {
         render_license_server_install_config "$install_config" "$management_ip"
         show_spinner is_install_license_server "$installer_bin" "$install_config"
     fi
+    allow_license_server_firewall_port
     append_license_server_installer_output "$LICENSE_SERVER_INSTALL_OUTPUT"
     rm -f "$LICENSE_SERVER_INSTALL_OUTPUT"
     [ -n "$install_config" ] && rm -f "$install_config"

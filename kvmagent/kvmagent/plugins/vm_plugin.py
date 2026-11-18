@@ -3691,6 +3691,26 @@ class Vm(object):
             raise kvmagent.KvmError('unable to start vm[uuid:%s, name:%s], vm state is not changing to '
                                     'paused after %s seconds' % (self.uuid, self.get_name(), timeout))
 
+    def _sync_domain_vf_nic_macs(self):
+        if self.domain_xmlobject is None or not hasattr(self.domain_xmlobject, 'devices'):
+            return
+        for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            if getattr(iface, 'type_', None) != 'hostdev':
+                continue
+            if not hasattr(iface, 'mac') or not getattr(iface.mac, 'address_', None):
+                continue
+            if not hasattr(iface, 'source') or not hasattr(iface.source, 'address'):
+                continue
+            addr_dict = {
+                'domain': getattr(iface.source.address, 'domain_', '0x0000'),
+                'bus': getattr(iface.source.address, 'bus_', '0x00'),
+                'slot': getattr(iface.source.address, 'slot_', '0x00'),
+                'function': getattr(iface.source.address, 'function_', '0x0')
+            }
+            pci_addr = normalize_pci_attrs(addr_dict)
+            if pci_addr:
+                Vm._set_vf_mac(pci_addr, iface.mac.address_)
+
     def reboot(self, cmd):
         self.stop(timeout=cmd.timeout)
 
@@ -3704,6 +3724,7 @@ class Vm(object):
         self.domain_xmlobject.os.replace_node('boot', boot_dev)
         self.domain_xml = self.domain_xmlobject.dump()
 
+        self._sync_domain_vf_nic_macs()
         self.start(cmd.timeout)
 
     def restore(self, path):
@@ -4496,6 +4517,8 @@ class Vm(object):
             driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
             if is_virtio_blk(volume) and volume.multiQueues:
                 driver_elements["queues"] = volume.multiQueues
+            if is_virtio_blk(volume) and IothreadVqMappingAllocator.to_int(volume.ioThreadId):
+                driver_elements["iothread"] = str(volume.ioThreadId)
             driver = e(disk, 'driver', None, driver_elements)
             if not volume.useVirtioSCSI:
                 IothreadVqMappingAllocator.apply(driver, automatic_iothread_vq_mapping_allocator)
@@ -5892,7 +5915,7 @@ class Vm(object):
 
         return True
 
-    def _interface_cmd_to_xml(self, cmd, action=None):
+    def _interface_cmd_to_xml(self, cmd, action=None, alias_name=None):
         vhostSrcPath = cmd.addons['vhostSrcPath'] if cmd.addons else None
         brMode = cmd.addons['brMode'] if cmd.addons else None
 
@@ -5902,9 +5925,9 @@ class Vm(object):
             vhostSrcPath = cmd.nic.srcPath
 
         if cmd.nic.type == "TFVNIC":
-            interface = Vm._build_interface_xml(cmd.nic, action=action, cmd=cmd)
+            interface = Vm._build_interface_xml(cmd.nic, action=action, cmd=cmd, alias_name=alias_name)
         else:
-            interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode)
+            interface = Vm._build_interface_xml(cmd.nic, None, vhostSrcPath, action, brMode, alias_name=alias_name)
 
         def addon():
             if cmd.nic.addons and cmd.nic.addons['NicQos'] and cmd.nic.addons['NicQos'][cmd.nic.uuid]:
@@ -6303,6 +6326,53 @@ class Vm(object):
             pci_obj.function = getattr(iface.address, 'function_', '0x0')
             nic.pci = pci_obj
 
+    @staticmethod
+    def _collect_extra_pci_addresses(extra):
+        if not extra:
+            return []
+        if isinstance(extra, (list, tuple)):
+            return [addr for addr in extra if addr]
+        if isinstance(extra, jsonobject.JsonObject):
+            return [val for val in extra.__dict__.values() if val]
+        return [extra]
+
+    @staticmethod
+    def _set_vf_mac(pci_addr, mac):
+        if not pci_addr or not mac:
+            return
+        norm_addr = normalize_pci_address(pci_addr)
+        if not norm_addr:
+            return
+        pf_name = linux.get_pf_name_by_vf_pci_address(norm_addr)
+        if not pf_name:
+            logger.debug('cannot find pf for vf pci address[%s], skip set mac' % norm_addr)
+            return
+        vf_index = linux.get_vf_index_by_pci_address(norm_addr)
+        if vf_index is None:
+            logger.debug('cannot find vf index for pci address[%s], skip set mac' % norm_addr)
+            return
+        rc, out, err = bash.bash_roe('ip link set %s vf %d mac %s' % (pf_name, vf_index, mac))
+        if rc != 0:
+            logger.warn('failed to set mac[%s] for vf[pf:%s, vf:%d, pci:%s]: %s %s' %
+                        (mac, pf_name, vf_index, norm_addr, out, err))
+        else:
+            logger.debug('successfully set mac[%s] for vf[pf:%s, vf:%d, pci:%s]' %
+                         (mac, pf_name, vf_index, norm_addr))
+
+    @staticmethod
+    def _sync_vf_nic_mac_for_nic(nic):
+        if nic is None:
+            return
+        mac = getattr(nic, 'mac', None)
+        if not mac:
+            return
+        base_addr = getattr(nic, 'pciDeviceAddress', None)
+        if base_addr:
+            Vm._set_vf_mac(base_addr, mac)
+        for extra_addr in Vm._collect_extra_pci_addresses(getattr(nic, 'extraPciDeviceAddresses', None)):
+            if extra_addr and extra_addr != base_addr:
+                Vm._set_vf_mac(extra_addr, mac)
+
     @linux.retry(times=3, sleep_time=5)
     def _attach_nic(self, cmd):
         def check_device(_):
@@ -6374,6 +6444,10 @@ class Vm(object):
                     cmd.nic.pci.function = '0x0'
                     logger.debug('assigned PCI slot 0x%02x to nic to avoid conflict with qemu:commandline devices' % free_slot)
 
+            # Sync host PF VF MAC before hotplugging VF / bond slave VFs
+            if cmd.nic.type == 'VF' and cmd.nic.pciDeviceAddress is not None:
+                Vm._sync_vf_nic_mac_for_nic(cmd.nic)
+
             # Attach main nic
             xml = self._interface_cmd_to_xml(cmd, action='Attach')
             logger.debug('attaching nic:\n%s' % xml)
@@ -6390,7 +6464,7 @@ class Vm(object):
                 iproute.config_link_isolated(cmd.nic.nicInternalName)
 
             # Attach extra PCI devices for bond mode (VF HA)
-            extra_pci_list = _collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None))
+            extra_pci_list = Vm._collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None))
             if extra_pci_list and cmd.nic.type == 'VF' and cmd.nic.pciDeviceAddress is not None:
                 if getattr(cmd.nic, 'nicInternalName', None) and '.' in cmd.nic.nicInternalName:
                     alias_base = 'net%s' % cmd.nic.nicInternalName.split('.', 1)[1]
@@ -6416,7 +6490,8 @@ class Vm(object):
                     extra_cmd = _clone_nic(cmd)
                     extra_cmd.put('nic', extra_nic)
 
-                    xml = self._interface_cmd_to_xml(extra_cmd, action='Attach')
+                    alias_name = '%s-slave%d' % (alias_base, extra_index + 1)
+                    xml = self._interface_cmd_to_xml(extra_cmd, action='Attach', alias_name=alias_name)
                     logger.debug('attaching extra nic (slave %d) with PCI %s:\n%s' % (extra_index + 1, extra_addr, xml))
 
                     if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
@@ -7915,6 +7990,8 @@ class Vm(object):
                 driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
                 if is_virtio_blk(_v) and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
+                if is_virtio_blk(_v) and IothreadVqMappingAllocator.to_int(_v.ioThreadId):
+                    driver_elements["iothread"] = str(_v.ioThreadId)
                 driver = e(disk, 'driver', None, driver_elements)
                 if not _v.useVirtioSCSI:
                     IothreadVqMappingAllocator.apply(driver, automatic_iothread_vq_mapping_allocators.get(_v.volumeUuid))
@@ -8086,6 +8163,8 @@ class Vm(object):
             brMode = cmd.addons['brMode'] if cmd.addons else None
 
             for index, nic in enumerate(cmd.nics):
+                if nic.type == 'VF' and nic.pciDeviceAddress is not None:
+                    Vm._sync_vf_nic_mac_for_nic(nic)
                 if nic.type in ovs.OvsDpdkSupportVnic:
                     ovsctl = ovs.getOvsCtl(with_dpdk=True)
                     nic.srcPath = ovsctl.createNicBackend(cmd.priorityConfigStruct.vmUuid, nic)
@@ -8509,14 +8588,15 @@ class Vm(object):
             for vol in volumes_for_iothread_vq_mapping:
                 if not IothreadVqMappingAllocator.needs_dedicated_scsi_controller(vol):
                     continue
-                alias_id = vol.ioThreadId if vol.ioThreadId else vol.controllerIndex
+                io_thread_id = IothreadVqMappingAllocator.to_int(vol.ioThreadId)
+                alias_id = io_thread_id if io_thread_id else vol.controllerIndex
                 if alias_id in created_dedicated_controllers:
                     continue
                 created_dedicated_controllers.add(alias_id)
                 devices.append(make_virtio_scsi_controller_xml(
                     vol.controllerIndex,
                     alias_id,
-                    io_thread_id=vol.ioThreadId,
+                    io_thread_id=io_thread_id,
                     queues=IothreadVqMappingAllocator.to_int(vol.multiQueues),
                     mapping_allocator=automatic_iothread_vq_mapping_allocators.get(vol.volumeUuid)
                 ))
@@ -10650,6 +10730,8 @@ class VmPlugin(kvmagent.KvmAgent):
         def cbd_volume(_v):
             disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
             driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
+            if is_virtio_blk(_v) and IothreadVqMappingAllocator.to_int(_v.ioThreadId):
+                driver_elements["iothread"] = str(_v.ioThreadId)
             driver = e(disk, 'driver', None, driver_elements)
             if not _v.useVirtioSCSI:
                 IothreadVqMappingAllocator.apply(
@@ -15111,22 +15193,26 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetVmIoThreadPinRsp()
 
-        iothread_info = self.get_iothread_info(cmd.vmUuid)
-        iothread_ids = [i[0] for i in iothread_info]
+        with lock.NamedLock('vm-iothread-pin-%s' % cmd.vmUuid), contextlib.ExitStack() as rollback:
+            previous_pin = dict(self.get_iothread_info(cmd.vmUuid)).get(str(cmd.ioThreadId))
 
-        err_info = None
-        if str(cmd.ioThreadId) not in iothread_ids:
-            err_info = self.add_io_thread(cmd.vmUuid, cmd.ioThreadId)
-        if err_info:
-            rsp.error = err_info
-            logger.error("add iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
-            return jsonobject.dumps(rsp)
+            err_info = None
+            if previous_pin is None:
+                err_info = self.add_io_thread(cmd.vmUuid, cmd.ioThreadId)
+            if err_info:
+                rsp.error = err_info
+                logger.error("add iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
+                return jsonobject.dumps(rsp)
 
-        err_info = self.pin_io_thread(cmd.vmUuid, cmd.ioThreadId, cmd.pin)
-        if err_info:
-            rsp.error = err_info
-            logger.error("pin iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
-            return jsonobject.dumps(rsp)
+            if previous_pin is not None:
+                rollback.callback(linux.ignoreerror(self.pin_io_thread), cmd.vmUuid, cmd.ioThreadId, previous_pin)
+            err_info = self.pin_io_thread(cmd.vmUuid, cmd.ioThreadId, cmd.pin)
+            if err_info:
+                rsp.success = False
+                rsp.error = err_info
+                logger.error("pin iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
+                return jsonobject.dumps(rsp)
+            rollback.pop_all()
         logger.info("set iothread[{}] pin[{}] on vm[{}] successfully.".format(cmd.ioThreadId, cmd.pin, cmd.vmUuid))
         rsp.ioThreadId = cmd.ioThreadId
         return jsonobject.dumps(rsp)
