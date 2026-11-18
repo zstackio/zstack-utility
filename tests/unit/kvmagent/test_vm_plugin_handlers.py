@@ -3552,6 +3552,28 @@ class TestVmStartCmdXmlBuild:
             vm = vm_plugin.Vm.from_StartVmCmd(cmd)
         return vm.domain_xml.decode() if isinstance(vm.domain_xml, bytes) else vm.domain_xml
 
+    @pytest.mark.parametrize('has_mtu_field, mtu', [
+        pytest.param(False, None, id='missing'),
+        pytest.param(True, None, id='null'),
+        pytest.param(True, 9000, id='configured'),
+    ])
+    def test_start_xml_only_sets_configured_nic_mtu(self, has_mtu_field, mtu):
+        cmd = self._build_start_cmd()
+        nic = cmd.nics[0]
+        if has_mtu_field:
+            nic.mtu = mtu
+        else:
+            del nic.mtu
+
+        root = vm_plugin.etree.fromstring(self._build_start_vm_xml(cmd))
+        interface = root.find('./devices/interface[@type="bridge"]')
+        assert interface is not None
+        mtu_element = interface.find('mtu')
+        if mtu is None:
+            assert mtu_element is None
+        else:
+            assert mtu_element.get('size') == str(mtu)
+
     @pytest.mark.parametrize('host_arch,machine_type', [
         ('x86_64', 'pc'),
         ('x86_64', 'q35'),
