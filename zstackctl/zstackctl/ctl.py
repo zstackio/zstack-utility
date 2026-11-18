@@ -27,6 +27,14 @@ from shutil import rmtree
 
 from .utils import linux, lock
 from . import management_network_ipv6
+from .resource_assignment import (
+    GLOBAL_CONFIG_CATEGORY,
+    GLOBAL_CONFIG_NAME,
+    MANAGEMENT_NODE_SERVICE,
+    RESOURCE_ASSIGNMENT_DROP_IN,
+    management_node_systemd_run_arguments,
+    resource_assignment_enabled,
+)
 from .zstacklib import *
 from . import log_collector
 import jinja2
@@ -2481,6 +2489,102 @@ class MySqlCommandLineQuery(object):
 
         return ret
 
+class EnableCgroupV2Cmd(Command):
+    boot_script = r'''
+set -eu
+if [ "$(uname -m)" != x86_64 ] || [ "$(awk '{print $3}' /etc/zstack-release)" != h84r ]; then
+    echo 'Only H84 (h84r) x86_64 hosts are supported' >&2
+    exit 1
+fi
+grep -qw cgroup2 /proc/filesystems || { echo 'The running kernel does not support cgroup v2' >&2; exit 1; }
+if command -v docker >/dev/null 2>&1; then
+    docker_version=$(docker --version)
+    printf '%s\n' "$docker_version" | awk -F '[ .,]+' '
+        $1 != "Docker" || $2 != "version" || $3 !~ /^[0-9]+$/ || $4 !~ /^[0-9]+$/ { exit 1 }
+        $3 < 20 || ($3 == 20 && $4 < 10) { exit 1 }
+        END { if (NR == 0) exit 1 }
+    ' || { echo 'Docker 20.10 or newer is required for cgroup v2' >&2; exit 1; }
+fi
+grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=1"
+grubby --info=ALL
+'''
+
+    def __init__(self):
+        super(EnableCgroupV2Cmd, self).__init__()
+        self.name = 'enable_cgroup_v2'
+        self.description = 'Configure cgroup v2 boot arguments for H84 x86_64 KVM hosts in a cluster without rebooting'
+        ctl.register_command(self)
+
+    def install_argparse_arguments(self, parser):
+        parser.add_argument('--cluster-uuid', required=True, help='UUID of the target cluster')
+        parser.add_argument('--host-uuids', nargs='+', help='Only configure these hosts; all must belong to the cluster')
+
+    def run(self, args):
+        cluster_uuid = args.cluster_uuid.lower()
+        host_uuids = set(host_uuid.lower() for host_uuid in args.host_uuids or [])
+        for resource_uuid in [cluster_uuid] + list(host_uuids):
+            if not re.match(r'^[0-9a-f]{32}\Z', resource_uuid):
+                error('Invalid UUID: %s; expected 32 hexadecimal characters' % resource_uuid)
+
+        query = MySqlCommandLineQuery()
+        query.host, query.port, query.user, query.password = ctl.get_live_mysql_portal()
+        query.table = 'zstack'
+        query.sql = ("SELECT h.uuid, h.managementIp, k.username, k.password, k.port "
+                     "FROM HostVO h JOIN KVMHostVO k ON h.uuid = k.uuid "
+                     "WHERE h.hypervisorType = 'KVM' AND h.clusterUuid = '%s'" % cluster_uuid)
+        if host_uuids:
+            query.sql += " AND h.uuid IN ('%s')" % "','".join(sorted(host_uuids))
+        hosts = query.query()
+        missing = host_uuids - set(host['uuid'].lower() for host in hosts)
+        if missing:
+            error('Host UUIDs are not KVM hosts in cluster[%s]: %s' % (cluster_uuid, ', '.join(sorted(missing))))
+        if not hosts:
+            info('No KVM hosts found in cluster[%s]' % cluster_uuid)
+            return
+
+        fd, inventory_path = tempfile.mkstemp(prefix='zstack-cgroup-v2-', suffix='.ini')
+        self.install_cleanup_routine(lambda: os.unlink(inventory_path))
+        os.close(fd)
+
+        failures = 0
+        for host in hosts:
+            with open(inventory_path, 'w') as inventory:
+                inventory.write('%s ansible_host=%s\n' % (host['uuid'], shell_quote(host['managementIp'])))
+            host_info = HostPostInfo()
+            host_info.host = host['uuid']
+            host_info.host_inventory = inventory_path
+            host_info.private_key = ctl.zstack_home + '/WEB-INF/classes/ansible/rsaKeys/id_rsa'
+            host_info.remote_user = host['username']
+            host_info.remote_port = host['port']
+            host_info.become = host_info.remote_user != 'root'
+            if host_info.become:
+                host_info.remote_pass = host['password'] if host['password'] not in (None, 'NULL', '') else None
+            runner_args = ZstackRunnerArg()
+            runner_args.host_post_info = host_info
+            runner_args.module_name = 'shell'
+            runner_args.module_args = self.boot_script
+            results = ZstackRunner(runner_args).run()
+            result = results.get('contacted', {}).get(host['uuid'], results.get('dark', {}).get(host['uuid'], {}))
+            identity = 'Host[%s, %s]' % (host['uuid'], host['managementIp'])
+            reason = None
+            if result.get('failed') or result.get('rc') != 0:
+                reason = result.get('stderr') or result.get('msg') or result.get('stdout') or 'No command result'
+            else:
+                entries = [line[5:].strip('"').split() for line in result.get('stdout', '').splitlines()
+                           if line.startswith('args=')]
+                option = 'systemd.unified_cgroup_hierarchy='
+                if not entries or any([v for v in entry if v.startswith(option)] != [option + '1'] for entry in entries):
+                    reason = 'Failed to verify cgroup v2 boot arguments'
+            if reason:
+                failures += 1
+                warn('%s: %s' % (identity, reason))
+            else:
+                info('%s: cgroup v2 boot arguments verified; running system unchanged, reboot manually to apply' % identity)
+
+        if failures:
+            error('Failed to configure cgroup v2 boot arguments on %d of %d hosts' % (failures, len(hosts)))
+
+
 class ShowGrayscaleUpgradeStatusCmd(Command):
     def __init__(self):
         super(ShowGrayscaleUpgradeStatusCmd, self).__init__()
@@ -4016,11 +4120,41 @@ class StartCmd(Command):
                 catalina_opts.append('-Xmx12288M')
 
             with open(setenv_path, 'w') as fd:
+                fd.write('export CATALINA_PID="%s"\n' % os.path.join(
+                    os.path.expanduser('~zstack'), 'management-server.pid'))
                 fd.write('export CATALINA_OPTS=" %s"' % ' '.join(catalina_opts))
+
+        def is_resource_assignment_enabled():
+            db_hostname, db_port, db_user, db_password = ctl.get_live_mysql_portal()
+            query = MySqlCommandLineQuery()
+            query.host = db_hostname
+            query.port = db_port
+            query.user = db_user
+            query.password = db_password
+            query.table = 'zstack'
+            query.sql = (
+                "select value from GlobalConfigVO "
+                "where category='%s' and name='%s' "
+                "order by id desc limit 1" %
+                (GLOBAL_CONFIG_CATEGORY, GLOBAL_CONFIG_NAME))
+            return resource_assignment_enabled(query.query())
 
         def start_mgmt_node():
             log_path = os.path.join(ctl.zstack_home, "../../logs/management-server.log")
-            shell('chown zstack:zstack %s || true; sudo -u zstack sh %s -DappName=zstack' % (log_path, os.path.join(ctl.zstack_home, self.START_SCRIPT)))
+            start_script = os.path.join(ctl.zstack_home, self.START_SCRIPT)
+            shell('chown zstack:zstack %s || true' % log_path)
+            if is_resource_assignment_enabled() or os.path.isfile(RESOURCE_ASSIGNMENT_DROP_IN):
+                shell('systemctl stop %s >/dev/null 2>&1 || true; '
+                      'systemctl reset-failed %s >/dev/null 2>&1 || true' %
+                      (MANAGEMENT_NODE_SERVICE, MANAGEMENT_NODE_SERVICE),
+                      is_exception=False)
+                command = ' '.join(shell_quote(argument) for argument in
+                                   management_node_systemd_run_arguments(
+                                       start_script,
+                                       os.path.join(os.path.expanduser('~zstack'), 'management-server.pid')))
+                shell(command)
+            else:
+                shell('sudo -u zstack sh %s -DappName=zstack' % start_script)
 
             info_and_debug("successfully started Tomcat container; now it's waiting for the management node ready for serving APIs, which may take a few seconds")
 
@@ -14150,6 +14284,7 @@ def main():
     ChangeMysqlPasswordCmd()
     DeployDBCmd()
     DeployUIDBCmd()
+    EnableCgroupV2Cmd()
     GetEnvironmentVariableCmd()
     InstallHACmd()
     InstallDbCmd()

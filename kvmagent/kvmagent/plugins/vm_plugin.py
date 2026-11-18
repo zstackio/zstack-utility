@@ -4494,6 +4494,8 @@ class Vm(object):
             driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
             if is_virtio_blk(volume) and volume.multiQueues:
                 driver_elements["queues"] = volume.multiQueues
+            if is_virtio_blk(volume) and IothreadVqMappingAllocator.to_int(volume.ioThreadId):
+                driver_elements["iothread"] = str(volume.ioThreadId)
             driver = e(disk, 'driver', None, driver_elements)
             if not volume.useVirtioSCSI:
                 IothreadVqMappingAllocator.apply(driver, automatic_iothread_vq_mapping_allocator)
@@ -7865,6 +7867,8 @@ class Vm(object):
                 driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
                 if is_virtio_blk(_v) and _v.multiQueues:
                     driver_elements["queues"] = _v.multiQueues
+                if is_virtio_blk(_v) and IothreadVqMappingAllocator.to_int(_v.ioThreadId):
+                    driver_elements["iothread"] = str(_v.ioThreadId)
                 driver = e(disk, 'driver', None, driver_elements)
                 if not _v.useVirtioSCSI:
                     IothreadVqMappingAllocator.apply(driver, automatic_iothread_vq_mapping_allocators.get(_v.volumeUuid))
@@ -8459,14 +8463,15 @@ class Vm(object):
             for vol in volumes_for_iothread_vq_mapping:
                 if not IothreadVqMappingAllocator.needs_dedicated_scsi_controller(vol):
                     continue
-                alias_id = vol.ioThreadId if vol.ioThreadId else vol.controllerIndex
+                io_thread_id = IothreadVqMappingAllocator.to_int(vol.ioThreadId)
+                alias_id = io_thread_id if io_thread_id else vol.controllerIndex
                 if alias_id in created_dedicated_controllers:
                     continue
                 created_dedicated_controllers.add(alias_id)
                 devices.append(make_virtio_scsi_controller_xml(
                     vol.controllerIndex,
                     alias_id,
-                    io_thread_id=vol.ioThreadId,
+                    io_thread_id=io_thread_id,
                     queues=IothreadVqMappingAllocator.to_int(vol.multiQueues),
                     mapping_allocator=automatic_iothread_vq_mapping_allocators.get(vol.volumeUuid)
                 ))
@@ -10589,6 +10594,8 @@ class VmPlugin(kvmagent.KvmAgent):
         def cbd_volume(_v):
             disk = etree.Element('disk', {'type': 'network', 'device': 'disk'})
             driver_elements = {'name': 'qemu', 'type': 'raw', 'cache': 'none', 'discard': 'unmap'}
+            if is_virtio_blk(_v) and IothreadVqMappingAllocator.to_int(_v.ioThreadId):
+                driver_elements["iothread"] = str(_v.ioThreadId)
             driver = e(disk, 'driver', None, driver_elements)
             if not _v.useVirtioSCSI:
                 IothreadVqMappingAllocator.apply(
@@ -15050,22 +15057,26 @@ host side snapshot files chian:
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         rsp = SetVmIoThreadPinRsp()
 
-        iothread_info = self.get_iothread_info(cmd.vmUuid)
-        iothread_ids = [i[0] for i in iothread_info]
+        with lock.NamedLock('vm-iothread-pin-%s' % cmd.vmUuid), contextlib.ExitStack() as rollback:
+            previous_pin = dict(self.get_iothread_info(cmd.vmUuid)).get(str(cmd.ioThreadId))
 
-        err_info = None
-        if str(cmd.ioThreadId) not in iothread_ids:
-            err_info = self.add_io_thread(cmd.vmUuid, cmd.ioThreadId)
-        if err_info:
-            rsp.error = err_info
-            logger.error("add iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
-            return jsonobject.dumps(rsp)
+            err_info = None
+            if previous_pin is None:
+                err_info = self.add_io_thread(cmd.vmUuid, cmd.ioThreadId)
+            if err_info:
+                rsp.error = err_info
+                logger.error("add iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
+                return jsonobject.dumps(rsp)
 
-        err_info = self.pin_io_thread(cmd.vmUuid, cmd.ioThreadId, cmd.pin)
-        if err_info:
-            rsp.error = err_info
-            logger.error("pin iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
-            return jsonobject.dumps(rsp)
+            if previous_pin is not None:
+                rollback.callback(linux.ignoreerror(self.pin_io_thread), cmd.vmUuid, cmd.ioThreadId, previous_pin)
+            err_info = self.pin_io_thread(cmd.vmUuid, cmd.ioThreadId, cmd.pin)
+            if err_info:
+                rsp.success = False
+                rsp.error = err_info
+                logger.error("pin iothread[{}] failed: {}".format(cmd.ioThreadId, err_info))
+                return jsonobject.dumps(rsp)
+            rollback.pop_all()
         logger.info("set iothread[{}] pin[{}] on vm[{}] successfully.".format(cmd.ioThreadId, cmd.pin, cmd.vmUuid))
         rsp.ioThreadId = cmd.ioThreadId
         return jsonobject.dumps(rsp)
