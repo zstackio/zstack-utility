@@ -6533,7 +6533,7 @@ class Vm(object):
 
     @linux.retry(times=3, sleep_time=5)
     def _detach_nic(self, cmd):
-        hostdev = getattr(cmd.nic, 'pciDeviceAddress', None) is not None and getattr(cmd.nic, 'srcPath', None) is None
+        hostdev = bool(getattr(cmd.nic, 'pciDeviceAddress', None)) and getattr(cmd.nic, 'srcPath', None) is None
         vf_addresses = [cmd.nic.pciDeviceAddress] + Vm._collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None)) if hostdev else []
 
         def check_device(_):
@@ -6604,7 +6604,7 @@ class Vm(object):
         try:
             # Detach extra PCI devices first for bond mode (VF HA)
             extra_pci_list = _collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None))
-            if extra_pci_list and cmd.nic.type == 'VF' and cmd.nic.pciDeviceAddress is not None:
+            if extra_pci_list and cmd.nic.type == 'VF' and cmd.nic.pciDeviceAddress:
                 for extra_index, extra_addr in enumerate(extra_pci_list):
                     if not extra_addr or extra_addr == cmd.nic.pciDeviceAddress:
                         continue

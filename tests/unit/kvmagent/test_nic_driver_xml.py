@@ -343,7 +343,15 @@ def test_vf_attach_does_not_match_same_mac_bridge():
     vm = _vf_test_vm(addresses)
     cmd = _vf_test_command()
     cmd.nic.extraPciDeviceAddresses = []
-    vm.domain.attachDeviceFlags.side_effect = lambda *args: addresses.append(cmd.nic.pciDeviceAddress)
+
+    def attach(xml, flags):
+        root = vm_plugin.etree.fromstring(xml)
+        assert root.get('type') == 'hostdev'
+        address = vm_plugin.normalize_pci_attrs(root.find('source/address').attrib)
+        assert address == vm_plugin.normalize_pci_address(cmd.nic.pciDeviceAddress)
+        addresses.append(address)
+
+    vm.domain.attachDeviceFlags.side_effect = attach
     with patch.object(vm_plugin.Vm, '_sync_vf_nic_mac_for_nic'), \
          patch.object(vm_plugin.linux, 'wait_callback_success', side_effect=lambda callback, **kwargs: callback(None)), \
          patch.object(vm_plugin, 'get_vm_by_uuid', return_value=vm):
@@ -405,3 +413,24 @@ def test_vf_detach_retries_slave_after_primary_disappears(failure_mode):
         assert detached == [secondary, primary, secondary]
         vm._detach_nic(cmd)
         assert detached == [secondary, primary, secondary]
+
+
+@pytest.mark.parametrize('pci_address', ['', None])
+def test_vf_detach_without_pci_preserves_legacy_mac_lookup(pci_address):
+    addresses = ['0000:3b:02.0']
+    vm = _vf_test_vm(addresses, include_bridge=False)
+    cmd = _vf_test_command()
+    cmd.nic.pciDeviceAddress = pci_address
+    cmd.nic.extraPciDeviceAddresses = []
+
+    def detach(xml, flags):
+        root = vm_plugin.etree.fromstring(xml)
+        assert root.get('type') == 'hostdev'
+        addresses.remove(vm_plugin.normalize_pci_attrs(root.find('source/address').attrib))
+
+    vm.domain.detachDeviceFlags.side_effect = detach
+    with patch.object(vm_plugin.iproute, 'is_device_ifname_exists', return_value=False), \
+         patch.object(vm_plugin.linux, 'wait_callback_success', side_effect=lambda callback, **kwargs: callback(None)):
+        vm._detach_nic(cmd)
+    vm.domain.detachDeviceFlags.assert_called_once()
+    assert addresses == []
