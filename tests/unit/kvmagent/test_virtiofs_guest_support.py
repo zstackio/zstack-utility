@@ -276,3 +276,36 @@ def test_unreadable_device_state_returns_error_without_attaching(attach_guest):
     assert 'domain XML unavailable' in reply['error']
     domain.attachDeviceFlags.assert_not_called()
     domain.detachDeviceFlags.assert_not_called()
+
+
+def test_retry_repairs_config_after_live_attach_and_config_failure(stateful_attach):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    attach = domain.attachDeviceFlags.side_effect
+    failed = [False]
+    def fail_first_config(xml, flags):
+        if flags == virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_CONFIG and not failed[0]:
+            failed[0] = True
+            raise RuntimeError('config write failed')
+        attach(xml, flags)
+    domain.attachDeviceFlags.side_effect = fail_first_config
+    plugin = virtiofs_plugin.VirtiofsPlugin()
+    first = json.loads(plugin.attach_virtiofs(make_attach_request()))
+    assert first['success'] is False and state['live_xml'] and state['config_xml'] is None
+    second = json.loads(plugin.attach_virtiofs(make_attach_request()))
+    assert second['success'] is True
+    assert state['config_xml'] == state['live_xml']
+    assert sum(c.args[1] == virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_LIVE
+               for c in domain.attachDeviceFlags.call_args_list) == 1
+    domain.detachDeviceFlags.assert_not_called()
+
+
+def test_reusing_transient_device_does_not_write_config(stateful_attach):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = False
+    state['live_xml'] = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid')
+    state['failures_left'] = 0
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is True
+    domain.attachDeviceFlags.assert_not_called()

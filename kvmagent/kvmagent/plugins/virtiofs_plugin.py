@@ -308,10 +308,10 @@ def check_vm_memory_backing(domain):
         return True, None
 
 
-def has_attached_virtiofs(domain, tag, source_path):
+def has_attached_virtiofs(domain, tag, source_path, xml_flags=0):
     import xml.etree.ElementTree as ET
 
-    root = ET.fromstring(domain.XMLDesc(0))
+    root = ET.fromstring(domain.XMLDesc(xml_flags))
     for fs in root.findall('./devices/filesystem'):
         target = fs.find('target')
         if target is None or target.get('dir') != tag:
@@ -629,13 +629,19 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
                     rsp.error = support_error
                     return jsonobject.dumps(rsp)
 
+            def device_xml():
+                cache_mode = _get_cmd_attr(cmd, 'cacheMode', _get_cmd_attr(cmd, 'cache', VIRTIOFS_DEFAULT_CACHE_MODE))
+                queue = _get_cmd_attr(cmd, 'queue', VIRTIOFS_DEFAULT_QUEUE)
+                return build_virtiofs_xml(cmd.tag, resolved_path, cache_mode, queue)
+
             if has_attached_virtiofs(domain, cmd.tag, resolved_path):
+                if domain.isPersistent() and not has_attached_virtiofs(
+                        domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE):
+                    domain.attachDeviceFlags(device_xml(), libvirt.VIR_DOMAIN_AFFECT_CONFIG)
                 logger.info("Reusing attached virtiofs device in VM[%s], tag=%s" % (
                     cmd.vmInstanceUuid, cmd.tag))
             else:
-                cache_mode = _get_cmd_attr(cmd, 'cacheMode', _get_cmd_attr(cmd, 'cache', VIRTIOFS_DEFAULT_CACHE_MODE))
-                queue = _get_cmd_attr(cmd, 'queue', VIRTIOFS_DEFAULT_QUEUE)
-                xml_str = build_virtiofs_xml(cmd.tag, resolved_path, cache_mode, queue)
+                xml_str = device_xml()
                 domain.attachDeviceFlags(xml_str, libvirt.VIR_DOMAIN_AFFECT_LIVE)
 
                 try:
