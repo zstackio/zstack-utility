@@ -271,6 +271,7 @@ def get_pools_capacity():
     # In the open source Ceph 10 version, the value returned by executing 'ceph osd df -f json' might have '-nan', causing json parsing to fail.
     o = o.replace("-nan", "\"\"")
     osds = jsonobject.loads(o)
+    manufacturer = get_ceph_manufacturer()
     if not osds.nodes:
         return result
 
@@ -281,9 +282,12 @@ def get_pools_capacity():
             for osd in osds.nodes:
                 if osd.name != osd_name:
                     continue
-                pool_capacity.related_osd_capacity.update({osd_name : CephOsdCapacity(osd.kb * 1024, osd.kb_avail * 1024, osd.kb_used * 1024)})
+                capacity = CephOsdCapacity(osd.kb * 1024, osd.kb_avail * 1024, osd.kb_used * 1024)
+                if manufacturer == 'xsky' and osd.snaps is not None:
+                    capacity.snapshotUsedBytes = osd.snaps * 1024
+                pool_capacity.related_osd_capacity[osd_name] = capacity
 
-    pool_capacity_getter_mapping.get(get_ceph_manufacturer(), DefaultCephPoolCapacityGetter()).fill_pool_capacity(result)
+    pool_capacity_getter_mapping.get(manufacturer, DefaultCephPoolCapacityGetter()).fill_pool_capacity(result)
     return result
 
 
