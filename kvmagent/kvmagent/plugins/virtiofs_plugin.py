@@ -308,6 +308,27 @@ def check_vm_memory_backing(domain):
         return True, None
 
 
+def _effective_virtiofs_queue(domain, filesystem, xml_flags):
+    queue = filesystem.find('driver').get('queue')
+    if queue is not None:
+        return virtiofs_device.normalize_queue(queue, -1)
+    if xml_flags & libvirt.VIR_DOMAIN_XML_INACTIVE:
+        raise Exception("Cannot determine virtiofs queue from inactive XML")
+    alias = filesystem.find('alias')
+    if alias is None or not alias.get('name'):
+        raise Exception("Cannot determine virtiofs queue without a live device alias")
+    import json
+    import libvirt_qemu
+    command = {'execute': 'qom-get', 'arguments': {
+        'path': '/machine/peripheral/%s/virtio-backend' % alias.get('name'),
+        'property': 'queue-size'}}
+    response = json.loads(libvirt_qemu.qemuMonitorCommand(domain, json.dumps(command), 0))
+    queue = response.get('return')
+    if type(queue) is not int or queue <= 0:
+        raise Exception("Cannot determine live virtiofs queue: %s" % response)
+    return queue
+
+
 def has_attached_virtiofs(domain, tag, source_path, xml_flags=0, expected_queue=None, expected_cache=None):
     import xml.etree.ElementTree as ET
 
@@ -325,7 +346,7 @@ def has_attached_virtiofs(domain, tag, source_path, xml_flags=0, expected_queue=
                 tag, source_path))
         cache = fs.find('binary/cache')
         if ((expected_queue is not None and
-             virtiofs_device.normalize_queue(driver.get('queue'), -1) != expected_queue) or
+             _effective_virtiofs_queue(domain, fs, xml_flags) != expected_queue) or
                 (expected_cache is not None and (cache is None or cache.get('mode') != expected_cache))):
             raise Exception("Existing virtiofs settings conflict with request for tag[%s]" % tag)
         return True
@@ -644,9 +665,11 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
                 'expected_cache': virtiofs_device.normalize_cache_mode(
                     _get_cmd_attr(cmd, 'cacheMode', _get_cmd_attr(cmd, 'cache', VIRTIOFS_DEFAULT_CACHE_MODE)))
             }
+            persistent = domain.isPersistent()
+            config_attached = persistent and has_attached_virtiofs(
+                domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE, **settings)
             if has_attached_virtiofs(domain, cmd.tag, resolved_path, **settings):
-                if domain.isPersistent() and not has_attached_virtiofs(
-                        domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE, **settings):
+                if persistent and not config_attached:
                     domain.attachDeviceFlags(device_xml(), libvirt.VIR_DOMAIN_AFFECT_CONFIG)
                 logger.info("Reusing attached virtiofs device in VM[%s], tag=%s" % (
                     cmd.vmInstanceUuid, cmd.tag))
@@ -654,10 +677,11 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
                 xml_str = device_xml()
                 domain.attachDeviceFlags(xml_str, libvirt.VIR_DOMAIN_AFFECT_LIVE)
 
-                try:
-                    domain.attachDeviceFlags(xml_str, libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-                except Exception as e:
-                    logger.warning("Failed to attach virtiofs to config: %s" % str(e))
+                if not config_attached:
+                    try:
+                        domain.attachDeviceFlags(xml_str, libvirt.VIR_DOMAIN_AFFECT_CONFIG)
+                    except Exception as e:
+                        logger.warning("Failed to attach virtiofs to config: %s" % str(e))
 
                 logger.info("Successfully attached virtiofs device to VM[%s]" % cmd.vmInstanceUuid)
 
