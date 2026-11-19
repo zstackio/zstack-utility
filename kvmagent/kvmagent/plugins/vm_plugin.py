@@ -3341,6 +3341,53 @@ def _make_usb_redirect_xml(devices, cmd, dist_name, host_arch):
         set_redirdev()
 
 
+def _build_ceph_disk_xml_for_migration(disk, volume):
+    current_monitors = {(host.get('name'), host.get('port')) for host in disk.findall('source/host')}
+    configured_monitors = [(mon.hostname, str(mon.port)) for mon in volume.monInfo]
+    monitors_changed = current_monitors != set(configured_monitors)
+
+    auth = disk.find('auth')
+    secret = disk.find('auth/secret')
+    if volume.secretUuid:
+        auth_matches = (
+            auth is not None and auth.get('username') == 'zstack'
+            and secret is not None
+            and secret.attrib == {'type': 'ceph', 'uuid': volume.secretUuid}
+        )
+    else:
+        auth_matches = auth is None
+
+    if not monitors_changed and auth_matches:
+        return disk
+
+    new_disk = copy.deepcopy(disk)
+    if monitors_changed:
+        source = new_disk.find('source')
+        for host in source.findall('host'):
+            source.remove(host)
+        for hostname, port in configured_monitors:
+            e(source, 'host', attrib={'name': hostname, 'port': port})
+    if not auth_matches:
+        for auth in new_disk.findall('auth'):
+            new_disk.remove(auth)
+        if volume.secretUuid:
+            auth = e(new_disk, 'auth', attrib={'username': 'zstack'})
+            e(auth, 'secret', attrib={'type': 'ceph', 'uuid': volume.secretUuid})
+    return new_disk
+
+
+SHARED_DISK_MIGRATION_XML_BUILDERS = {
+    'ceph': _build_ceph_disk_xml_for_migration,
+}
+
+
+def _build_shared_disk_xml_for_migration(disk, volume):
+    builder = SHARED_DISK_MIGRATION_XML_BUILDERS.get(volume.deviceType)
+    if builder is None:
+        return disk
+    return builder(disk, volume)
+
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -5567,12 +5614,18 @@ class Vm(object):
 
         return all_disks_backing_file_chain
 
-    def _build_domain_new_xml(self, volumeDicts):
+    def _build_domain_new_xml(self, migrate_volumes, not_migrate_disks=None):
         migrate_disks = {}
 
-        for oldpath, volume in list(volumeDicts.items()):
+        for oldpath, volume in list(migrate_volumes.items()):
             _, disk_name = self._get_target_disk_by_path(oldpath)
             migrate_disks[disk_name] = volume
+
+        keep_volumes = {}
+        for oldpath, volume in (not_migrate_disks or {}).items():
+            _, disk_name = self._get_target_disk_by_path(oldpath, is_exception=False)
+            if disk_name is not None:
+                keep_volumes[disk_name] = volume
 
         tree = etree.ElementTree(etree.fromstring(self.get_migratable_xml()))
         xml_changed = self._split_legacy_rbd_snapshot(tree.getroot())
@@ -5581,9 +5634,12 @@ class Vm(object):
             dev = disk.find('target').attrib['dev']
             volume = migrate_disks.get(dev, None)
             new_disk = VmPlugin._get_new_disk(disk, volume)
-            if new_disk != disk:
-                if volume:
-                    VmPlugin._apply_migration_iothread_vq_mapping(tree.getroot(), new_disk, volume)
+            if volume:
+                VmPlugin._apply_migration_iothread_vq_mapping(tree.getroot(), new_disk, volume)
+            elif dev in keep_volumes:
+                new_disk = _build_shared_disk_xml_for_migration(new_disk, keep_volumes[dev])
+
+            if new_disk is not disk:
                 parent_index = list(devices).index(disk)
                 devices.remove(disk)
                 devices.insert(parent_index, new_disk)
@@ -5687,16 +5743,17 @@ class Vm(object):
         bandwidth = cmd.bandwidth if cmd.bandwidth > 0 else 0
 
         storage_migration_required = cmd.disks and len(cmd.disks.__dict__) != 0
+        not_migrate_disks = cmd.notMigrateDisks.__dict__ if cmd.notMigrateDisks else {}
         parameter_map = {}
         if storage_migration_required:
-            disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__)
+            disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__, not_migrate_disks)
             parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = disks
             parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
             parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
             if bandwidth != 0:
                 parameter_map[libvirt.VIR_MIGRATE_PARAM_BANDWIDTH] = (bandwidth + len(disks) - 1) // len(disks)
         else:
-            disks, destXml = self._build_domain_new_xml({})
+            disks, destXml = self._build_domain_new_xml({}, not_migrate_disks)
         logger.debug("migrate dest xml:%s" % destXml)
         logger.debug("migrate param: %s" % parameter_map)
 
