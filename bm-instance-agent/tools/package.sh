@@ -1,34 +1,30 @@
 #!/bin/bash
+set -eu
 
-version=`awk -F' = ' '{gsub(/"/,"",$2);print $2}' bm_instance_agent/__init__.py`
-bin_name='bm-instance-agent.tar.gz'
-agent_name=zstack-bm-agent-`uname -m`-${version}.bin
+cd "$(dirname "$0")/.."
+if [ "$(getconf GNU_LIBC_VERSION)" != "glibc 2.17" ]; then
+    echo "Build on manylinux2014 for compatibility with EL7." >&2
+    exit 1
+fi
+arch=$(uname -m)
+version=$(awk -F'"' '/^__version__ = / {print $2}' bm_instance_agent/__init__.py)
+agent_name="zstack-bm-agent-${arch}-${version}.bin"
+temp=$(mktemp -d ./.bm-package-XXXXXX)
+trap 'rm -rf "$temp"' EXIT
 
-# Get the shell scirpt's dir
-shell_dir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-pushd ${shell_dir}
+# Oslo requires a newer netaddr than the shared zstacklib pin.
+python3.11 -m pex . ../zstacklib --exclude xms-client \
+    --python "$(command -v python3.11)" --scie eager \
+    --scie-python-version 3.11.18 --scie-pbs-release 20261110 --scie-pbs-stripped \
+    --pip-version 24.0 --resolver-version pip-2020-resolver \
+    --override 'netaddr==0.8.0' --console-script bm-instance-agent -o "$temp/bm-instance-agent"
+mv "$temp/bm-instance-agent" "$temp/bm-instance-agent.pex"
 
-pushd ${shell_dir}/../
-
-temp=`mktemp -d`
-pex . -v \
-    --disable-cache \
-    --no-pypi -i http://mirrors.aliyun.com/pypi/simple \
-    --platform current \
-    --console-script bm-instance-agent \
-    --output-file ${temp}/bm-instance-agent.pex
-
-cp ./tools/shellinaboxd-x86_64 ./tools/shellinaboxd-aarch64 ./tools/shellinaboxd-aarch64-kylin ./tools/shellinaboxd-x86_64-kylin ./tools/zwatch-vm-agent-x86_64 ./tools/zwatch-vm-agent-aarch64 ./tools/service.conf ${temp}
-tar -C ${temp} -czf ${temp}/${bin_name} ./shellinaboxd-x86_64 ./shellinaboxd-aarch64 ./shellinaboxd-aarch64-kylin ./shellinaboxd-x86_64-kylin ./bm-instance-agent.pex ./zwatch-vm-agent-x86_64 ./zwatch-vm-agent-aarch64 ./service.conf
-
-pushd ${temp}
-md5=`md5sum ${bin_name}`
-popd
-
-popd
-popd
-
-cat ./tools/install.sh ${temp}/${bin_name} > ${agent_name}
-sed -i "s/MD5_SUM/${md5}/g" ${agent_name}
-chmod +x ${agent_name}
-rm -rf ${temp}
+tar -czf "$temp/bm-instance-agent.tar.gz" -C "$temp" bm-instance-agent.pex \
+    -C "$PWD/tools" "shellinaboxd-$arch" "shellinaboxd-$arch-kylin" \
+    "zwatch-vm-agent-$arch" service.conf
+checksum=$(cd "$temp" && md5sum bm-instance-agent.tar.gz)
+sed "s/MD5_SUM/$checksum/" tools/install.sh > "$temp/$agent_name"
+cat "$temp/bm-instance-agent.tar.gz" >> "$temp/$agent_name"
+chmod +x "$temp/$agent_name"
+ln "$temp/$agent_name" "$agent_name"
