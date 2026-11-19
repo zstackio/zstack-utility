@@ -1,15 +1,20 @@
 # Copyright (c) 2025, ZStack, Inc.
 
+import base64
 import errno
 import fcntl
 import hashlib
 import json
 import logging
+import multiprocessing
 import os
 import re
 import shutil
+import signal
+import stat
 import subprocess
 import time
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -927,3 +932,152 @@ class SourceManager(object):
 
 def ensure_ready(raw_spec):
     return SourceManager().ensure_ready(raw_spec)
+
+
+HCCN_RELEASE_FILE = 'hccn-bootstrap.release.json'
+HCCN_RELEASE_LIMIT = 65536
+HCCN_RELEASE_TOTAL_TIMEOUT = 60
+HCCN_RELEASE_WORK_TIMEOUT = 50
+
+
+def _validate_hccn_release_request(request):
+    fields = {'schemaVersion', 'modelCenterUuid', 'storageUrl', 'storageSubdir',
+              'artifactRelativePath', 'contentVersion'}
+    if not isinstance(request, dict) or set(request) != fields:
+        raise ValueError('release probe requires exactly the fixed source fields')
+    if type(request['schemaVersion']) is not int or request['schemaVersion'] != 1:
+        raise ValueError('unsupported release probe schemaVersion')
+    for key in fields - {'schemaVersion'}:
+        if not isinstance(request[key], str) or not request[key].strip() or '\x00' in request[key]:
+            raise ValueError('invalid release probe field: %s' % key)
+    _validate_source_id(request['modelCenterUuid'], 'modelCenterUuid')
+    for key in ('storageSubdir', 'artifactRelativePath'):
+        if '..' in request[key].split('/'):
+            raise ValueError('release source path must not contain parent traversal')
+        _validate_relative_path(request[key], key)
+    if os.path.basename(os.path.normpath(request['artifactRelativePath'])) != 'llama-factory_0.9.5':
+        raise ValueError('release probe requires fixed llama-factory_0.9.5 package layout')
+
+
+def _read_hccn_release_file(mount_path, relative_path):
+    directory = ensure_under(os.path.join(mount_path, relative_path), mount_path,
+                             'artifactRelativePath', allow_root=False)
+    path = os.path.join(directory, HCCN_RELEASE_FILE)
+    ensure_under(path, mount_path, 'release manifest', allow_root=False)
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            raise ValueError('release manifest must be a regular file, not a symlink')
+        raise
+    with os.fdopen(fd, 'rb') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise ValueError('release manifest must be a regular file, not a symlink')
+        ensure_under(os.readlink('/proc/self/fd/%d' % stream.fileno()), mount_path,
+                     'release manifest', allow_root=False)
+        content = stream.read(HCCN_RELEASE_LIMIT + 1)
+    if not content or len(content) > HCCN_RELEASE_LIMIT:
+        raise ValueError('release manifest must contain 1..65536 bytes')
+    return content
+
+
+def _hccn_release_worker(connection, request, mount_path, cleanup_only):
+    try:
+        os.setsid()
+        if cleanup_only:
+            _unmount_model_center(mount_path)
+            if os.path.isdir(mount_path):
+                os.rmdir(mount_path)
+            result = {'success': True}
+        else:
+            _ensure_directory(os.path.dirname(mount_path))
+            os.mkdir(mount_path, 0o700)
+            _mount_model_center(request['storageUrl'], mount_path, request['storageSubdir'])
+            result = {'success': True, 'content': _read_hccn_release_file(
+                mount_path, request['artifactRelativePath'])}
+    except Exception as exc:
+        reason = str(exc)
+        if request.get('storageUrl'):
+            reason = reason.replace(request['storageUrl'], '<storageUrl redacted>')
+        result = {'success': False, 'errors': [{'stage': 'release-cleanup' if cleanup_only else 'release-read',
+                                               'reason': reason[:4096]}]}
+    try:
+        connection.send(result)
+    finally:
+        connection.close()
+
+
+def _stop_hccn_release_worker(process, deadline):
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if process.is_alive():
+        process.kill()
+    process.join(timeout=max(0, min(0.1, deadline - time.monotonic())))
+    return not process.is_alive()
+
+
+def _run_hccn_release_worker(request, mount_path, cleanup_only, deadline, stop_deadline=None):
+    stage = 'release-cleanup' if cleanup_only else 'release-read'
+    context = multiprocessing.get_context('fork')
+    receiver, sender = context.Pipe(duplex=False)
+    process = context.Process(target=_hccn_release_worker,
+                              args=(sender, request, mount_path, cleanup_only))
+    process.daemon = True
+    process.start()
+    sender.close()
+    result = None
+    try:
+        remaining = max(0, deadline - time.monotonic())
+        if receiver.poll(remaining):
+            try:
+                result = receiver.recv()
+            except (EOFError, OSError):
+                result = {'success': False, 'errors': [{'stage': stage, 'reason': 'release worker exited without a complete result'}]}
+        if result is None:
+            result = {'success': False, 'errors': [{'stage': stage, 'reason': 'release worker deadline exceeded; completion unknown'}]}
+    finally:
+        receiver.close()
+        stopped = _stop_hccn_release_worker(process, deadline if stop_deadline is None else stop_deadline)
+    if not stopped:
+        result = {'success': False, 'terminationUnproven': True, 'errors': result.get('errors', []) + [
+            {'stage': stage, 'reason': 'release worker termination is unproven'}]}
+    return result
+
+
+def probe_hccn_bootstrap_release(request, started=None):
+    started = time.monotonic() if started is None else started
+    deadline = started + HCCN_RELEASE_TOTAL_TIMEOUT
+    response = {'success': False, 'error': '', 'hccnBootstrapRelease': None,
+                'errorCount': 0, 'errors': [], 'cleanupIncomplete': False, 'residualMountPath': None}
+    mount_path = None
+    try:
+        _validate_hccn_release_request(request)
+        mount_path = os.path.join(MODEL_CENTER_PROVIDER_ROOT, 'hccn-release-probes', uuid.uuid4().hex)
+        work = _run_hccn_release_worker(request, mount_path, False,
+                                        min(deadline, started + HCCN_RELEASE_WORK_TIMEOUT), deadline)
+        response['errors'].extend(work.get('errors', []))
+        cleanup = _run_hccn_release_worker(request, mount_path, True,
+                                             max(time.monotonic(), deadline - 0.1), deadline)
+        response['errors'].extend(cleanup.get('errors', []))
+        if not cleanup.get('success') or work.get('terminationUnproven'):
+            response.update(cleanupIncomplete=True, residualMountPath=mount_path)
+        if work.get('success') and cleanup.get('success') and time.monotonic() <= deadline:
+            content = work['content']
+            response['hccnBootstrapRelease'] = dict(schemaVersion=1,
+                contentBase64=base64.b64encode(content).decode('ascii'), sha256=hashlib.sha256(content).hexdigest())
+            response['success'] = True
+        elif not response['errors']:
+            response['errors'].append({'stage': 'release-read', 'reason': 'release probe total deadline exceeded'})
+    except Exception as exc:
+        reason = str(exc)
+        if isinstance(request, dict) and isinstance(request.get('storageUrl'), str):
+            reason = reason.replace(request['storageUrl'], '<storageUrl redacted>')
+        response['errors'].append({'stage': 'release-probe', 'reason': reason[:4096]})
+        if mount_path is not None:
+            response.update(cleanupIncomplete=True, residualMountPath=mount_path)
+    response['errorCount'] = len(response['errors'])
+    if response['errors']:
+        response.update(success=False, hccnBootstrapRelease=None, error=response['errors'][0]['reason'])
+    return response

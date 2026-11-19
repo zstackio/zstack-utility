@@ -1,6 +1,7 @@
 import base64
 import libvirt
 from kvmagent.plugins import vm_plugin
+from kvmagent.plugins import hccn_bootstrap
 from zstacklib.utils import http
 from zstacklib.utils import jsonobject
 from zstacklib.utils import lock
@@ -143,6 +144,12 @@ class GetVmGpuInfoResponse(kvmagent.AgentResponse):
     def __init__(self):
         super(GetVmGpuInfoResponse, self).__init__()
         self.gpuInfos = []
+
+
+class VmGpuInfoSyncCmd(kvmagent.AgentCommand):
+    @log.sensitive_fields("hccnBootstrap")
+    def __init__(self):
+        super(VmGpuInfoSyncCmd, self).__init__()
 
 
 class VmConfigPlugin(kvmagent.KvmAgent):
@@ -474,7 +481,10 @@ class VmConfigPlugin(kvmagent.KvmAgent):
 
     @kvmagent.replyerror
     def vm_gpu_info_sync(self, req):
-        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        raw_request = req[http.REQUEST_BODY]
+        if hccn_bootstrap.has_request(raw_request):
+            return hccn_bootstrap.serialize_response(hccn_bootstrap.dispatch(raw_request, get_virt_domain))
+        cmd = jsonobject.loads(raw_request)
         rsp = GetVmGpuInfoResponse()
 
         domain = get_virt_domain(cmd.vmUuid)
@@ -554,7 +564,7 @@ class VmConfigPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.VM_CONFIG_PORTS, self.vm_config_ports)
         http_server.register_async_uri(self.VM_GUEST_TOOLS_STATE, self.vm_guest_tools_state)
         http_server.register_async_uri(self.VM_SET_HOSTNAME, self.vm_set_hostname)
-        http_server.register_async_uri(self.VM_GPU_INFO_SYNC, self.vm_gpu_info_sync)
+        http_server.register_async_uri(self.VM_GPU_INFO_SYNC, self.vm_gpu_info_sync, cmd=VmGpuInfoSyncCmd())
         http_server.register_async_uri(self.VM_WRITE_FILE, self.vm_write_file)
         http_server.register_async_uri(self.VM_DELETE_FILE, self.vm_delete_file)
 

@@ -9,6 +9,7 @@ import libvirt
 from kvmagent import kvmagent
 from kvmagent.plugins import virtiofs_device
 from kvmagent.plugins import virtiofs_source
+from kvmagent.plugins import hccn_bootstrap
 from zstacklib.utils import log, shell, http, jsonobject
 from zstacklib.utils.qga import VmQga, is_qga_connected
 
@@ -115,6 +116,12 @@ class VirtiofsStatusResponse(jsonobject.JsonObject):
     """Response for virtiofs status check"""
     libvirtVersion = str
     virtiofsHotplugSupported = bool
+
+
+class ProbeHccnBootstrapReleaseCmd(object):
+    @log.sensitive_fields("storageUrl")
+    def __init__(self):
+        pass
 
 
 class PrepareHostModelCacheCmd(object):
@@ -299,6 +306,86 @@ def check_vm_memory_backing(domain):
         logger.warning("Failed to check VM memoryBacking: %s" % str(e))
         # On error, allow the operation to proceed and let libvirt report the actual error
         return True, None
+
+
+def _effective_virtiofs_queue(domain, filesystem, xml_flags):
+    queue = filesystem.find('driver').get('queue')
+    if queue is not None:
+        return virtiofs_device.normalize_queue(queue, -1)
+    if xml_flags & libvirt.VIR_DOMAIN_XML_INACTIVE:
+        raise Exception("Cannot determine virtiofs queue from inactive XML")
+    alias = filesystem.find('alias')
+    if alias is None or not alias.get('name'):
+        raise Exception("Cannot determine virtiofs queue without a live device alias")
+    import json
+    import libvirt_qemu
+    command = {'execute': 'qom-get', 'arguments': {
+        'path': '/machine/peripheral/%s/virtio-backend' % alias.get('name'),
+        'property': 'queue-size'}}
+    response = json.loads(libvirt_qemu.qemuMonitorCommand(domain, json.dumps(command), 0))
+    queue = response.get('return')
+    if type(queue) is not int or queue <= 0:
+        raise Exception("Cannot determine live virtiofs queue: %s" % response)
+    return queue
+
+
+def has_attached_virtiofs(domain, tag, source_path, xml_flags=0, expected_queue=None, expected_cache=None):
+    import xml.etree.ElementTree as ET
+
+    root = ET.fromstring(domain.XMLDesc(xml_flags))
+    for fs in root.findall('./devices/filesystem'):
+        target = fs.find('target')
+        if target is None or target.get('dir') != tag:
+            continue
+        driver = fs.find('driver')
+        source = fs.find('source')
+        if (fs.get('type') != 'mount' or driver is None or driver.get('type') != 'virtiofs'
+                or source is None or not source.get('dir')
+                or os.path.realpath(source.get('dir')) != source_path):
+            raise Exception("Existing filesystem device conflicts with virtiofs tag[%s], source[%s]" % (
+                tag, source_path))
+        cache = fs.find('binary/cache')
+        if ((expected_queue is not None and
+             _effective_virtiofs_queue(domain, fs, xml_flags) != expected_queue) or
+                (expected_cache is not None and (cache is None or cache.get('mode') != expected_cache))):
+            raise Exception("Existing virtiofs settings conflict with request for tag[%s]" % tag)
+        return True
+    return False
+
+
+def check_guest_virtiofs_support(domain):
+    try:
+        if not is_qga_connected(domain):
+            return False, "QGA not connected for VM, unable to check virtiofs support"
+
+        qga = VmQga(domain)
+        if qga.state != VmQga.QGA_STATE_RUNNING:
+            return False, "QGA is not running, unable to check virtiofs support"
+        if qga.os and 'mswindows' in qga.os.lower():
+            return False, "Windows VM does not support virtiofs mount"
+
+        if _guest_has_virtiofs(qga):
+            return True, None
+
+        exitcode, stdout, stderr = qga.guest_exec_bash(
+            "modprobe virtiofs", retry=_qga_retry_count(QGA_MKDIR_TIMEOUT_SECS))
+        if exitcode != 0:
+            return False, "Unable to load virtiofs driver in VM: %s" % (
+                stderr or stdout or "unknown error")
+        if not _guest_has_virtiofs(qga):
+            return False, "virtiofs filesystem is not available in VM after loading its driver"
+        return True, None
+    except Exception as e:
+        return False, "Failed to check virtiofs support in VM: %s" % str(e)
+
+
+def _guest_has_virtiofs(qga):
+    exitcode, stdout, stderr = qga.guest_exec_bash(
+        "cat /proc/filesystems", retry=_qga_retry_count(QGA_MKDIR_TIMEOUT_SECS))
+    if exitcode != 0:
+        raise Exception("Unable to read /proc/filesystems: %s" % (
+            stderr or stdout or "unknown error"))
+    return any(line.split()[-1:] == ['virtiofs'] for line in (stdout or '').splitlines())
 
 
 def mount_virtiofs_in_vm(domain, tag, mount_path):
@@ -504,6 +591,7 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
     STATUS_VIRTIOFS_PATH = "/virtiofs/status"
     HOST_MODEL_CACHE_REPORT_PATH = "/virtiofs/host-model-cache/report"
     HOST_MODEL_CACHE_PREPARE_PATH = "/virtiofs/host-model-cache/prepare"
+    HCCN_RELEASE_PROBE_PATH = "/host/model-cache/hccn-release/probe"
     HOST_MODEL_CACHE_CLEANUP_PATH = "/virtiofs/host-model-cache/cleanup"
 
     def start(self):
@@ -520,6 +608,8 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
             self.prepare_host_model_cache,
             cmd=PrepareHostModelCacheCmd())
         http_server.register_async_uri(self.HOST_MODEL_CACHE_CLEANUP_PATH, self.cleanup_host_model_cache)
+        http_server.register_async_uri(self.HCCN_RELEASE_PROBE_PATH, self.probe_hccn_bootstrap_release,
+                                       cmd=ProbeHccnBootstrapReleaseCmd())
 
     def stop(self):
         """No-op; virtiofs plugin has no background resources to clean up."""
@@ -559,22 +649,54 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
                 rsp.error = memory_backing_error
                 return jsonobject.dumps(rsp)
 
-            # 4. Build virtiofs XML using resolved path and cache/queue settings
-            cache_mode = _get_cmd_attr(cmd, 'cacheMode', _get_cmd_attr(cmd, 'cache', VIRTIOFS_DEFAULT_CACHE_MODE))
-            queue = _get_cmd_attr(cmd, 'queue', VIRTIOFS_DEFAULT_QUEUE)
+            if cmd.mountPath:
+                supported, support_error = check_guest_virtiofs_support(domain)
+                if not supported:
+                    rsp.error = support_error
+                    return jsonobject.dumps(rsp)
 
-            xml_str = build_virtiofs_xml(cmd.tag, resolved_path, cache_mode, queue)
+            def device_xml():
+                cache_mode = _get_cmd_attr(cmd, 'cacheMode', _get_cmd_attr(cmd, 'cache', VIRTIOFS_DEFAULT_CACHE_MODE))
+                queue = _get_cmd_attr(cmd, 'queue', VIRTIOFS_DEFAULT_QUEUE)
+                return build_virtiofs_xml(cmd.tag, resolved_path, cache_mode, queue)
 
-            # 4. Attach device to running VM (hot-plug)
-            domain.attachDeviceFlags(xml_str, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+            settings = {
+                'expected_queue': virtiofs_device.normalize_queue(_get_cmd_attr(cmd, 'queue', VIRTIOFS_DEFAULT_QUEUE)),
+                'expected_cache': virtiofs_device.normalize_cache_mode(
+                    _get_cmd_attr(cmd, 'cacheMode', _get_cmd_attr(cmd, 'cache', VIRTIOFS_DEFAULT_CACHE_MODE)))
+            }
 
-            # 5. Also attach to config for persistence (VM restart)
-            try:
-                domain.attachDeviceFlags(xml_str, libvirt.VIR_DOMAIN_AFFECT_CONFIG)
-            except Exception as e:
-                logger.warning("Failed to attach virtiofs to config: %s" % str(e))
+            def attach_device(xml, affect_flag, xml_flags):
+                try:
+                    domain.attachDeviceFlags(xml, affect_flag)
+                except Exception:
+                    try:
+                        device_matches = has_attached_virtiofs(
+                            domain, cmd.tag, resolved_path, xml_flags, **settings)
+                    except Exception:
+                        device_matches = False
+                    if not device_matches:
+                        raise
 
-            logger.info("Successfully attached virtiofs device to VM[%s]" % cmd.vmInstanceUuid)
+            persistent = domain.isPersistent()
+            config_attached = persistent and has_attached_virtiofs(
+                domain, cmd.tag, resolved_path, libvirt.VIR_DOMAIN_XML_INACTIVE, **settings)
+            if has_attached_virtiofs(domain, cmd.tag, resolved_path, **settings):
+                if persistent and not config_attached:
+                    attach_device(device_xml(), libvirt.VIR_DOMAIN_AFFECT_CONFIG, libvirt.VIR_DOMAIN_XML_INACTIVE)
+                logger.info("Reusing attached virtiofs device in VM[%s], tag=%s" % (
+                    cmd.vmInstanceUuid, cmd.tag))
+            else:
+                xml_str = device_xml()
+                attach_device(xml_str, libvirt.VIR_DOMAIN_AFFECT_LIVE, 0)
+
+                if not config_attached:
+                    try:
+                        attach_device(xml_str, libvirt.VIR_DOMAIN_AFFECT_CONFIG, libvirt.VIR_DOMAIN_XML_INACTIVE)
+                    except Exception as e:
+                        logger.warning("Failed to attach virtiofs to config: %s" % str(e))
+
+                logger.info("Successfully attached virtiofs device to VM[%s]" % cmd.vmInstanceUuid)
 
             # 6. Mount inside VM via QGA (if available)
             if cmd.mountPath:
@@ -586,8 +708,10 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
 
                 if not qga_success:
                     logger.warning("QGA mount failed for VM[%s] after virtiofs device attach; "
-                                   "keeping libvirt device and returning success with warning detail: %s" % (
+                                   "keeping libvirt device and returning error: %s" % (
                         cmd.vmInstanceUuid, qga_error))
+                    rsp.error = qga_error
+                    return jsonobject.dumps(rsp)
             else:
                 logger.warning("No mountPath specified, skip VM internal mount")
 
@@ -713,6 +837,23 @@ class VirtiofsPlugin(kvmagent.KvmAgent):
             logger.warning("Failed to report host model cache: %s" % str(e))
             rsp.error = str(e)
         return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def probe_hccn_bootstrap_release(self, req):
+        started = time.monotonic()
+        try:
+            command = hccn_bootstrap.parse_json(req[http.REQUEST_BODY])
+            if isinstance(command, dict) and 'kvmHostAddons' in command:
+                if not isinstance(command['kvmHostAddons'], dict):
+                    raise hccn_bootstrap.BootstrapError('invalid kvmHostAddons transport metadata')
+                command.pop('kvmHostAddons')
+        except Exception as exc:
+            reason = str(exc)[:4096] if isinstance(exc, hccn_bootstrap.BootstrapError) else 'invalid release probe JSON'
+            return hccn_bootstrap.serialize_response({'success': False, 'error': reason,
+                'hccnBootstrapRelease': None, 'errorCount': 1,
+                'errors': [{'stage': 'release-probe', 'reason': reason}],
+                'cleanupIncomplete': False, 'residualMountPath': None})
+        return hccn_bootstrap.serialize_response(virtiofs_source.probe_hccn_bootstrap_release(command, started))
 
     @kvmagent.replyerror
     def prepare_host_model_cache(self, req):
