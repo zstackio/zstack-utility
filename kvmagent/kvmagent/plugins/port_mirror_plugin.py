@@ -16,6 +16,7 @@ KVM_APPLY_MIRROR_SESSION_SOURCE = "/portmirror/apply/source"
 KVM_RELEASE_MIRROR_SESSION_SOURCE = "/portmirror/release/source"
 KVM_APPLY_MIRROR_SESSION_DEST = "/portmirror/apply/dest"
 KVM_RELEASE_MIRROR_SESSION_DEST = "/portmirror/release/dest"
+DEFAULT_GRETAP_MTU = 1500
 
 logger = log.get_logger(__name__)
 
@@ -64,16 +65,42 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
     classdocs
     '''
 
-    def _create_gre_device(self, tunnel, rec_device_name):
+    def _get_interface_mtu(self, ifname):
+        if not ifname:
+            return None
+        mtu_path = '/sys/class/net/%s/mtu' % ifname
+        if os.path.exists(mtu_path):
+            try:
+                with open(mtu_path, 'r') as fd:
+                    mtu_str = fd.read().strip()
+                if mtu_str.isdigit():
+                    return int(mtu_str)
+            except Exception as e:
+                logger.debug("failed to read mtu of %s: %s" % (ifname, e))
+        return None
+
+    def _get_mirror_tunnel_mtu(self, nic_name):
+        nic_mtu = self._get_interface_mtu(nic_name)
+        if nic_mtu is None or nic_mtu < DEFAULT_GRETAP_MTU:
+            return DEFAULT_GRETAP_MTU
+        return nic_mtu
+
+    def _create_gre_device(self, tunnel, rec_device_name, mtu=None):
         addr_list = iproute.query_addresses_by_ip(tunnel.localIp)
         if not addr_list:
             iproute.add_address(tunnel.localIp, tunnel.prefix, 4, tunnel.dev)
         device_exists = iproute.is_device_ifname_exists(rec_device_name)
         logger.debug("Is link device %s exists: %s" % (rec_device_name, device_exists))
+        target_mtu = mtu if mtu is not None else DEFAULT_GRETAP_MTU
         if not device_exists:
-            iproute.add_link(rec_device_name, 'gretap', remote=tunnel.remoteIp, local=tunnel.localIp, ttl=255, key=tunnel.key)
+            iproute.add_link(rec_device_name, 'gretap', remote=tunnel.remoteIp, local=tunnel.localIp,
+                             ttl=255, key=tunnel.key, pmtudisc=0, mtu=target_mtu)
             iproute.set_link_up(rec_device_name)
             iproute.set_link_attribute(rec_device_name, alias=tunnel.uuid)
+        else:
+            cur_mtu = self._get_interface_mtu(rec_device_name)
+            if cur_mtu is not None and cur_mtu < target_mtu:
+                iproute.set_link_attribute(rec_device_name, mtu=target_mtu)
 
     def _delete_gre_device(self, tunnel, rec_device_name):
         device_index = iproute.query_index_by_ifname(rec_device_name)
@@ -193,7 +220,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             src_name, dst_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
             self._del_if(cmd.tunnel.uuid, src_name)
             self._del_if(cmd.tunnel.uuid, dst_name)
-            self._create_gre_device(cmd.tunnel, src_name)
+            self._create_gre_device(cmd.tunnel, src_name, mtu=self._get_mirror_tunnel_mtu(cmd.mirror.snic))
             self._set_mirror_src_config(cmd.mirror.snic, src_name, cmd.mirror.type)
         logger.debug('successfully apply mirror device [%s] to device[%s]' % (cmd.mirror.snic, cmd.mirror.dnic))
         return jsonobject.dumps(rsp)
@@ -231,7 +258,7 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
             src_name, dst_name = self._get_mirror_device_name(cmd.tunnel, cmd.mirror)
             self._del_if(cmd.tunnel.uuid, src_name)
             self._del_if(cmd.tunnel.uuid, dst_name)
-            self._create_gre_device(cmd.tunnel, dst_name)
+            self._create_gre_device(cmd.tunnel, dst_name, mtu=self._get_mirror_tunnel_mtu(cmd.mirror.dnic))
             self._set_mirror_dst_config(cmd.mirror.bridge, cmd.mirror.dnic, dst_name)
             self._set_redirect_config(dst_name, cmd.mirror.dnic)
 
