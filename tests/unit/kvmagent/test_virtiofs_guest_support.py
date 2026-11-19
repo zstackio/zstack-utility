@@ -87,6 +87,9 @@ def make_attach_request(mount_path='/mnt/models/test'):
 @pytest.fixture
 def attach_guest(guest, monkeypatch):
     domain, qga = guest
+    monkeypatch.setattr(virtiofs_plugin.libvirt, 'VIR_DOMAIN_XML_INACTIVE', 2)
+    monkeypatch.setattr(virtiofs_plugin.libvirt, 'VIR_DOMAIN_AFFECT_LIVE', 1)
+    monkeypatch.setattr(virtiofs_plugin.libvirt, 'VIR_DOMAIN_AFFECT_CONFIG', 2)
     domain.XMLDesc.return_value = '<domain><devices/></domain>'
     connection = MagicMock()
     monkeypatch.setattr(virtiofs_plugin, '_ensure_source_for_attach',
@@ -276,3 +279,193 @@ def test_unreadable_device_state_returns_error_without_attaching(attach_guest):
     assert 'domain XML unavailable' in reply['error']
     domain.attachDeviceFlags.assert_not_called()
     domain.detachDeviceFlags.assert_not_called()
+
+
+def test_retry_repairs_config_after_live_attach_and_config_failure(stateful_attach):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    attach = domain.attachDeviceFlags.side_effect
+    failed = [False]
+    def fail_first_config(xml, flags):
+        if flags == virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_CONFIG and not failed[0]:
+            failed[0] = True
+            raise RuntimeError('config write failed')
+        attach(xml, flags)
+    domain.attachDeviceFlags.side_effect = fail_first_config
+    plugin = virtiofs_plugin.VirtiofsPlugin()
+    first = json.loads(plugin.attach_virtiofs(make_attach_request()))
+    assert first['success'] is False and state['live_xml'] and state['config_xml'] is None
+    second = json.loads(plugin.attach_virtiofs(make_attach_request()))
+    assert second['success'] is True
+    assert state['config_xml'] == state['live_xml']
+    assert sum(c.args[1] == virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_LIVE
+               for c in domain.attachDeviceFlags.call_args_list) == 1
+    domain.detachDeviceFlags.assert_not_called()
+
+
+def test_reusing_transient_device_does_not_write_config(stateful_attach):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = False
+    state['live_xml'] = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid')
+    state['failures_left'] = 0
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is True
+    domain.attachDeviceFlags.assert_not_called()
+
+
+@pytest.mark.parametrize('settings', [{'queue': 512}, {'cacheMode': 'always'}])
+@pytest.mark.parametrize('config_present', [False, True])
+def test_reusing_device_rejects_changed_effective_settings(stateful_attach, settings, config_present):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    state['live_xml'] = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid')
+    state['config_xml'] = state['live_xml'] if config_present else None
+    state['failures_left'] = 0
+    request = make_attach_request()
+    command = json.loads(request[http.REQUEST_BODY])
+    command.update(settings)
+    request[http.REQUEST_BODY] = json.dumps(command)
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(request))
+    assert response['success'] is False
+    assert 'conflict' in response['error'].lower()
+    domain.attachDeviceFlags.assert_not_called()
+    domain.detachDeviceFlags.assert_not_called()
+
+
+@pytest.mark.parametrize('settings', [{'queue': 512}, {'cache_mode': 'always'}])
+def test_persisted_settings_conflict_is_rejected_before_live_attach(stateful_attach, settings):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    state['config_xml'] = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid', **settings)
+    state['failures_left'] = 0
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is False
+    assert 'conflict' in response['error'].lower()
+    assert state['live_xml'] is None
+    domain.attachDeviceFlags.assert_not_called()
+
+
+def test_matching_persisted_device_only_needs_live_attach(stateful_attach):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    state['config_xml'] = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid')
+    state['failures_left'] = 0
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is True
+    assert state['live_xml'] == state['config_xml']
+    assert [c.args[1] for c in domain.attachDeviceFlags.call_args_list] == [
+        virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_LIVE]
+
+
+@pytest.mark.parametrize('persistent', [False, True])
+@pytest.mark.parametrize('qmp_result,success', [
+    ({'return': 128}, True),
+    ({'return': True}, False),
+    ({'return': None}, False),
+    ({'error': {'class': 'DeviceNotFound', 'desc': 'queue observation failed'}}, False),
+])
+def test_omitted_live_queue_uses_observed_qmp_value(stateful_attach, monkeypatch, persistent,
+                                                qmp_result, success):
+    import sys
+    import types
+    import xml.etree.ElementTree as ET
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = persistent
+    xml = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid', queue=128)
+    state['config_xml'] = xml if persistent else None
+    live = ET.fromstring(xml)
+    del live.find('driver').attrib['queue']
+    ET.SubElement(live, 'alias', name='fs0')
+    state['live_xml'] = ET.tostring(live, encoding='unicode')
+    state['failures_left'] = 0
+    calls = []
+    def monitor(vm, command, flags):
+        calls.append(json.loads(command))
+        return json.dumps(qmp_result)
+    monkeypatch.setitem(sys.modules, 'libvirt_qemu', types.SimpleNamespace(qemuMonitorCommand=monitor))
+    request = make_attach_request()
+    command = json.loads(request[http.REQUEST_BODY])
+    command['queue'] = 128
+    request[http.REQUEST_BODY] = json.dumps(command)
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(request))
+    assert response['success'] is success, response.get('error')
+    if not success:
+        assert response['qgaMountAttempted'] is False
+        if 'error' in qmp_result:
+            assert 'queue observation failed' in response['error']
+    assert calls == [{'execute': 'qom-get', 'arguments': {
+        'path': '/machine/peripheral/fs0/virtio-backend', 'property': 'queue-size'}}]
+    domain.attachDeviceFlags.assert_not_called()
+
+
+def test_unknown_inactive_queue_is_rejected_before_attaching_live(stateful_attach):
+    import xml.etree.ElementTree as ET
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    config = ET.fromstring(virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid'))
+    del config.find('driver').attrib['queue']
+    state['config_xml'] = ET.tostring(config, encoding='unicode')
+    state['failures_left'] = 0
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is False
+    assert 'Cannot determine virtiofs queue from inactive XML' in response['error']
+    assert state['live_xml'] is None
+    domain.attachDeviceFlags.assert_not_called()
+
+
+@pytest.mark.parametrize('concurrent_settings,success', [
+    ({}, True), ({'queue': 512}, False), ({'cache_mode': 'always'}, False),
+    (None, False), ('invalid-xml', False),
+])
+def test_config_attach_race_only_succeeds_when_persisted_device_matches(
+        stateful_attach, concurrent_settings, success):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    state['live_xml'] = virtiofs_plugin.build_virtiofs_xml(
+        'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid')
+    state['failures_left'] = 0
+    def concurrent_config_write(xml, flags):
+        assert flags == virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_CONFIG
+        if isinstance(concurrent_settings, dict):
+            state['config_xml'] = virtiofs_plugin.build_virtiofs_xml(
+                'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid', **concurrent_settings)
+        elif concurrent_settings == 'invalid-xml':
+            state['config_xml'] = 'not-domain-xml'
+        raise RuntimeError('concurrent CONFIG write failed original')
+    domain.attachDeviceFlags.side_effect = concurrent_config_write
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is success, response.get('error')
+    assert response['qgaMountAttempted'] is success
+    assert state['live_xml'].find("queue='1024'") >= 0
+    if not success:
+        assert 'concurrent CONFIG write failed original' in response['error']
+    assert domain.attachDeviceFlags.call_count == 1
+
+
+@pytest.mark.parametrize('concurrent_settings,success', [({}, True), ({'queue': 512}, False), (None, False)])
+def test_live_attach_race_only_succeeds_when_existing_device_matches(
+        stateful_attach, concurrent_settings, success):
+    domain, _, state = stateful_attach
+    domain.isPersistent.return_value = True
+    state['failures_left'] = 0
+    original_attach = domain.attachDeviceFlags.side_effect
+    def concurrent_live_write(xml, flags):
+        if flags == virtiofs_plugin.libvirt.VIR_DOMAIN_AFFECT_LIVE:
+            if concurrent_settings is not None:
+                state['live_xml'] = virtiofs_plugin.build_virtiofs_xml(
+                    'model-tag', '/var/lib/zstack/aios/vm-views/vm-uuid', **concurrent_settings)
+                state['config_xml'] = state['live_xml']
+            raise RuntimeError('concurrent LIVE write failed original')
+        return original_attach(xml, flags)
+    domain.attachDeviceFlags.side_effect = concurrent_live_write
+    response = json.loads(virtiofs_plugin.VirtiofsPlugin().attach_virtiofs(make_attach_request()))
+    assert response['success'] is success, response.get('error')
+    assert response['qgaMountAttempted'] is success
+    if not success:
+        assert 'concurrent LIVE write failed original' in response['error']

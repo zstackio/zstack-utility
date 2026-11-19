@@ -50,6 +50,30 @@ host_business_nic_route_snapshot_lock = threading.RLock()
 host_business_nic_route_snapshot = None
 
 
+FENCER_KILL_VM_BATCH_SIZE = 16
+
+
+def _run_fencer_vm_kills(vms, kill_vm):
+    start = thread.AsyncThread(kill_vm)
+    handles = []
+    for index, vm in enumerate(vms):
+        try:
+            handles.append(start(vm))
+        except Exception as exc:
+            logger.warn('cannot start fencer thread, completing remaining VM kills serially: %s' % exc)
+            for handle in handles:
+                handle.join()
+            for remaining in vms[index:]:
+                kill_vm(remaining)
+            return
+        if len(handles) >= FENCER_KILL_VM_BATCH_SIZE:
+            for handle in handles:
+                handle.join()
+            handles = []
+    for handle in handles:
+        handle.join()
+
+
 def find_namespace_node(root, path, name):
     ns = {'zs': ZS_XML_NAMESPACE}
 
@@ -2544,9 +2568,10 @@ class HaPlugin(kvmagent.KvmAgent):
             vms = [vm for vm in vms if not not_exec_kill_vm(cmd.strategy, vm.uuid, host_storage_name)]
             killed_vm_uuids = []
 
-            @thread.AsyncThread
             def _kill_vm(vm):
                 try:
+                    if not_exec_kill_vm(cmd.strategy, vm.uuid, host_storage_name):
+                        return
                     linux.kill_process(vm.pid, is_graceful=not res.io_timeout)
                     logger.warn(
                         'kill the vm[uuid:%s, pid:%s] because we lost connection to the storage.' % (vm.uuid, vm.pid))
@@ -2556,9 +2581,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     logger.warn(
                         'failed to kill the vm[uuid:%s, pid:%s] %s\n%s' % (vm.uuid, vm.pid, e, traceback.format_exc()))
 
-            kill_threads = [_kill_vm(vm) for vm in vms]
-            for kill_thread in kill_threads:
-                kill_thread.join()
+            _run_fencer_vm_kills(vms, _kill_vm)
 
             for vm in vms:
                 for volume in vm.volumes:

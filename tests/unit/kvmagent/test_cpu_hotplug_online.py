@@ -215,4 +215,16 @@ def test_existing_arch_os_qga_and_smbios_guards_remain(arch, guest_os, smbios, q
     with patch.object(vm_plugin, 'HOST_ARCH', arch), \
             patch.object(vm_plugin, 'VmQga', qga_factory):
         vm._qga_online_hotplugged_cpus(4, 6)
-    assert not any(c.args[0] == 'guest-get-vcpus' for c in qga.call_qga_command.call_args_list)
+    assert not any(c.args[0] in ('guest-get-vcpus', 'guest-set-vcpus')
+                   for c in qga.call_qga_command.call_args_list)
+
+
+def test_enumeration_timeout_still_onlines_confirmed_new_offline_cpu():
+    qga = _qga([_vcpus(range(5), offline=(1, 4))] * 5, [1])
+    with patch.object(vm_plugin.logger, 'warning') as warning:
+        sleep = _run(qga)
+    gets = [c for c in qga.call_qga_command.call_args_list if c.args[0] == 'guest-get-vcpus']
+    sets = [c.kwargs['args']['vcpus'] for c in qga.call_qga_command.call_args_list if c.args[0] == 'guest-set-vcpus']
+    assert len(gets) == 5 and sleep.call_count == 4
+    warning.assert_called_once()
+    assert sets == [[{'logical-id': 4, 'online': True}]]

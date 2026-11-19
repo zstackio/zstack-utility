@@ -54,6 +54,9 @@ isEnableKsm = 'none'
 restart_libvirtd = 'false'
 enable_spice_tls = None
 enable_cgroup_device_acl = None
+resource_assignment_enabled = 'false'
+resource_assignment_slice_name = 'zstack-compute.slice'
+resource_assignment_systemd_units = []
 reserved_ports = "49152-49215"
 
 
@@ -1159,6 +1162,33 @@ def do_systemd_config():
     host_post_info.post_label_param = None
     run_remote_command(command, host_post_info)
 
+def configure_resource_assignment():
+    command = 'test "$(stat -fc %T /sys/fs/cgroup)" = cgroup2fs'
+    if resource_assignment_enabled != 'true' and not run_remote_command(command, host_post_info, return_status=True):
+        return
+    if not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.slice$', resource_assignment_slice_name):
+        error('Invalid resource assignment slice[%s]' % resource_assignment_slice_name)
+    units = resource_assignment_systemd_units or ['zstack-kvmagent.service']
+    if any(not re.match(r'^[A-Za-z0-9][A-Za-z0-9_.@:-]{0,248}\.service$', unit) for unit in units):
+        error('Invalid resource assignment systemd unit list')
+    command = "if command -v systemctl >/dev/null 2>&1; then " \
+              "if test %s = false; then systemctl stop zstack-kvmagent.service; fi; set -e; " \
+              "slice_name=%s; for unit in %s; do " \
+              "drop_in_dir=/etc/systemd/system/${unit}.d; " \
+              "drop_in=${drop_in_dir}/50-zstack-resource-assignment.conf; " \
+              "if test ! -e \"${drop_in}\" && test ! -L \"${drop_in}\"; then " \
+              "mkdir -p \"${drop_in_dir}\"; (tmp=$(mktemp \"${drop_in}.XXXXXX\"); " \
+              "trap 'rm -f \"$tmp\"' EXIT; " \
+              "printf '[Service]\\nSlice=%%s\\n' \"${slice_name}\" > \"$tmp\"; " \
+              "chmod 644 \"$tmp\"; mv -n \"$tmp\" \"${drop_in}\"); fi; done; " \
+              "if test %s = false; then systemctl daemon-reload; fi; fi" % (
+                  shell_quote(chroot_env),
+                  shell_quote(resource_assignment_slice_name),
+                  ' '.join(shell_quote(unit) for unit in units), shell_quote(chroot_env))
+    host_post_info.post_label = "ansible.shell.resource-assignment"
+    host_post_info.post_label_param = resource_assignment_slice_name
+    run_remote_command(command, host_post_info)
+
 def start_kvmagent():
     if chroot_env != 'false':
         return
@@ -1169,15 +1199,13 @@ def start_kvmagent():
         # take effects
         service_status("libvirtd", "state=restarted enabled=yes", host_post_info)
 
-    # name: restart kvmagent, do not use ansible systemctl due to kvmagent can start by itself, so systemctl will not know
-    # the kvm agent status when we want to restart it to use the latest kvm agent code
     if host_info.distro in RPM_BASED_OS and host_info.major_version >= 7:
         # NOTE(weiw): dump threads and wait 1 second for dumping
         command = "pkill -USR2 -P 1 -ef 'kvmagent import kdaemon' || true && sleep 1"
         host_post_info.post_label = "ansible.shell.dump.service"
         host_post_info.post_label_param = "zstack-kvmagent"
         run_remote_command(command, host_post_info)
-        command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
+        command = "systemctl restart zstack-kvmagent.service && systemctl enable zstack-kvmagent.service"
     elif host_info.distro in RPM_BASED_OS:
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif host_info.distro in DEB_BASED_OS:
@@ -1261,6 +1289,7 @@ modprobe_usb_module()
 modprobe_mpci_module()
 set_gpu_blacklist()
 configure_deploy_mode()
+configure_resource_assignment()
 start_kvmagent()
 
 host_post_info.start_time = start_time

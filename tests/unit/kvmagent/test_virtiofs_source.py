@@ -1059,6 +1059,7 @@ def test_hccn_release_symlink_escape_is_rejected(release_probe, tmp_path):
     result = virtiofs_source.probe_hccn_bootstrap_release(request)
     assert result['success'] is False
     assert result['cleanupIncomplete'] is False
+    assert result['hccnBootstrapRelease'] is None
     assert 'secret-not-read' not in str(result)
 
 
@@ -1079,19 +1080,49 @@ def test_hccn_release_read_and_cleanup_causes_remain_ordered(release_probe, monk
 
 
 def test_hccn_release_blocked_reader_is_killed_and_cleanup_is_bounded(release_probe, monkeypatch, tmp_path):
+    import multiprocessing
     import time
+    from types import SimpleNamespace
     request, _ = release_probe
     pid_file = tmp_path / 'reader-pid'
+    ready = multiprocessing.get_context('fork').Event()
+    monotonic = time.monotonic
+    started = monotonic()
+    ready_at = [None]
+    def clock():
+        now = monotonic()
+        if ready.is_set():
+            if ready_at[0] is None:
+                ready_at[0] = now
+            return started + now - ready_at[0]
+        return started if now - started < 5 else now
     def blocked_read(*_):
+        time.sleep(0.12)
         pid_file.write_text(str(os.getpid()))
+        ready.set()
         time.sleep(10)
         raise AssertionError('blocked reader should have been killed')
+    context = multiprocessing.get_context('fork')
+    process_class = context.Process
+    def process_waiting_for_reader(*args, **kwargs):
+        process = process_class(*args, **kwargs)
+        start = process.start
+        def start_after_ready():
+            start()
+            if not ready.wait(5):
+                process.kill()
+                process.join(timeout=1)
+                pytest.fail('reader did not become ready within watchdog budget')
+        process.start = start_after_ready
+        return process
+    monkeypatch.setattr(context, 'Process', process_waiting_for_reader)
     monkeypatch.setattr(virtiofs_source, '_read_hccn_release_file', blocked_read)
+    monkeypatch.setattr(virtiofs_source, 'time', SimpleNamespace(monotonic=clock))
     monkeypatch.setattr(virtiofs_source, 'HCCN_RELEASE_WORK_TIMEOUT', 0.08)
     monkeypatch.setattr(virtiofs_source, 'HCCN_RELEASE_TOTAL_TIMEOUT', 0.5)
-    started = time.monotonic()
     result = virtiofs_source.probe_hccn_bootstrap_release(request)
-    assert time.monotonic() - started < 0.7
+    assert ready.is_set() and ready_at[0] is not None, 'reader did not become ready within watchdog budget'
+    assert monotonic() - ready_at[0] < 0.7
     assert result['success'] is False
     assert 'deadline exceeded' in result['errors'][0]['reason']
     assert result['cleanupIncomplete'] is False
@@ -1184,6 +1215,7 @@ def test_hccn_release_trusts_the_opened_file_not_a_prior_path_check(release_prob
     result = virtiofs_source.probe_hccn_bootstrap_release(request)
     assert result['success'] is False
     assert result['cleanupIncomplete'] is False
+    assert result['hccnBootstrapRelease'] is None
     assert 'secret-not-read' not in str(result)
 
 
@@ -1209,4 +1241,5 @@ def test_hccn_release_rejects_artifact_dir_swapped_after_checks(release_probe, t
     result = virtiofs_source.probe_hccn_bootstrap_release(request)
     assert swapped.exists()
     assert result['success'] is False
+    assert result['hccnBootstrapRelease'] is None
     assert 'secret-not-read' not in str(result)
