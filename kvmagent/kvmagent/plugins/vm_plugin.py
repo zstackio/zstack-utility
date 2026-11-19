@@ -52,7 +52,6 @@ from kvmagent.plugins.baremetal_v2_gateway_agent import \
 from kvmagent.plugins.bmv2_gateway_agent import utils as bm_utils
 from kvmagent.plugins import host_pushgateway
 from kvmagent.plugins import vm_artifact
-from kvmagent.plugins import ramfb
 from kvmagent.plugins import zbs_vhost_target
 from kvmagent.plugins.imagestore import ImageStoreClient
 from kvmagent.plugins.shared_block_plugin import MAX_ACTUAL_SIZE_FACTOR
@@ -3683,10 +3682,9 @@ class Vm(object):
             raise
 
     def _patch_video_xml_from_saved_image(self, path):
-        # Memory snapshots must retain the video devices, aliases and PCI
-        # addresses from the saved QEMU state, including pre-ramfb snapshots.
+        # QEMU restores video devices at the aliases and PCI addresses saved in the snapshot.
         root = etree.fromstring(self.domain_xml)
-        if not any(model.get('type') in ('virtio', 'ramfb') for model in root.findall('devices/video/model')):
+        if not any(model.get('type') == 'virtio' for model in root.findall('devices/video/model')):
             return
 
         @LibvirtAutoReconnect
@@ -3701,7 +3699,6 @@ class Vm(object):
         for video in devices.findall('video'):
             devices.remove(video)
         devices.extend(videos)
-        ramfb.restore_migration(root, saved)
         self.domain_xml = etree.tostring(root, encoding='unicode')
 
     def _patch_cpu_xml_from_saved_image(self, path):
@@ -6852,24 +6849,18 @@ class Vm(object):
             nvram_fd_path = nvram.build_nvram_fd_path(cmd.vmInstanceUuid, need_register_nvram)
             if host_arch == "x86_64" and cmd.bootMode == "UEFI":
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
+                if need_register_nvram:
+                    loader = '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd'
+                    nvram_template = '/usr/share/edk2/ovmf/OVMF_VARS.fd'
+                else:
+                    loader = '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd'
+                    nvram_template = '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'
+                e(os, 'loader', loader, attrib=loader_attribute)
                 if yum_release in ("ky10sp3", "ky10sp3.2403"):
-                    if need_register_nvram:
-                        nvram_template = '/usr/share/edk2-20220126/ovmf/OVMF_VARS.secboot.fd'
-                        e(os, 'loader', '/usr/share/edk2-20220126/ovmf/OVMF_CODE.secboot.fd', attrib=loader_attribute)
-                        e(os, 'nvram', nvram_fd_path, attrib={'template': nvram_template})
-                    else:
-                        e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.fd', attrib=loader_attribute)
-                        e(os, 'nvram', nvram_fd_path, attrib={'template': '/usr/share/edk2/ovmf/OVMF_VARS.fd'})
-                else: # h84r ...
-                    if need_register_nvram:
-                        nvram_template = '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd'
-                        e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd', attrib=loader_attribute)
-                        element = e(os, 'nvram', None, attrib={'template': nvram_template})
-                        e(element, 'source', nvram_fd_path)
-                    else:
-                        e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib=loader_attribute)
-                        element = e(os, 'nvram', None, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
-                        e(element, 'source', nvram_fd_path)
+                    e(os, 'nvram', nvram_fd_path, attrib={'template': nvram_template})
+                else:
+                    element = e(os, 'nvram', None, attrib={'template': nvram_template})
+                    e(element, 'source', nvram_fd_path)
                 if need_register_nvram and not cmd.memorySnapshotPath:
                     nvram_secure_boot.prepare_secure_boot_nvram(nvram_fd_path, nvram_template, bool(cmd.secureBoot))
             elif host_arch == "x86_64" and cmd.bootMode == "UEFI_WITH_CSM":
@@ -7878,12 +7869,6 @@ class Vm(object):
 
         def make_video():
             devices = elements['devices']
-            if HOST_ARCH == 'x86_64' and cmd.bootMode == 'UEFI' and cmd.secureBoot and cmd.videoType == 'virtio':
-                # The installed CSM firmware cannot drive VGA under Secure Boot.
-                # Ramfb provides the linear GOP framebuffer Windows requires;
-                # libvirt selects non-VGA virtio for the secondary GPU.
-                video = e(devices, 'video')
-                e(video, 'model', attrib={'type': 'ramfb', 'primary': 'yes'})
             if cmd.videoType != "qxl":
                 video = e(devices, 'video')
                 e(video, 'model', None, {'type': str(cmd.videoType)})
@@ -8292,7 +8277,6 @@ class Vm(object):
             add_cpu_vendor_id_to_cpu_flags()
 
         root = elements['root']
-        ramfb.enable_migration(root)
         xml = etree.tostring(root, encoding="unicode")
 
         vm = Vm()

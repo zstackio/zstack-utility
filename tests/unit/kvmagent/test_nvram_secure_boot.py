@@ -15,7 +15,7 @@ GLOBAL = sb.EFI_GLOBAL_VARIABLE_GUID
 IMAGE_DB = sb.EFI_IMAGE_SECURITY_DATABASE_GUID
 SB_ENABLE = sb.EFI_SECURE_BOOT_ENABLE_DISABLE_GUID
 VAR_DELETED = 0x3C
-HOST_SECBOOT_VARS_TEMPLATE = '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd'
+HOST_SECBOOT_VARS_TEMPLATE = '/usr/share/edk2/ovmf/OVMF_VARS.fd'
 NOT_ENOUGH_SPACE = 'has not enough space to enroll secure boot keys, disable secure boot for the vm and restart'
 
 
