@@ -15,6 +15,7 @@ import subprocess
 import traceback
 import xml.etree.ElementTree as etree
 import re
+import shlex
 import platform
 from time import sleep
 
@@ -1807,7 +1808,7 @@ def is_new_ovmf_supported():
 def is_high_mmio_size_supported():
     return NumericVersion(qemu_img.get_release_version()) >= NumericVersion("6.2.0-902")
 
-def is_memory_backing_supported(memfd=False):
+def is_memory_backing_supported(memfd=False, qemu_version=None):
     libvirt_version = NumericVersion(get_libvirt_version())
     if memfd:
         return libvirt_version >= NumericVersion("4.10.0")
@@ -1815,7 +1816,8 @@ def is_memory_backing_supported(memfd=False):
     # QEMU removed -numa node,mem= in 5.1.0. The memoryBacking/access
     # element has been supported by libvirt since 1.0.6 and makes libvirt
     # generate the compatible memdev form instead.
-    return (NumericVersion(qemu.get_version()) >= NumericVersion("5.1.0") and
+    version = qemu.get_version() if qemu_version is None else qemu_version
+    return (NumericVersion(version) >= NumericVersion("5.1.0") and
             libvirt_version >= NumericVersion("1.0.6"))
 
 
@@ -3503,6 +3505,7 @@ class Vm(object):
         self.state = None
         self.vm_user_defined_xml_hook = False
         self.vm_xml_hook_script = None
+        self._auto_numa_memory_backing = False
 
     def dump_vm_xml_to_log(self):
         logger.debug('dump vm xml:\n%s' % self.domain_xml)
@@ -3733,6 +3736,7 @@ class Vm(object):
         self._patch_disk_xml_order_from_saved_image(path)
         self._patch_xml_from_saved_image(path)
         self._remove_legacy_virtio_blk_discard_if_absent_in_saved_image(path)
+        self._patch_legacy_numa_memory_backing_from_saved_image(path)
 
         tree = etree.fromstring(self.domain_xml)
         vcpu = tree.find('vcpu')
@@ -3814,6 +3818,42 @@ class Vm(object):
             if not list(commandline):
                 root.remove(commandline)
         self.domain_xml = etree.tostring(root, encoding='unicode')
+
+    def _patch_legacy_numa_memory_backing_from_saved_image(self, path):
+        if HOST_ARCH != 'x86_64':
+            return
+        root = etree.fromstring(self.domain_xml)
+        backing = root.find('memoryBacking')
+        if root.find('./cpu/numa/cell') is None or backing is None:
+            return
+        access = backing.find('access')
+        if access is None or access.get('mode') != 'private' or any(
+                backing.find(tag) is not None for tag in ('source', 'hugepages')):
+            return
+
+        @LibvirtAutoReconnect
+        def get_saved_xml(conn):
+            return conn.saveImageGetXMLDesc(path, 0)
+
+        saved = etree.fromstring(get_saved_xml())
+        saved_source = saved.find('./memoryBacking/source')
+        if saved_source is not None and saved_source.get('type') != 'anonymous':
+            return
+        if any(saved.find('./memoryBacking/' + tag) is not None
+               for tag in ('access', 'hugepages')):
+            return
+        if not getattr(self, '_auto_numa_memory_backing', False):
+            raise kvmagent.KvmError('memory snapshot is incompatible with explicitly configured private memory backing; '
+                                   'restore the original memory configuration before retrying')
+        # Keep the saved RAM block names, including pc.ram on legacy machines.
+        backing.remove(access)
+        if saved_source is not None:
+            # libvirt also checks the source type against the saved XML.
+            backing.append(saved_source)
+        if len(backing) == 0:
+            root.remove(backing)
+        self.domain_xml = etree.tostring(root, encoding='unicode')
+        self._auto_numa_memory_backing = False
 
     @staticmethod
     def _disk_matches(current, saved):
@@ -4026,6 +4066,24 @@ class Vm(object):
             current_tree.insert(index, saved_current_memory)
         return True
 
+    @staticmethod
+    def _ensure_x86_numa_memory_backing(root):
+        cells = root.findall('./cpu/numa/cell')
+        if HOST_ARCH != 'x86_64' or not cells or any(cell.get('memAccess') for cell in cells):
+            return False
+        backing = root.find('memoryBacking')
+        if backing is not None and any(backing.find(tag) is not None
+                                       for tag in ('hugepages', 'source', 'access')):
+            return False
+        emulator = root.findtext('./devices/emulator')
+        version = qemu.get_version_from_exe_file2(shlex.quote(emulator), error_out=True) if emulator else None
+        if not is_memory_backing_supported(qemu_version=version):
+            return False
+        if backing is None:
+            backing = e(root, 'memoryBacking')
+        e(backing, 'access', attrib={'mode': 'private'})
+        return True
+
     def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
@@ -4035,6 +4093,11 @@ class Vm(object):
             xml_hook_script_from_user = self.get_user_defined_xml_hook()
             if xml_hook_script_from_user is not None:
                 self.domain_xml = xmlhook.get_modified_xml_from_hook(xml_hook_script_from_user, self.domain_xml)
+                self._auto_numa_memory_backing = False
+            root = etree.fromstring(self.domain_xml)
+            if self._ensure_x86_numa_memory_backing(root):
+                self.domain_xml = etree.tostring(root, encoding='unicode')
+                self._auto_numa_memory_backing = True
             return conn.defineXML(self.domain_xml)
 
         flag = (0, libvirt.VIR_DOMAIN_START_PAUSED)[create_paused]
@@ -8780,10 +8843,14 @@ class Vm(object):
 
         if cmd.addons["userDefinedXml"] is not None:
             vm.domain_xml = base64.b64decode(cmd.addons["userDefinedXml"]).decode()
-            vm.domain_xmlobject = xmlobject.loads(vm.domain_xml)
         else:
             vm.domain_xml = xml
-            vm.domain_xmlobject = xmlobject.loads(xml)
+        if not vm.vm_user_defined_xml_hook or getattr(cmd, 'memorySnapshotPath', None):
+            root = etree.fromstring(vm.domain_xml)
+            vm._auto_numa_memory_backing = vm._ensure_x86_numa_memory_backing(root)
+            if vm._auto_numa_memory_backing:
+                vm.domain_xml = etree.tostring(root, encoding='unicode')
+        vm.domain_xmlobject = xmlobject.loads(vm.domain_xml)
         return vm
 
     @staticmethod
