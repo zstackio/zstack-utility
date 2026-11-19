@@ -312,17 +312,21 @@ class Eip(object):
 
         @bash.in_bash
         def delete_ipv6_rules():
-            if bash_r(get_ebtables_cmd() + ' -t nat -L {{CHAIN_NAME}} >/dev/null 2>&1') == 0:
-                RULE = "-i {{NIC_NAME}} -j {{CHAIN_NAME}}"
+            CHAIN_NAME_V6 = 'eip-%s-gw6' % NIC_NAME
+            if bash_r(get_ebtables_cmd() + ' -t nat -L {{CHAIN_NAME_V6}} >/dev/null 2>&1') == 0:
+                RULE_V6 = "-p IPv6 -i {{NIC_NAME}} -j {{CHAIN_NAME_V6}}"
+                bash_r(get_ebtables_cmd() + ' -t nat -D PREROUTING {{RULE_V6}}')
+                RULE = "-i {{NIC_NAME}} -j {{CHAIN_NAME_V6}}"
                 bash_r(get_ebtables_cmd() + ' -t nat -D PREROUTING {{RULE}}')
 
-                bash_r(get_ebtables_cmd() + ' -t nat -F {{CHAIN_NAME}}')
-                bash_r(get_ebtables_cmd() + ' -t nat -X {{CHAIN_NAME}}')
+                bash_r(get_ebtables_cmd() + ' -t nat -F {{CHAIN_NAME_V6}}')
+                bash_r(get_ebtables_cmd() + ' -t nat -X {{CHAIN_NAME_V6}}')
+            self._cleanup_legacy_ipv6_in_shared_gw_chain(NIC_NAME)
             # cleanup legacy chain name (without eip- prefix)
             OLD_CHAIN_NAME = '{{NIC_NAME}}-gw'
             if bash_r(get_ebtables_cmd() + ' -t nat -L {{OLD_CHAIN_NAME}} >/dev/null 2>&1') == 0:
                 OLD_RULE = "-i {{NIC_NAME}} -j {{OLD_CHAIN_NAME}}"
-                if bash_r(get_ebtables_cmd() + " -t nat -L PREROUTING | grep -- '{{OLD_RULE}}' > /dev/null") == 0:
+                if bash_r(get_ebtables_cmd() + " -t nat -L PREROUTING | awk -v rule='{{OLD_RULE}}' '{gsub(/^[[:space:]]+|[[:space:]]+$/, \"\"); if ($0 == rule) found=1} END {exit !found}'") == 0:
                     bash_r(get_ebtables_cmd() + ' -t nat -D PREROUTING {{OLD_RULE}}')
                 bash_r(get_ebtables_cmd() + ' -t nat -F {{OLD_CHAIN_NAME}}')
                 bash_r(get_ebtables_cmd() + ' -t nat -X {{OLD_CHAIN_NAME}}')
@@ -387,6 +391,31 @@ class Eip(object):
         iproute.del_fdb_entry(phy_dev, inner_mac)
 
     @staticmethod
+    @bash.in_bash
+    def _cleanup_legacy_ipv6_in_shared_gw_chain(nic_name):
+        shared_chain = 'eip-%s-gw' % nic_name
+        eb_cmd = get_ebtables_cmd()
+        if bash_r('%s -t nat -L %s >/dev/null 2>&1' % (eb_cmd, shared_chain)) != 0:
+            return
+        # Remove only the legacy unqualified jump; preserve IPv4 '-p ARP -i <nic> -j <chain>'.
+        bash_r('%s -t nat -D PREROUTING -i %s -j %s' % (eb_cmd, nic_name, shared_chain))
+        out = bash_o('%s -t nat -L %s --Lx 2>/dev/null' % (eb_cmd, shared_chain))
+        prefix = '-A %s ' % shared_chain
+        remaining = 0
+        for line in out.splitlines():
+            line = line.strip()
+            if prefix not in line:
+                continue
+            rule_part = line.split(prefix, 1)[1].strip()
+            tokens = rule_part.split()
+            if '-p' in tokens and tokens[tokens.index('-p') + 1:tokens.index('-p') + 2] in (['IPv6'], ['0x86dd'], ['0x86DD']):
+                bash_r('%s -t nat -D %s %s' % (eb_cmd, shared_chain, rule_part))
+            else:
+                remaining += 1
+        if remaining == 0:
+            bash_r('%s -t nat -X %s' % (eb_cmd, shared_chain))
+
+    @staticmethod
     def _is_ebtables_chain_hooked(chain_name, ebtables_nat_output):
         if not ebtables_nat_output:
             return False
@@ -412,7 +441,7 @@ class Eip(object):
             ]
         else:
             required_chain_groups = [
-                ("eip-%s-gw" % nic_name, "%s-gw" % nic_name),
+                ("eip-%s-gw6" % nic_name,),
             ]
         return all(
             any(
@@ -587,7 +616,7 @@ class Eip(object):
 
         @bash.in_bash
         def ensure_ebtable_rule_at_head(table, chain, rule):
-            if bash_r(get_ebtables_cmd() + " -t {{table}} -L {{chain}} | grep -- '{{rule}}' > /dev/null") == 0:
+            if bash_r(get_ebtables_cmd() + " -t {{table}} -L {{chain}} | awk -v rule='{{rule}}' '{gsub(/^[[:space:]]+|[[:space:]]+$/, \"\"); if ($0 == rule) found=1} END {exit !found}'") == 0:
                 bash_errorout(get_ebtables_cmd() + " -t {{table}} -D {{chain}} {{rule}}")
             bash_errorout(get_ebtables_cmd() + ' -t {{table}} -I {{chain}} {{rule}}')
 
@@ -596,23 +625,18 @@ class Eip(object):
             """Delete a legacy ebtables chain: remove jump rules from built-in chains, flush and delete."""
             if bash_r(get_ebtables_cmd() + ' -t {{table}} -L {{chain}} > /dev/null 2>&1') != 0:
                 return
-            # remove jump rules from PREROUTING
-            RULE = bash_o(get_ebtables_cmd() + " -t {{table}} -L PREROUTING --Lx 2>/dev/null | grep -F -- '-j {{chain}}'").strip()
-            if RULE:
-                for line in RULE.splitlines():
+            for builtin_chain in ('PREROUTING', 'POSTROUTING'):
+                rules_out = bash_o(
+                    get_ebtables_cmd()
+                    + " -t {{table}} -L %s --Lx 2>/dev/null | awk -v target='{{chain}}' '{for (i=1; i<NF; i++) if ($i == \"-j\" && $(i+1) == target) {print; break}}'"
+                    % builtin_chain
+                ).strip()
+                prefix = '-A %s ' % builtin_chain
+                for line in rules_out.splitlines():
                     line = line.strip()
-                    if line:
-                        # line is like: -A PREROUTING ... -j chain
-                        rule_part = line.replace('-A PREROUTING ', '', 1)
-                        bash_r(get_ebtables_cmd() + ' -t {{table}} -D PREROUTING ' + rule_part)
-            # remove jump rules from POSTROUTING
-            RULE = bash_o(get_ebtables_cmd() + " -t {{table}} -L POSTROUTING --Lx 2>/dev/null | grep -F -- '-j {{chain}}'").strip()
-            if RULE:
-                for line in RULE.splitlines():
-                    line = line.strip()
-                    if line:
-                        rule_part = line.replace('-A POSTROUTING ', '', 1)
-                        bash_r(get_ebtables_cmd() + ' -t {{table}} -D POSTROUTING ' + rule_part)
+                    if prefix in line:
+                        rule_part = line.split(prefix, 1)[1].strip()
+                        bash_r(get_ebtables_cmd() + ' -t {{table}} -D %s %s' % (builtin_chain, rule_part))
             bash_r(get_ebtables_cmd() + ' -t {{table}} -F {{chain}}')
             bash_r(get_ebtables_cmd() + ' -t {{table}} -X {{chain}}')
 
@@ -715,13 +739,13 @@ class Eip(object):
 
         @bash.in_bash
         def set_gateway_arp_if_needed_v6():
-            CHAIN_NAME = "eip-{{NIC_NAME}}-gw"
+            CHAIN_NAME = "eip-{{NIC_NAME}}-gw6"
 
             if bash_r(get_ebtables_cmd() + ' -t nat -L {{CHAIN_NAME}} > /dev/null 2>&1') != 0:
                 bash_errorout(get_ebtables_cmd() + ' -t nat -N {{CHAIN_NAME}}')
             bash_errorout(get_ebtables_cmd() + ' -t nat -P {{CHAIN_NAME}} RETURN')
 
-            ensure_ebtable_rule_at_head('nat', 'PREROUTING', '-i {{NIC_NAME}} -j {{CHAIN_NAME}}')
+            ensure_ebtable_rule_at_head('nat', 'PREROUTING', '-p IPv6 -i {{NIC_NAME}} -j {{CHAIN_NAME}}')
             GATEWAY_MAC = bash_o("eval {{NS}} ip link show {{PRI_IDEV}} | awk '/link\/ether/{print $2}'").strip()
             if not GATEWAY_MAC:
                 raise Exception('cannot find the device[%s] in the namespace[%s]' % (PRI_IDEV, NS_NAME))
@@ -736,6 +760,7 @@ class Eip(object):
                                           "-p IPv6 --ip6-destination ff00::/8 -j ACCEPT")
             create_ebtable_rule_if_needed('nat', CHAIN_NAME,
                                           "-p IPv6 -j dnat --to-destination {{GATEWAY_MAC}}")
+            self._cleanup_legacy_ipv6_in_shared_gw_chain(NIC_NAME)
             # cleanup legacy chain name (without eip- prefix)
             delete_ebtables_chain_if_exists('nat', '{{NIC_NAME}}-gw')
 

@@ -820,9 +820,9 @@ class TestApplyEipV6ChainNames(_ApplyEipTestBase):
     IP_VERSION = 6
 
     def test_v6_gateway_chain_uses_eip_prefix(self):
-        """set_gateway_arp_if_needed_v6 should create chain 'eip-vnic1.0-gw'."""
+        """set_gateway_arp_if_needed_v6 should create chain 'eip-vnic1.0-gw6'."""
         self.assertTrue(
-            self._has_cmd("eip-vnic1.0-gw"), "Expected 'eip-vnic1.0-gw' in IPv6 path"
+            self._has_cmd("eip-vnic1.0-gw6"), "Expected 'eip-vnic1.0-gw6' in IPv6 path"
         )
 
     def test_v6_legacy_gw_chain_cleanup(self):
@@ -837,8 +837,8 @@ class TestApplyEipV6ChainNames(_ApplyEipTestBase):
 
     def test_v6_prerouting_gateway_jump_try_to_reorder_existing_rule(self):
         expected = [
-            "-D PREROUTING -i vnic1.0 -j eip-vnic1.0-gw",
-            "-I PREROUTING -i vnic1.0 -j eip-vnic1.0-gw",
+            "-D PREROUTING -p IPv6 -i vnic1.0 -j eip-vnic1.0-gw6",
+            "-I PREROUTING -p IPv6 -i vnic1.0 -j eip-vnic1.0-gw6",
         ]
 
         for rule in expected:
@@ -955,8 +955,8 @@ class TestDeleteIpv6RulesLegacyCleanup(_DeleteEipTestBase):
     def test_delete_v6_uses_eip_prefix(self):
         """delete_ipv6_rules should reference eip- prefixed chain name."""
         self.assertTrue(
-            self._has_cmd("eip-vnic1.0-gw"),
-            "Expected 'eip-vnic1.0-gw' in IPv6 delete path",
+            self._has_cmd("eip-vnic1.0-gw6"),
+            "Expected 'eip-vnic1.0-gw6' in IPv6 delete path",
         )
 
     def test_delete_v6_cleans_legacy_gw_chain(self):
@@ -1488,6 +1488,332 @@ class TestZSTAC91420SyncEip(unittest.TestCase):
                     eip, existing_netns, full_nat, good_fdb
                 )
             )
+
+
+class _StatefulEbtablesSimulator(object):
+    """In-memory ebtables -t nat simulator that mirrors real ebtables -L/-I/-A/-D/-N/-F/-X behavior."""
+
+    def __init__(self):
+        self.chains = {
+            "PREROUTING": [],
+            "OUTPUT": [],
+            "POSTROUTING": [],
+        }
+
+    def format_list(self, chain=None, lx=False):
+        target_chains = [chain] if chain else list(self.chains.keys())
+        lines = []
+        if not lx:
+            lines.append("Bridge table: nat")
+            lines.append("")
+        for ch in target_chains:
+            rules = self.chains[ch]
+            if lx:
+                for r in rules:
+                    lines.append("-A %s %s" % (ch, r))
+            else:
+                lines.append("Bridge chain: %s, entries: %d, policy: ACCEPT" % (ch, len(rules)))
+                for r in rules:
+                    # ebtables-legacy emits a trailing space on rule lines
+                    lines.append(r + " ")
+        return "\n".join(lines) + ("\n" if lines else "")
+
+    def run_ebtables(self, tokens):
+        # Strip leading ebtables [--concurrent] -t nat
+        idx = 0
+        if tokens and "ebtables" in tokens[0]:
+            idx += 1
+        while idx < len(tokens) and tokens[idx] in ("--concurrent",):
+            idx += 1
+        if idx + 1 < len(tokens) and tokens[idx] == "-t":
+            idx += 2
+        if idx >= len(tokens):
+            return 0, "", ""
+        op = tokens[idx]
+        rest = tokens[idx + 1:]
+        if op == "-N":
+            ch = rest[0]
+            if ch in self.chains:
+                return 255, "", "Chain already exists."
+            self.chains[ch] = []
+            return 0, "", ""
+        if op == "-P":
+            ch = rest[0]
+            if ch not in self.chains:
+                return 255, "", "Chain '%s' doesn't exist." % ch
+            return 0, "", ""
+        if op == "-L":
+            lx = "--Lx" in rest
+            non_flags = [t for t in rest if not t.startswith("-")]
+            ch = non_flags[0] if non_flags else None
+            if ch and ch not in self.chains:
+                return 255, "", "Chain '%s' doesn't exist." % ch
+            return 0, self.format_list(ch, lx=lx), ""
+        if op == "-I":
+            ch = rest[0]
+            rule = " ".join(rest[1:])
+            if ch not in self.chains:
+                return 255, "", "Chain '%s' doesn't exist." % ch
+            self.chains[ch].insert(0, rule)
+            return 0, "", ""
+        if op == "-A":
+            ch = rest[0]
+            rule = " ".join(rest[1:])
+            if ch not in self.chains:
+                return 255, "", "Chain '%s' doesn't exist." % ch
+            self.chains[ch].append(rule)
+            return 0, "", ""
+        if op == "-D":
+            ch = rest[0]
+            rule = " ".join(rest[1:])
+            if ch not in self.chains or rule not in self.chains[ch]:
+                return 255, "", "Sorry, rule does not exist."
+            self.chains[ch].remove(rule)
+            return 0, "", ""
+        if op == "-F":
+            ch = rest[0]
+            if ch not in self.chains:
+                return 255, "", "Chain '%s' doesn't exist." % ch
+            self.chains[ch] = []
+            return 0, "", ""
+        if op == "-X":
+            ch = rest[0]
+            if ch not in self.chains:
+                return 255, "", "Chain '%s' doesn't exist." % ch
+            for other, rules in self.chains.items():
+                if other != ch and any(("-j " + ch) in r.split() or r.endswith("-j " + ch) for r in rules):
+                    return 255, "", "Chain is referenced."
+            del self.chains[ch]
+            return 0, "", ""
+        return 0, "", ""
+
+
+class TestDualStackEipSameNic(unittest.TestCase):
+    def _make_stateful_process(self, eb_sim, executed_cmds):
+        import shlex
+        import subprocess
+
+        def fake_get_process(*args, **kwargs):
+            cmd_path = args[0] if args else kwargs.get("cmd_path")
+            proc = mock.MagicMock()
+
+            def communicate(*c_args, **c_kwargs):
+                command = c_args[0].decode() if c_args and isinstance(c_args[0], bytes) else cmd_path
+                executed_cmds.append(command)
+                if "ip link show" in command and "awk" in command:
+                    proc.returncode = 0
+                    return (b"    link/ether aa:bb:cc:dd:ee:ff brd ff:ff:ff:ff:ff:ff\n", b"")
+                if "ip -o -f inet addr show" in command:
+                    proc.returncode = 0
+                    return (b"10.0.0.100/24\n", b"")
+                if "ip -o -f inet6 addr show" in command:
+                    proc.returncode = 0
+                    return (b"fd00:2::100/64\n", b"")
+                if "brctl show" in command or "route | grep -w default" in command:
+                    proc.returncode = 1
+                    return ("", "")
+                if command.lstrip().startswith("ebtables"):
+                    # Split optional shell pipeline (e.g. ebtables ... | grep/awk ...)
+                    parts = command.split("|", 1)
+                    left = parts[0].strip()
+                    # Strip shell redirections like >/dev/null 2>&1
+                    clean_left = []
+                    skip_next = False
+                    for tok in shlex.split(left):
+                        if skip_next:
+                            skip_next = False
+                            continue
+                        if tok in (">", "2>", "1>", "&>"):
+                            skip_next = True
+                            continue
+                        if tok.startswith(">") or tok.startswith("2>") or tok.startswith("1>"):
+                            continue
+                        clean_left.append(tok)
+                    rc, out, err = eb_sim.run_ebtables(clean_left)
+                    if len(parts) == 2:
+                        if rc != 0:
+                            proc.returncode = 1
+                            return (b"", err.encode())
+                        pipe_cmd = parts[1].strip()
+                        sub = subprocess.run(
+                            ["bash", "-c", pipe_cmd],
+                            input=out,
+                            text=True,
+                            capture_output=True,
+                        )
+                        proc.returncode = sub.returncode
+                        return (sub.stdout.encode(), sub.stderr.encode())
+                    proc.returncode = rc
+                    return (out.encode(), err.encode())
+                proc.returncode = 0
+                return ("", "")
+
+            proc.communicate = communicate
+            proc.returncode = 0
+            return proc
+
+        return fake_get_process
+
+    def _run_with_sim(self, eb_sim, fn):
+        executed_cmds = []
+        patchers = _apply_patchers() + [
+            mock.patch(
+                "zstacklib.utils.shell.get_process",
+                side_effect=self._make_stateful_process(eb_sim, executed_cmds),
+            ),
+            mock.patch("kvmagent.plugins.deip.iproute"),
+            mock.patch("kvmagent.plugins.deip.linux"),
+            mock.patch("kvmagent.plugins.deip.get_ebtables_cmd", return_value="ebtables --concurrent"),
+        ]
+        started = [p.start() for p in patchers]
+        mock_iproute = started[-3]
+        mock_linux = started[-2]
+        mock_iproute.IpNetnsShell.list_netns.return_value = []
+        mock_iproute.IpNetnsShell.return_value.get_mac.return_value = None
+        mock_linux.is_network_device_existing.return_value = False
+        mock_linux.netmask_to_cidr.return_value = 24
+        mock_linux.MAX_MTU_OF_VNIC = 65000
+        try:
+            fn(Eip())
+        finally:
+            for p in reversed(patchers):
+                p.stop()
+        return executed_cmds
+
+    def _apply(self, eip_cmd, eip):
+        inspect.unwrap(inspect.unwrap(Eip.apply_eip))(eip_cmd, eip)
+
+    def _delete(self, eip_cmd, eip):
+        ns = eip_cmd.generate_namespace_name(eip.publicBridgeName, eip.vip)
+        inspect.unwrap(inspect.unwrap(Eip.delete_eip_with_ns))(
+            eip_cmd, ns, eip.eipUuid, eip.ipVersion, eip.nicName
+        )
+
+    def test_ipv4_then_ipv6_eip_on_same_flat_nic_coexist_and_delete_independently(self):
+        eb_sim = _StatefulEbtablesSimulator()
+        eip4 = _make_eip(ipVersion=4)
+        eip4.nicName = "vnic5.0"
+        eip4.eipUuid = "aaaa111111111"
+        eip6 = _make_eip(ipVersion=6)
+        eip6.nicName = "vnic5.0"
+        eip6.eipUuid = "bbbb222222222"
+
+        def scenario(eip_cmd):
+            self._apply(eip_cmd, eip4)
+            self._apply(eip_cmd, eip6)
+            self.assertIn("-p ARP -i vnic5.0 -j eip-vnic5.0-gw", eb_sim.chains["PREROUTING"])
+            self.assertIn("-p IPv6 -i vnic5.0 -j eip-vnic5.0-gw6", eb_sim.chains["PREROUTING"])
+            self.assertIn("eip-vnic5.0-gw", eb_sim.chains)
+            self.assertIn("eip-vnic5.0-gw6", eb_sim.chains)
+            self.assertTrue(any("arpreply" in r for r in eb_sim.chains["eip-vnic5.0-gw"]))
+            self.assertTrue(any("-p IPv6 -j dnat" in r for r in eb_sim.chains["eip-vnic5.0-gw6"]))
+
+            # Deleting IPv6 EIP must preserve IPv4 EIP chain and jump rule.
+            self._delete(eip_cmd, eip6)
+            self.assertNotIn("eip-vnic5.0-gw6", eb_sim.chains)
+            self.assertNotIn("-p IPv6 -i vnic5.0 -j eip-vnic5.0-gw6", eb_sim.chains["PREROUTING"])
+            self.assertIn("-p ARP -i vnic5.0 -j eip-vnic5.0-gw", eb_sim.chains["PREROUTING"])
+            self.assertTrue(any("arpreply" in r for r in eb_sim.chains["eip-vnic5.0-gw"]))
+
+            # Re-apply IPv6 then delete IPv4 -> IPv6 EIP must stay intact.
+            self._apply(eip_cmd, eip6)
+            self._delete(eip_cmd, eip4)
+            self.assertNotIn("eip-vnic5.0-gw", eb_sim.chains)
+            self.assertIn("-p IPv6 -i vnic5.0 -j eip-vnic5.0-gw6", eb_sim.chains["PREROUTING"])
+            self.assertTrue(any("-p IPv6 -j dnat" in r for r in eb_sim.chains["eip-vnic5.0-gw6"]))
+
+        self._run_with_sim(eb_sim, scenario)
+
+    def test_ipv6_then_ipv4_eip_on_same_flat_nic_coexist(self):
+        eb_sim = _StatefulEbtablesSimulator()
+        eip4 = _make_eip(ipVersion=4)
+        eip4.nicName = "vnic5.0"
+        eip4.eipUuid = "aaaa111111111"
+        eip6 = _make_eip(ipVersion=6)
+        eip6.nicName = "vnic5.0"
+        eip6.eipUuid = "bbbb222222222"
+
+        def scenario(eip_cmd):
+            self._apply(eip_cmd, eip6)
+            self._apply(eip_cmd, eip4)
+            self.assertIn("-p ARP -i vnic5.0 -j eip-vnic5.0-gw", eb_sim.chains["PREROUTING"])
+            self.assertIn("-p IPv6 -i vnic5.0 -j eip-vnic5.0-gw6", eb_sim.chains["PREROUTING"])
+
+        self._run_with_sim(eb_sim, scenario)
+
+    def test_legacy_shared_gw_chain_ipv6_cleanup_preserves_ipv4_and_removes_empty_v6_only(self):
+        # Case A: legacy shared chain has BOTH IPv4 ARP rule and legacy IPv6 rules.
+        eb_sim = _StatefulEbtablesSimulator()
+        eb_sim.chains["PREROUTING"] = [
+            "-i vnic5.0 -j eip-vnic5.0-gw",
+            "-p ARP -i vnic5.0 -j eip-vnic5.0-gw",
+            "-i vnic5.0 -j vnic5.0-gw",
+        ]
+        eb_sim.chains["eip-vnic5.0-gw"] = [
+            "-p ARP --arp-op Request --arp-ip-dst 10.0.0.1 -j arpreply --arpreply-mac 0:c:29:aa:bb:cc",
+            "-p IPv6 -j dnat --to-destination 0:c:29:aa:bb:cc",
+        ]
+        eb_sim.chains["vnic5.0-gw"] = [
+            "-p IPv6 -j dnat --to-destination 0:c:29:aa:bb:cc",
+        ]
+        eip6 = _make_eip(ipVersion=6)
+        eip6.nicName = "vnic5.0"
+        eip6.eipUuid = "bbbb222222222"
+
+        def migrate_with_v4(eip_cmd):
+            self._apply(eip_cmd, eip6)
+            self.assertIn("eip-vnic5.0-gw6", eb_sim.chains)
+            self.assertIn("-p IPv6 -i vnic5.0 -j eip-vnic5.0-gw6", eb_sim.chains["PREROUTING"])
+            self.assertNotIn("-i vnic5.0 -j eip-vnic5.0-gw", eb_sim.chains["PREROUTING"])
+            self.assertNotIn("-i vnic5.0 -j vnic5.0-gw", eb_sim.chains["PREROUTING"])
+            self.assertNotIn("vnic5.0-gw", eb_sim.chains)
+            self.assertIn("-p ARP -i vnic5.0 -j eip-vnic5.0-gw", eb_sim.chains["PREROUTING"])
+            self.assertIn("eip-vnic5.0-gw", eb_sim.chains)
+            self.assertFalse(any("-p IPv6" in r for r in eb_sim.chains["eip-vnic5.0-gw"]))
+            self.assertTrue(any("arpreply" in r for r in eb_sim.chains["eip-vnic5.0-gw"]))
+
+        self._run_with_sim(eb_sim, migrate_with_v4)
+
+        # Case B: legacy shared chain had ONLY IPv6 rules -> deleting IPv6 removes empty legacy chain too.
+        eb_sim_v6_only = _StatefulEbtablesSimulator()
+        eb_sim_v6_only.chains["PREROUTING"] = ["-i vnic5.0 -j eip-vnic5.0-gw"]
+        eb_sim_v6_only.chains["eip-vnic5.0-gw"] = [
+            "-p IPv6 -j dnat --to-destination 0:c:29:aa:bb:cc",
+        ]
+
+        def delete_legacy_v6_only(eip_cmd):
+            self._delete(eip_cmd, eip6)
+            self.assertNotIn("eip-vnic5.0-gw", eb_sim_v6_only.chains)
+            self.assertNotIn("-i vnic5.0 -j eip-vnic5.0-gw", eb_sim_v6_only.chains["PREROUTING"])
+
+        self._run_with_sim(eb_sim_v6_only, delete_legacy_v6_only)
+
+    def test_is_eip_present_distinguishes_ipv6_chain_from_ipv4_chain(self):
+        eip6 = _make_eip(ipVersion=6)
+        eip6.nicName = "vnic5.0"
+        eip6.eipUuid = "bbbb222222222"
+        eip_cmd = Eip()
+        ns_name = eip_cmd.generate_namespace_name(eip6.publicBridgeName, eip6.vip)
+        v4_only_nat = (
+            "Bridge table: nat\n\n"
+            "Bridge chain: PREROUTING, entries: 1, policy: ACCEPT\n"
+            "-p ARP -i vnic5.0 -j eip-vnic5.0-gw\n"
+            "Bridge chain: eip-vnic5.0-gw, entries: 1, policy: ACCEPT\n"
+            "-p ARP --arp-op Request --arp-ip-dst 10.0.0.1 -j arpreply --arpreply-mac 0:c:29:aa:bb:cc\n"
+        )
+        dual_nat = (
+            v4_only_nat
+            + "Bridge chain: PREROUTING, entries: 1, policy: ACCEPT\n"
+            + "-p IPv6 -i vnic5.0 -j eip-vnic5.0-gw6\n"
+            + "Bridge chain: eip-vnic5.0-gw6, entries: 1, policy: ACCEPT\n"
+            + "-p IPv6 -j dnat --to-destination 0:c:29:aa:bb:cc\n"
+        )
+        with mock.patch("kvmagent.plugins.deip.iproute") as mock_iproute, \
+                mock.patch("kvmagent.plugins.deip.linux") as mock_linux:
+            mock_linux.is_network_device_up.return_value = True
+            mock_iproute.IpNetnsShell.return_value.get_mac.return_value = "aa:bb:cc:dd:ee:ff"
+            self.assertFalse(eip_cmd.is_eip_present(eip6, {ns_name}, v4_only_nat))
+            self.assertTrue(eip_cmd.is_eip_present(eip6, {ns_name}, dual_nat))
 
 
 if __name__ == "__main__":
