@@ -1913,3 +1913,191 @@ class TestMevocoRefreshDnsmasqThreshold:
 
         assert restarted == [("ns-threshold", "/tmp/conf")]
         assert plugin.signal_count == 0
+
+
+@pytest.fixture
+def real_netns_shell():
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[3] / 'zstacklib' / 'zstacklib' / 'utils' / 'iproute.py'
+    spec = importlib.util.spec_from_file_location('_dhcp_real_iproute', str(path))
+    module = importlib.util.module_from_spec(spec)
+    with patch.dict(sys.modules, {name: MagicMock() for name in
+                                 ['pyroute2', 'pyroute2.netns', 'pyroute2.netlink', 'pyroute2.netlink.rtnl']}):
+        spec.loader.exec_module(module)
+    return module
+
+
+_NETNS_DHCP_ADDRESS = '''9: inner0@if10: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 state UP
+    link/ether fa:16:3e:00:00:01 brd ff:ff:ff:ff:ff:ff
+    inet 192.168.100.10/24 scope global inner0
+    inet 169.254.169.254/32 scope global inner0
+'''
+
+
+def test_disable_dhcp_query_failure_preserves_fdb(real_netns_shell):
+    env = mevoco.DhcpNameSpaceEnv('br_eth0', 'ns0')
+    env.infra_env.near_vm_inner = 'inner0'
+    env._del_bridge_fdb_entry_for_inner_dev = MagicMock()
+    env._del_dhcp4_tables = MagicMock()
+    env._del_dhcp6_tables = MagicMock()
+    env._del_dhcp_ip_if_exist = MagicMock()
+    with patch.object(mevoco.iproute, 'IpNetnsShell', real_netns_shell.IpNetnsShell), \
+         patch.object(real_netns_shell.shell, 'call', side_effect=RuntimeError('address query failed')):
+        with pytest.raises(RuntimeError, match='address query failed'):
+            env.disable()
+    env._del_bridge_fdb_entry_for_inner_dev.assert_not_called()
+    env._del_dhcp_ip_if_exist.assert_not_called()
+
+
+@pytest.mark.parametrize('failure,expected_error,expected_queries', [
+    ('initial-query', 'address query failed', 1),
+    ('delete-query', 'address query failed', 4),
+    ('delete-command', 'address delete failed', 4),
+    ('readback', 'address query failed', 5),
+    ('still-present', 'DHCPv4 address is still present on inner0 in namespace ns0', 5),
+])
+def test_dhcp_removal_failure_does_not_restore_userdata_route(real_netns_shell, failure, expected_error, expected_queries):
+    env = mevoco.DhcpNameSpaceEnv('br_eth0', 'ns0')
+    env.infra_env.near_vm_inner = 'inner0'
+    queries = [0]
+    deleted = [False]
+
+    def execute(command):
+        if command.endswith(' ip address'):
+            queries[0] += 1
+            if (failure == 'initial-query' and queries[0] == 1 or
+                    failure == 'delete-query' and queries[0] == 4 or
+                    failure == 'readback' and queries[0] == 5):
+                raise RuntimeError('address query failed')
+            if deleted[0]:
+                return _NETNS_DHCP_ADDRESS.replace('    inet 192.168.100.10/24 scope global inner0\n', '')
+            return _NETNS_DHCP_ADDRESS
+        if ' address del ' in command:
+            if failure == 'delete-command':
+                raise RuntimeError('address delete failed')
+            deleted[0] = failure != 'still-present'
+            return ''
+        raise AssertionError('unexpected command: %s' % command)
+
+    with patch.object(mevoco.iproute, 'IpNetnsShell', real_netns_shell.IpNetnsShell), \
+         patch.object(real_netns_shell.shell, 'call', side_effect=execute), \
+         patch.object(mevoco, '_sync_userdata_default_route') as sync_route:
+        with pytest.raises(RuntimeError, match=expected_error):
+            env._del_dhcp_ip_if_exist()
+        assert queries[0] == expected_queries
+        sync_route.assert_not_called()
+
+
+def test_netns_optional_strict_query_preserves_legacy_behavior(real_netns_shell):
+    with patch.object(real_netns_shell.shell, 'call', side_effect=RuntimeError('query failed')):
+        assert real_netns_shell.IpNetnsShell('ns0').get_links() == []
+        with pytest.raises(RuntimeError, match='query failed'):
+            real_netns_shell.IpNetnsShell('ns0', raise_on_error=True).get_links()
+
+
+def test_dhcp_removal_restores_route_after_verified_deletion(real_netns_shell):
+    env = mevoco.DhcpNameSpaceEnv('br_eth0', 'ns0')
+    env.infra_env.near_vm_inner = 'inner0'
+    deleted = [False]
+    commands = []
+
+    def execute(command):
+        commands.append(command)
+        if command.endswith(' ip address'):
+            if deleted[0]:
+                return _NETNS_DHCP_ADDRESS.replace('    inet 192.168.100.10/24 scope global inner0\n', '')
+            return _NETNS_DHCP_ADDRESS
+        assert command == 'ip netns exec ns0 ip address del 192.168.100.10/24 dev inner0'
+        deleted[0] = True
+        return ''
+
+    with patch.object(mevoco.iproute, 'IpNetnsShell', real_netns_shell.IpNetnsShell), \
+         patch.object(real_netns_shell.shell, 'call', side_effect=execute), \
+         patch.object(mevoco, '_sync_userdata_default_route') as sync_route:
+        env._del_dhcp_ip_if_exist()
+        assert deleted[0]
+        assert commands[-1] == 'ip netns exec ns0 ip address'
+        sync_route.assert_called_once_with('ns0', 'inner0', has_dhcp4=False)
+        sync_route.reset_mock()
+        env._del_dhcp_ip_if_exist()
+        sync_route.assert_called_once_with('ns0', 'inner0', has_dhcp4=False)
+        assert sum(' address del ' in c for c in commands) == 1
+
+
+def test_disable_serializes_route_restore_with_namespace_prepare():
+    import importlib.util
+    import threading
+    from pathlib import Path
+
+    lock_path = Path(__file__).resolve().parents[3] / 'zstacklib/zstacklib/utils/lock.py'
+    spec = importlib.util.spec_from_file_location('zstacklib.utils._dhcp_test_lock', str(lock_path))
+    real_lock = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(real_lock)
+    module_spec = importlib.util.spec_from_file_location('_mevoco_lock_test', mevoco.__file__)
+    module = importlib.util.module_from_spec(module_spec)
+    with patch.object(mevoco.lock, 'lock', real_lock.lock), \
+         patch.object(mevoco.lock, 'file_lock', real_lock.file_lock):
+        module_spec.loader.exec_module(module)
+
+    env = module.DhcpNameSpaceEnv('br_eth0', 'ns0')
+    env.infra_env.near_vm_inner = 'inner0'
+    env.infra_env.prepare_dev = MagicMock()
+    env._del_dhcp4_tables = MagicMock()
+    env._del_dhcp6_tables = MagicMock()
+    queried = threading.Event()
+    resume = threading.Event()
+    prepare_attempted = threading.Event()
+    prepared = threading.Event()
+    state = {'dhcp': False, 'route': False}
+    errors = []
+
+    def sync_route(ns, dev, has_dhcp4):
+        if not has_dhcp4:
+            queried.set()
+            assert resume.wait(2)
+        state['route'] = not has_dhcp4
+
+    def prepare_config():
+        state['dhcp'] = True
+        sync_route('ns0', 'inner0', True)
+        prepared.set()
+
+    env._prepare_ip_iptables_ebtables_fdb = prepare_config
+    original_enter = real_lock.NamedLock.__enter__
+
+    def enter(lock):
+        if threading.current_thread().name == 'dhcp-prepare' and lock.name == '/run/xtables.lock':
+            prepare_attempted.set()
+        return original_enter(lock)
+
+    def run(action):
+        try:
+            action()
+        except BaseException as exc:
+            errors.append(exc)
+
+    netns = MagicMock()
+    netns.get_ip_address.return_value = None
+    netns.get_userdata_ip_address.return_value = '169.254.169.254/32'
+    with patch.object(module.iproute, 'IpNetnsShell', return_value=netns), \
+         patch.object(module, '_sync_userdata_default_route', side_effect=sync_route), \
+         patch.object(real_lock, 'FileLock'), \
+         patch.object(real_lock.NamedLock, '__enter__', enter):
+        disable = threading.Thread(target=run, args=(env.disable,))
+        prepare = threading.Thread(target=run, args=(env.prepare,), name='dhcp-prepare')
+        disable.start()
+        try:
+            assert queried.wait(2)
+            prepare.start()
+            assert prepare_attempted.wait(2)
+            assert not prepared.wait(0.1)
+        finally:
+            resume.set()
+            disable.join(2)
+            if prepare.ident is not None:
+                prepare.join(2)
+        assert not disable.is_alive() and not prepare.is_alive()
+        assert not errors
+        assert state == {'dhcp': True, 'route': False}

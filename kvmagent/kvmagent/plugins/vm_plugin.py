@@ -15,6 +15,7 @@ import subprocess
 import traceback
 import xml.etree.ElementTree as etree
 import re
+import shlex
 import platform
 from time import sleep
 
@@ -607,6 +608,8 @@ class VmNicInfo():
     def __init__(self):
         self.deviceAddress = DeviceAddress()
         self.macAddress = None
+        self.nicInternalName = None
+        self.pciDeviceAddress = None
 
 class DeviceAddress():
     def __init__(self):
@@ -1805,7 +1808,7 @@ def is_new_ovmf_supported():
 def is_high_mmio_size_supported():
     return NumericVersion(qemu_img.get_release_version()) >= NumericVersion("6.2.0-902")
 
-def is_memory_backing_supported(memfd=False):
+def is_memory_backing_supported(memfd=False, qemu_version=None):
     libvirt_version = NumericVersion(get_libvirt_version())
     if memfd:
         return libvirt_version >= NumericVersion("4.10.0")
@@ -1813,7 +1816,8 @@ def is_memory_backing_supported(memfd=False):
     # QEMU removed -numa node,mem= in 5.1.0. The memoryBacking/access
     # element has been supported by libvirt since 1.0.6 and makes libvirt
     # generate the compatible memdev form instead.
-    return (NumericVersion(qemu.get_version()) >= NumericVersion("5.1.0") and
+    version = qemu.get_version() if qemu_version is None else qemu_version
+    return (NumericVersion(version) >= NumericVersion("5.1.0") and
             libvirt_version >= NumericVersion("1.0.6"))
 
 
@@ -3501,6 +3505,7 @@ class Vm(object):
         self.state = None
         self.vm_user_defined_xml_hook = False
         self.vm_xml_hook_script = None
+        self._auto_numa_memory_backing = False
 
     def dump_vm_xml_to_log(self):
         logger.debug('dump vm xml:\n%s' % self.domain_xml)
@@ -3731,6 +3736,7 @@ class Vm(object):
         self._patch_disk_xml_order_from_saved_image(path)
         self._patch_xml_from_saved_image(path)
         self._remove_legacy_virtio_blk_discard_if_absent_in_saved_image(path)
+        self._patch_legacy_numa_memory_backing_from_saved_image(path)
 
         tree = etree.fromstring(self.domain_xml)
         vcpu = tree.find('vcpu')
@@ -3812,6 +3818,42 @@ class Vm(object):
             if not list(commandline):
                 root.remove(commandline)
         self.domain_xml = etree.tostring(root, encoding='unicode')
+
+    def _patch_legacy_numa_memory_backing_from_saved_image(self, path):
+        if HOST_ARCH != 'x86_64':
+            return
+        root = etree.fromstring(self.domain_xml)
+        backing = root.find('memoryBacking')
+        if root.find('./cpu/numa/cell') is None or backing is None:
+            return
+        access = backing.find('access')
+        if access is None or access.get('mode') != 'private' or any(
+                backing.find(tag) is not None for tag in ('source', 'hugepages')):
+            return
+
+        @LibvirtAutoReconnect
+        def get_saved_xml(conn):
+            return conn.saveImageGetXMLDesc(path, 0)
+
+        saved = etree.fromstring(get_saved_xml())
+        saved_source = saved.find('./memoryBacking/source')
+        if saved_source is not None and saved_source.get('type') != 'anonymous':
+            return
+        if any(saved.find('./memoryBacking/' + tag) is not None
+               for tag in ('access', 'hugepages')):
+            return
+        if not getattr(self, '_auto_numa_memory_backing', False):
+            raise kvmagent.KvmError('memory snapshot is incompatible with explicitly configured private memory backing; '
+                                   'restore the original memory configuration before retrying')
+        # Keep the saved RAM block names, including pc.ram on legacy machines.
+        backing.remove(access)
+        if saved_source is not None:
+            # libvirt also checks the source type against the saved XML.
+            backing.append(saved_source)
+        if len(backing) == 0:
+            root.remove(backing)
+        self.domain_xml = etree.tostring(root, encoding='unicode')
+        self._auto_numa_memory_backing = False
 
     @staticmethod
     def _disk_matches(current, saved):
@@ -4024,6 +4066,24 @@ class Vm(object):
             current_tree.insert(index, saved_current_memory)
         return True
 
+    @staticmethod
+    def _ensure_x86_numa_memory_backing(root):
+        cells = root.findall('./cpu/numa/cell')
+        if HOST_ARCH != 'x86_64' or not cells or any(cell.get('memAccess') for cell in cells):
+            return False
+        backing = root.find('memoryBacking')
+        if backing is not None and any(backing.find(tag) is not None
+                                       for tag in ('hugepages', 'source', 'access')):
+            return False
+        emulator = root.findtext('./devices/emulator')
+        version = qemu.get_version_from_exe_file2(shlex.quote(emulator), error_out=True) if emulator else None
+        if not is_memory_backing_supported(qemu_version=version):
+            return False
+        if backing is None:
+            backing = e(root, 'memoryBacking')
+        e(backing, 'access', attrib={'mode': 'private'})
+        return True
+
     def start(self, timeout=60, create_paused=False, wait_console=True):
         # TODO: 1. enable hair_pin mode
         logger.debug('creating vm:\n%s' % self.domain_xml)
@@ -4033,6 +4093,11 @@ class Vm(object):
             xml_hook_script_from_user = self.get_user_defined_xml_hook()
             if xml_hook_script_from_user is not None:
                 self.domain_xml = xmlhook.get_modified_xml_from_hook(xml_hook_script_from_user, self.domain_xml)
+                self._auto_numa_memory_backing = False
+            root = etree.fromstring(self.domain_xml)
+            if self._ensure_x86_numa_memory_backing(root):
+                self.domain_xml = etree.tostring(root, encoding='unicode')
+                self._auto_numa_memory_backing = True
             return conn.defineXML(self.domain_xml)
 
         flag = (0, libvirt.VIR_DOMAIN_START_PAUSED)[create_paused]
@@ -6329,6 +6394,55 @@ class Vm(object):
             logger.warning('failed to online CPUs via QGA for vm[uuid:%s]: %s' % (self.uuid, str(e)))
 
     @staticmethod
+    def _iface_matches_nic(iface, nic):
+        if iface is None or nic is None:
+            return False
+        nic_pci_addr = getattr(nic, 'pciDeviceAddress', None)
+        if nic_pci_addr and getattr(nic, 'srcPath', None) is None:
+            if getattr(iface, 'type_', None) != 'hostdev':
+                return False
+            if not hasattr(iface, 'mac') or iface.mac.address_ != nic.mac:
+                return False
+            if hasattr(iface, 'source') and hasattr(iface.source, 'address'):
+                addr_dict = {
+                    'domain': getattr(iface.source.address, 'domain_', '0x0000'),
+                    'bus': getattr(iface.source.address, 'bus_', '0x00'),
+                    'slot': getattr(iface.source.address, 'slot_', '0x00'),
+                    'function': getattr(iface.source.address, 'function_', '0x0')
+                }
+                expected = normalize_pci_address(nic_pci_addr)
+                attached = normalize_pci_attrs(addr_dict)
+                return bool(expected and attached and attached == expected)
+            return False
+        nic_internal_name = getattr(nic, 'nicInternalName', None)
+        if nic_internal_name:
+            if hasattr(iface, 'target') and hasattr(iface.target, 'dev_') and iface.target.dev_:
+                return iface.target.dev_ == nic_internal_name
+            if '.' in nic_internal_name and hasattr(iface, 'alias') and hasattr(iface.alias, 'name_') and iface.alias.name_:
+                expected_alias = 'net%s' % nic_internal_name.split('.', 1)[1]
+                return iface.alias.name_ == expected_alias
+        return hasattr(iface, 'mac') and iface.mac.address_ == nic.mac
+
+    def _find_domain_interface(self, nic):
+        for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+            if Vm._iface_matches_nic(iface, nic):
+                return iface
+        return None
+
+    @staticmethod
+    def _fill_nic_pci_from_iface(nic, iface):
+        if nic is None or iface is None or getattr(nic, 'pci', None) is not None:
+            return
+        if hasattr(iface, 'address') and iface.address is not None:
+            pci_obj = jsonobject.JsonObject()
+            pci_obj.type = getattr(iface.address, 'type_', 'pci')
+            pci_obj.domain = getattr(iface.address, 'domain_', '0x0000')
+            pci_obj.bus = getattr(iface.address, 'bus_', '0x00')
+            pci_obj.slot = getattr(iface.address, 'slot_', '0x00')
+            pci_obj.function = getattr(iface.address, 'function_', '0x0')
+            nic.pci = pci_obj
+
+    @staticmethod
     def _collect_extra_pci_addresses(extra):
         if not extra:
             return []
@@ -6380,19 +6494,16 @@ class Vm(object):
         def check_device(_):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                if iface.mac.address_ != cmd.nic.mac:
+                if not Vm._iface_matches_nic(iface, cmd.nic):
                     continue
-
-                if iface.mac.address_ == cmd.nic.mac:
-                    # vf nic doesn't have internal name
-                    if cmd.nic.pciDeviceAddress is not None:
-                        return True
-                    if cmd.nic.type in ovs.OvsDpdkSupportVnic:
-                        return True
-                    if cmd.nic.type == "dpdkvhostuserclient":
-                        return True
-                    else:
-                        return linux.is_network_device_existing(cmd.nic.nicInternalName)
+                # vf nic doesn't have internal name
+                if cmd.nic.pciDeviceAddress is not None:
+                    return True
+                if cmd.nic.type in ovs.OvsDpdkSupportVnic:
+                    return True
+                if cmd.nic.type == "dpdkvhostuserclient":
+                    return True
+                return linux.is_network_device_existing(cmd.nic.nicInternalName)
 
             return False
 
@@ -6536,10 +6647,15 @@ class Vm(object):
 
     @linux.retry(times=3, sleep_time=5)
     def _detach_nic(self, cmd):
+        hostdev = bool(getattr(cmd.nic, 'pciDeviceAddress', None)) and getattr(cmd.nic, 'srcPath', None) is None
+        vf_addresses = [cmd.nic.pciDeviceAddress] + Vm._collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None)) if hostdev else []
+
         def check_device(_):
             self.refresh()
+            if hostdev:
+                return all(find_vf_device_xml_by_pci(addr) is None for addr in vf_addresses)
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                if iface.mac.address_ == cmd.nic.mac:
+                if Vm._iface_matches_nic(iface, cmd.nic):
                     return False
 
             return not iproute.is_device_ifname_exists(cmd.nic.nicInternalName)
@@ -6549,6 +6665,11 @@ class Vm(object):
                 raise Exception('NIC device is still attached after 10 seconds. Please check virtio driver or stop VM and detach again.')
 
         def find_vf_device_xml():
+            if hostdev:
+                return find_vf_device_xml_by_pci(cmd.nic.pciDeviceAddress)
+            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
+                if iface.type_ == 'hostdev' and Vm._iface_matches_nic(iface, cmd.nic):
+                    return iface.dump()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
                 if iface.type_ == 'hostdev' and iface.mac.address_ == cmd.nic.mac:
                     return iface.dump()
@@ -6597,7 +6718,7 @@ class Vm(object):
         try:
             # Detach extra PCI devices first for bond mode (VF HA)
             extra_pci_list = _collect_extra_pci_addresses(getattr(cmd.nic, 'extraPciDeviceAddresses', None))
-            if extra_pci_list and cmd.nic.type == 'VF' and cmd.nic.pciDeviceAddress is not None:
+            if extra_pci_list and cmd.nic.type == 'VF' and cmd.nic.pciDeviceAddress:
                 for extra_index, extra_addr in enumerate(extra_pci_list):
                     if not extra_addr or extra_addr == cmd.nic.pciDeviceAddress:
                         continue
@@ -6633,12 +6754,16 @@ class Vm(object):
             if cmd.nic.type == 'VF':
                 xml = find_vf_device_xml()
             else:
+                self.refresh()
+                matched_iface = self._find_domain_interface(cmd.nic)
+                Vm._fill_nic_pci_from_iface(cmd.nic, matched_iface)
                 xml = self._interface_cmd_to_xml(cmd, action='Detach')
-            logger.debug('detaching nic:\n%s' % xml)
-            if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
-                self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
-            else:
-                self.domain.detachDevice(xml)
+            if xml is not None:
+                logger.debug('detaching nic:\n%s' % xml)
+                if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
+                    self.domain.detachDeviceFlags(xml, libvirt.VIR_DOMAIN_AFFECT_LIVE)
+                else:
+                    self.domain.detachDevice(xml)
 
             wait_for_detach()
         except libvirt.libvirtError as e:
@@ -6664,7 +6789,7 @@ class Vm(object):
     def check_device_exists(self, cmd):
         self.refresh()
         for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-            if iface.mac.address_ == cmd.nic.mac:
+            if Vm._iface_matches_nic(iface, cmd.nic):
                 return False
         return not iproute.is_device_ifname_exists(cmd.nic.nicInternalName)
 
@@ -6709,17 +6834,14 @@ class Vm(object):
         def check_device(nic):
             self.refresh()
             for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                if iface.mac.address_ == nic.mac:
+                if Vm._iface_matches_nic(iface, nic):
                     return linux.is_network_device_existing(nic.nicInternalName)
 
             return False
 
         def get_interface(nic):
             self.refresh()
-            for iface in self.domain_xmlobject.devices.get_child_node_as_list('interface'):
-                if iface.mac.address_ == nic.mac:
-                    return iface
-            return None
+            return self._find_domain_interface(nic)
 
         def mtu_addon(nic_xml_object, iface):
             if iface is None or iface.hasattr("mtu") is False:
@@ -6735,17 +6857,18 @@ class Vm(object):
 
             e(nic_xml_object, 'mtu', None, attrib={'size': '%d' % int(iface.mtu.size_)})
 
-        def addon(nic_xml_object, nic):
+        def addon(nic_xml_object, nic, iface):
             if cmd.addons and cmd.addons['NicQos'] and cmd.addons['NicQos'][nic.uuid]:
                 qos = cmd.addons['NicQos'][nic.uuid]
                 Vm._add_qos_to_interface(nic_xml_object, qos)
 
-            iface = get_interface(nic)
             mtu_addon(nic_xml_object, iface)
 
         for nic in cmd.nics:
+            matched_iface = get_interface(nic)
+            Vm._fill_nic_pci_from_iface(nic, matched_iface)
             interface = Vm._build_interface_xml(nic, action='Update')
-            addon(interface, nic)
+            addon(interface, nic, matched_iface)
             xml = etree.tostring(interface, encoding="unicode")
             logger.debug('updating nic:\n%s' % xml)
             if self.state == self.VM_STATE_RUNNING or self.state == self.VM_STATE_PAUSED:
@@ -8720,10 +8843,14 @@ class Vm(object):
 
         if cmd.addons["userDefinedXml"] is not None:
             vm.domain_xml = base64.b64decode(cmd.addons["userDefinedXml"]).decode()
-            vm.domain_xmlobject = xmlobject.loads(vm.domain_xml)
         else:
             vm.domain_xml = xml
-            vm.domain_xmlobject = xmlobject.loads(xml)
+        if not vm.vm_user_defined_xml_hook or getattr(cmd, 'memorySnapshotPath', None):
+            root = etree.fromstring(vm.domain_xml)
+            vm._auto_numa_memory_backing = vm._ensure_x86_numa_memory_backing(root)
+            if vm._auto_numa_memory_backing:
+                vm.domain_xml = etree.tostring(root, encoding='unicode')
+        vm.domain_xmlobject = xmlobject.loads(vm.domain_xml)
         return vm
 
     @staticmethod
@@ -9361,10 +9488,11 @@ class VmPlugin(kvmagent.KvmAgent):
         vm.attach_nic(cmd)
 
         for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):
-            if iface.mac.address_ != cmd.nic.mac:
+            if not Vm._iface_matches_nic(iface, cmd.nic):
                 continue
 
             virtualDeviceInfo = VirtualDeviceInfo()
+            virtualDeviceInfo.resourceUuid = getattr(cmd.nic, 'uuid', None)
             virtualDeviceInfo.deviceAddress.bus = iface.address.bus_
             virtualDeviceInfo.deviceAddress.function = iface.address.function_
             virtualDeviceInfo.deviceAddress.type = iface.address.type_
@@ -9512,6 +9640,16 @@ class VmPlugin(kvmagent.KvmAgent):
             vmNicInfo.deviceAddress.domain = iface.address.domain_
             vmNicInfo.deviceAddress.slot = iface.address.slot_
             vmNicInfo.macAddress = iface.mac.address_
+            if hasattr(iface, 'target') and hasattr(iface.target, 'dev_') and iface.target.dev_:
+                vmNicInfo.nicInternalName = iface.target.dev_
+            if getattr(iface, 'type_', None) == 'hostdev' and hasattr(iface, 'source') and hasattr(iface.source, 'address'):
+                addr_dict = {
+                    'domain': getattr(iface.source.address, 'domain_', '0x0000'),
+                    'bus': getattr(iface.source.address, 'bus_', '0x00'),
+                    'slot': getattr(iface.source.address, 'slot_', '0x00'),
+                    'function': getattr(iface.source.address, 'function_', '0x0')
+                }
+                vmNicInfo.pciDeviceAddress = normalize_pci_attrs(addr_dict)
             nicInfos.append(vmNicInfo)
 
         for disk in vm.domain_xmlobject.devices.get_child_node_as_list('disk'):
