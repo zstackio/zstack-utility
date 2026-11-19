@@ -3792,6 +3792,7 @@ class TestVmStartCmdXmlBuild:
 
         orig_tostring = vm_plugin.etree.tostring
         with patch('os.path.exists', return_value=True), \
+                patch.object(vm_plugin.kvmagent, 'get_host_os_type', return_value='redhat'), \
                 patch.object(vm_plugin, 'parse_url', side_effect=_real_parse_url), \
                 patch.object(vm_plugin, 'xrange', range, create=True), \
                 patch.object(vm_plugin, 'range', self._RangeCompat), \
@@ -4147,16 +4148,14 @@ class TestVmStartCmdXmlBuild:
             self._build_start_vm_xml(cmd)
         return prepare.call_args_list
 
-    @pytest.mark.parametrize('yum_release, template', [
-        ('h84r', '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd'),
-        ('ky10sp3', '/usr/share/edk2-20220126/ovmf/OVMF_VARS.secboot.fd'),
-    ])
-    def test_uefi_secure_boot_prepares_nvram_from_secboot_template(self, yum_release, template):
+    @pytest.mark.parametrize('yum_release', ['h84r', 'ky10sp3', 'ky10sp3.2403', 'alinux4'])
+    def test_uefi_secure_boot_prepares_nvram_from_ovmf_template(self, yum_release):
         cmd = self._build_start_cmd()
         cmd.secureBoot = True
 
         assert self._prepare_secure_boot_nvram_calls(cmd, yum_release) == [
-            call('/var/lib/libvirt/qemu/nvram/vm-uuid-host-files/vm-uuid.fd', template, True)
+            call('/var/lib/libvirt/qemu/nvram/vm-uuid-host-files/vm-uuid.fd',
+                 '/usr/share/edk2/ovmf/OVMF_VARS.fd', True)
         ]
 
     def test_secure_boot_nvram_is_not_prepared_when_restoring_memory_snapshot(self):
@@ -4173,11 +4172,18 @@ class TestVmStartCmdXmlBuild:
 
         assert self._prepare_secure_boot_nvram_calls(cmd) == []
 
-    def test_secure_boot_nvram_is_not_prepared_without_nvram_registration(self):
+    @pytest.mark.parametrize('yum_release', ['h84r', 'ky10sp3', 'ky10sp3.2403', 'alinux4'])
+    def test_plain_uefi_uses_legacy_firmware(self, yum_release):
         cmd = self._build_start_cmd()
         cmd.secureBoot = False
 
-        assert self._prepare_secure_boot_nvram_calls(cmd) == []
+        with patch.object(vm_plugin.kvmagent, 'get_host_yum_release', return_value=yum_release), \
+                patch.object(vm_plugin.nvram_secure_boot, 'prepare_secure_boot_nvram') as prepare:
+            root = ET.fromstring(self._build_start_vm_xml(cmd))
+
+        assert root.findtext('os/loader') == '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd'
+        assert root.find('os/nvram').get('template') == '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'
+        prepare.assert_not_called()
 
     def test_tpm_without_secure_boot_registers_nvram_with_secure_boot_off(self):
         cmd = self._build_start_cmd()
@@ -4186,7 +4192,7 @@ class TestVmStartCmdXmlBuild:
 
         assert self._prepare_secure_boot_nvram_calls(cmd) == [
             call('/var/lib/libvirt/qemu/nvram/vm-uuid-host-files/vm-uuid.fd',
-                 '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd', False)
+                 '/usr/share/edk2/ovmf/OVMF_VARS.fd', False)
         ]
 
     @pytest.mark.parametrize('secure_boot, boot_mode, video_type, expected', [

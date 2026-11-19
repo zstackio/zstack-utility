@@ -7611,24 +7611,18 @@ class Vm(object):
             nvram_fd_path = nvram.build_nvram_fd_path(cmd.vmInstanceUuid, need_register_nvram)
             if host_arch == "x86_64" and cmd.bootMode == "UEFI":
                 e(os, 'type', 'hvm', attrib={'machine': machine_type})
+                if need_register_nvram:
+                    loader = '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd'
+                    nvram_template = '/usr/share/edk2/ovmf/OVMF_VARS.fd'
+                else:
+                    loader = '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd'
+                    nvram_template = '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'
+                e(os, 'loader', loader, attrib=loader_attribute)
                 if yum_release in ("ky10sp3", "ky10sp3.2403"):
-                    if need_register_nvram:
-                        nvram_template = '/usr/share/edk2-20220126/ovmf/OVMF_VARS.secboot.fd'
-                        e(os, 'loader', '/usr/share/edk2-20220126/ovmf/OVMF_CODE.secboot.fd', attrib=loader_attribute)
-                        e(os, 'nvram', nvram_fd_path, attrib={'template': nvram_template})
-                    else:
-                        e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.fd', attrib=loader_attribute)
-                        e(os, 'nvram', nvram_fd_path, attrib={'template': '/usr/share/edk2/ovmf/OVMF_VARS.fd'})
-                else: # h84r ...
-                    if need_register_nvram:
-                        nvram_template = '/usr/share/edk2/ovmf/OVMF_VARS.secboot.fd'
-                        e(os, 'loader', '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd', attrib=loader_attribute)
-                        element = e(os, 'nvram', None, attrib={'template': nvram_template})
-                        e(element, 'source', nvram_fd_path)
-                    else:
-                        e(os, 'loader', '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd', attrib=loader_attribute)
-                        element = e(os, 'nvram', None, attrib={'template': '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'})
-                        e(element, 'source', nvram_fd_path)
+                    e(os, 'nvram', nvram_fd_path, attrib={'template': nvram_template})
+                else:
+                    element = e(os, 'nvram', None, attrib={'template': nvram_template})
+                    e(element, 'source', nvram_fd_path)
                 if need_register_nvram and not cmd.memorySnapshotPath:
                     nvram_secure_boot.prepare_secure_boot_nvram(nvram_fd_path, nvram_template, bool(cmd.secureBoot))
             elif host_arch == "x86_64" and cmd.bootMode == "UEFI_WITH_CSM":
