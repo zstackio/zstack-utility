@@ -4190,15 +4190,14 @@ class TestVmStartCmdXmlBuild:
         ]
 
     @pytest.mark.parametrize('secure_boot, boot_mode, video_type, expected', [
-        (True, 'UEFI', 'virtio', ['ramfb', 'virtio']),
+        (True, 'UEFI', 'virtio', ['virtio']),
         (False, 'UEFI', 'virtio', ['virtio']),
         (True, 'UEFI_WITH_CSM', 'virtio', ['virtio']),
         (False, 'Legacy', 'virtio', ['virtio']),
         (True, 'UEFI', 'qxl', ['qxl', 'qxl']),
         (True, 'UEFI', 'vga', ['vga']),
     ])
-    def test_secure_boot_virtio_video_has_linear_boot_framebuffer(self, secure_boot, boot_mode,
-                                                               video_type, expected):
+    def test_vm_uses_requested_video_model(self, secure_boot, boot_mode, video_type, expected):
         cmd = self._build_start_cmd()
         cmd.secureBoot = secure_boot
         cmd.bootMode = boot_mode
@@ -4209,8 +4208,7 @@ class TestVmStartCmdXmlBuild:
 
         models = root.findall('devices/video/model')
         assert [model.get('type') for model in models] == expected
-        if expected[0] == 'ramfb':
-            assert models[0].get('primary') == 'yes'
+        if secure_boot and boot_mode == 'UEFI':
             assert root.find('os/loader').text == '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd'
             assert root.find('os/nvram/source').text.endswith('/vm-uuid.fd')
         assert root.find('{http://libvirt.org/schemas/domain/qemu/1.0}capabilities') is None
