@@ -128,6 +128,8 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
                 shell.call('tc filter replace dev %s parent 1: protocol all u32 match u8 0 0 action mirred egress mirror dev %s' % (device_name, mirror_device_name))
 
     def _clear_mirror_src_config(self, device_name, mirror_device_name, direction):
+        if not device_name:
+            return
         shell_cmd = shell.ShellCmd("tc qdisc show dev %s |grep 'qdisc ingress'" % device_name)
         shell_cmd(False)
         if shell_cmd.return_code == 0:
@@ -147,7 +149,8 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         shell.call("brctl delif %s %s" % (bridge_name, device_name), False)
 
     def _clear_mirror_dst_config(self, bridge_name, device_name,mirror_device_name):
-        iproute.set_link_attribute(device_name, master=bridge_name)
+        if device_name and bridge_name and iproute.is_device_ifname_exists(device_name):
+            iproute.set_link_attribute(device_name, master=bridge_name)
         '''
          ip link add br_monitor type bridge
         ip link set dev br_monitor up
