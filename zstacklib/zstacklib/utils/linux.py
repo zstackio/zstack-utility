@@ -1902,11 +1902,11 @@ def _restore_dev_route(dest_dev, route_info):
         _add_ip_address(ip, dest_dev, "inet6")
 
     for r in route_info['routes']:
-        shell.call('ip route add %s' % _route_with_dev(r, dest_dev))
+        shell.call('ip route replace %s' % _route_with_dev(r, dest_dev))
     for r in route_info['direct_routes6']:
-        shell.call('ip -6 route add %s' % _route_with_dev(r, dest_dev))
+        shell.call('ip -6 route replace %s' % _route_with_dev(r, dest_dev))
     for r in route_info['routes6']:
-        shell.call('ip -6 route add %s' % _route_with_dev(r, dest_dev))
+        shell.call('ip -6 route replace %s' % _route_with_dev(r, dest_dev))
 
 
 def _parse_ip_addresses(ip_addr_output):
