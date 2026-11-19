@@ -2718,9 +2718,11 @@ class ShowStatusCmd(Command):
     def install_argparse_arguments(self, parser):
         parser.add_argument('--host', help='SSH URL, for example, root@192.168.0.10, to show the management node status on a remote machine')
         parser.add_argument('--quiet', '-q', help='Do not log this action.', action='store_true', default=False)
+        parser.add_argument('--mn-only', help='Only check management node status.', action='store_true', default=False)
 
     def _stop_remote(self, args):
-        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl status"' % args.host)
+        option = ' --mn-only' if getattr(args, 'mn_only', False) else ''
+        shell_no_pipe('ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no %s "/usr/bin/zstack-ctl status%s"' % (args.host, option))
 
     def run(self, args):
         self.quiet = args.quiet
@@ -2829,6 +2831,10 @@ class ShowStatusCmd(Command):
                 info('ZSphere version: %s' % zsv_version)
             else:
                 info(colored('ZSphere version: Unknown', 'yellow'))
+
+        if getattr(args, 'mn_only', False):
+            check_zstack_status()
+            return
 
         info('\n'.join(info_list))
         show_version()
@@ -7808,8 +7814,6 @@ class RestoreMysqlPreCheckCmd(Command):
 
 
 class RestoreMysqlCmd(Command):
-    status, all_local_ip = subprocess.getstatusoutput("ip a")
-
     def __init__(self):
         super(RestoreMysqlCmd, self).__init__()
         self.name = "restore_mysql"
@@ -11880,7 +11884,10 @@ class VDIUiStatusCmd(Command):
 def mysql(cmd, db_hostname = None):
     (db_hostname_origin, db_port, db_user, db_password) = ctl.get_live_mysql_portal()
     db_hostname = db_hostname or db_hostname_origin
-    if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in RestoreMysqlCmd.all_local_ip):
+    all_local_ip = ""
+    if db_hostname != "localhost" and db_hostname != "127.0.0.1":
+        _, all_local_ip = subprocess.getstatusoutput("ip a")
+    if db_hostname == "localhost" or db_hostname == "127.0.0.1" or (db_hostname in all_local_ip):
         db_hostname = ""
     else:
         db_hostname = "--host %s" % db_hostname
