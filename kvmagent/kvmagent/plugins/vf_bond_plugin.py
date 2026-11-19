@@ -7,7 +7,7 @@ import time
 import xml.etree.ElementTree as ET
 from kvmagent import kvmagent
 from kvmagent.plugins.vm_config import get_virt_domain
-from zstacklib.utils import http, jsonobject, log
+from zstacklib.utils import http, jsonobject, log, pci, qmp
 from zstacklib.utils.qga import VmQga
 
 PATH = '/vm/guesttools/vfbond'
@@ -17,6 +17,53 @@ logger = log.get_logger(__name__)
 
 def bdf(node):
     return '%04x:%02x:%02x.%x' % tuple(int(node.get(k, '0'), 0) for k in ('domain', 'bus', 'slot', 'function'))
+
+
+def guest_pci_view(vm, xml):
+    """Return a guest-address view of the live NICs without changing libvirt XML."""
+    root = ET.fromstring(xml)
+    os_type = root.find('./os/type')
+    if os_type is None or 'q35' not in os_type.get('machine', ''):
+        return xml, {}
+    from kvmagent.plugins.vm_plugin import VmPlugin
+    buses = qmp.execute_qmp_command(vm, 'query-pci')
+    mapping = {}
+    for dev in root.findall('./devices/interface') + root.findall('./devices/hostdev'):
+        addr = dev.find('address')
+        if addr is None or addr.get('type') != 'pci':
+            continue
+        alias = dev.find('alias')
+        if alias is None:
+            raise ValueError('PCI device alias unavailable')
+        for bus in buses:
+            device = VmPlugin._find_pci_device(bus.get('devices', []), alias.get('name'))
+            if device is not None:
+                break
+        else:
+            device = None
+        if device is None:
+            raise ValueError('PCI device not enumerated: ' + alias.get('name'))
+        mapping[bdf(addr)] = pci.fmt_pci_address(device)
+        for field in ('domain', 'bus', 'slot', 'function'):
+            addr.set(field, hex(device.get(field, 0)))
+    return ET.tostring(root), mapping
+
+
+def guest_target(target, mapping):
+    def members(item):
+        return [mapping[p] for p in item['members']]
+    resolved = dict(target)
+    if 'members' in target:
+        resolved['members'] = members(target)
+    if 'defaultPeers' in target:
+        peers = []
+        for peer in target['defaultPeers']:
+            item = dict(peer, guestPci=mapping[peer['guestPci']])
+            if 'members' in peer:
+                item['members'] = members(peer)
+            peers.append(item)
+        resolved['defaultPeers'] = peers
+    return resolved
 
 
 def delivered(xml, target):
@@ -153,14 +200,24 @@ class VfBondPlugin(kvmagent.KvmAgent):
                 return base
             if code != 0:
                 raise ValueError('guest protocol file check failed (exitCode=%s)' % code)
+            op = cmd.get('operation') or {}
+            if action in ('probe', 'inspect') or (action == 'execute' and op.get('action') in ('reconcile', 'migration', 'ports')):
+                xml, mapping = guest_pci_view(vm, domain.XMLDesc(0))
+                resolved = None
+                if mapping and (op.get('resolveGuestPci') or (action == 'execute' and op.get('action') == 'ports')):
+                    try:
+                        resolved = guest_target(op['target'], mapping)
+                    except KeyError:
+                        base['reason'] = 'WaitingForDevices'
+                        return base
+                    cmd = dict(cmd, operation=dict(op, target=resolved))
             if action == 'execute':
                 phase('deviceIdentity')
                 op = cmd['operation']
-                if op['action'] == 'reconcile' and not delivered(domain.XMLDesc(0), op['target']):
+                if op['action'] == 'reconcile' and not delivered(xml, op['target']):
                     base['reason'] = 'WaitingForDevices'
                     return base
                 if op['action'] == 'migration':
-                    xml = domain.XMLDesc(0)
                     stage = op.get('migrationStage')
                     temporary = migration_temporary_pci(xml, op)
                     if (stage in ('check', 'prepare', 'reconnect', 'finish') and not delivered(xml, op['target']) or
@@ -171,7 +228,7 @@ class VfBondPlugin(kvmagent.KvmAgent):
                         base['reason'] = 'WaitingForDevices'
                         return base
                 if op['action'] == 'ports':
-                    devices = ordinary_devices(domain.XMLDesc(0))
+                    devices = ordinary_devices(xml)
                     if any(not isinstance(p.get('guestPci'), str) or
                            not re.fullmatch(r'[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]', p['guestPci']) or
                            not devices.get(p.get('mac')) or devices[p['mac']] != p['guestPci']
@@ -230,9 +287,11 @@ class VfBondPlugin(kvmagent.KvmAgent):
                 base.update(state='Checking', support='Unknown',
                             reason='ObservationUnavailable: GuestTools diagnostics extension missing')
             if action in ('probe', 'inspect'):
-                base['devices'] = ordinary_devices(domain.XMLDesc(0))
+                base['devices'] = ordinary_devices(xml)
+                if resolved is not None:
+                    base['target'] = resolved
                 if (cmd.get('operation') or {}).get('temporaryTarget'):
-                    base['temporaryPci'] = migration_temporary_pci(domain.XMLDesc(0), cmd['operation'])
+                    base['temporaryPci'] = migration_temporary_pci(xml, cmd['operation'])
             return base
         except Exception as ex:
             reason = 'ObservationUnavailable' if action in ('probe', 'inspect') else (

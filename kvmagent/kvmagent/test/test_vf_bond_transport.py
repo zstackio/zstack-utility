@@ -243,4 +243,28 @@ class HostNetworkTransportTest(unittest.TestCase):
    self.assertFalse(ctx['migration_vfs_absent'](xml,target))
   self.assertTrue(ctx['migration_vfs_absent']('<domain><devices/></domain>',target))
 
+ def test_q35_aliases_resolve_members_and_migration_virtio_independently(self):
+  mac='fa:00:00:00:00:01'
+  devices=[]
+  for alias,bus,kind in [('hostdev0',8,'hostdev'),('ua-net0-slave1',9,'hostdev'),('net1',12,'bridge')]:
+   devices.append("<interface type='%s'><alias name='%s'/><mac address='%s'/><target dev='vnic1.1'/>"
+                  "<model type='virtio'/><address type='pci' bus='%s'/></interface>"%(kind,alias,mac,hex(bus)))
+  xml="<domain><os><type machine='pc-q35-6.2'/></os><devices>"+''.join(devices)+'</devices></domain>'
+  actual={'hostdev0':6,'ua-net0-slave1':7,'net1':10}
+  def lookup(devices,alias):
+   return dict(bus=actual[alias],slot=0,function=0) if alias in actual else None
+  vm_plugin=types.SimpleNamespace(VmPlugin=types.SimpleNamespace(_find_pci_device=lookup))
+  with patch.dict('sys.modules',{'kvmagent.plugins.vm_plugin':vm_plugin}), patch.dict(ctx,{
+      'qmp':types.SimpleNamespace(execute_qmp_command=lambda vm,cmd:[{'devices':[]}]),
+      'pci':types.SimpleNamespace(fmt_pci_address=lambda d:'0000:%02x:00.0'%d['bus'])}):
+   view,mapping=ctx['guest_pci_view']('vm',xml)
+   raw={'mac':mac,'members':['0000:08:00.0','0000:09:00.0']}
+   self.assertEqual(['0000:06:00.0','0000:07:00.0'],ctx['guest_target'](raw,mapping)['members'])
+   op=dict(temporaryTarget='vnic1.1',target=raw)
+   self.assertEqual('0000:0a:00.0',ctx['migration_temporary_pci'](view,op))
+   del actual['net1']
+   with self.assertRaises(ValueError):ctx['guest_pci_view']('vm',xml)
+   pc=xml.replace('pc-q35-6.2','pc-i440fx-6.2')
+   self.assertEqual((pc,{}),ctx['guest_pci_view']('vm',pc))
+
 if __name__=='__main__':unittest.main()
