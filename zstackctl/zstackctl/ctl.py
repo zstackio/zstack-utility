@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import argparse
+from contextlib import contextmanager
 import hashlib
 import ipaddress
 import os
@@ -7601,6 +7602,106 @@ class DumpMysqlCmd(Command):
                 info("Sync ZStack backup to remote host %s:%s and delete expired files on remote successfully! " % (remote_host_ip, self.remote_backup_dir))
 
 
+@contextmanager
+def mysql_restore_packet_limit(db_password, db_port, db_hostname):
+    hostname, peer_command = _mysql_restore_control_target(db_hostname)
+    min_packet_size = 128 * 1024 * 1024
+
+    def on_database_host(command):
+        if not peer_command:
+            return command
+        remote_command = "sudo sh -c " + shell_quote(command)
+        return peer_command + shell_quote(remote_command)
+
+    mysql_host = "--host=%s " % shell_quote(hostname) if hostname else ""
+    if hostname and hostname != "localhost":
+        mysql_host = "--protocol=tcp " + mysql_host
+    mysql = "mysql %s-uroot --password=%s -P %s -N -B " % (
+        mysql_host,
+        shell_quote(db_password),
+        db_port,
+    )
+    with subprocess.Popen(
+        on_database_host(
+            "exec " + mysql + "--unbuffered --connect-timeout=10"
+        ),
+        shell=True,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        universal_newlines=True,
+    ) as locker:
+        locker.stdin.write(
+            "SET SESSION wait_timeout=31536000; "
+            "SELECT GET_LOCK('zstackctl.restore_mysql.packet', 0);\n"
+        )
+        locker.stdin.flush()
+        if locker.stdout.readline().strip() != "1":
+            raise CtlError(
+                "Cannot acquire MySQL restore packet lock; "
+                "check database access and concurrent restores."
+            )
+
+        prepare_sql = (
+            "SET GLOBAL max_allowed_packet="
+            "GREATEST((@original_packet_size:="
+            "@@GLOBAL.max_allowed_packet),%s); "
+            "SELECT @original_packet_size" % min_packet_size
+        )
+        prepare_command = on_database_host(
+            mysql + "-e " + shell_quote(prepare_sql)
+        )
+        original_packet_size = int(shell(prepare_command).strip())
+        restore_sql = (
+            "SET GLOBAL max_allowed_packet="
+            "IF(@@GLOBAL.max_allowed_packet=%s,%s,@@GLOBAL.max_allowed_packet)"
+            % (min_packet_size, original_packet_size)
+        )
+        restore_command = on_database_host(
+            mysql + "-e " + shell_quote(restore_sql)
+        )
+        try:
+            yield
+        except BaseException:
+            if original_packet_size < min_packet_size:
+                try:
+                    shell_no_pipe(restore_command)
+                except Exception:
+                    warn(
+                        "Failed to restore max_allowed_packet=%s after SQL "
+                        "error; restore it when database access is available."
+                        % original_packet_size
+                    )
+            raise
+        else:
+            if original_packet_size < min_packet_size:
+                shell_no_pipe(restore_command)
+
+
+def _mysql_restore_control_target(hostname):
+    if not hostname or hostname in ("localhost", "127.0.0.1", "::1"):
+        return hostname, None
+    if local_ip_exists(hostname):
+        return "127.0.0.1", None
+    if not check_ha():
+        return hostname, None
+
+    ha = Zsha2Utils()
+    if hostname not in (ha.config["dbvip"], ha.config["peerip"]):
+        return hostname, None
+
+    peer_command = (
+        "sudo -u %s ssh -o BatchMode=yes "
+        "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "
+        "-p %s %s "
+    ) % (
+        shell_quote(ha.ssh_exec_user),
+        shell_quote(str(ha.config.get("peerport") or 22)),
+        shell_quote(ha.config["peerip"]),
+    )
+    return "127.0.0.1", peer_command
+
+
 class RestoreMysqlPreCheckCmd(Command):
     def __init__(self):
         super(RestoreMysqlPreCheckCmd, self).__init__()
@@ -7624,8 +7725,21 @@ class RestoreMysqlPreCheckCmd(Command):
                             default="")
 
     def execute_sql(self, password, sql):
-        return shell_return_stdout_stderr("mysql -uroot --password=%s -P %s --host=%s -e \"%s\""
-                                          % (shell_quote(password), self.port, self.hostname, sql))
+        with mysql_restore_packet_limit(password, self.port, self.hostname):
+            result = shell_return_stdout_stderr(
+                "mysql --abort-source-on-error "
+                "--max-allowed-packet=1G -uroot --password=%s "
+                "-P %s --host=%s -e %s"
+                % (
+                    shell_quote(password),
+                    self.port,
+                    shell_quote(self.hostname),
+                    shell_quote(sql),
+                )
+            )
+            if result[0] != 0:
+                raise CtlError("Check failed. Reason: %s." % result[2])
+            return result
 
     def finish_check(self):
         if len(self.check_fail_list) != 0:
@@ -7669,8 +7783,21 @@ class RestoreMysqlPreCheckCmd(Command):
         os.write(fd, (check_sql + "\n" + drop_table).encode())
         os.close(fd)
 
-        r, o, e = self.execute_sql(args.mysql_root_password, "use zstack; source %s;" % fname)
-        os.remove(fname)
+        try:
+            r, o, e = self.execute_sql(
+                args.mysql_root_password, "use zstack; source %s;" % fname
+            )
+        finally:
+            try:
+                if self.execute_sql(
+                    args.mysql_root_password, "use zstack; " + drop_table
+                )[0] != 0:
+                    warn(
+                        "Failed to remove TempVolumeEO after restore precheck"
+                    )
+            except Exception:
+                warn("Failed to remove TempVolumeEO after restore precheck")
+            os.remove(fname)
 
         if r != 0:
             self.check_fail_list.append("Check failed. Reason: %s." % e)
@@ -7723,6 +7850,10 @@ class RestoreMysqlCmd(Command):
             shell_no_pipe(command)
         except:
             error("Failed to connect to jdbc:mysql://%s:%s with root password '%s'" % (db_hostname, db_port, db_password))
+
+    def restore_database(self, command, db_password, db_port, db_hostname):
+        with mysql_restore_packet_limit(db_password, db_port, db_hostname):
+            shell_no_pipe(command)
 
     def run(self, args):
         (db_hostname, db_port, _, _) = ctl.get_live_mysql_portal()
@@ -7784,10 +7915,14 @@ class RestoreMysqlCmd(Command):
                       "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
                       "| sed \"s/,'enable','enable HA or not','ha','true','true')/" \
                       ",'enable','enable HA or not','ha','true','false')/g\" " \
-                      "| mysql -uroot --password=%s %s -P %s --one-database %s" \
+                      "| mysql --max-allowed-packet=1G -uroot --password=%s " \
+                      "%s -P %s --one-database %s" \
                       % (db_backup_name, db_hostname_origin_cp, shell_quote(db_password),
                          db_hostname, db_port, database)
-            shell_no_pipe(command)
+            self.restore_database(
+                command, db_password, db_port,
+                db_hostname_origin_cp if db_hostname else None,
+            )
 
         restorer.restore_other_node(args)
         if args.skip_ui:
@@ -7814,9 +7949,13 @@ class RestoreMysqlCmd(Command):
             shell_no_pipe(command)
             command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' " \
                       "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
-                      "| mysql -uroot --password=%s %s -P %s --one-database %s" \
+                      "| mysql --max-allowed-packet=1G -uroot --password=%s " \
+                      "%s -P %s --one-database %s" \
                       % (db_backup_name, ui_db_hostname_origin_cp, shell_quote(ui_db_password), ui_db_hostname, ui_db_port, database)
-            shell_no_pipe(command)
+            self.restore_database(
+                command, ui_db_password, ui_db_port,
+                ui_db_hostname_origin_cp if ui_db_hostname else None,
+            )
 
         other_db_names = ['keycloak','morph']
         for database in other_db_names:
@@ -7837,9 +7976,13 @@ class RestoreMysqlCmd(Command):
             shell_no_pipe(command)
             command = "gunzip < %s | sed -e '/DROP DATABASE IF EXISTS/d' -e '/CREATE DATABASE .* IF NOT EXISTS/d' " \
                       "| sed 's/DEFINER=`[^\*\/]*`@`[^\*\/]*`/DEFINER=`root`@`%s`/' " \
-                      "| mysql -uroot --password=%s %s -P %s --one-database %s" \
+                      "| mysql --max-allowed-packet=1G -uroot --password=%s " \
+                      "%s -P %s --one-database %s" \
                       % (db_backup_name, db_hostname_origin_cp, shell_quote(db_password), db_hostname, db_port, database)
-            shell_no_pipe(command)
+            self.restore_database(
+                command, db_password, db_port,
+                db_hostname_origin_cp if db_hostname else None,
+            )
             restorer.start_extra_services(args, database)
 
         info("Successfully restored database. You can start node by running zstack-ctl start.")
