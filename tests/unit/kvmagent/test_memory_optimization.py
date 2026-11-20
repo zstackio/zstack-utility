@@ -1658,6 +1658,23 @@ def test_swap_direct_capacity_is_checked_before_opening_the_device(host, tmp_pat
         assert operations == [0xc0305aa0, 0xc0305aa1]
 
 
+@pytest.mark.parametrize('output, expected', [('3\n', 3), ('MADVISE_FAILED\n', 'SWAP_DIRECT_PROBE_MADVISE_FAILED'),
+                                              ('NOT_SWAPPED\n', 'SWAP_DIRECT_PROBE_NOT_SWAPPED'), ('', 'SWAP_DIRECT_PROBE_NOT_SWAPPED')])
+def test_swap_type_probe_runs_outside_the_agent_cgroup(host, monkeypatch, output, expected):
+    # The agent may be kept out of swap, so the probe page is paged out by a child in the root cgroup.
+    plugin, service, world = host
+    calls = []
+    monkeypatch.setattr(type(plugin), '_bounded_command_output',
+                        staticmethod(lambda command, timeout: calls.append(command) or output))
+    if isinstance(expected, int):
+        assert plugin._probe_swap_type() == expected
+    else:
+        with pytest.raises(Rejected, match=expected):
+            plugin._probe_swap_type()
+    assert 'echo $$ > /sys/fs/cgroup/cgroup.procs' in calls[0][2]
+    assert calls[0][3:] == [module.sys.executable, plugin.SWAP_TYPE_PROBE]
+
+
 @pytest.mark.parametrize('changed, expected', [(False, 1), (True, 0)])
 def test_swap_direct_backing_estimate_counts_only_unchanged_native_wb_pages(host, tmp_path, monkeypatch, changed, expected):
     import ctypes

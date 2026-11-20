@@ -25,6 +25,7 @@ import ctypes
 import hashlib
 import mmap
 import struct
+import sys
 import cherrypy
 from contextlib import closing, contextmanager
 try:
@@ -595,23 +596,46 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                        'reason': str(exc)}
         return self._reply({'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid, 'state': state})
 
-    @staticmethod
-    def _probe_swap_type():
-        """Prototype lab.py probe: page out only this process's private 4KiB page."""
-        libc = ctypes.CDLL('libc.so.6', use_errno=True)
-        with closing(mmap.mmap(-1, 4096, flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS)) as page:
-            page.write(b'memtier-probe' * 100)
-            address = ctypes.addressof(ctypes.c_char.from_buffer(page))
-            for _ in range(50):
-                if libc.madvise(ctypes.c_void_p(address), ctypes.c_size_t(4096), 21) != 0:
-                    raise Rejected('SWAP_DIRECT_PROBE_MADVISE_FAILED')
-                with open('/proc/self/pagemap', 'rb') as stream:
-                    stream.seek(address // 4096 * 8)
-                    entry = struct.unpack('Q', stream.read(8))[0]
-                if entry & (1 << 62):
-                    return entry & 0x1f
-                time.sleep(0.05)
-        raise Rejected('SWAP_DIRECT_PROBE_NOT_SWAPPED')
+    # Pages out one private page and prints the swap type its pagemap entry shows.
+    SWAP_TYPE_PROBE = (
+        "import ctypes, mmap, struct, time\n"
+        "libc = ctypes.CDLL('libc.so.6', use_errno=True)\n"
+        "page = mmap.mmap(-1, 4096, flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS)\n"
+        "page.write(b'memtier-probe' * 100)\n"
+        "address = ctypes.addressof(ctypes.c_char.from_buffer(page))\n"
+        "result = 'NOT_SWAPPED'\n"
+        "for _ in range(50):\n"
+        "    if libc.madvise(ctypes.c_void_p(address), ctypes.c_size_t(4096), 21) != 0:\n"
+        "        result = 'MADVISE_FAILED'\n"
+        "        break\n"
+        "    with open('/proc/self/pagemap', 'rb') as stream:\n"
+        "        stream.seek(address // 4096 * 8)\n"
+        "        entry = struct.unpack('Q', stream.read(8))[0]\n"
+        "    if entry & (1 << 62):\n"
+        "        result = str(entry & 0x1f)\n"
+        "        break\n"
+        "    time.sleep(0.05)\n"
+        "print(result)\n")
+
+    @classmethod
+    def _probe_swap_type(cls):
+        """Prototype lab.py probe: page out one private 4KiB page and read its swap type.
+
+        It runs in a child moved to the root cgroup: the agent itself may be kept out of
+        swap (MemorySwapMax=0 protects management processes), and then its own page could
+        never be paged out.
+        """
+        try:
+            output = cls._bounded_command_output(
+                ['/bin/sh', '-c', 'echo $$ > /sys/fs/cgroup/cgroup.procs 2>/dev/null; exec "$0" -c "$1"',
+                 sys.executable, cls.SWAP_TYPE_PROBE], 10).strip()
+        except (OSError, RuntimeError, subprocess.CalledProcessError):
+            raise Rejected('SWAP_DIRECT_PROBE_NOT_SWAPPED')
+        if output == 'MADVISE_FAILED':
+            raise Rejected('SWAP_DIRECT_PROBE_MADVISE_FAILED')
+        if not re.match(r'^[0-9]+\Z', output):
+            raise Rejected('SWAP_DIRECT_PROBE_NOT_SWAPPED')
+        return int(output)
 
     def _swap_direct_backing_pages(self, pid, memory_bytes, device, rdev, swap_type, proc='/proc'):
         """Conservative preparation-only estimate; never faults guest memory in.
