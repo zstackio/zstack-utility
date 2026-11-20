@@ -1508,6 +1508,8 @@ class IscsiHeartbeatController(AbstractStorageFencer):
     def read_fencer_heartbeat(self, host_uuid, ps_uuid):
         # type: (str, str) -> (float, list[str])
         status = self._read_heartbeat_file()
+        if not isinstance(status.heartbeat_time, (int, float)) or status.heartbeat_time <= 0:
+            raise ValueError('invalid iSCSI heartbeat timestamp for host slot %s' % self.host_id)
         return status.heartbeat_time, status.vm_uuids
 
     def exec_fencer(self):
@@ -1848,6 +1850,47 @@ def find_ps_running_vm(store_uuid):
     logger.debug('vm_in_ps_%s_uuid_list:' % store_uuid + str(vm_in_ps_uuid_list))
     return vm_in_ps_uuid_list
 
+
+DISK_SOURCE_ATTRIBUTES = ('file', 'dev', 'name', 'path')
+
+
+def get_vm_disk_paths(domain_status):
+    devices = domain_status.find('domain/devices')
+    if devices is None:
+        return None
+
+    disk_paths = set()
+    for disk in devices.findall('disk'):
+        if disk.find('source') is None and disk.get('device') != 'cdrom':
+            return None
+        for source in disk.iter('source'):
+            paths = [source.get(attr) for attr in DISK_SOURCE_ATTRIBUTES if source.get(attr)]
+            if not paths:
+                return None
+            disk_paths.update(paths)
+    return disk_paths
+
+
+def get_running_vm_disk_paths():
+    disk_paths = set()
+    try:
+        for file_name in os.listdir(LIVE_LIBVIRT_XML_DIR):
+            vm_uuid, extension = os.path.splitext(file_name)
+            if extension != '.xml':
+                continue
+            pid = linux.get_vm_pid(vm_uuid)
+            if not pid or not linux.process_exists(pid):
+                continue
+            paths = get_vm_disk_paths(etree.parse(os.path.join(LIVE_LIBVIRT_XML_DIR, file_name)).getroot())
+            if paths is None:
+                return None
+            disk_paths.update(paths)
+    except (IOError, OSError, etree.ParseError) as e:
+        logger.warn('cannot determine the disks of running VMs: %s' % e)
+        return None
+    return disk_paths
+
+
 def not_exec_kill_vm(strategy, vm_uuid, fencer_name):
     return strategy == 'Permissive' and not is_allow_fencer(fencer_name, vm_uuid)
 
@@ -2093,6 +2136,12 @@ def login_heartbeat_path(url):
     return heartbeat_path
 
 
+class CheckStorageVmUsageRsp(AgentRsp):
+    def __init__(self):
+        super(CheckStorageVmUsageRsp, self).__init__()
+        self.unusedPrimaryStorageUuids = []
+
+
 class HaPlugin(kvmagent.KvmAgent):
     SCAN_HOST_PATH = "/ha/scanhost"
     SANLOCK_SCAN_HOST_PATH = "/sanlock/scanhost"
@@ -2112,6 +2161,7 @@ class HaPlugin(kvmagent.KvmAgent):
     FILESYSTEM_CHECK_VMSTATE_PATH = "/filesystem/check/vmstate"
     SHAREDBLOCK_CHECK_VMSTATE_PATH = "/sharedblock/check/vmstate"
     ISCSI_CHECK_VMSTATE_PATH = "/iscsi/check/vmstate"
+    CHECK_STORAGE_VM_USAGE_PATH = "/ha/storage/vmusage"
     ADD_VM_FENCER_RULE_TO_HOST = "/add/vm/fencer/rule/to/host"
     REMOVE_VM_FENCER_RULE_FROM_HOST = "/remove/vm/fencer/rule/from/host"
     GET_VM_FENCER_RULE = "/get/vm/fencer/rule/"
@@ -2147,6 +2197,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         self.fencer_storage_list = set()
         self.ceph_fencer_initializations = {}
+        self.storage_covering_paths = {}  # type: dict[str, list[str]]
 
         self.ha_network_group_lock = threading.RLock()
         self.ha_network_group_config_version = -1
@@ -2390,6 +2441,7 @@ class HaPlugin(kvmagent.KvmAgent):
 
         # TODO: support multiple covering path for one heartbeat path
         new_fencer_keys = set()
+        self.storage_covering_paths[cmd.uuid] = list(cmd.heartbeatPathByCoveringPaths.__dict__.keys())
         for pool_name, heartbeat_vol in cmd.heartbeatPathByCoveringPaths.__dict__.items():
             key = '%s-%s' % (cmd.uuid, pool_name)
             new_fencer_keys.add(key)
@@ -2475,6 +2527,7 @@ class HaPlugin(kvmagent.KvmAgent):
                 logger.warn(content)
                 self.report_storage_status([cmd.uuid], self.STORAGE_DISCONNECTED)
 
+        self.storage_covering_paths[cmd.uuid] = cmd.coveringPaths
         heartbeat_on_iscsi(cmd.uuid, cmd.coveringPaths)
         return jsonobject.dumps(AgentRsp())
 
@@ -3219,6 +3272,23 @@ class HaPlugin(kvmagent.KvmAgent):
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def check_storage_vm_usage(self, req):
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        rsp = CheckStorageVmUsageRsp()
+        covering_paths = {ps_uuid: self.storage_covering_paths.get(ps_uuid) for ps_uuid in cmd.primaryStorageUuids}
+        covering_paths = {ps_uuid: paths for ps_uuid, paths in covering_paths.items() if paths}
+        if not covering_paths:
+            return jsonobject.dumps(rsp)
+
+        disk_paths = get_running_vm_disk_paths()
+        if disk_paths is None:
+            return jsonobject.dumps(rsp)
+
+        rsp.unusedPrimaryStorageUuids = [ps_uuid for ps_uuid, paths in covering_paths.items()
+                                         if not any(cover in disk for cover in paths for disk in disk_paths)]
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     def iscsi_check_vmstate(self, req):
         rsp = CheckIscsiVmStateRsp()
         rsp.result = {}
@@ -3826,6 +3896,7 @@ class HaPlugin(kvmagent.KvmAgent):
         http_server.register_async_uri(self.FILESYSTEM_CHECK_VMSTATE_PATH, self.file_system_check_vmstate)
         http_server.register_async_uri(self.SHAREDBLOCK_CHECK_VMSTATE_PATH, self.sharedblock_check_vmstate)
         http_server.register_async_uri(self.ISCSI_CHECK_VMSTATE_PATH, self.iscsi_check_vmstate)
+        http_server.register_async_uri(self.CHECK_STORAGE_VM_USAGE_PATH, self.check_storage_vm_usage)
         http_server.register_async_uri(self.ADD_VM_FENCER_RULE_TO_HOST, self.add_vm_fencer_rule_to_host)
         http_server.register_async_uri(self.REMOVE_VM_FENCER_RULE_FROM_HOST, self.remove_vm_fencer_rule_from_host)
         http_server.register_async_uri(self.GET_VM_FENCER_RULE, self.get_vm_fencer_rule)
@@ -3968,6 +4039,7 @@ class HaPlugin(kvmagent.KvmAgent):
                     self.sblk_health_checker.delvg(ps_uuid)  # ugly ...
             if ps_uuid in self.fencer_storage_list:
                 self.fencer_storage_list.remove(ps_uuid)
+            self.storage_covering_paths.pop(ps_uuid, None)
 
     def cancel_partial_fencer(self, ps_uuid, fencer_key_matcher):
         with self.fencer_lock:
