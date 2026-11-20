@@ -1205,7 +1205,10 @@ def start_kvmagent():
         host_post_info.post_label = "ansible.shell.dump.service"
         host_post_info.post_label_param = "zstack-kvmagent"
         run_remote_command(command, host_post_info)
-        command = "systemctl restart zstack-kvmagent.service && systemctl enable zstack-kvmagent.service"
+        # A legacy agent may still be running outside the systemd unit.
+        command = ("systemctl stop zstack-kvmagent.service && "
+                   "/etc/init.d/zstack-kvmagent stop && "
+                   "systemctl start zstack-kvmagent.service && systemctl enable zstack-kvmagent.service")
     elif host_info.distro in RPM_BASED_OS:
         command = "service zstack-kvmagent stop && service zstack-kvmagent start && chkconfig zstack-kvmagent on"
     elif host_info.distro in DEB_BASED_OS:
