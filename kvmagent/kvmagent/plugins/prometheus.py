@@ -688,9 +688,9 @@ def collect_raid_state():
                                                  ['slot_number', 'disk_group']),
     }
 
-    r, o = bash_ro("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
-    if r == 0 and jsonobject.loads(o)['Controllers'][0]['Command Status']['Status'] == "Success":
-        return collect_mega_raid_state(metrics, o)
+    mega_metrics = collect_mega_raid_state(metrics)
+    if mega_metrics is not None:
+        return mega_metrics
 
     r, o = bash_ro(
         "arcconf list | grep -A 8 'Controller ID' | awk '{print $2}'")
@@ -827,58 +827,165 @@ def collect_sas_raid_state(metrics, infos):
     return list(metrics.values())
 
 
-def collect_mega_raid_state(metrics, infos):
-    disk_list = {}
-    vd_infos = jsonobject.loads(infos.strip())
+class MegaRaidDiskInventory(object):
+    def __init__(self):
+        self.disks = None
+        self.missing = {}
+        self.controller_ids = set()
+        self.lock = threading.Lock()
 
-    # collect raid vd state
-    for controller in vd_infos["Controllers"]:
-        controller_id = controller["Command Status"]["Controller"]
-        data = controller["Response Data"]
-        for attr in dir(data):
-            match = re.match(r"/c%s/v(\d+)" % controller_id, attr)
-            if not match:
+    def update(self, disks, controller_ids):
+        with self.lock:
+            # Both StorCLI queries can succeed while omitting the same controller.
+            omitted = self.controller_ids - controller_ids
+            if omitted:
+                logger.debug("skipping disk insert/remove check: StorCLI omitted controllers %s", sorted(omitted))
+                return
+            self.controller_ids.update(controller_ids)
+            if self.disks is None:
+                self.disks = dict(disks)
+                return
+
+            for sn in set(self.disks).difference(disks):
+                count = self.missing.get(sn, 0) + 1
+                if count == 3:
+                    send_physical_disk_remove_alarm_to_mn(sn, self.disks[sn])
+                    del self.disks[sn]
+                    del self.missing[sn]
+                else:
+                    self.missing[sn] = count
+
+            for sn, slot in disks.items():
+                self.missing.pop(sn, None)
+                if sn not in self.disks:
+                    send_physical_disk_insert_alarm_to_mn(sn, slot)
+                self.disks[sn] = slot
+
+
+mega_raid_inventory = MegaRaidDiskInventory()
+
+
+def _storcli_controllers(output):
+    try:
+        controllers = json.loads(output)["Controllers"]
+    except (ValueError, KeyError, TypeError):
+        return []
+    return controllers if isinstance(controllers, list) else []
+
+
+def _storcli_controller_id(controller):
+    status = controller.get("Command Status") if isinstance(controller, dict) else None
+    if isinstance(status, dict) and status.get("Status") == "Success":
+        controller_id = status.get("Controller")
+        if isinstance(controller_id, int):
+            controller_id = str(controller_id)
+        if isinstance(controller_id, str) and controller_id.isdigit():
+            return controller_id
+
+
+def _collect_storcli_disks(metrics, controller_id, data, disks):
+    if not isinstance(data, dict) or not data:
+        return False
+    inventory_complete = True
+    drive_found = False
+    for drive, rows in data.items():
+        match = re.match(r"^Drive /c%s/e(\d+)/s(\d+)$" % controller_id, drive)
+        if not match:
+            if drive.endswith(" - Detailed Information") and drive.rsplit(" - ", 1)[0] not in data:
+                inventory_complete = False
+            continue
+        drive_found = True
+        enclosure_id, slot_id = match.groups()
+        try:
+            state = rows[0]["State"]
+            if not isinstance(state, str) or not state.strip():
+                inventory_complete = False
                 continue
-            vd_state = data[attr][0]["State"]
-            disk_group = data[attr][0]["DG/VD"]
-            if disk_group:
-                disk_group = disk_group.split("/")[0]
-            else:
-                disk_group = data[attr][0]["VD"]
+            converted = convert_disk_state_to_int(state)
+            metrics['physical_disk_state'].add_metric([slot_id, enclosure_id], converted)
+            details = data[drive + " - Detailed Information"]
+            sn = details[drive + " Device attributes"]["SN"]
+        except (IndexError, KeyError, TypeError):
+            inventory_complete = False
+            continue
+        if not isinstance(sn, str) or not sn.strip():
+            inventory_complete = False
+            continue
+        sn = sn.strip().replace(" ", "")
+        if sn in disks:
+            inventory_complete = False
+        disks[sn] = "%s-%s" % (enclosure_id, slot_id)
+        if converted == 0 and is_disk_status_abnormal(sn):
+            remove_disk_status_abnormal(sn)
+        elif converted != 0:
+            send_physical_disk_status_alarm_to_mn(sn, slot_id, enclosure_id, converted)
+    return drive_found and inventory_complete
+
+
+def collect_mega_raid_state(metrics):
+    vd_rc, output = bash_ro("/opt/MegaRAID/storcli/storcli64 /call/vall show all J")
+    if vd_rc in (126, 127) and not output:
+        return None
+
+    inventory_complete = vd_rc == 0
+    expected_ids = set()
+    has_vd_state = False
+    for controller in _storcli_controllers(output):
+        controller_id = _storcli_controller_id(controller)
+        if controller_id is None:
+            inventory_complete = False
+            continue
+        if controller_id in expected_ids:
+            inventory_complete = False
+        expected_ids.add(controller_id)
+        data = controller.get("Response Data")
+        if not isinstance(data, dict):
+            inventory_complete = False
+            continue
+        for attr, rows in data.items():
+            if not re.match(r"/c%s/v(\d+)$" % controller_id, attr):
+                continue
+            try:
+                row = rows[0]
+                vd_state = row["State"]
+                if not isinstance(vd_state, str) or not vd_state.strip():
+                    inventory_complete = False
+                    continue
+                group = row.get("DG/VD")
+                disk_group = group.split("/")[0] if group else row["VD"]
+                if not isinstance(disk_group, (int, str)) or disk_group == "":
+                    inventory_complete = False
+                    continue
+            except (KeyError, IndexError, TypeError, AttributeError):
+                inventory_complete = False
+                continue
             converted_vd_state = convert_raid_state_to_int(vd_state)
             metrics['raid_state'].add_metric([disk_group], converted_vd_state)
             handle_raid_state(disk_group, converted_vd_state, vd_state)
+            has_vd_state = True
 
-    # collect disk state
-    o = bash_o(
-        "/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J").strip()
-    pd_infos = jsonobject.loads(o.strip())
-    for controller in pd_infos["Controllers"]:
-        controller_id = controller["Command Status"]["Controller"]
-        data = controller["Response Data"]
-        for attr in dir(data):
-            match = re.match(r"^Drive /c%s/e(\d+)/s(\d+)$" %
-                             controller_id, attr)
-            if not match:
-                continue
-            enclosure_id = match.group(1)
-            slot_id = match.group(2)
-            pd_state = data[attr][0]["State"]
-            converted_pd_status = convert_disk_state_to_int(pd_state)
-            metrics['physical_disk_state'].add_metric(
-                [slot_id, enclosure_id], converted_pd_status)
-            pd_path = "/c%s/e%s/s%s" % (controller_id, enclosure_id, slot_id)
-            pd_attributes = data["Drive %s - Detailed Information" %
-                                 pd_path]["Drive %s Device attributes" % pd_path]
-            serial_number = pd_attributes["SN"].replace(" ", "")
-            disk_list[serial_number] = "%s-%s" % (enclosure_id, slot_id)
-            if converted_pd_status == 0 and is_disk_status_abnormal(serial_number):
-                remove_disk_status_abnormal(serial_number)
-            elif converted_pd_status != 0:
-                send_physical_disk_status_alarm_to_mn(
-                    serial_number, slot_id, enclosure_id, converted_pd_status)
+    # A partial StorCLI response still contains authoritative states for the drives it identifies.
+    rc, output, error = bash_roe("/opt/MegaRAID/storcli/storcli64 /call/eall/sall show all J")
+    disks = {}
+    seen_ids = set()
+    for controller in _storcli_controllers(output):
+        controller_id = _storcli_controller_id(controller)
+        if controller_id is None:
+            inventory_complete = False
+            continue
+        if controller_id in seen_ids:
+            inventory_complete = False
+        seen_ids.add(controller_id)
+        if not _collect_storcli_disks(metrics, controller_id, controller.get("Response Data"), disks):
+            inventory_complete = False
 
-    check_disk_insert_and_remove(disk_list)
+    if not (has_vd_state or disks or (vd_rc == 0 and expected_ids)):
+        return None
+    if rc == 0 and inventory_complete and seen_ids == expected_ids and disks:
+        mega_raid_inventory.update(disks, seen_ids)
+    else:
+        logger.warning("skipping disk insert/remove check on incomplete StorCLI query "
+                       "(virtual rc=%s, physical rc=%s, stderr=%s)", vd_rc, rc, error)
     return list(metrics.values())
 
 

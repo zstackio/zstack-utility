@@ -16,7 +16,9 @@ These tests pin the contract at two levels:
 
 Style follows test_prometheus_disk_wwid.py (import-or-skip + mock.patch.object).
 """
+import json
 import unittest
+from unittest import mock
 
 try:
     from kvmagent.plugins import prometheus
@@ -25,7 +27,6 @@ except ImportError as e:
         "kvmagent package not importable (%s); "
         "run with PYTHONPATH=kvmagent:zstacklib" % e)
 
-import mock
 
 # State value contract shared with BFF disk.service.ts:
 #   0 Normal | 5 Rebuilding | 10 Offline | 20 Missing | 100 Abnormal(fallback)
@@ -229,6 +230,222 @@ class TestCollectSasHotSpare(unittest.TestCase):
         for call in alarm.call_args_list:
             self.assertNotEqual("SASHSP0001", call[0][0],
                                 "sas hot-spare must not raise a disk alarm")
+
+
+class TestMegaRaidInventory(unittest.TestCase):
+    def setUp(self):
+        self.metrics = {'physical_disk_state': mock.Mock(), 'raid_state': mock.Mock()}
+        self.patch("GaugeMetricFamily").side_effect = lambda name, *args: self.metrics[name]
+        patcher = mock.patch.object(prometheus, "mega_raid_inventory", prometheus.MegaRaidDiskInventory())
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.status = self.patch("send_physical_disk_status_alarm_to_mn")
+        self.insert = self.patch("send_physical_disk_insert_alarm_to_mn")
+        self.remove = self.patch("send_physical_disk_remove_alarm_to_mn")
+        self.virtual = self.patch("bash_ro")
+        self.physical = self.patch("bash_roe")
+
+    def patch(self, name):
+        patcher = mock.patch.object(prometheus, name)
+        result = patcher.start()
+        self.addCleanup(patcher.stop)
+        return result
+
+    def controller(self, index, drives=(), status="Success"):
+        data = {}
+        for slot, sn, state in drives:
+            drive = "Drive /c%s/e1/s%s" % (index, slot)
+            data[drive] = [{"State": state}]
+            attrs = {} if sn is None else {"SN": sn}
+            data[drive + " - Detailed Information"] = {drive + " Device attributes": attrs}
+        return {"Command Status": {"Controller": index, "Status": status}, "Response Data": data}
+
+    def poll(self, controllers, rc=0, virtual=None, virtual_rc=0, output=None):
+        if virtual is None:
+            virtual = [self.controller(c["Command Status"]["Controller"]) for c in controllers]
+        vd = json.dumps({"Controllers": virtual})
+        self.virtual.side_effect = lambda cmd: (virtual_rc, vd) if "/vall" in cmd else (1, "")
+        if output is None:
+            output = json.dumps({"Controllers": controllers})
+        self.physical.return_value = (rc, output, "")
+        return prometheus.collect_raid_state()
+
+    def disks(self, *names):
+        return self.controller(0, [
+            (ord(name) - ord("A"), name, "Onln") for name in names])
+
+    def test_offline_on_successful_card_survives_peer_failure(self):
+        good = self.controller(1, [(2, "B", "Offln")])
+        bad = self.controller(0, status="Failure")
+        for controllers in ([bad, good], [good, bad]):
+            for rc in (0, 45):
+                self.status.reset_mock()
+                self.poll(controllers, rc)
+                self.status.assert_called_once_with("B", "2", "1", OFFLINE)
+                self.metrics["physical_disk_state"].add_metric.assert_called_with(["2", "1"], OFFLINE)
+
+    def test_virtual_query_with_failed_first_card_still_collects_offline_disk(self):
+        good = self.controller(1, [(2, "B", "Offln")])
+        bad = self.controller(0, status="Failure")
+        self.poll([bad, good], 45, virtual=[bad, self.controller(1)], virtual_rc=45)
+        self.status.assert_called_once_with("B", "2", "1", OFFLINE)
+
+    def test_failed_virtual_query_still_reports_known_physical_status(self):
+        self.poll([self.disks("A", "B")])
+        for _ in range(3):
+            good = self.controller(1, [(2, "C", "Offln")])
+            self.poll([good], virtual=[self.controller(0, status="Failure")], virtual_rc=45)
+        self.assertEqual([mock.call("C", "2", "1", OFFLINE)] * 3, self.status.call_args_list)
+        self.insert.assert_not_called()
+        self.remove.assert_not_called()
+
+    def test_failed_storcli_without_usable_data_falls_back_to_arcconf(self):
+        vd = json.dumps({"Controllers": [self.controller(0)]})
+
+        def result(cmd):
+            if "arcconf list" in cmd:
+                return 0, "1: Adapter"
+            return (45, vd) if "/vall" in cmd else (1, "")
+
+        self.virtual.side_effect = result
+        self.physical.return_value = (45, "", "")
+        arcconf = self.patch("collect_arcconf_raid_state")
+        self.assertIs(arcconf.return_value, prometheus.collect_raid_state())
+        arcconf.assert_called_once_with(self.metrics, "1: Adapter")
+
+    def test_invalid_controller_id_preserves_peer_status(self):
+        good = self.controller(1, [(2, "B", "Offln")])
+        for invalid_id in ([], {}, "["):
+            self.status.reset_mock()
+            self.poll([self.controller(invalid_id), good])
+            self.status.assert_called_once_with("B", "2", "1", OFFLINE)
+
+    def test_unrelated_changes_do_not_restart_missing_serial_count(self):
+        self.poll([self.disks("A", "B")])
+        self.insert.assert_not_called()
+        self.poll([self.disks("B", "C")])
+        self.insert.assert_called_once_with("C", "1-2")
+        self.poll([self.disks("B")])
+        self.remove.assert_not_called()
+        self.poll([self.disks("B", "D")])
+        self.remove.assert_called_once_with("A", "1-0")
+        self.poll([self.disks("B", "D")])
+        self.assertEqual([mock.call("A", "1-0"), mock.call("C", "1-2")], self.remove.call_args_list)
+        self.poll([self.disks("A", "B", "C", "D")])
+        self.insert.assert_has_calls([mock.call("A", "1-0"), mock.call("C", "1-2")], any_order=True)
+
+    def test_reappearing_disk_resets_only_its_own_count(self):
+        self.poll([self.disks("A", "B", "C")])
+        self.poll([self.disks("C")])
+        self.poll([self.disks("A", "C")])
+        self.poll([self.disks("C")])
+        self.remove.assert_called_once_with("B", "1-1")
+        self.poll([self.disks("C")])
+        self.remove.assert_called_once_with("B", "1-1")
+        self.poll([self.disks("C")])
+        self.assertEqual(mock.call("A", "1-0"), self.remove.call_args_list[-1])
+        self.insert.assert_not_called()
+
+    def test_incomplete_polls_leave_pending_count_and_baseline_untouched(self):
+        a = self.disks("A", "B")
+        b = self.disks("B")
+        self.poll([a])
+        self.poll([b])
+        for output in ("", " ", "bad JSON", '{"Controllers": []}'):
+            self.poll([b], output=output)
+        for _ in range(3):
+            self.poll([self.disks("B", "C")], rc=45)
+            self.poll([self.disks("B", "C"), self.controller(1, status="Failure")])
+            self.poll([self.disks("B", "C"), self.controller(1)])
+        self.insert.assert_not_called()
+        self.remove.assert_not_called()
+        self.poll([b])
+        self.remove.assert_not_called()
+        self.poll([b])
+        self.remove.assert_called_once_with("A", "1-0")
+
+    def test_partial_drive_rows_and_omitted_controller_preserve_known_disks(self):
+        a = self.controller(0, [(0, "A", "Onln")])
+        b = self.controller(1, [(1, "B", "Offln")])
+        self.poll([a, b])
+        for _ in range(3):
+            self.poll([b], virtual=[self.controller(0), self.controller(1)])
+            partial = self.controller(0, [(0, "A", "Onln"), (2, "C", "Onln")])
+            del partial["Response Data"]["Drive /c0/e1/s0"]
+            self.poll([partial, b])
+        self.insert.assert_not_called()
+        self.remove.assert_not_called()
+        self.assertEqual(7, self.status.call_count)
+
+    def test_controller_omitted_from_both_queries_freezes_only_inventory(self):
+        peer = self.controller(1, [(2, "C", "Onln")])
+        self.poll([self.disks("A", "B"), peer])
+        self.poll([self.disks("B"), peer])
+
+        partial = self.controller(0, [(1, "B", "Offln"), (3, "D", "Onln")])
+        for _ in range(3):
+            self.poll([partial])
+        self.remove.assert_not_called()
+        self.insert.assert_not_called()
+        self.assertEqual([mock.call("B", "1", "1", OFFLINE)] * 3, self.status.call_args_list)
+
+        self.poll([self.disks("B"), peer])
+        self.remove.assert_not_called()
+        self.poll([self.disks("B"), peer])
+        self.remove.assert_called_once_with("A", "1-0")
+        self.insert.assert_not_called()
+
+    def test_new_controller_is_confirmed_only_in_a_complete_poll(self):
+        first = self.disks("A")
+        second = self.controller(1, [(1, "B", "Onln")])
+        third = self.controller(2, [(2, "C", "Onln")])
+        self.poll([first])
+        self.poll([first, second])
+        self.insert.assert_called_once_with("B", "1-1")
+
+        for _ in range(3):
+            self.poll([first, third])
+        self.insert.assert_called_once_with("B", "1-1")
+        self.remove.assert_not_called()
+        self.poll([first, second, third])
+        self.assertEqual([mock.call("B", "1-1"), mock.call("C", "1-2")], self.insert.call_args_list)
+
+    def test_bad_virtual_drive_row_keeps_peer_physical_status(self):
+        bad = self.controller(0)
+        bad["Response Data"]["/c0/v0"] = [{"State": None, "DG/VD": "0/0"}]
+        good = self.controller(1, [(1, "B", "Offln")])
+        self.poll([good], virtual=[bad, self.controller(1)])
+        self.status.assert_called_once_with("B", "1", "1", OFFLINE)
+
+    def test_degraded_virtual_drive_alongside_incomplete_disk_inventory(self):
+        virtual = self.controller(0)
+        virtual["Response Data"]["/c0/v2"] = [{"State": "Dgrd", "DG/VD": "4/2"}]
+        raid_alarm = self.patch("send_raid_state_alarm_to_mn")
+        self.poll([self.controller(0, status="Failure")], rc=45, virtual=[virtual])
+        self.metrics["raid_state"].add_metric.assert_called_once_with(["4"], 5)
+        raid_alarm.assert_called_once_with("4", "Dgrd")
+
+    def test_virtual_drive_id_fallback_accepts_numeric_ids_and_skips_invalid_rows(self):
+        virtual = self.controller(0)
+        virtual["Response Data"]["/c0/v1"] = [{"State": "Dgrd", "VD": 1}]
+        virtual["Response Data"]["/c0/v2"] = [{"State": "Optl", "VD": []}]
+        self.patch("send_raid_state_alarm_to_mn")
+        self.poll([self.controller(0, [(1, "B", "Offln")])], virtual=[virtual])
+        self.metrics["raid_state"].add_metric.assert_called_once_with([1], 5)
+        self.status.assert_called_once_with("B", "1", "1", OFFLINE)
+
+    def test_blank_serial_keeps_other_status_and_blocks_inventory(self):
+        self.poll([self.disks("A", "B")])
+        for serial in (None, "", " \t "):
+            self.status.reset_mock()
+            self.metrics["physical_disk_state"].reset_mock()
+            good = self.controller(0, [(0, serial, "Onln"), (1, u"B\u03a9", "Offln")])
+            self.poll([good])
+            self.status.assert_called_once_with(u"B\u03a9", "1", "1", OFFLINE)
+            self.metrics["physical_disk_state"].add_metric.assert_has_calls(
+                [mock.call(["0", "1"], NORMAL), mock.call(["1", "1"], OFFLINE)], any_order=True)
+        self.insert.assert_not_called()
+        self.remove.assert_not_called()
 
 
 if __name__ == "__main__":
