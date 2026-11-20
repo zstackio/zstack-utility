@@ -1275,11 +1275,25 @@ class TestHostPluginGetPciInfo:
         }
 
     @pytest.mark.parametrize('vfio_exists', [False, True])
-    def test_get_pci_info_skip_grub(self, vfio_exists):
+    @pytest.mark.parametrize('architecture,groups_exist,groups,expected_status', [
+        ('x86_64', False, [], True),
+        ('x86_64', True, [], True),
+        ('x86_64', True, ['42'], True),
+        ('aarch64', False, [], True),
+        ('aarch64', True, [], True),
+        ('aarch64', True, ['42'], True),
+        ('loongarch64', False, [], True),
+        ('mips64el', False, [], True),
+    ])
+    def test_get_pci_info_skip_grub(self, vfio_exists, architecture,
+                                    groups_exist, groups, expected_status):
         plugin = _make_plugin()
         plugin._collect_format_pci_device_info = MagicMock()
         with patch.object(host_plugin, 'UpdateConfigration') as config, \
-                patch.object(host_plugin.os.path, 'exists', return_value=vfio_exists):
+                patch.object(host_plugin, 'host_arch', architecture), \
+                patch.object(host_plugin.os.path, 'exists', return_value=vfio_exists), \
+                patch.object(host_plugin.os.path, 'isdir', return_value=groups_exist) as isdir, \
+                patch.object(host_plugin.os, 'listdir', return_value=groups) as listdir:
             def collect_after_vfio(*args):
                 if not vfio_exists:
                     config.return_value.enable_vfio_module.assert_called_once_with()
@@ -1290,11 +1304,33 @@ class TestHostPluginGetPciInfo:
             }))
         rsp = json.loads(result)
         assert rsp['success'] is True
-        assert rsp['hostIommuStatus'] is True
+        assert rsp['hostIommuStatus'] is expected_status
+        isdir.assert_not_called()
+        listdir.assert_not_called()
         plugin._collect_format_pci_device_info.assert_called_once()
         config.assert_called_once_with()
         if vfio_exists:
             config.return_value.enable_vfio_module.assert_not_called()
+        config.return_value.updateHostIommu.assert_not_called()
+        config.return_value.updateGrubConfig.assert_not_called()
+
+    def test_get_pci_info_skip_grub_does_not_read_host_groups(self):
+        plugin = _make_plugin()
+        plugin._collect_format_pci_device_info = MagicMock()
+        with patch.object(host_plugin, 'UpdateConfigration') as config, \
+                patch.object(host_plugin, 'host_arch', 'x86_64'), \
+                patch.object(host_plugin.os.path, 'exists', return_value=True), \
+                patch.object(host_plugin.os.path, 'isdir', return_value=True), \
+                patch.object(host_plugin.os, 'listdir', side_effect=OSError('cannot read IOMMU groups')):
+            result = plugin.get_pci_info(_make_req({
+                'skipGrubConfig': True, 'enableIommu': True,
+                'opaque': {}, 'pciDeviceAddresses': [],
+            }))
+
+        rsp = json.loads(result)
+        assert rsp['success'] is True
+        assert rsp['hostIommuStatus'] is True
+        plugin._collect_format_pci_device_info.assert_called_once()
         config.return_value.updateHostIommu.assert_not_called()
         config.return_value.updateGrubConfig.assert_not_called()
 
@@ -1391,6 +1427,40 @@ class TestHostPluginUpdateVmConsolePasswordLive:
 
 @pytest.mark.kvmagent
 class TestHostPluginGetPciInfoDeep:
+    @pytest.mark.parametrize('device_type', [
+        'IB_Controller', 'Ethernet_Controller', 'GPU_Video_Controller',
+    ])
+    @pytest.mark.parametrize('group_state', ['present', 'missing', 'dangling'])
+    def test_only_ib_requires_an_existing_iommu_group(self, tmp_path, device_type, group_state):
+        plugin = _make_plugin()
+        slot = '0000:17:00.0'
+        group_path = tmp_path / 'iommu_group'
+        target = tmp_path / '42'
+        if group_state == 'present':
+            target.mkdir()
+        if group_state != 'missing':
+            group_path.symlink_to(target)
+        resolved_group = os.path.realpath(str(group_path))
+        group_exists = os.path.isdir(str(group_path))
+
+        # Exercise a real sysfs-style link without changing other device types.
+        with patch.object(host_plugin.pci, 'collect_pci_devices_with_dependencies', return_value=[]), \
+                patch.object(plugin, '_set_generic_pci_device_type',
+                             side_effect=lambda device, *args: setattr(device, 'type', device_type)), \
+                patch.object(host_plugin.os.path, 'realpath', return_value=resolved_group), \
+                patch.object(host_plugin.os.path, 'isdir', return_value=group_exists) as isdir:
+            device = plugin._convert_pci_info_to_to(slot, {}, {slot: {}}, {}, {})
+
+        assert device.type == device_type
+        if device_type == 'IB_Controller' and group_state != 'present':
+            assert device.iommuGroup is None
+        else:
+            assert device.iommuGroup == resolved_group
+        if device_type == 'IB_Controller':
+            isdir.assert_called_once_with('/sys/bus/pci/devices/%s/iommu_group' % slot)
+        else:
+            isdir.assert_not_called()
+
     @pytest.mark.parametrize('pci_class,class_name,config,expected', [
         ('0207', 'Infiniband controller', [], 'IB_Controller'),
         ('0207', 'Network controller', [], 'IB_Controller'),

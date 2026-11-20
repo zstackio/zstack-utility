@@ -3601,6 +3601,10 @@ done
         # devices already identified as GPU in gpu_info_map (no hardcoded GPU class list).
         self._set_generic_pci_device_type(to, pci_device_mapper, context, ids.get('Class'))
 
+        # Missing IB groups must not change the Host-wide status used by GPU sync.
+        if to.type == "IB_Controller" and not os.path.isdir(group_path):
+            to.iommuGroup = None
+
         return to
 
     def _parse_pci_device_info(self, rsp):
