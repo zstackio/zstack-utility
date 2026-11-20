@@ -92,15 +92,23 @@ class PortMirrorPlugin(kvmagent.KvmAgent):
         device_exists = iproute.is_device_ifname_exists(rec_device_name)
         logger.debug("Is link device %s exists: %s" % (rec_device_name, device_exists))
         target_mtu = mtu if mtu is not None else DEFAULT_GRETAP_MTU
+        gre_kwargs = {
+            'remote': tunnel.remoteIp,
+            'local': tunnel.localIp,
+            'ttl': 255,
+            'key': tunnel.key,
+            'pmtudisc': 0,
+            'ignore_df': 1,
+        }
         if not device_exists:
-            iproute.add_link(rec_device_name, 'gretap', remote=tunnel.remoteIp, local=tunnel.localIp,
-                             ttl=255, key=tunnel.key, pmtudisc=0, mtu=target_mtu)
+            iproute.add_link(rec_device_name, 'gretap', mtu=target_mtu, **gre_kwargs)
             iproute.set_link_up(rec_device_name)
             iproute.set_link_attribute(rec_device_name, alias=tunnel.uuid)
         else:
             cur_mtu = self._get_interface_mtu(rec_device_name)
-            if cur_mtu is not None and cur_mtu < target_mtu:
-                iproute.set_link_attribute(rec_device_name, mtu=target_mtu)
+            update_mtu = max(cur_mtu, target_mtu) if cur_mtu is not None else target_mtu
+            gre_params = iproute._warp_gre_link_param(dict(gre_kwargs, mtu=update_mtu))
+            iproute.set_link_attribute(rec_device_name, kind='gretap', **gre_params)
 
     def _delete_gre_device(self, tunnel, rec_device_name):
         device_index = iproute.query_index_by_ifname(rec_device_name)

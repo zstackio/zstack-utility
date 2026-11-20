@@ -188,6 +188,8 @@ def _wrap_gre_link_param(kwargs):
     params["gre_oflags"] = kwargs.get('oflags', kwargs.get('flags', 0x2000))
     if 'pmtudisc' in kwargs and kwargs['pmtudisc'] is not None:
         params["gre_pmtudisc"] = 1 if kwargs['pmtudisc'] else 0
+    if 'ignore_df' in kwargs and kwargs['ignore_df'] is not None:
+        params["gre_ignore_df"] = 1 if kwargs['ignore_df'] else 0
     if kwargs.get('mtu') is not None:
         params["mtu"] = int(kwargs['mtu'])
     return params
