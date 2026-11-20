@@ -838,7 +838,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         backend = (pool.get('backend') or {}).get('identity') or {}
         with open(os.path.join(base, 'backing_dev')) as stream:
             backing = stream.read().strip()
-        if not backend or backing == 'none' or backend.get('boot_id') != state['bootId']:
+        # A pool without a writeback disk moves only compressed objects; one with a
+        # disk must be the disk the service prepared in this boot.
+        if backing == 'none':
+            backend = {}
+        elif not backend or backend.get('boot_id') != state['bootId']:
             raise Rejected('SWAP_DIRECT_BACKEND_IDENTITY_UNKNOWN')
         source = command.get('swapDirectSource') is True
         if not source:
@@ -854,12 +858,20 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     mem_available = next(int(line.split()[1]) * 1024 for line in stream if line.startswith('MemAvailable:'))
                 with open(os.path.join(base, 'mm_stat')) as stream:
                     mm = [int(value) for value in stream.read().split()]
-                with open(os.path.join(base, 'bd_stat')) as stream:
-                    backing_used = int(stream.read().split()[0]) * 4096
-                backing_free = int(backend['capacity_bytes']) - 4096 - backing_used
+                writeback_pages = int(command.get('swapDirectWritebackPages') or 0)
+                if writeback_pages < 0:
+                    raise ValueError('invalid writeback pages')
+                if backend:
+                    with open(os.path.join(base, 'bd_stat')) as stream:
+                        backing_used = int(stream.read().split()[0]) * 4096
+                    backing_free = int(backend['capacity_bytes']) - 4096 - backing_used
             except (KeyError, ValueError, IndexError, StopIteration):
                 raise Rejected('SWAP_DIRECT_CAPACITY_UNKNOWN')
-            if mem_available < memory_bytes or swap_free < cold_bytes or backing_free < cold_bytes \
+            if not backend and writeback_pages:
+                # Written-back pages go straight to the destination's writeback disk.
+                raise Rejected('SWAP_DIRECT_DESTINATION_WRITEBACK_REQUIRED')
+            if mem_available < memory_bytes or swap_free < cold_bytes \
+                    or (backend and backing_free < cold_bytes) \
                     or (mm[3] > 0 and mm[3] - mm[2] < cold_bytes):
                 raise Rejected('SWAP_DIRECT_DESTINATION_CAPACITY_INSUFFICIENT')
         self._swap_direct_kernel_abi(device, device_stat)
@@ -889,7 +901,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                     cold_bytes = next(int(line.split()[1]) * 1024 for line in stream if line.startswith('VmSwap:'))
                 memory_bytes = domain.maxMemory() * 1024
                 proof.update(memoryBytes=str(memory_bytes), coldBytes=str(cold_bytes))
-                if estimate_backing:
+                if estimate_backing and not backend:
+                    # Nothing can be written back without a writeback disk.
+                    proof.update(backingPages='0', backingEstimate='no_backing_device')
+                elif estimate_backing:
                     pages, quality = self._swap_direct_backing_pages(pid, memory_bytes, device,
                                                                     device_stat.st_rdev, self._swap_direct_type_cache[1])
                     proof.update(backingPages=str(pages), backingEstimate=quality)

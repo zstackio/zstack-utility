@@ -1586,15 +1586,16 @@ def test_swap_direct_rejects_fractional_or_boolean_swap_type(host, monkeypatch):
             plugin.prepare_swap_direct('3' * 32, request)
 
 
-@pytest.mark.parametrize('exhausted', ['ram', 'slots', 'pool', 'backend', None])
+@pytest.mark.parametrize('exhausted', ['ram', 'slots', 'pool', 'backend', 'no_disk_written_back', None, 'no_disk'])
 def test_swap_direct_capacity_is_checked_before_opening_the_device(host, tmp_path, monkeypatch, exhausted):
     import io
     import stat
     plugin, service, world = host
     gib = 1 << 30
+    no_disk = exhausted in ('no_disk', 'no_disk_written_back')
     monkeypatch.setattr(plugin, '_swap_direct_capability', lambda state: {'supported': True})
     status = {'host_zram': {'pool_generation': POOL, 'device': '/dev/zram0',
-                          'backend': {'identity': {'boot_id': 'boot', 'capacity_bytes': gib}}},
+                          'backend': {} if no_disk else {'identity': {'boot_id': 'boot', 'capacity_bytes': gib}}},
               'lifecycle': {'migrationHolds': [{'operation_id': OPERATION, 'pool_generation': POOL}]}}
     monkeypatch.setattr(plugin, '_service', lambda action: status)
     swaps = tmp_path / 'swaps'
@@ -1604,9 +1605,10 @@ def test_swap_direct_capacity_is_checked_before_opening_the_device(host, tmp_pat
     monkeypatch.setattr(plugin, 'SYS_BLOCK_PATH', str(tmp_path))
     sysfs = tmp_path / 'zram0'; sysfs.mkdir()
     (sysfs / 'comp_algorithm').write_text('[lzo] lzo-rle')
-    (sysfs / 'backing_dev').write_text('nvme0n1')
+    (sysfs / 'backing_dev').write_text('none' if no_disk else 'nvme0n1')
     (sysfs / 'mm_stat').write_text('0 0 %d %d' % (gib if exhausted == 'pool' else 0, gib))
-    (sysfs / 'bd_stat').write_text('%d 0 0' % (gib // 4096 - 1 if exhausted == 'backend' else 0))
+    if not no_disk:
+        (sysfs / 'bd_stat').write_text('%d 0 0' % (gib // 4096 - 1 if exhausted == 'backend' else 0))
     original_stat = os.lstat
     monkeypatch.setattr(module.os, 'lstat', lambda path: SimpleNamespace(st_mode=stat.S_IFBLK, st_rdev=65024, st_ino=1)
                         if path == '/dev/zram0' else original_stat(path))
@@ -1618,7 +1620,13 @@ def test_swap_direct_capacity_is_checked_before_opening_the_device(host, tmp_pat
     monkeypatch.setattr(module, '_Descriptor', device)
     command = {'operationUuid': OPERATION, 'poolGeneration': POOL, 'swapDirectSource': False,
                'swapDirectMemoryBytes': str(gib), 'swapDirectColdBytes': str(gib // 8)}
-    if exhausted:
+    if exhausted == 'no_disk_written_back':
+        # Written-back pages need a writeback disk on the destination.
+        command['swapDirectWritebackPages'] = '3'
+        with pytest.raises(Rejected, match='DESTINATION_WRITEBACK_REQUIRED'):
+            plugin._swap_direct_preflight(command, {'bootId': 'boot'})
+        device.assert_not_called()
+    elif exhausted and exhausted != 'no_disk':
         with pytest.raises(Rejected, match='DESTINATION_CAPACITY_INSUFFICIENT'):
             plugin._swap_direct_preflight(command, {'bootId': 'boot'})
         device.assert_not_called()
