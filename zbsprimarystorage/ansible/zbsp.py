@@ -2,6 +2,9 @@
 # encoding: utf-8
 import argparse
 import datetime
+from copy import copy as shallow_copy
+
+from ansible.utils.unsafe_proxy import wrap_var
 
 from zstacklib import *
 
@@ -119,9 +122,13 @@ set_selinux("state=disabled", host_post_info)
 
 
 # name: make sure MDS has access to storage resources
-command = ("[ -f /usr/local/bin/zbsadm ] && /usr/local/bin/zbsadm client deploy --host %s --port %s -u %s -p %s"
-           % (host_post_info.host, host_post_info.remote_port, host_post_info.remote_user, host_post_info.remote_pass))
-run_remote_command(command, host_post_info)
+deploy_info = shallow_copy(host_post_info)
+deploy_info.environment = dict(host_post_info.environment, ZBS_MDS_PASSWORD=wrap_var(str(host_post_info.remote_pass)))
+command = ('[ -f /usr/local/bin/zbsadm ] && /usr/local/bin/zbsadm client deploy '
+           '--host %s --port %s -u %s -p "$ZBS_MDS_PASSWORD"' %
+           (shell_quote(str(host_post_info.host)), shell_quote(str(host_post_info.remote_port)),
+            shell_quote(str(host_post_info.remote_user))))
+run_remote_command(wrap_var(command), deploy_info, setup_yum0=False)
 
 
 # name: install virtualenv
