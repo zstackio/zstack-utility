@@ -326,17 +326,24 @@ def get_mpath_block_devices(scsi_info, snapshot=None):
 
     block_devices_list = [None] * len(mpath_devices) # type: list
 
-    def get_slave_block_devices(slave, dm, i):
-        try:
-            struct = get_device_info(slave, scsi_info, snapshot)
-            if struct is None:
-                return
-            struct.type = "mpath"
-            struct.dev_name = slave
-            block_devices_list[i] = struct
-        except Exception as e:
-            logger.warn(linux.get_exception_stacktrace())
+    def get_slave_block_devices(slaves, dm, i):
+        dm_uuid = linux.read_file_strip("/sys/class/block/%s/dm/uuid" % dm)
+        if not dm_uuid or not dm_uuid.startswith("mpath-"):
             return
+        wwid = dm_uuid[len("mpath-"):]
+        if not wwid:
+            return
+        for slave in slaves:
+            try:
+                struct = get_device_info(slave, scsi_info, snapshot)
+                if struct is None or struct.wwid != wwid:
+                    continue
+                struct.type = "mpath"
+                struct.dev_name = slave
+                block_devices_list[i] = struct
+                return
+            except Exception as e:
+                logger.warn(linux.get_exception_stacktrace())
 
     threads = []
     for idx, mpath_device in enumerate(mpath_devices, start=0):
@@ -354,7 +361,7 @@ def get_mpath_block_devices(scsi_info, snapshot=None):
                 continue
 
             slave_devices.extend(slaves)
-            threads.append(thread.ThreadFacade.run_in_thread(get_slave_block_devices, [slaves[0], dm, idx]))
+            threads.append(thread.ThreadFacade.run_in_thread(get_slave_block_devices, [slaves, dm, idx]))
         except Exception as e:
             logger.warn(linux.get_exception_stacktrace())
             continue
