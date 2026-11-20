@@ -39,24 +39,31 @@ from kvmagent.plugins import port_mirror_plugin
 
 
 class TestPortMirrorGretapMtu(unittest.TestCase):
-    def test_warp_gre_link_param_forwards_mtu_and_pmtudisc(self):
+    def test_warp_gre_link_param_forwards_mtu_pmtudisc_and_ignore_df(self):
         kwargs = {
             "local": "10.0.0.1",
             "remote": "10.0.0.2",
             "ttl": 255,
             "key": 7,
             "pmtudisc": 0,
+            "ignore_df": 1,
             "mtu": 1500,
         }
         utils_params = iproute._warp_gre_link_param(kwargs)
         self.assertEqual(utils_params.get("mtu"), 1500)
         self.assertEqual(utils_params.get("gre_pmtudisc"), 0)
+        self.assertEqual(utils_params.get("gre_ignore_df"), 1)
 
         link_params = ip_link._wrap_gre_link_param(kwargs)
         self.assertEqual(link_params.get("mtu"), 1500)
         self.assertEqual(link_params.get("gre_pmtudisc"), 0)
+        self.assertEqual(link_params.get("gre_ignore_df"), 1)
 
-    def test_apply_mirror_session_creates_gretap_with_nic_mtu_and_nopmtudisc(self):
+        base_kwargs = {"local": "10.0.0.1", "remote": "10.0.0.2", "ttl": 255, "key": 7}
+        self.assertNotIn("gre_ignore_df", iproute._warp_gre_link_param(base_kwargs))
+        self.assertNotIn("gre_ignore_df", ip_link._wrap_gre_link_param(base_kwargs))
+
+    def test_apply_mirror_session_creates_gretap_with_nic_mtu_nopmtudisc_and_ignore_df(self):
         plugin = port_mirror_plugin.PortMirrorPlugin()
         cmd = {
             "isLocal": False,
@@ -96,6 +103,7 @@ class TestPortMirrorGretapMtu(unittest.TestCase):
                 ttl=255,
                 key=12,
                 pmtudisc=0,
+                ignore_df=1,
                 mtu=1500,
             )
 
@@ -109,6 +117,7 @@ class TestPortMirrorGretapMtu(unittest.TestCase):
                 ttl=255,
                 key=12,
                 pmtudisc=0,
+                ignore_df=1,
                 mtu=1500,
             )
 
@@ -145,6 +154,51 @@ class TestPortMirrorGretapMtu(unittest.TestCase):
             plugin.apply_mirror_session(req)
             self.assertEqual(mock_add_link.call_args[1]["mtu"], 9000)
             self.assertEqual(mock_add_link.call_args[1]["pmtudisc"], 0)
+            self.assertEqual(mock_add_link.call_args[1]["ignore_df"], 1)
+
+    def test_apply_mirror_session_updates_existing_gretap_ignore_df_and_mtu(self):
+        plugin = port_mirror_plugin.PortMirrorPlugin()
+        cmd = {
+            "isLocal": False,
+            "tunnel": {
+                "dev": "br_eth1",
+                "localIp": "10.0.0.1",
+                "remoteIp": "10.0.0.2",
+                "prefix": 24,
+                "key": 14,
+                "uuid": "uuid:s3 src/dst:h1/h2 l3Uuid:l3",
+            },
+            "mirror": {
+                "type": "Bidirection",
+                "snic": "vnic30.0",
+                "dnic": "vnic31.0",
+                "bridge": "br_eth0",
+                "mName": "30.0",
+            },
+        }
+        req = {port_mirror_plugin.http.REQUEST_BODY: jsonobject.dumps(cmd)}
+
+        with patch.object(port_mirror_plugin.iproute, "query_addresses_by_ip", return_value=["exists"]), \
+             patch.object(port_mirror_plugin.iproute, "is_device_ifname_exists", return_value=True), \
+             patch.object(port_mirror_plugin.iproute, "add_link") as mock_add_link, \
+             patch.object(port_mirror_plugin.iproute, "set_link_attribute") as mock_set_attr, \
+             patch.object(plugin, "_del_if"), \
+             patch.object(plugin, "_set_mirror_src_config"), \
+             patch.object(plugin, "_get_interface_mtu", side_effect=[1500, 1458]):
+            plugin.apply_mirror_session(req)
+            mock_add_link.assert_not_called()
+            mock_set_attr.assert_called_once()
+            args, kwargs = mock_set_attr.call_args
+            self.assertEqual(args, ("send30.0",))
+            self.assertEqual(kwargs.get("kind"), "gretap")
+            self.assertEqual(kwargs.get("gre_pmtudisc"), 0)
+            self.assertEqual(kwargs.get("gre_ignore_df"), 1)
+            self.assertEqual(kwargs.get("mtu"), 1500)
+            self.assertEqual(kwargs.get("gre_local"), "10.0.0.1")
+            self.assertEqual(kwargs.get("gre_remote"), "10.0.0.2")
+            self.assertEqual(kwargs.get("gre_ttl"), 255)
+            self.assertEqual(kwargs.get("gre_ikey"), 14)
+            self.assertEqual(kwargs.get("gre_okey"), 14)
 
 
 if __name__ == "__main__":
