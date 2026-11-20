@@ -409,8 +409,20 @@ def test_an_unset_capacity_matches_the_service_default_without_rewriting_it(host
     plugin, service, world = host
     service.efficiency = True
     service.capacity = {'logical_capacity': {'percent_of_host': 50.0},
+                        'physical_memory_limit': {'percent_of_logical': 100.0}}
+    result = apply(plugin, 6, desired())
+    assert result['status'] == 'Succeeded' and service.actions() == []
+    assert world['started'] == []
+
+
+def test_a_pool_on_the_earlier_default_ram_limit_keeps_it(host):
+    plugin, service, world = host
+    service.efficiency = True
+    # The service stores its default as percentages; the earlier one limited the RAM to half the logical capacity.
+    service.capacity = {'logical_capacity': {'percent_of_host': 50.0},
                         'physical_memory_limit': {'percent_of_logical': 50.0}}
     result = apply(plugin, 6, desired())
+    # An unset capacity still matches it: the pool is not drained and rebuilt unasked.
     assert result['status'] == 'Succeeded' and service.actions() == []
     assert world['started'] == []
 
@@ -478,7 +490,7 @@ def test_a_pool_reconciling_unknown_operations_is_not_drained(host):
     plugin, service, world = host
     service.efficiency = True
     service.capacity = {'logical_capacity': {'percent_of_host': 50.0},
-                        'physical_memory_limit': {'percent_of_logical': 50.0}}
+                        'physical_memory_limit': {'percent_of_logical': 100.0}}
     service.capacity_state, service.capacity_reason = 'RECONCILING', 'UNKNOWN_OPERATION_REQUIRES_RECONCILIATION'
     result = apply(plugin, 7, desired())
     # The running service reconciles them itself; a drain is refused until then.
@@ -541,6 +553,24 @@ def test_a_drain_waits_for_the_service_to_stop_before_it_starts(host, monkeypatc
     world['unit'] = 'active'
     result = apply(plugin, 9, desired(control='drained'))
     assert result['reasonCode'] == 'SERVICE_STOPPING' and world['started'] == []
+
+
+def test_a_drain_with_no_pool_holds_the_running_service_paused(host, monkeypatch):
+    plugin, service, world = host
+    # A reboot emptied the RAM-only pool, and with no VM running the service opens none.
+    service.pool, service.efficiency = None, True
+    record = {'kept': True}
+    monkeypatch.setattr(plugin, '_no_recorded_pool', lambda: not record['kept'])
+    # A pool still recorded may be one the service has not opened yet: it is not taken as none.
+    assert apply(plugin, 24, desired(control='drained'))['reasonCode'] == 'DRAIN_POOL_IDENTITY_UNKNOWN'
+    record['kept'] = False
+    assert apply(plugin, 24, desired(control='drained'))['status'] == 'Succeeded'
+    # Nothing to withdraw: held paused so that no pool forms, with the service left running.
+    assert service.paused is True and service.efficiency is False
+    assert world['unit'] == 'active' and world['started'] == []
+    # Resume lifts the hold; the pool opens once a VM runs.
+    assert apply(plugin, 25, desired())['reasonCode'] == 'WAITING_FOR_POOL'
+    assert service.paused is False
 
 
 def test_resume_after_drain_prepares_finalizes_and_activates_the_pool(host):

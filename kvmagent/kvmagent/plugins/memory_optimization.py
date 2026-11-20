@@ -201,7 +201,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     ACTIVATION_WAIT_REASONS = ('MAINTENANCE_ACTIVATION_NATIVE_NOT_READY', 'MAINTENANCE_ACTIVATION_RUNTIME_NOT_QUIESCENT')
     # The service's DefaultCapacity(); a numeric 50 equals 50.0 in the comparison.
     SERVICE_DEFAULT_CAPACITY = {'logical_capacity': {'percent_of_host': 50},
-                                'physical_memory_limit': {'percent_of_logical': 50}}
+                                'physical_memory_limit': {'percent_of_logical': 100}}
+    # The service's earlier default RAM limit: a pool created with it keeps it until a capacity is set.
+    EARLIER_DEFAULT_RAM_LIMIT = {'percent_of_logical': 50}
     PROGRESS_RETRY_SECONDS = 5
     WAIT_RETRY_SECONDS = 30
 
@@ -1552,7 +1554,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     def _same_capacity(cls, side, configured, wanted):
         # A side without a unit is the service default, which the service stores as its percentage.
         if not wanted:
-            return configured == {} or configured == cls.SERVICE_DEFAULT_CAPACITY[side]
+            return configured in ({}, cls.SERVICE_DEFAULT_CAPACITY[side]) or (
+                side == 'physical_memory_limit' and configured == cls.EARLIER_DEFAULT_RAM_LIMIT)
         return configured == wanted
 
     @staticmethod
@@ -1600,10 +1603,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise Converging('DRAIN_EXECUTOR_STATE_UNKNOWN')
         if self._service_unit_state() == 'active':
             status = self._service('status')
-            if not (status.get('host_zram') or {}).get('pool_generation'):
+            pool = (status.get('host_zram') or {}).get('pool_generation')
+            if not pool and not self._no_recorded_pool():
                 raise Rejected('DRAIN_POOL_IDENTITY_UNKNOWN')
             self._service('lifecycle-pause', {'action': 'pause'})
             self._set_efficiency(self._service('host-cpu-state'), EfficiencyMode.DISABLED)
+            if not pool:
+                # No pool (e.g. a reboot emptied a RAM-only one) has nothing to drain;
+                # held paused, as the management node holds such a Host, none forms.
+                return
             self._bounded_command_output(['systemctl', 'stop', self.MANAGED_ZRAM_UNIT], 60)
         if self._service_unit_state() not in ('inactive', 'failed'):
             raise Converging('SERVICE_STOPPING')
