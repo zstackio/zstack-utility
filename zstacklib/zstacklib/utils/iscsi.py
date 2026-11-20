@@ -110,21 +110,17 @@ class IscsiLogin(object):
             self.server_hostname, self.server_port, self.target, self.lun))
 
         config_iscsi_startup_if_needed()
-        shell.call('iscsiadm -m discovery -t sendtargets -p %s:%s' % (self.server_hostname, self.server_port))
+        portal = linux.shellquote('%s:%s' % (self.server_hostname, self.server_port))
+        node = 'iscsiadm --mode node --targetname %s -p %s' % (linux.shellquote(self.target), portal)
+        shell.call('iscsiadm -m discovery -t sendtargets -p %s' % portal)
 
         if self.chap_username and self.chap_password:
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.authmethod --value=CHAP' % (
-                    self.target, self.server_hostname, self.server_port))
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.username --value=%s' % (
-                    self.target, self.server_hostname, self.server_port, self.chap_username))
-            shell.call(
-                'iscsiadm   --mode node  --targetname "%s"  -p %s:%s --op=update --name node.session.auth.password --value=%s' % (
-                    self.target, self.server_hostname, self.server_port, self.chap_password))
+            auth = [('authmethod', 'CHAP'), ('username', self.chap_username), ('password', self.chap_password)]
+            for field, value in auth:
+                cmd = '%s --op=update --name node.session.auth.%s --value=%s' % (node, field, linux.shellquote(value))
+                shell.ShellCmd(cmd)(logcmd=False)
 
-        s = shell.ShellCmd('iscsiadm  --mode node  --targetname "%s"  -p %s:%s --login' % (
-            self.target, self.server_hostname, self.server_port))
+        s = shell.ShellCmd('%s --login' % node)
         s(False)
         if s.return_code != 0 and 'already present' not in s.stderr:
             s.raise_error()
