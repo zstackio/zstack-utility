@@ -13,13 +13,13 @@ import pytest
 def deployment():
     path = Path(__file__).resolve().parents[3] / "kvmagent/ansible/kvm.py"
     tree = ast.parse(path.read_text())
-    function = next(node for node in tree.body if isinstance(node, ast.FunctionDef)
-                    and node.name == "configure_resource_assignment")
+    functions = [node for node in tree.body if isinstance(node, ast.FunctionDef)
+                 and node.name in ("configure_resource_assignment", "start_kvmagent")]
     remote = Mock(return_value=True)
     namespace = dict(re=re, shell_quote=shlex.quote, host_post_info=SimpleNamespace(), chroot_env="false",
                      resource_assignment_enabled="false", resource_assignment_slice_name="zstack-compute.slice",
                      resource_assignment_systemd_units=[], run_remote_command=remote)
-    exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
+    exec(compile(ast.Module(body=functions, type_ignores=[]), str(path), "exec"), namespace)
     return tree, namespace, remote
 
 
@@ -81,6 +81,24 @@ def test_slice_is_configured_before_starting_agent(deployment):
     calls = [node.value.func.id for node in tree.body if isinstance(node, ast.Expr)
              and isinstance(node.value, ast.Call) and isinstance(node.value.func, ast.Name)]
     assert calls.index("configure_resource_assignment") < calls.index("start_kvmagent")
+
+
+@pytest.mark.parametrize("legacy_stop_rc", [0, 1])
+def test_systemd_start_waits_for_legacy_agent_stop(deployment, legacy_stop_rc):
+    _, namespace, remote = deployment
+    namespace.update(init="false", restart_libvirtd="false", RPM_BASED_OS=["helix"],
+                     host_info=SimpleNamespace(distro="helix", major_version=8))
+    namespace["start_kvmagent"]()
+
+    command = remote.call_args.args[0].replace("/etc/init.d/zstack-kvmagent", "legacy_agent")
+    stubs = ('systemctl() { echo "systemctl $*"; }; '
+             'legacy_agent() { echo "legacy $*"; return %d; }; ' % legacy_stop_rc)
+    result = subprocess.run(["sh", "-c", stubs + command], capture_output=True, text=True)
+    expected = ["systemctl stop zstack-kvmagent.service", "legacy stop"]
+    if legacy_stop_rc == 0:
+        expected += ["systemctl start zstack-kvmagent.service", "systemctl enable zstack-kvmagent.service"]
+    assert result.stdout.splitlines() == expected
+    assert result.returncode == legacy_stop_rc
 
 
 def test_chroot_prepares_slice_without_changing_services(deployment, tmp_path):
