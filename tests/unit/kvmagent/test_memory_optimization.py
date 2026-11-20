@@ -1376,10 +1376,28 @@ def test_hot_memory_failure_does_not_block_ksm_or_zram(host, monkeypatch, error,
     want = desired(ksm=True)
     want['hotMemory'] = {'enabled': True, 'interval': 600}
     result = apply(plugin, 1, want)
-    assert result['status'] == status and result['appliedGeneration'] is None
+    # An observer that is not installed or does not start is reported, and the generation is
+    # applied: KSM and ZRAM have converged. One still starting is asked again, as before.
+    if status == 'Failed':
+        assert result['status'] == 'Succeeded' and result['appliedGeneration'] == 1
+    else:
+        assert result['status'] == 'Converging' and result['appliedGeneration'] is None
     assert world['ksm'] and 'host-cpu' in service.actions() and service.efficiency
     assert result['state']['hotMemory']['status'] == status
     assert result['state']['hotMemory']['reasonCode'].startswith('HOT_MEMORY_')
+
+
+@pytest.mark.parametrize('state', [{}, {'LoadState': 'masked'}, {'LoadState': 'not-found', 'ActiveState': 'active'}])
+def test_hot_memory_off_needs_no_installed_or_readable_observer(host, monkeypatch, state):
+    plugin, _, _ = host
+    commands = []
+    monkeypatch.setattr(plugin, '_unit_properties', lambda *args: dict(state))
+    monkeypatch.setattr(plugin, '_bounded_command_output', lambda argv, timeout: commands.append(argv) or '')
+    plugin._converge_hot_memory({'enabled': False})
+    # only an observer left running after its package was removed is stopped
+    assert commands == ([['systemctl', 'stop', 'zstack-hotmem.service']] if state.get('ActiveState') == 'active' else [])
+    with pytest.raises(Rejected, match='HOT_MEMORY_SERVICE_'):
+        plugin._converge_hot_memory({'enabled': True})
 
 
 @pytest.mark.parametrize('hot_error', [False, True])

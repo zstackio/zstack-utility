@@ -552,9 +552,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         hot_memory_error = Rejected('HOT_MEMORY_APPLY_FAILED')
                         hot_memory = {'success': False, 'status': 'Failed',
                                       'reasonCode': 'HOT_MEMORY_APPLY_FAILED', 'reason': str(exc)}
-                # Preserve the existing retry contract without preventing KSM/ZRAM
-                # from converging. A generation is complete only when both parts are.
-                if hot_memory_error is not None:
+                # A service that is still starting or stopping is asked again shortly, as
+                # before. One that is not installed or does not start is reported in the
+                # state and does not fail the generation: KSM and ZRAM have converged, and
+                # a Host without the observer must not be shown as failed for them.
+                if isinstance(hot_memory_error, Converging):
                     raise hot_memory_error
                 self._record_applied_generation(generation)
             result.update({'success': True, 'status': 'Succeeded'})
@@ -580,7 +582,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         except Exception as exc:
             result['state'] = {'reason': str(exc)}
         if hot_memory is not None:
-            result['state']['hotMemory'] = hot_memory
+            observed = result['state'].get('hotMemory')
+            result['state']['hotMemory'] = dict(observed if isinstance(observed, dict) else {}, **hot_memory)
         return result
 
     @staticmethod
@@ -1257,6 +1260,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             state['ksm'] = self._observe_ksm()
         except Exception as exc:
             state['ksm'] = {'reason': str(exc)}
+        observer = self._unit_properties(self.MANAGED_HOT_MEMORY_UNIT, 'LoadState', 'ActiveState')
+        # 'absent' on a Host the observer is not installed on: shown as unsupported, not as failed.
+        state['hotMemory'] = {'serviceState': observer.get('ActiveState') or 'unknown'
+                              if observer.get('LoadState') == 'loaded' else 'absent'}
         unit = self._service_unit_state() if self._managed_service_installed() else 'absent'
         zram = {'serviceState': unit}
         state['zram'] = zram
@@ -1450,12 +1457,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             return
         unit = self.MANAGED_HOT_MEMORY_UNIT
         state = self._unit_properties(unit, 'LoadState', 'ActiveState', 'UnitFileState')
-        if state.get('LoadState') == 'not-found':
-            if enabled:
-                raise Rejected('HOT_MEMORY_SERVICE_NOT_INSTALLED')
-            return
         if state.get('LoadState') != 'loaded':
-            raise Rejected('HOT_MEMORY_SERVICE_STATE_UNKNOWN')
+            if not enabled:
+                # Not installed, masked or unreadable: there is nothing to turn off, except
+                # an observer left running after its package was removed.
+                if state.get('ActiveState') == 'active':
+                    self._bounded_command_output(['systemctl', 'stop', unit], 30)
+                return
+            raise Rejected('HOT_MEMORY_SERVICE_NOT_INSTALLED' if state.get('LoadState') == 'not-found'
+                           else 'HOT_MEMORY_SERVICE_STATE_UNKNOWN')
         active = state.get('ActiveState')
         if not enabled:
             if active not in ('inactive', 'failed') or state.get('UnitFileState') == 'enabled':

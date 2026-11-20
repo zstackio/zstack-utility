@@ -623,6 +623,12 @@ def _install_locked(root, inventory_path, rpm_path, runner=subprocess.check_outp
             _sync_path(os.path.dirname(config))
         if root == os.path.abspath('/'):
             _run(['systemctl', 'daemon-reload'], runner)
+            try:
+                # A running hot-memory observer keeps no state: let it take the new binary.
+                # One that is not running, or a package without it, is left as it is.
+                _run(['systemctl', 'try-restart', 'zstack-hotmem.service'], runner)
+            except (subprocess.CalledProcessError, OSError):
+                pass
         properties = _systemd_properties(runner)
         fragment = properties.get('FragmentPath')
         if properties.get('DropInPaths', '').strip():
