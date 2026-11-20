@@ -3325,6 +3325,16 @@ def _make_usb_redirect_xml(devices, cmd, dist_name, host_arch):
         set_redirdev()
 
 
+def swap_direct_counters(stats):
+    """The cold-page direct counters of a libvirt job, under QEMU's names.
+
+    libvirt prefixes them; the destination's query-migrate does not. The
+    management node keeps both ends under the same names.
+    """
+    prefix = 'x-swap-direct.'
+    return dict((key[len(prefix):], value) for key, value in stats.items() if key.startswith(prefix))
+
+
 class Vm(object):
     VIR_DOMAIN_NOSTATE = 0
     VIR_DOMAIN_RUNNING = 1
@@ -5351,10 +5361,19 @@ class Vm(object):
             if cmd.migrateFromDestination or storage_migration_required or cmd.xbzrle or cmd.storageMigrationPolicy in ('FullCopy', 'IncCopy'):
                 raise kvmagent.KvmError('Cold-page direct migration requires source-driven shared-storage precopy without XBZRLE')
             optimizer = kvmagent.new_rest_service().plugin_rgty.get_plugin('MemoryOptimizationPlugin')
-            parameter_map.update(optimizer.prepare_swap_direct(cmd.vmUuid, json.loads(jsonobject.dumps(direct))))
-            parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
-            if bandwidth:
-                parameter_map[libvirt.VIR_MIGRATE_PARAM_BANDWIDTH] = bandwidth
+            try:
+                parameter_map.update(optimizer.prepare_swap_direct(cmd.vmUuid, json.loads(jsonobject.dumps(direct))))
+            except Exception as error:
+                # Nothing has been sent: the VM migrates the ordinary way, and the
+                # management node is told why.
+                logger.warn('vm[uuid:%s] migrates the ordinary way, the last cold-page direct check failed: %s'
+                            % (cmd.vmUuid, error))
+                cmd.swapDirectStats = {'fallback': str(error)}
+                direct = None
+            else:
+                parameter_map[libvirt.VIR_MIGRATE_PARAM_URI] = tcpUri
+                if bandwidth:
+                    parameter_map[libvirt.VIR_MIGRATE_PARAM_BANDWIDTH] = bandwidth
         if storage_migration_required:
             disks, destXml = self._build_domain_new_xml(cmd.disks.__dict__, getattr(cmd, "noSharePages", None))
             parameter_map[libvirt.VIR_MIGRATE_PARAM_MIGRATE_DISKS] = disks
@@ -5487,7 +5506,7 @@ class Vm(object):
                         result.put("stage", "migrating")
                         result.put("unit", "bytes")
                         if direct:
-                            result.put("data", json.dumps({"swapDirect": {key: value for key, value in stats.items() if key.startswith('x-swap-direct.')}}))
+                            result.put("data", json.dumps({"swapDirect": swap_direct_counters(stats)}))
                         if total > 0:
                             percent = int(processed * 100.0 / total)
                             if remain > 0:
@@ -5556,8 +5575,24 @@ class Vm(object):
         connection = self.domain.connect() if direct else None
 
         def job_completed(conn, domain, params, opaque):
-            cmd.swapDirectStats = {key: value for key, value in params.items() if key.startswith('x-swap-direct.')}
+            cmd.swapDirectStats = swap_direct_counters(params)
             completed.set()
+
+        def migrate_once(with_direct):
+            with MigrateDaemon(self.domain, self.uuid):
+                logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
+                if storage_migration_required or with_direct:
+                    self.domain.migrateToURI3(destUrl, parameter_map, flag)
+                else:
+                    self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, bandwidth)
+
+        def memory_sent(before):
+            # QEMU and libvirt refuse an unsuitable VM (shared or huge-page memory, say) before
+            # any memory is sent. Only then may the migration go on the ordinary way.
+            after = qmp.execute_qmp_command(cmd.vmUuid, 'query-migrate', raise_exception=False, command_timeout=10)
+            if not isinstance(after, dict):
+                return True
+            return after != before and bool((after.get('ram') or {}).get('transferred'))
 
         try:
             if direct:
@@ -5565,17 +5600,25 @@ class Vm(object):
                     parameter_map[libvirt.VIR_MIGRATE_PARAM_DEST_XML] = destXml
                 callback_id = connection.domainEventRegisterAny(self.domain, libvirt.VIR_DOMAIN_EVENT_ID_JOB_COMPLETED,
                                                                job_completed, None)
-            with MigrateDaemon(self.domain, self.uuid):
-                logger.debug('migrating vm[uuid:{0}] to dest url[{1}]'.format(self.uuid, destUrl))
-                if storage_migration_required or direct:
-                    self.domain.migrateToURI3(destUrl, parameter_map, flag)
+                before = qmp.execute_qmp_command(cmd.vmUuid, 'query-migrate', raise_exception=False, command_timeout=10)
+                try:
+                    migrate_once(True)
+                except Exception as error:
+                    if memory_sent(before):
+                        raise
+                    logger.warn('vm[uuid:%s] migrates the ordinary way, cold-page direct migration was refused '
+                                'before any memory was sent: %s' % (cmd.vmUuid, error))
+                    cmd.swapDirectStats = {'fallback': str(error)}
+                    direct = None
+                    migrate_once(False)
                 else:
-                    self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, bandwidth)
+                    # UNDEFINE_SOURCE removes the completed domain. Capture libvirt's
+                    # existing job-completed event, not a stale final polling sample.
+                    completed.wait(5)
+            else:
+                migrate_once(False)
         finally:
             if callback_id is not None:
-                # UNDEFINE_SOURCE removes the completed domain. Capture libvirt's
-                # existing job-completed event, not a stale final polling sample.
-                completed.wait(5)
                 try:
                     connection.domainEventDeregisterAny(callback_id)
                 except libvirt.libvirtError as error:
@@ -10172,6 +10215,7 @@ class VmPlugin(kvmagent.KvmAgent):
             rsp.success = False
 
         if getattr(cmd, 'swapDirect', None):
+            # the counters of a direct migration, or why it went the ordinary way
             rsp.swapDirect = getattr(cmd, 'swapDirectStats', None)
         return jsonobject.dumps(rsp)
 

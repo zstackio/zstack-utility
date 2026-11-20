@@ -74,8 +74,10 @@ def block_job_set_speed(vm, device, bandwidth):
 
 
 @bash.in_bash
-def _execute_qmp_command(domain_id, command, raise_exception=True):
-    r, o, e = bash.bash_roe("virsh qemu-monitor-command %s '%s'" % (domain_id, qmp_subcmd(QEMU_VERSION, command)))
+def _execute_qmp_command(domain_id, command, raise_exception=True, timeout=None):
+    # A read that must not wait on a busy or stuck monitor gets a deadline.
+    prefix = "timeout -s SIGKILL %d " % timeout if timeout else ""
+    r, o, e = bash.bash_roe("%svirsh qemu-monitor-command %s '%s'" % (prefix, domain_id, qmp_subcmd(QEMU_VERSION, command)))
     if r == 0:
         ret = json.loads(o.strip())
         if "error" not in ret:
@@ -101,13 +103,15 @@ def execute_qmp_command(domain, name, raise_exception=True, **kwargs):
     """
 
     qmp_cmd = {'execute': name}
+    # seconds allowed for the command itself; not a QMP argument
+    timeout = kwargs.pop('command_timeout', None)
     for k, v in list(kwargs.items()):
         if "_" in k:
             kwargs[k.replace("_", "-")] = v
             del kwargs[k]
 
     qmp_cmd['arguments'] = kwargs
-    return _execute_qmp_command(domain, json.dumps(qmp_cmd), raise_exception)
+    return _execute_qmp_command(domain, json.dumps(qmp_cmd), raise_exception, timeout)
 
 
 def qmp_subcmd(qemu_version, s_cmd):

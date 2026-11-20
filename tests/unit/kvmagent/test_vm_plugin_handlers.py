@@ -30,7 +30,8 @@ def _make_req(body_dict=None):
     return {http.REQUEST_BODY: body, http.REQUEST_HEADER: {}}
 
 
-@pytest.mark.parametrize('direct, transfer_fails', [(False, False), (True, False), (True, True)])
+@pytest.mark.parametrize('direct, transfer_fails', [(False, False), (True, False), (True, True),
+                                                    (True, 'refused'), (True, 'recheck')])
 @pytest.mark.parametrize('dest_xml', [None, '<domain/>'])
 def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monkeypatch, direct, transfer_fails, dest_xml):
     from types import SimpleNamespace
@@ -40,7 +41,7 @@ def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monk
         def __enter__(self): return self
         def __exit__(self, *args): return False
 
-    monkeypatch.setattr(vm_plugin.plugin, 'TaskDaemon', Daemon)
+    monkeypatch.setattr(vm_plugin.plugin, 'TaskDaemon', Daemon, raising=False)
     monkeypatch.setattr(vm_plugin, 'get_task_stage', lambda cmd: None, raising=False)
     monkeypatch.setattr(vm_plugin, 'get_timeout', lambda cmd: 60, raising=False)
     reporter = MagicMock()
@@ -48,19 +49,19 @@ def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monk
     monkeypatch.setattr(vm_plugin, 'get_exact_percent', lambda value, stage: value, raising=False)
     monkeypatch.setattr(vm_plugin, 'get_libvirt_major_version', lambda: 8)
     monkeypatch.setattr(vm_plugin, 'check_mirror_jobs', lambda *args: None)
-    monkeypatch.setattr(vm_plugin.linux, 'get_host_name', lambda: 'source-host')
-    monkeypatch.setattr(vm_plugin.linux, 'get_fs_type', lambda path: 'block')
-    monkeypatch.setattr(vm_plugin.linux, 'wait_callback_success', lambda *args, **kwargs: True)
+    monkeypatch.setattr(vm_plugin.linux, 'get_host_name', lambda: 'source-host', raising=False)
+    monkeypatch.setattr(vm_plugin.linux, 'get_fs_type', lambda path: 'block', raising=False)
+    monkeypatch.setattr(vm_plugin.linux, 'wait_callback_success', lambda *args, **kwargs: True, raising=False)
     for index, name in enumerate(('LIVE', 'PEER2PEER', 'UNDEFINE_SOURCE', 'PERSIST_DEST', 'UNSAFE')):
-        monkeypatch.setattr(vm_plugin.libvirt, 'VIR_MIGRATE_' + name, 1 << index)
+        monkeypatch.setattr(vm_plugin.libvirt, 'VIR_MIGRATE_' + name, 1 << index, raising=False)
     for name in ('URI', 'DEST_XML', 'BANDWIDTH'):
-        monkeypatch.setattr(vm_plugin.libvirt, 'VIR_MIGRATE_PARAM_' + name, name.lower())
+        monkeypatch.setattr(vm_plugin.libvirt, 'VIR_MIGRATE_PARAM_' + name, name.lower(), raising=False)
     optimizer = MagicMock()
     optimizer.prepare_swap_direct.return_value = {'x-swap-direct': True, 'x-swap-direct-source-type': 3,
                                                 'x-swap-direct-dest-type': 7}
     service = MagicMock()
     service.plugin_rgty.get_plugin.return_value = optimizer
-    monkeypatch.setattr(vm_plugin.kvmagent, 'new_rest_service', lambda: service)
+    monkeypatch.setattr(vm_plugin.kvmagent, 'new_rest_service', lambda: service, raising=False)
     vm = MagicMock(uuid='3' * 32, state=vm_plugin.Vm.VM_STATE_RUNNING)
     vm._build_domain_new_xml.return_value = ([], dest_xml)
     vm.list_blk_sources.return_value = ['/dev/mock-volume']
@@ -70,10 +71,34 @@ def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monk
                           bandwidth=64, disks=None, downTime=None, autoConverge=False,
                           xbzrle=False, storageMigrationPolicy=None,
                           swapDirect={'operationUuid': 'operation'} if direct else None)
-    final = {'x-swap-direct.managed': True, 'x-swap-direct.backing-pages-sent': 128}
+    final = {'x-swap-direct.managed': True, 'x-swap-direct.backing-pages-sent': 128, 'data_total': 1}
+    # libvirt's prefix is dropped: both ends report the counters under QEMU's names
+    counters = {'managed': True, 'backing-pages-sent': 128}
     callbacks = []
     conn = vm.domain.connect.return_value
     conn.domainEventRegisterAny.side_effect = lambda domain, event, callback, opaque: callbacks.append(callback) or 9
+    # query-migrate before the attempt, then after a failed one
+    sent = {'status': 'failed', 'ram': {'transferred': 4096 if transfer_fails is True else 0}}
+    monkeypatch.setattr(vm_plugin.qmp, 'execute_qmp_command', MagicMock(side_effect=[{}, sent]), raising=False)
+    if transfer_fails == 'refused':
+        # QEMU refused the VM's memory before sending any: the ordinary path takes over
+        vm.domain.migrateToURI3.side_effect = RuntimeError('x-swap-direct: RAM block is not private anonymous')
+        vm_plugin.Vm.migrate(vm, cmd)
+        vm.domain.migrateToURI3.assert_called_once()
+        vm.domain.migrateToURI2.assert_called_once()
+        assert cmd.swapDirectStats == {'fallback': 'x-swap-direct: RAM block is not private anonymous'}
+        conn.domainEventDeregisterAny.assert_called_once_with(9)
+        reporter.from_spec.assert_not_called()
+        return
+    if transfer_fails == 'recheck':
+        # the Agent's last check failed: no direct attempt at all
+        optimizer.prepare_swap_direct.side_effect = RuntimeError('SWAP_DIRECT_PREPARED_IDENTITY_CHANGED:poolGeneration')
+        vm_plugin.Vm.migrate(vm, cmd)
+        vm.domain.migrateToURI3.assert_not_called()
+        vm.domain.migrateToURI2.assert_called_once()
+        assert cmd.swapDirectStats == {'fallback': 'SWAP_DIRECT_PREPARED_IDENTITY_CHANGED:poolGeneration'}
+        conn.domainEventRegisterAny.assert_not_called()
+        return
     if transfer_fails:
         vm.domain.migrateToURI3.side_effect = RuntimeError('direct-transfer-failed')
         with pytest.raises(RuntimeError, match='direct-transfer-failed'):
@@ -95,11 +120,11 @@ def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monk
         else:
             assert params['dest_xml'] == dest_xml
         assert params['bandwidth'] == 64
-        assert cmd.swapDirectStats == final
+        assert cmd.swapDirectStats == counters
         conn.domainEventDeregisterAny.assert_called_once_with(9)
         report = reporter.from_spec.return_value.progress_report.call_args
         assert report.args[0] == '100'
-        assert json.loads(report.kwargs['detail'].data)['swapDirect'] == final
+        assert json.loads(report.kwargs['detail'].data)['swapDirect'] == counters
     else:
         vm.domain.migrateToURI2.assert_called_once()
         vm.domain.migrateToURI3.assert_not_called()
