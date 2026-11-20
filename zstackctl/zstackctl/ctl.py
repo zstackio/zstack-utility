@@ -4232,32 +4232,37 @@ class StartCmd(Command):
 
         def prepare_bean_ref_context_xml():
             if get_start_mode() == self.SIMULATOR or is_simulator_on():
-                beanXml = "simulator/zstack-simulator2.xml"
+                bean_xml = "simulator/zstack-simulator2.xml"
                 info_and_debug("%s=simulator is set, ZStack will start in simulator mode" % self.START_MODE)
             elif get_start_mode() == self.MINIMAL:
-                beanXml = "zstack-minimal.xml"
+                bean_xml = "zstack-minimal.xml"
                 info_and_debug("%s=minimal is set, ZStack will start in minimal mode" % self.START_MODE)
             else:
-                beanXml = "zstack.xml"
+                bean_xml = "zstack.xml"
 
-            subprocess.getstatusoutput("zstack-ctl configure beanConf=%s" % beanXml)
+            # Keep the existing integrity record for the startup check.
+            if ctl.read_property('beanConf') != bean_xml:
+                ctl.write_properties([('beanConf', bean_xml)])
 
         def check_start_mode(mode):
             if mode and mode != '':
                 if mode not in self.SUPPORTED_START_MODE_LIST:
                     error('unsupported start mode, following modes are supported: %s' % self.SUPPORTED_START_MODE_LIST)
-                ctl.write_properties([('startMode', mode)])
+                if ctl.read_property('startMode') != mode:
+                    ctl.write_properties([('startMode', mode)])
             else:
                 ctl.delete_env(self.START_MODE)
-                ctl.delete_properties(['startMode'])
+                if ctl.read_property('startMode') is not None:
+                    ctl.delete_properties(['startMode'])
 
         def check_simulator():
             if get_start_mode() and get_start_mode() != self.SIMULATOR and is_simulator_on():
                 error("duplicate start mode configurations, --simulator is deprecated, please use `zstack-ctl setenv %s=` to delete old configuration" % self.SIMULATORS_ON)
             if is_simulator_on():
                 info_and_debug("--simulator is set, ZStack will start in simulator mode")
-                ctl.write_properties(['simulatorsOn=true'.split('=', 1)])
-            else:
+                if ctl.read_property('simulatorsOn') != 'true':
+                    ctl.write_properties([('simulatorsOn', 'true')])
+            elif ctl.read_property('simulatorsOn') is not None:
                 ctl.delete_properties(['simulatorsOn'])
 
         def clean_pycache():

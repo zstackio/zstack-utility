@@ -57,7 +57,7 @@ def load_start(tmp_path, shell, check_ready, cleanup):
         check_ha=lambda: False, is_invoked_by_ha_monitor=lambda: True,
         check_java_version=lambda: None, build_management_server_ip_stack_opts=lambda props: [],
         management_network_ipv6=network, AESCipher=MagicMock(),
-        subprocess=SimpleNamespace(getstatusoutput=lambda cmd: (0, '')),
+        subprocess=SimpleNamespace(getstatusoutput=lambda cmd: (0, shell(cmd))),
         platform=SimpleNamespace(freedesktop_os_release=lambda: {}),
         map_distro_id=lambda distro: 'test', RPM_BASED_OS=[], DEB_BASED_OS=[],
         loop_until_timeout=lambda timeout: lambda func: func,
@@ -75,7 +75,7 @@ def load_start(tmp_path, shell, check_ready, cleanup):
     command = namespace['StartCmd'].__new__(namespace['StartCmd'])
     command.check_cpu_mem = lambda: None
     command.SET_ENV_SCRIPT = 'setenv.sh'
-    return command
+    return command, ctl
 
 
 def run_start(tmp_path, started, release, entered, results, fail=False, daemon=True):
@@ -113,7 +113,7 @@ def run_start(tmp_path, started, release, entered, results, fail=False, daemon=T
         return MagicMock(return_code=0)
 
     try:
-        command = load_start(tmp_path, shell, check_ready, cleanup)
+        command, _ = load_start(tmp_path, shell, check_ready, cleanup)
         entered.set()
         command.run(SimpleNamespace(host=None, daemon=daemon, mode=None, simulator=False,
                                     mysql_process_list=False, timeout=5))
@@ -165,9 +165,47 @@ def test_systemd_reentry_happens_after_unlock(tmp_path):
 
 
 def test_remote_start_does_not_take_local_lock(tmp_path):
-    command = load_start(tmp_path, MagicMock(), MagicMock(), MagicMock())
+    command, _ = load_start(tmp_path, MagicMock(), MagicMock(), MagicMock())
     command._start_remote = MagicMock()
     args = SimpleNamespace(host='root@192.0.2.2')
     command.run(args)
     command._start_remote.assert_called_once_with(args)
     assert not (tmp_path / 'start.lock').exists()
+
+
+@pytest.mark.parametrize(('mode', 'simulator', 'properties', 'expected'), [
+    (None, None, {'beanConf': 'zstack.xml'}, []),
+    (None, None, {}, [[('beanConf', 'zstack.xml')]]),
+    ('minimal', None, {'beanConf': 'zstack.xml'}, [
+        [('startMode', 'minimal')], [('beanConf', 'zstack-minimal.xml')],
+    ]),
+    ('simulator', None, {'beanConf': 'zstack.xml'}, [
+        [('startMode', 'simulator')],
+        [('beanConf', 'simulator/zstack-simulator2.xml')],
+    ]),
+    (None, 'True', {'beanConf': 'zstack.xml'}, [
+        [('simulatorsOn', 'true')],
+        [('beanConf', 'simulator/zstack-simulator2.xml')],
+    ]),
+])
+def test_start_prepares_properties_without_configure(
+        tmp_path, mode, simulator, properties, expected):
+    shell = MagicMock(return_value='')
+    check_ready = MagicMock(return_value=MagicMock(return_code=0))
+    command, ctl = load_start(tmp_path, shell, check_ready, MagicMock())
+    ctl.get_env.side_effect = {'START_MODE': mode, 'SIMULATOR': simulator}.get
+    ctl.read_property.side_effect = {
+        'syncNodeTime': 'false',
+        'management.server.ip': '192.0.2.1',
+        **properties,
+    }.get
+    args = SimpleNamespace(host=None, daemon=True, mode=None, simulator=False,
+                           mysql_process_list=False, timeout=5)
+
+    command.run(args)
+
+    assert not any('zstack-ctl configure' in call.args[0]
+                   for call in shell.call_args_list)
+    assert [call.args[0] for call in ctl.write_properties.call_args_list] == expected
+    ctl.delete_properties.assert_not_called()
+    check_ready.assert_called_once()
