@@ -12,7 +12,61 @@ from zstacklib.utils.qga import VmQga
 
 PATH = '/vm/guesttools/vfbond'
 SCRIPT = '/usr/local/zstack/zs-tools/guest_network.py'
+MIGRATION_CAPABILITY_PATH = '/host/vfbond/migration-capability'
+CHECK_CLEANUP_PATH = '/host/vfbond/checkcleanup'
+LIVE_MIGRATION_CAPABILITY = 'vfBondLiveMigration'
 logger = log.get_logger(__name__)
+
+
+class Request(object):
+    PROBE = 'probe'
+    INSPECT = 'inspect'
+    STATUS = 'status'
+    CANCEL = 'cancel'
+    EXECUTE = 'execute'
+    OBSERVATIONS = (PROBE, INSPECT)
+
+
+class Operation(object):
+    RECONCILE = 'reconcile'
+    MIGRATION = 'migration'
+    PORTS = 'ports'
+
+
+class Support(object):
+    SUPPORTED = 'Supported'
+    UNSUPPORTED = 'Unsupported'
+    UNKNOWN = 'Unknown'
+
+
+class ConfigState(object):
+    CHECKING = 'Checking'
+    SUCCEEDED = 'Succeeded'
+    FAILED = 'Failed'
+
+
+class Target(object):
+    MEMBERS = 'members'
+    DEFAULT_PEERS = 'defaultPeers'
+    RESOLVE_GUEST_PCI = 'resolveGuestPci'
+    TEMPORARY_PCI = 'temporaryPci'
+    TEMPORARY_TARGET = 'temporaryTarget'
+
+
+class MigrationStage(object):
+    CHECK = 'check'
+    PREPARE = 'prepare'
+    TRANSIT = 'transit'
+    RECONNECT = 'reconnect'
+    FINISH = 'finish'
+
+
+def transport_failure_reason(action, submitted):
+    if action in Request.OBSERVATIONS:
+        return 'ObservationUnavailable'
+    if action == Request.EXECUTE and not submitted:
+        return 'RequestNotSubmitted'
+    return 'OperationUncertain'
 
 
 def bdf(node):
@@ -51,18 +105,18 @@ def guest_pci_view(vm, xml):
 
 def guest_target(target, mapping):
     def members(item):
-        return [mapping[p] for p in item['members']]
+        return [mapping[p] for p in item[Target.MEMBERS]]
     resolved = dict(target)
-    if 'members' in target:
-        resolved['members'] = members(target)
-    if 'defaultPeers' in target:
+    if Target.MEMBERS in target:
+        resolved[Target.MEMBERS] = members(target)
+    if Target.DEFAULT_PEERS in target:
         peers = []
-        for peer in target['defaultPeers']:
+        for peer in target[Target.DEFAULT_PEERS]:
             item = dict(peer, guestPci=mapping[peer['guestPci']])
-            if 'members' in peer:
-                item['members'] = members(peer)
+            if Target.MEMBERS in peer:
+                item[Target.MEMBERS] = members(peer)
             peers.append(item)
-        resolved['defaultPeers'] = peers
+        resolved[Target.DEFAULT_PEERS] = peers
     return resolved
 
 
@@ -82,7 +136,7 @@ def delivered(xml, target):
                 return False
             found.append((bdf(addr), bdf(source)))
     return (len(found) == 2 and len(set(x[1] for x in found)) == 2
-            and set(x[0] for x in found) == set(target['members'])
+            and set(x[0] for x in found) == set(target[Target.MEMBERS])
             and set(x[1] for x in found) == host_members)
 
 
@@ -112,7 +166,7 @@ def migration_temporary_pci(xml, operation):
     for dev in ET.fromstring(xml).findall('./devices/interface'):
         tap, mac, model, addr = (dev.find(n) for n in ('target', 'mac', 'model', 'address'))
         if (dev.get('type') == 'bridge' and tap is not None and
-                tap.get('dev') == operation.get('temporaryTarget') and mac is not None and
+                tap.get('dev') == operation.get(Target.TEMPORARY_TARGET) and mac is not None and
                 mac.get('address') == target.get('mac') and model is not None and
                 model.get('type') == 'virtio' and addr is not None and addr.get('type') == 'pci'):
             found.append(bdf(addr))
@@ -124,7 +178,7 @@ def migration_temporary_pci(xml, operation):
 class VfBondPlugin(kvmagent.KvmAgent):
     @kvmagent.replyerror
     def migration_capability(self, req):
-        return json.dumps(dict(success=True, capabilities=['vfBondLiveMigration']))
+        return json.dumps(dict(success=True, capabilities=[LIVE_MIGRATION_CAPABILITY]))
 
     @kvmagent.replyerror
     def reconcile(self, req):
@@ -167,7 +221,7 @@ class VfBondPlugin(kvmagent.KvmAgent):
     def _run_command(self, cmd):
         vm = cmd['vmUuid']; action = cmd['action']
         base = dict(success=True, protocolVersion=3, operationId=cmd['operationId'],
-                    state='Checking', reason='WaitingForTools', support='Unknown', completed=False)
+                    state=ConfigState.CHECKING, reason='WaitingForTools', support=Support.UNKNOWN, completed=False)
         phase_started = time.monotonic()
         def phase(name):
             base['_phase'] = name
@@ -177,8 +231,8 @@ class VfBondPlugin(kvmagent.KvmAgent):
         param = None
         submitted = False
         try:
-            if action not in ('probe', 'inspect', 'status', 'cancel', 'execute'):
-                base.update(state='Failed', reason='UnsupportedAction', support='Unsupported')
+            if action not in (Request.PROBE, Request.INSPECT, Request.STATUS, Request.CANCEL, Request.EXECUTE):
+                base.update(state=ConfigState.FAILED, reason='UnsupportedAction', support=Support.UNSUPPORTED)
                 return base
             phase('domainCheck')
             domain = get_virt_domain(vm)
@@ -196,38 +250,38 @@ class VfBondPlugin(kvmagent.KvmAgent):
                 return base
             code, _, _ = qga.guest_exec_command('/usr/bin/test', ['-f', SCRIPT], retry=3)
             if code == 1:
-                base.update(state='Failed', reason='Unsupported: GuestTools network protocol missing', support='Unsupported')
+                base.update(state=ConfigState.FAILED, reason='Unsupported: GuestTools network protocol missing', support=Support.UNSUPPORTED)
                 return base
             if code != 0:
                 raise ValueError('guest protocol file check failed (exitCode=%s)' % code)
             op = cmd.get('operation') or {}
-            if action in ('probe', 'inspect') or (action == 'execute' and op.get('action') in ('reconcile', 'migration', 'ports')):
+            if action in Request.OBSERVATIONS or (action == Request.EXECUTE and op.get('action') in (Operation.RECONCILE, Operation.MIGRATION, Operation.PORTS)):
                 xml, mapping = guest_pci_view(vm, domain.XMLDesc(0))
                 resolved = None
-                if mapping and (op.get('resolveGuestPci') or (action == 'execute' and op.get('action') == 'ports')):
+                if mapping and (op.get(Target.RESOLVE_GUEST_PCI) or (action == Request.EXECUTE and op.get('action') == Operation.PORTS)):
                     try:
                         resolved = guest_target(op['target'], mapping)
                     except KeyError:
                         base['reason'] = 'WaitingForDevices'
                         return base
                     cmd = dict(cmd, operation=dict(op, target=resolved))
-            if action == 'execute':
+            if action == Request.EXECUTE:
                 phase('deviceIdentity')
                 op = cmd['operation']
-                if op['action'] == 'reconcile' and not delivered(xml, op['target']):
+                if op['action'] == Operation.RECONCILE and not delivered(xml, op['target']):
                     base['reason'] = 'WaitingForDevices'
                     return base
-                if op['action'] == 'migration':
+                if op['action'] == Operation.MIGRATION:
                     stage = op.get('migrationStage')
                     temporary = migration_temporary_pci(xml, op)
-                    if (stage in ('check', 'prepare', 'reconnect', 'finish') and not delivered(xml, op['target']) or
-                            stage == 'transit' and not migration_vfs_absent(xml, op['target']) or
-                            stage in ('prepare', 'transit') and not temporary or
-                            stage == 'finish' and temporary or
-                            temporary != op.get('temporaryPci')):
+                    if (stage in (MigrationStage.CHECK, MigrationStage.PREPARE, MigrationStage.RECONNECT, MigrationStage.FINISH) and not delivered(xml, op['target']) or
+                            stage == MigrationStage.TRANSIT and not migration_vfs_absent(xml, op['target']) or
+                            stage in (MigrationStage.PREPARE, MigrationStage.TRANSIT) and not temporary or
+                            stage == MigrationStage.FINISH and temporary or
+                            temporary != op.get(Target.TEMPORARY_PCI)):
                         base['reason'] = 'WaitingForDevices'
                         return base
-                if op['action'] == 'ports':
+                if op['action'] == Operation.PORTS:
                     devices = ordinary_devices(xml)
                     if any(not isinstance(p.get('guestPci'), str) or
                            not re.fullmatch(r'[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]', p['guestPci']) or
@@ -243,7 +297,7 @@ class VfBondPlugin(kvmagent.KvmAgent):
                 raise ValueError('incomplete guest request')
             # An exception from guest-exec can occur after QGA accepted it.
             submitted = True
-            code, stdout, stderr = qga.guest_exec_python(SCRIPT, [param], retry=130 if action == 'execute' else 5)
+            code, stdout, stderr = qga.guest_exec_python(SCRIPT, [param], retry=130 if action == Request.EXECUTE else 5)
             phase('guestResponse')
             base['_guestExecution'] = dict(exitCode=code, stdoutBytes=len((stdout or '').encode('utf-8')),
                                            stderrBytes=len((stderr or '').encode('utf-8')), stderr=(stderr or '')[:2048])
@@ -262,11 +316,11 @@ class VfBondPlugin(kvmagent.KvmAgent):
             if not isinstance(version, int) or isinstance(version, bool) or version < 1:
                 raise ValueError('guest response has no valid protocol version')
             if version != 3:
-                base.update(state='Failed', reason='Unsupported: GuestTools network protocol 3 required', support='Unsupported')
+                base.update(state=ConfigState.FAILED, reason='Unsupported: GuestTools network protocol 3 required', support=Support.UNSUPPORTED)
                 return base
-            if answer.get('operationId') != cmd['operationId'] or answer.get('state') not in ('Checking', 'Succeeded', 'Failed'):
+            if answer.get('operationId') != cmd['operationId'] or answer.get('state') not in (ConfigState.CHECKING, ConfigState.SUCCEEDED, ConfigState.FAILED):
                 raise ValueError('invalid guest response identity or state')
-            if not isinstance(answer.get('reason'), str) or answer.get('support') not in ('Supported', 'Unsupported', 'Unknown'):
+            if not isinstance(answer.get('reason'), str) or answer.get('support') not in (Support.SUPPORTED, Support.UNSUPPORTED, Support.UNKNOWN):
                 raise ValueError('invalid guest response reason or support')
             if 'completed' in answer and not isinstance(answer['completed'], bool):
                 raise ValueError('invalid guest completion evidence')
@@ -279,29 +333,28 @@ class VfBondPlugin(kvmagent.KvmAgent):
                             'originalIdentity', 'identityMissingReason', 'recoveryRequired',
                             'recoveryNicUuid', 'failure', 'recovery')
             base.update((key, answer[key]) for key in guest_fields if key in answer)
-            if action == 'inspect' and answer.get('support') == 'Supported' and not isinstance(diagnostics, dict):
+            if action == Request.INSPECT and answer.get('support') == Support.SUPPORTED and not isinstance(diagnostics, dict):
                 # Older tools can configure networks but do not implement
                 # inspection. Preserve admission errors such as OperationBusy;
                 # they legitimately have no collected diagnostic payload.
                 base.pop('reasonCode', None)
-                base.update(state='Checking', support='Unknown',
+                base.update(state=ConfigState.CHECKING, support=Support.UNKNOWN,
                             reason='ObservationUnavailable: GuestTools diagnostics extension missing')
-            if action in ('probe', 'inspect'):
+            if action in Request.OBSERVATIONS:
                 base['devices'] = ordinary_devices(xml)
                 if resolved is not None:
                     base['target'] = resolved
-                if (cmd.get('operation') or {}).get('temporaryTarget'):
-                    base['temporaryPci'] = migration_temporary_pci(xml, cmd['operation'])
+                if (cmd.get('operation') or {}).get(Target.TEMPORARY_TARGET):
+                    base[Target.TEMPORARY_PCI] = migration_temporary_pci(xml, cmd['operation'])
             return base
         except Exception as ex:
-            reason = 'ObservationUnavailable' if action in ('probe', 'inspect') else (
-                'RequestNotSubmitted' if action == 'execute' and not submitted else 'OperationUncertain')
+            reason = transport_failure_reason(action, submitted)
             base.pop('reasonCode', None)
-            base.update(state='Checking', support='Unknown', completed=False, reason=reason + ': ' + str(ex)[:2048])
+            base.update(state=ConfigState.CHECKING, support=Support.UNKNOWN, completed=False, reason=reason + ': ' + str(ex)[:2048])
             return base
         finally:
             # Host evidence must never be overwritten by fields in a guest response.
-            if action == 'execute':
+            if action == Request.EXECUTE:
                 base['requestSubmitted'] = submitted
             else:
                 base.pop('requestSubmitted', None)
@@ -321,8 +374,8 @@ class VfBondPlugin(kvmagent.KvmAgent):
         return json.dumps(check_devices(json.loads(req[http.REQUEST_BODY])['devices']))
 
     def start(self):
-        kvmagent.get_http_server().register_async_uri('/host/vfbond/migration-capability', self.migration_capability)
-        kvmagent.get_http_server().register_async_uri('/host/vfbond/checkcleanup', self.check_cleanup)
+        kvmagent.get_http_server().register_async_uri(MIGRATION_CAPABILITY_PATH, self.migration_capability)
+        kvmagent.get_http_server().register_async_uri(CHECK_CLEANUP_PATH, self.check_cleanup)
         kvmagent.get_http_server().register_async_uri(PATH, self.reconcile)
 
     def stop(self):
