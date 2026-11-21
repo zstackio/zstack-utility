@@ -5586,9 +5586,23 @@ class Vm(object):
                 else:
                     self.domain.migrateToURI2(destUrl, tcpUri, destXml, flag, None, bandwidth)
 
+        transfer = {'started': False}
+        transfer_done = threading.Event()
+
+        def watch_transfer():
+            # A cancelled or failed migration no longer reports its RAM statistics, so
+            # whether memory went out is watched while the migration runs.
+            while not transfer_done.wait(0.5):
+                info = qmp.execute_qmp_command(cmd.vmUuid, 'query-migrate', raise_exception=False, command_timeout=10)
+                if isinstance(info, dict) and (info.get('ram') or {}).get('transferred'):
+                    transfer['started'] = True
+                    return
+
         def memory_sent(before):
             # QEMU and libvirt refuse an unsuitable VM (shared or huge-page memory, say) before
             # any memory is sent. Only then may the migration go on the ordinary way.
+            if transfer['started']:
+                return True
             after = qmp.execute_qmp_command(cmd.vmUuid, 'query-migrate', raise_exception=False, command_timeout=10)
             if not isinstance(after, dict):
                 return True
@@ -5601,9 +5615,14 @@ class Vm(object):
                 callback_id = connection.domainEventRegisterAny(self.domain, libvirt.VIR_DOMAIN_EVENT_ID_JOB_COMPLETED,
                                                                job_completed, None)
                 before = qmp.execute_qmp_command(cmd.vmUuid, 'query-migrate', raise_exception=False, command_timeout=10)
+                watcher = threading.Thread(target=watch_transfer, name='swap-direct-transfer-%s' % cmd.vmUuid)
+                watcher.daemon = True
+                watcher.start()
                 try:
                     migrate_once(True)
                 except Exception as error:
+                    transfer_done.set()
+                    watcher.join(15)
                     if memory_sent(before):
                         raise
                     logger.warn('vm[uuid:%s] migrates the ordinary way, cold-page direct migration was refused '
@@ -5612,6 +5631,7 @@ class Vm(object):
                     direct = None
                     migrate_once(False)
                 else:
+                    transfer_done.set()
                     # UNDEFINE_SOURCE removes the completed domain. Capture libvirt's
                     # existing job-completed event, not a stale final polling sample.
                     completed.wait(5)

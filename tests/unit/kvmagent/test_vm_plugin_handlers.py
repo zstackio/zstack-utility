@@ -11,6 +11,7 @@
 from __future__ import annotations
 """Handler-level unit tests for kvmagent.plugins.vm_plugin."""
 import json
+import time
 import socket
 import tempfile
 import urllib.parse
@@ -31,7 +32,7 @@ def _make_req(body_dict=None):
 
 
 @pytest.mark.parametrize('direct, transfer_fails', [(False, False), (True, False), (True, True),
-                                                    (True, 'refused'), (True, 'recheck')])
+                                                    (True, 'refused'), (True, 'recheck'), (True, 'cancelled')])
 @pytest.mark.parametrize('dest_xml', [None, '<domain/>'])
 def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monkeypatch, direct, transfer_fails, dest_xml):
     from types import SimpleNamespace
@@ -79,7 +80,25 @@ def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monk
     conn.domainEventRegisterAny.side_effect = lambda domain, event, callback, opaque: callbacks.append(callback) or 9
     # query-migrate before the attempt, then after a failed one
     sent = {'status': 'failed', 'ram': {'transferred': 4096 if transfer_fails is True else 0}}
-    monkeypatch.setattr(vm_plugin.qmp, 'execute_qmp_command', MagicMock(side_effect=[{}, sent]), raising=False)
+    qmp_answers = [{}]
+    monkeypatch.setattr(vm_plugin.qmp, 'execute_qmp_command',
+                        MagicMock(side_effect=lambda *args, **kwargs: qmp_answers.pop(0) if qmp_answers else sent),
+                        raising=False)
+    if transfer_fails == 'cancelled':
+        # memory went out, then the migration was cancelled: QEMU no longer reports its RAM statistics
+        def cancelled_mid_transfer(*args):
+            sent.clear()
+            sent.update({'status': 'active', 'ram': {'transferred': 4096}})
+            time.sleep(1.5)
+            sent.clear()
+            sent.update({'status': 'cancelled'})
+            raise RuntimeError('operation aborted: migration out job: canceled by client')
+        vm.domain.migrateToURI3.side_effect = cancelled_mid_transfer
+        with pytest.raises(RuntimeError, match='canceled by client'):
+            vm_plugin.Vm.migrate(vm, cmd)
+        vm.domain.migrateToURI2.assert_not_called()
+        assert getattr(cmd, 'swapDirectStats', None) is None
+        return
     if transfer_fails == 'refused':
         # QEMU refused the VM's memory before sending any: the ordinary path takes over
         vm.domain.migrateToURI3.side_effect = RuntimeError('x-swap-direct: RAM block is not private anonymous')
