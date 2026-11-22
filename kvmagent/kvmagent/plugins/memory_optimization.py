@@ -745,6 +745,19 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             cached = self._swap_direct_digest_cache[key] = digest.hexdigest()
         return cached
 
+    # A pool holding less than this tells too little about how well guest memory compresses.
+    SWAP_DIRECT_POOL_RATIO_MIN_BYTES = 64 << 20
+
+    @classmethod
+    def _swap_direct_cold_pool_bytes(cls, cold_bytes, mm_stat):
+        """Pool memory the destination needs for these cold pages: they arrive compressed, so
+        this pool's own ratio of memory used to data stored, plus a quarter; never more than
+        the pages themselves."""
+        original, used = mm_stat[0], mm_stat[2]
+        if original < cls.SWAP_DIRECT_POOL_RATIO_MIN_BYTES:
+            return cold_bytes
+        return min(cold_bytes, (cold_bytes * used * 5 + original * 4 - 1) // (original * 4))
+
     def _swap_direct_qemu(self, conn, vm_uuid=None):
         from zstacklib.utils import qmp
         from xml.etree import ElementTree
@@ -752,11 +765,14 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         digest = self._file_sha256
         # Callers may hold the Host lock: unresponsive monitors must not keep it for long.
         deadline = linux.monotime() + 3 * self.QMP_READ_TIMEOUT
+        # A QEMU that did not answer (busy with a migration, say) proves nothing either way.
+        unanswered = False
         for domain in conn.listAllDomains(0):
             name = _product_vm_uuid(domain.UUIDString())
             if not domain.isActive() or (vm_uuid and name != vm_uuid):
                 continue
             if linux.monotime() > deadline:
+                unanswered = True
                 break
             pid = linux.get_vm_pid(name)
             if not pid:
@@ -772,7 +788,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                                                  command_timeout=self.QMP_READ_TIMEOUT)
             caps = qmp.execute_qmp_command(name, 'query-migrate-capabilities', raise_exception=False,
                                            command_timeout=self.QMP_READ_TIMEOUT) if isinstance(parameters, dict) else None
-            if not isinstance(parameters, dict) or 'x-swap-direct-type' not in parameters \
+            if not isinstance(parameters, dict) or not isinstance(caps, list):
+                unanswered = True
+                continue
+            if 'x-swap-direct-type' not in parameters \
                     or 'x-swap-direct-zobj' not in parameters \
                     or not any(isinstance(c, dict) and c.get('capability') == 'x-swap-direct' for c in (caps or [])):
                 continue
@@ -780,7 +799,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 raise Rejected('SWAP_DIRECT_QEMU_IDENTITY_CHANGED')
             return ({'qemuSha256': actual_hash, 'probeVmUuid': name,
                      '_pid': pid, '_emulator': emulator, '_generation': generation}, domain)
-        raise Rejected('SWAP_DIRECT_RUNNING_QEMU_PROTOCOL_UNCONFIRMED')
+        # Only a QEMU that answered without the protocol is worth remembering.
+        raise Rejected('SWAP_DIRECT_RUNNING_QEMU_BUSY' if unanswered else 'SWAP_DIRECT_RUNNING_QEMU_PROTOCOL_UNCONFIRMED')
 
     def _swap_direct_running_qemus(self, conn):
         """The running QEMU processes and their executables: while none has changed,
@@ -875,7 +895,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             try:
                 memory_bytes = int(command['swapDirectMemoryBytes'])
                 cold_bytes = int(command['swapDirectColdBytes'])
-                if memory_bytes <= 0 or cold_bytes < 0:
+                # Cold pages arrive compressed: the pool needs about the source's estimate,
+                # the whole size when the source gave none.
+                cold_pool_bytes = int(command.get('swapDirectColdPoolBytes') or cold_bytes)
+                if memory_bytes <= 0 or cold_bytes < 0 or not 0 <= cold_pool_bytes <= cold_bytes:
                     raise ValueError('invalid source sizes')
                 swap_free = (int(swaps[0][2]) - int(swaps[0][3])) * 1024
                 with open('/proc/meminfo') as stream:
@@ -896,7 +919,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 raise Rejected('SWAP_DIRECT_DESTINATION_WRITEBACK_REQUIRED')
             if mem_available < memory_bytes or swap_free < cold_bytes \
                     or (backend and backing_free < cold_bytes) \
-                    or (mm[3] > 0 and mm[3] - mm[2] < cold_bytes):
+                    or (mm[3] > 0 and mm[3] - mm[2] < cold_pool_bytes):
                 raise Rejected('SWAP_DIRECT_DESTINATION_CAPACITY_INSUFFICIENT')
         self._swap_direct_kernel_abi(device, device_stat)
         cache_key = (state['bootId'], generation, device_stat.st_rdev, device_stat.st_ino)
@@ -924,7 +947,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 with open('/proc/%s/status' % pid) as stream:
                     cold_bytes = next(int(line.split()[1]) * 1024 for line in stream if line.startswith('VmSwap:'))
                 memory_bytes = domain.maxMemory() * 1024
-                proof.update(memoryBytes=str(memory_bytes), coldBytes=str(cold_bytes))
+                with open(os.path.join(base, 'mm_stat')) as stream:
+                    mm = [int(value) for value in stream.read().split()]
+                proof.update(memoryBytes=str(memory_bytes), coldBytes=str(cold_bytes),
+                             coldPoolBytes=str(self._swap_direct_cold_pool_bytes(cold_bytes, mm)))
                 if estimate_backing and not backend:
                     # Nothing can be written back without a writeback disk.
                     proof.update(backingPages='0', backingEstimate='no_backing_device')

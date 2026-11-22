@@ -1500,6 +1500,19 @@ def test_swap_direct_marker_does_not_replace_kernel_or_running_qemu_proof(direct
     assert conn.getCapabilities.call_count == (2 if missing == 'kernel' else 1)
 
 
+def test_swap_direct_busy_qemu_is_asked_again_at_the_next_observation(direct_host):
+    # A QEMU that cannot answer now (an incoming migration holds its monitor) is not remembered as unproven.
+    plugin, _, world, state, conn, query, kernel, emulator, running, paths = direct_host
+    world['parameters'] = None
+    assert plugin._swap_direct_capability(state)['reasonCode'] == 'SWAP_DIRECT_RUNNING_QEMU_BUSY'
+    assert plugin._swap_direct_unproven_cache is None
+    asked = query.call_count
+    assert plugin._swap_direct_capability(state)['reasonCode'] == 'SWAP_DIRECT_RUNNING_QEMU_BUSY'
+    assert query.call_count > asked
+    world['parameters'] = {'x-swap-direct-type': -1, 'x-swap-direct-zobj': True}
+    assert plugin._swap_direct_capability(state)['supported'] is True
+
+
 def test_host_observation_publishes_negative_direct_gate_without_preflight(direct_host, monkeypatch):
     plugin, service, world, _, _, _, _, _, _, _ = direct_host
     world['xml'] = '<capabilities><host/></capabilities>'
@@ -1576,6 +1589,16 @@ def test_swap_direct_missing_hold_or_host_proof_does_not_probe_or_touch_devices(
     probe.assert_not_called()
 
 
+@pytest.mark.parametrize('original, used, expected', [
+    (32 << 20, 1 << 20, 1 << 30),            # too little in the pool to tell: the whole size
+    (8 << 30, 2400 << 20, 375 << 20),        # 0.29 of the data, plus a quarter
+    (8 << 30, 8 << 30, 1 << 30),             # never more than the pages themselves
+])
+def test_swap_direct_cold_pool_bytes_follow_the_source_pool(host, original, used, expected):
+    plugin, service, world = host
+    assert plugin._swap_direct_cold_pool_bytes(1 << 30, [original, 0, used, 0]) == expected
+
+
 def test_swap_direct_rejects_fractional_or_boolean_swap_type(host, monkeypatch):
     plugin, service, world = host
     source = {'hostUuid': HOST, 'supported': True, 'device': 0, 'rdev': '65024', 'swapType': 3, 'compressor': 'lzo'}
@@ -1586,7 +1609,8 @@ def test_swap_direct_rejects_fractional_or_boolean_swap_type(host, monkeypatch):
             plugin.prepare_swap_direct('3' * 32, request)
 
 
-@pytest.mark.parametrize('exhausted', ['ram', 'slots', 'pool', 'backend', 'no_disk_written_back', None, 'no_disk'])
+@pytest.mark.parametrize('exhausted', ['ram', 'slots', 'pool', 'backend', 'no_disk_written_back', None, 'no_disk',
+                                       'pool_fits_estimate', 'pool_without_estimate', 'estimate_too_big'])
 def test_swap_direct_capacity_is_checked_before_opening_the_device(host, tmp_path, monkeypatch, exhausted):
     import io
     import stat
@@ -1606,7 +1630,9 @@ def test_swap_direct_capacity_is_checked_before_opening_the_device(host, tmp_pat
     sysfs = tmp_path / 'zram0'; sysfs.mkdir()
     (sysfs / 'comp_algorithm').write_text('[lzo] lzo-rle')
     (sysfs / 'backing_dev').write_text('none' if no_disk else 'nvme0n1')
-    (sysfs / 'mm_stat').write_text('0 0 %d %d' % (gib if exhausted == 'pool' else 0, gib))
+    # the estimate cases leave room for gib // 16: less than the cold pages, more than they need compressed
+    used = gib if exhausted == 'pool' else gib - gib // 16 if exhausted in ('pool_fits_estimate', 'pool_without_estimate') else 0
+    (sysfs / 'mm_stat').write_text('0 0 %d %d' % (used, gib))
     if not no_disk:
         (sysfs / 'bd_stat').write_text('%d 0 0' % (gib // 4096 - 1 if exhausted == 'backend' else 0))
     original_stat = os.lstat
@@ -1620,13 +1646,21 @@ def test_swap_direct_capacity_is_checked_before_opening_the_device(host, tmp_pat
     monkeypatch.setattr(module, '_Descriptor', device)
     command = {'operationUuid': OPERATION, 'poolGeneration': POOL, 'swapDirectSource': False,
                'swapDirectMemoryBytes': str(gib), 'swapDirectColdBytes': str(gib // 8)}
-    if exhausted == 'no_disk_written_back':
+    if exhausted == 'pool_fits_estimate':
+        command['swapDirectColdPoolBytes'] = str(gib // 32)
+    if exhausted == 'estimate_too_big':
+        command['swapDirectColdPoolBytes'] = str(gib // 4)
+    if exhausted == 'estimate_too_big':
+        with pytest.raises(Rejected, match='SWAP_DIRECT_CAPACITY_UNKNOWN'):
+            plugin._swap_direct_preflight(command, {'bootId': 'boot'})
+        device.assert_not_called()
+    elif exhausted == 'no_disk_written_back':
         # Written-back pages need a writeback disk on the destination.
         command['swapDirectWritebackPages'] = '3'
         with pytest.raises(Rejected, match='DESTINATION_WRITEBACK_REQUIRED'):
             plugin._swap_direct_preflight(command, {'bootId': 'boot'})
         device.assert_not_called()
-    elif exhausted and exhausted != 'no_disk':
+    elif exhausted and exhausted not in ('no_disk', 'pool_fits_estimate'):
         with pytest.raises(Rejected, match='DESTINATION_CAPACITY_INSUFFICIENT'):
             plugin._swap_direct_preflight(command, {'bootId': 'boot'})
         device.assert_not_called()
