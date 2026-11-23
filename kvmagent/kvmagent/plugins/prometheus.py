@@ -2054,8 +2054,12 @@ def collect_memory_optimization_statistics(vm_accounting_report=None):
         metrics['host_memory_optimization_metric_quality'].add_metric(
             ['ksm_ordinary', 'missing'], 0)
     if zero_pages is None:
+        # A kernel without the counter still merges zero pages; it cannot
+        # count them, which is not a failed scrape.
+        zero_quality = 'missing' if os.path.exists(
+            '/sys/kernel/mm/ksm/ksm_zero_pages') else 'unsupported'
         metrics['host_memory_optimization_metric_quality'].add_metric(
-            ['ksm_zero', 'missing'], 0)
+            ['ksm_zero', zero_quality], 0)
 
     # A separate KSM subtotal avoids making consumers infer it from two
     # mechanism labels.  It remains an instantaneous estimate, not history.
