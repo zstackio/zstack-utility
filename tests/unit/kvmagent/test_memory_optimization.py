@@ -1347,3 +1347,35 @@ def test_the_drain_refusal_record_is_kept_when_the_agent_starts(tmp_path):
     plugin.configure({'hostUuid': HOST, 'operationDir': str(operations)})
     plugin._retire_legacy_records()
     assert os.listdir(str(operations)) == ['maintenance-block']
+
+
+@pytest.mark.parametrize('capabilities,cause', [
+    ({'supported': True, 'ksm': True, 'zram': False, 'zramReasonCode': 'UNSUPPORTED_CGROUP_MEMORY', 'writeback': False},
+     'UNSUPPORTED_CGROUP_MEMORY'),
+    ({'supported': True, 'ksm': True, 'zram': True, 'zramReasonCode': None, 'writeback': False},
+     'ZRAM_WRITEBACK_UNAVAILABLE'),
+    ({'supported': False, 'reasonCode': 'UNSUPPORTED_OS_RELEASE', 'ksm': False, 'zram': False,
+      'zramReasonCode': None, 'writeback': False}, 'UNSUPPORTED_OS_RELEASE'),
+])
+def test_a_host_without_writeback_reports_why_instead_of_failing_the_query(host, monkeypatch, capabilities, cause):
+    plugin, service, world = host
+    world['unit'] = 'absent'
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: dict(capabilities))
+    monkeypatch.setattr(plugin, '_receipt', Mock(side_effect=AssertionError('no maintenance receipt for an unsupported host')))
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps({'hostUuid': HOST})}))
+    assert result['success'] is True and result['status'] == 'Succeeded'
+    state = result['state']
+    assert (state['hostUuid'], state['status'], state['candidates']) == (HOST, 'UNSUPPORTED', [])
+    assert state['reasons'] == ['WRITEBACK_UNSUPPORTED', cause] and state['preparationReasons'] == state['reasons']
+    prepare = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps({
+        'hostUuid': HOST, 'action': 'prepare', 'generation': 1, 'operationUuid': OPERATION})}))
+    assert (prepare['success'], prepare['reasonCode']) == (False, 'WRITEBACK_UNSUPPORTED')
+    assert service.actions() == []
+
+
+def test_a_host_with_writeback_still_lists_its_disks(host, monkeypatch):
+    plugin, _, _ = host
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {'supported': True, 'ksm': True, 'zram': True, 'writeback': True})
+    monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {'hostUuid': host_uuid, 'status': 'AVAILABLE'})
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps({'hostUuid': HOST})}))
+    assert result['state'] == {'hostUuid': HOST, 'status': 'AVAILABLE'}
