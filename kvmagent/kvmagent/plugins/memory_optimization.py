@@ -180,6 +180,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         '/usr/lib/systemd/system/ksmtuned.service')
     # The persistent identifiers of the disk serving as the writeback backend.
     BACKEND_IDENTITY = 'backend-identity'
+    # Why the drain of the latest configuration was refused, until it goes through.
+    MAINTENANCE_BLOCK = 'maintenance-block'
     KSM_PAGES_TO_SCAN = 2000
     KSM_SLEEP_MILLIS = 20
     MANAGED_ZRAM_UNIT = 'zram-memory.service'
@@ -264,7 +266,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """Move an earlier Agent's operation journal aside; nothing reads it now."""
         legacy = [name for name in self._listdir(self.operation_dir)
                   if name not in ('applied-generation', 'accepted-generation', self.BACKEND_IDENTITY,
-                                  self.HOST_LOCK, 'executors')]
+                                  self.MAINTENANCE_BLOCK, self.HOST_LOCK, 'executors')]
         if not legacy:
             return
         target = '%s-legacy-%d' % (self.operation_dir, int(time.time()))
@@ -472,6 +474,36 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         subprocess.check_call(command)
         return paths
 
+    def _blocked_reason(self, generation, reason):
+        """While a refused drain of this generation is retried, its steps (restarting the service, waiting
+        behind the maintenance fence, draining again) are not why the configuration has not taken effect."""
+        block = self._maintenance_block()
+        return block['reason'] if block and block.get('generation') == generation else reason
+
+    def _maintenance_block(self):
+        try:
+            with open(os.path.join(self.operation_dir, self.MAINTENANCE_BLOCK), 'r') as stream:
+                block = json.load(stream)
+        except (IOError, OSError, ValueError):
+            return None
+        valid = isinstance(block, dict) and isinstance(block.get('reason'), STRING_TYPES) \
+            and isinstance(block.get('generation'), INTEGER_TYPES) and not isinstance(block.get('generation'), bool)
+        return block if valid else None
+
+    def _record_maintenance_block(self, generation, reason):
+        try:
+            self._atomic_write(os.path.join(self.operation_dir, self.MAINTENANCE_BLOCK),
+                               json.dumps({'generation': generation, 'reason': reason}).encode('utf-8'))
+        except (IOError, OSError) as exc:
+            logger.warn('unable to record why the drain of generation %s was refused: %s' % (generation, exc))
+
+    def _clear_maintenance_block(self):
+        try:
+            os.remove(os.path.join(self.operation_dir, self.MAINTENANCE_BLOCK))
+        except OSError as exc:
+            if exc.errno != errno.ENOENT:
+                logger.warn('unable to clear the drain refusal record: %s' % exc)
+
     def _retire_failed_executor(self, unit, default):
         """Read a failed step's coded error, then clear its unit so a resend runs the step again."""
         error = self._executor_error(unit, default)
@@ -528,14 +560,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 if known and generation < max(known):
                     raise Rejected('STALE_GENERATION')
                 self._record_applied_generation(generation, 'accepted-generation')
+                block = self._maintenance_block()
+                if block and block.get('generation') != generation:
+                    self._clear_maintenance_block()
                 self._converge(desired, generation)
                 self._record_applied_generation(generation)
+                self._clear_maintenance_block()
             result.update({'success': True, 'status': 'Succeeded'})
         except Converging as exc:
-            result.update({'success': True, 'status': 'Converging', 'reasonCode': exc.reason,
+            result.update({'success': True, 'status': 'Converging', 'reasonCode': self._blocked_reason(generation, exc.reason),
                            'retryAfterSeconds': exc.retry_after})
         except Rejected as exc:
-            result.update({'success': False, 'status': 'Failed', 'reasonCode': exc.reason})
+            result.update({'success': False, 'status': 'Failed', 'reasonCode': self._blocked_reason(generation, exc.reason)})
         except Exception as exc:
             logger.warn('memory optimisation apply did not complete: %s' % exc)
             reason = str(exc)
@@ -1391,6 +1427,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 # Without writeback the Host runs RAM-only instead of claiming the disk again.
                 self._release_backend_config()
         drained = unit in ('inactive', 'failed') and self._is_drained()
+        if drained:
+            # The drain went through; whatever refused it before no longer holds.
+            self._clear_maintenance_block()
         if control == 'drained':
             if not drained:
                 self._drain(generation)
@@ -1597,8 +1636,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise Converging('DRAINING')
         if state == 'exited':
             if exit_status == 0 and self._is_drained():
+                self._clear_maintenance_block()
                 return
-            raise Rejected(self._retire_failed_executor(unit, 'DRAIN_FAILED'))
+            reason = self._retire_failed_executor(unit, 'DRAIN_FAILED')
+            self._record_maintenance_block(generation, reason)
+            raise Rejected(reason)
         if state == 'unknown':
             raise Converging('DRAIN_EXECUTOR_STATE_UNKNOWN')
         if self._service_unit_state() == 'active':
