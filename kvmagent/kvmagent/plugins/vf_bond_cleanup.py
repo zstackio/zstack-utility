@@ -49,7 +49,7 @@ def open_vfio_groups():
 
 
 def check_devices(devices):
-    result = dict(success=True, protocolVersion=1, safeDevices={}, blockedDevices={})
+    safe, blocked = {}, {}
     # Any inability to inspect the host fails the entire observation closed.
     used = domain_devices()
     opened = open_vfio_groups()
@@ -73,7 +73,7 @@ def check_devices(devices):
         elif '/dev/vfio/' + os.path.basename(os.path.realpath(group_path)) in opened:
             reason = 'VfioGroupInUse'
         else:
-            result['safeDevices'][key] = address
+            safe[key] = address
             continue
-        result['blockedDevices'][key] = reason
-    return result
+        blocked[key] = reason
+    return dict(success=True, protocolVersion=1, safeDevices=safe, blockedDevices=blocked)

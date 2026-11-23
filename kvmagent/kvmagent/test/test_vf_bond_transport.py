@@ -5,11 +5,12 @@ from pathlib import Path
 from unittest.mock import patch
 source=(Path(__file__).resolve().parents[1]/'plugins/vf_bond_plugin.py').read_text()
 tree=ast.parse(source)
-tree.body=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef))]
+tree.body=[n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.ClassDef)) or
+           isinstance(n,ast.Assign) and isinstance(n.value,ast.Constant) and isinstance(n.value.value,str)]
 ctx=dict(time=time,logger=logging.getLogger(__name__),os=os,json=json,uuid=uuid,re=re,ET=ET,
-         kvmagent=types.SimpleNamespace(KvmAgent=object,replyerror=lambda f:f),get_virt_domain=lambda _:None,
-         SCRIPT='guest_network.py')
+         kvmagent=types.SimpleNamespace(KvmAgent=object,replyerror=lambda f:f),get_virt_domain=lambda _:None)
 exec(compile(tree,'host-transport','exec'),ctx)
+ctx['SCRIPT']='guest_network.py'
 
 class HostNetworkTransportTest(unittest.TestCase):
  def setUp(self):
@@ -35,6 +36,15 @@ class HostNetworkTransportTest(unittest.TestCase):
  def env(self,**kwargs):
   data={'VmQga':self.qga(),'get_virt_domain':lambda _:types.SimpleNamespace(isActive=lambda:True,XMLDesc=lambda _: '<domain/>')}
   data.update(kwargs);return patch.dict(ctx,data)
+ def test_registered_routes_and_migration_capability_match_management_protocol(self):
+  routes={}
+  server=types.SimpleNamespace(register_async_uri=lambda path, handler: routes.update({path:handler}))
+  with patch.object(ctx['kvmagent'],'get_http_server',return_value=server,create=True):
+   self.plugin.start()
+  self.assertEqual(self.plugin.reconcile,routes['/vm/guesttools/vfbond'])
+  self.assertEqual(self.plugin.check_cleanup,routes['/host/vfbond/checkcleanup'])
+  capability=json.loads(routes['/host/vfbond/migration-capability']({}))
+  self.assertEqual({'success':True,'capabilities':['vfBondLiveMigration']},capability)
  def test_legacy_authorization_actions_rejected(self):
   for action in ('grant','fence','settle'):
    self.assertEqual('UnsupportedAction',self.runaction(action)['reason'])
