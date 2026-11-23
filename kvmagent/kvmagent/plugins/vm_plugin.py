@@ -1143,6 +1143,12 @@ class AttachPciDeviceToHostRsp(kvmagent.AgentResponse):
     def __init__(self):
         super(AttachPciDeviceToHostRsp, self).__init__()
 
+class GetIbDeviceDriverRsp(kvmagent.AgentResponse):
+    def __init__(self):
+        """Initialize an empty driver response; return None or propagate setup errors."""
+        super(GetIbDeviceDriverRsp, self).__init__()
+        self.driver = None
+
 class DetachPciDeviceFromHostCommand(kvmagent.AgentCommand):
     def __init__(self):
         super(DetachPciDeviceFromHostCommand, self).__init__()
@@ -8682,6 +8688,7 @@ class VmPlugin(kvmagent.KvmAgent):
     HOT_PLUG_PCI_DEVICE = "/pcidevice/hotplug"
     HOT_UNPLUG_PCI_DEVICE = "/pcidevice/hotunplug"
     ATTACH_PCI_DEVICE_TO_HOST = "/pcidevice/attachtohost"
+    GET_IB_DEVICE_DRIVER = "/pcidevice/driver/get"
     DETACH_PCI_DEVICE_FROM_HOST = "/pcidevice/detachfromhost"
     HOT_PLUG_MDEV_DEVICE = "/mdevdevice/hotplug"
     HOT_UNPLUG_MDEV_DEVICE = "/mdevdevice/hotunplug"
@@ -12152,6 +12159,19 @@ host side snapshot files chian:
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
+    def get_ib_device_driver(self, req):
+        """Return JSON with the current driver name, or null for an unbound device.
+
+        Do not change the device. The replyerror decorator turns request or
+        read errors into a response with success=False and the error message.
+        """
+        cmd = jsonobject.loads(req[http.REQUEST_BODY])
+
+        rsp = GetIbDeviceDriverRsp()
+        rsp.driver = pci.get_bound_driver(cmd.pciDeviceAddress)
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
     @in_bash
     def attach_pci_device_to_host(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
@@ -13800,6 +13820,7 @@ host side snapshot files chian:
         http_server.register_async_uri(self.HOT_PLUG_PCI_DEVICE, self.hot_plug_pci_device)
         http_server.register_async_uri(self.HOT_UNPLUG_PCI_DEVICE, self.hot_unplug_pci_device)
         http_server.register_async_uri(self.ATTACH_PCI_DEVICE_TO_HOST, self.attach_pci_device_to_host)
+        http_server.register_async_uri(self.GET_IB_DEVICE_DRIVER, self.get_ib_device_driver)
         http_server.register_async_uri(self.DETACH_PCI_DEVICE_FROM_HOST, self.detach_pci_device_from_host)
         http_server.register_async_uri(self.HOT_PLUG_MDEV_DEVICE, self.hot_plug_mdev_device)
         http_server.register_async_uri(self.HOT_UNPLUG_MDEV_DEVICE, self.hot_unplug_mdev_device)

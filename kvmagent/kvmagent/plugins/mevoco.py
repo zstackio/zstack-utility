@@ -2021,7 +2021,7 @@ mimetype.assign = (
             value = getattr(to.metadata, field, None)
             if value:
                 file_path = os.path.join(meta_root, field_mapper.get_file_name(field))
-                write_file_if_changed(file_path, value)
+                write_file_if_changed(file_path, value, encoding='utf-8')
 
         # private-ipv4
         if to.vmIp:

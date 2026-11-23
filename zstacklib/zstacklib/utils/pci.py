@@ -1,3 +1,4 @@
+import errno
 import os
 import platform
 import re
@@ -30,6 +31,40 @@ def is_infiniband_device(pci_address):
         logger.warn('cannot read PCI class for device[%s], keeping it in NIC collection: %s'
                     % (pci_address, err))
         return False
+
+
+def get_bound_driver(pci_address):
+    """Return the bound driver name, or None if this device has no driver.
+
+    Only read sysfs; do not change the device. Raise ValueError for an invalid
+    PCI address and IOError/OSError if the device is missing or cannot be read.
+    """
+    # Validate the whole BDF so a partial match cannot select another device.
+    match = re.match(
+        r'\A(?:(?:0x)?([0-9a-f]+):)?(?:0x)?([0-9a-f]+):'
+        r'(?:0x)?([0-9a-f]+)\.(?:0x)?([0-9a-f]+)\Z',
+        str(pci_address).strip(), re.IGNORECASE)
+    if not match:
+        raise ValueError("invalid PCI address: %s" % pci_address)
+
+    # PCI BDF fields are a 16-bit domain, 8-bit bus, 5-bit slot and 3-bit function.
+    domain, bus, slot, function = [int(part or '0', 16) for part in match.groups()]
+    if domain > 0xffff or bus > 0xff or slot > 0x1f or function > 7:
+        raise ValueError("invalid PCI address: %s" % pci_address)
+
+    address = '%04x:%02x:%02x.%x' % (domain, bus, slot, function)
+    device_path = os.path.join(PCI_DEVICES_ROOT, address)
+    if not os.path.isdir(device_path):
+        raise IOError("PCI device[%s] does not exist" % address)
+
+    try:
+        driver = os.readlink(os.path.join(device_path, 'driver'))
+        return os.path.basename(driver)
+    except OSError as error:
+        # Return no driver only if the device itself still exists.
+        if error.errno == errno.ENOENT and os.path.isdir(device_path):
+            return None
+        raise
 
 
 class PciNetworkDevice:
