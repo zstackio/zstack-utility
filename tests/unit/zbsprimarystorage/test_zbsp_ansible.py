@@ -27,8 +27,7 @@ def test_zbsp_installs_management_callback_probe():
     assert "nmap" in packages, "MDS callback connectivity checks require nmap"
 
 
-@pytest.mark.parametrize("password", ["ordinary", "MDS &'$sample\\ {{literal}}", "", None])
-def test_mds_client_receives_literal_arguments(monkeypatch, tmp_path, password):
+def capture_mds_commands(monkeypatch, password):
     lib = Mock()
     lib.__all__ = ("HostPostInfo ZstackLibArgs ZstackLib create_log banner get_remote_host_info_obj upgrade_to_helix "
                    "get_host_releasever RPM_BASED_OS file_dir_exist yum_check_package yum_install_package "
@@ -47,8 +46,33 @@ def test_mds_client_receives_literal_arguments(monkeypatch, tmp_path, password):
     monkeypatch.setattr(sys, "argv", ["zbsp.py", "-e", repr(args)])
     with pytest.raises(StopIteration):
         runpy.run_path(str(SCRIPT))
+    return lib.run_remote_command.call_args_list, args, host_info
 
-    deploy_calls = [call.args for call in lib.run_remote_command.call_args_list if "client deploy" in call.args[0]]
+
+@pytest.mark.parametrize("existing", [None, b"", b"keep=existing\n"])
+def test_mds_prepares_missing_client_conf_before_self_deploy(monkeypatch, tmp_path, existing):
+    calls, _, host_info = capture_mds_commands(monkeypatch, "ordinary")
+    commands = [call.args[0] for call in calls]
+    prepare, = [call for call in calls if "/etc/zbs/client.conf" in call.args[0]]
+    assert prepare.args[1] is host_info
+    assert commands.index(prepare.args[0]) < next(i for i, cmd in enumerate(commands) if "client deploy" in cmd)
+
+    config = tmp_path / "zbs" / "client.conf"
+    if existing is not None:
+        config.parent.mkdir()
+        config.write_bytes(existing)
+        os.utime(config, (1000, 1000))
+    command = prepare.args[0].replace("/etc/zbs", shlex.quote(str(config.parent)))
+    subprocess.run(["/bin/sh", "-ec", 'rpm() { test "$*" = "-q libcbd"; }; ' + command], check=True)
+    assert config.read_bytes() == (existing or b"")
+    if existing is not None:
+        assert config.stat().st_mtime == 1000
+
+
+@pytest.mark.parametrize("password", ["ordinary", "MDS &'$sample\\ {{literal}}", "", None])
+def test_mds_client_receives_literal_arguments(monkeypatch, tmp_path, password):
+    calls, args, host_info = capture_mds_commands(monkeypatch, password)
+    deploy_calls = [call.args for call in calls if "client deploy" in call.args[0]]
     [(command, task_host)] = deploy_calls
     if password:
         assert password not in command
