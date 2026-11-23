@@ -54,9 +54,9 @@ class CephDriver(object):
             shell.call(call_string)
         else:
             pool, image = path.split('/')
-            ioctx = agent.get_ioctx(pool)
-            rbd_inst = rbd.RBD()
-            rbd_inst.create(ioctx, image, cmd.size)
+            with agent.rados_client.get_ioctx(pool) as ioctx:
+                rbd_inst = rbd.RBD()
+                rbd_inst.create(ioctx, image, cmd.size)
 
         return rsp
 

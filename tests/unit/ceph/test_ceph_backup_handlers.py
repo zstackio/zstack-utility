@@ -42,9 +42,7 @@ def _load_rsp(result):
 def _make_agent():
     """Create CephAgent via __new__ to skip __init__ side effects."""
     agent = module.CephAgent.__new__(module.CephAgent)
-    agent.cluster = MagicMock()
-    agent.ioctx = {}
-    agent.op_lock = __import__("threading").Lock()
+    agent.rados_client = MagicMock()
     agent.upload_tasks = module.UploadTasks()
     return agent
 
@@ -463,8 +461,7 @@ class TestCephBackupDelete:
         shell_mod = sys.modules["zstacklib.utils.shell"]
         shell_mod.check_run = MagicMock()
 
-        mock_ioctx = MagicMock()
-        agent.get_ioctx = MagicMock(return_value=mock_ioctx)
+        mock_ioctx = agent.rados_client.get_ioctx.return_value.__enter__.return_value
 
         result = agent.delete(_make_req({
             "installPath": "ceph://pool1/image-001"
@@ -531,8 +528,7 @@ class TestCephBackupAddExportToken:
     def test_add_export_token_writes_to_rados(self):
         agent = _make_agent()
         _mock_capacity(agent)
-        mock_ioctx = MagicMock()
-        agent.get_ioctx = MagicMock(return_value=mock_ioctx)
+        mock_ioctx = agent.rados_client.get_ioctx.return_value.__enter__.return_value
 
         result = agent.add_export_token(_make_req({
             "installPath": "ceph://pool1/image-001",
@@ -555,24 +551,21 @@ class TestCephBackupExport:
 
     class Request:
         def __init__(self):
-            self.closed = False
-
-        def close(self):
-            self.closed = True
+            self.hooks = MagicMock()
 
     def test_export_accepts_bytes_token_matching_url_token(self):
         agent = _make_agent()
         image_uuid = "1234567890abcdef1234567890abcdef"
-        mock_ioctx = MagicMock()
+        mock_ioctx = agent.rados_client.get_ioctx.return_value.__enter__.return_value
         mock_ioctx.read.return_value = b"secret-token-123"
-        agent.get_ioctx = MagicMock(return_value=mock_ioctx)
+        req = self.Request()
         rsp = self.Response()
 
         with patch.object(module.rbd, "Image", return_value=MagicMock()) as image, \
                 patch.object(module, "ImageFileObject") as image_file_object, \
                 patch.object(module, "_serve_fileobj", return_value="file-response") as serve_fileobj:
             image_file_object.return_value.size = 1024
-            result = agent.export(self.Request(), rsp,
+            result = agent.export(req, rsp,
                                   pool="pool1",
                                   image="ceph://pool1/%s" % image_uuid,
                                   token="secret-token-123")
@@ -582,13 +575,18 @@ class TestCephBackupExport:
         mock_ioctx.read.assert_called_once_with("%s-export" % image_uuid)
         image.assert_called_once_with(mock_ioctx, image_uuid, read_only=True)
         serve_fileobj.assert_called_once()
+        image_file_object.return_value.close.assert_not_called()
+        hook, close_download = req.hooks.attach.call_args.args
+        assert hook == "on_end_request"
+        assert req.hooks.attach.call_args.kwargs == {"failsafe": True}
+        close_download()
+        image_file_object.return_value.close.assert_called_once_with()
 
     def test_export_rejects_mismatched_bytes_token(self):
         agent = _make_agent()
         image_uuid = "1234567890abcdef1234567890abcdef"
-        mock_ioctx = MagicMock()
+        mock_ioctx = agent.rados_client.get_ioctx.return_value.__enter__.return_value
         mock_ioctx.read.return_value = b"secret-token-123"
-        agent.get_ioctx = MagicMock(return_value=mock_ioctx)
         rsp = self.Response()
 
         result = agent.export(self.Request(), rsp,
@@ -608,8 +606,7 @@ class TestCephBackupRemoveExportToken:
     def test_remove_export_token_removes_from_rados(self):
         agent = _make_agent()
         _mock_capacity(agent)
-        mock_ioctx = MagicMock()
-        agent.get_ioctx = MagicMock(return_value=mock_ioctx)
+        mock_ioctx = agent.rados_client.get_ioctx.return_value.__enter__.return_value
 
         result = agent.remove_export_token(_make_req({
             "installPath": "ceph://pool1/image-001",
@@ -621,10 +618,9 @@ class TestCephBackupRemoveExportToken:
     def test_remove_export_token_ignores_not_found(self):
         agent = _make_agent()
         _mock_capacity(agent)
-        mock_ioctx = MagicMock()
+        mock_ioctx = agent.rados_client.get_ioctx.return_value.__enter__.return_value
         rados_mod = sys.modules["rados"]
         mock_ioctx.remove_object.side_effect = rados_mod.ObjectNotFound
-        agent.get_ioctx = MagicMock(return_value=mock_ioctx)
 
         result = agent.remove_export_token(_make_req({
             "installPath": "ceph://pool1/image-001",
