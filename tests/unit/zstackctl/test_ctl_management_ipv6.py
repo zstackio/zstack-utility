@@ -3,6 +3,7 @@ import argparse
 import importlib
 import json
 import os
+import shlex
 import socket
 import sys
 import types
@@ -112,6 +113,34 @@ def test_check_host_info_format_accepts_ipv6_with_port():
         'root', 'password', '2001:db8::10', '2222')
     assert ctl.check_host_info_format('root:password@2001:db8::10') == (
         'root', 'password', '2001:db8::10', ctl.DEFAULT_SSH_PORT)
+
+
+@pytest.mark.parametrize('remote_ip,rsync_host', [
+    ('192.0.2.10', '192.0.2.10'),
+    ('2001:db8::10', '[2001:db8::10]'),
+])
+@pytest.mark.parametrize('bwlimit', [None, '1m'])
+def test_dump_mysql_rsync_formats_remote_target(monkeypatch, remote_ip, rsync_host, bwlimit):
+    commands = []
+
+    def capture_command(command):
+        commands.append(command)
+        return 0, '', ''
+
+    monkeypatch.setattr(ctl, 'shell_return_stdout_stderr', capture_command)
+    dump = ctl.DumpMysqlCmd.__new__(ctl.DumpMysqlCmd)
+    args = SimpleNamespace(bwlimit=bwlimit, delete_expired_file=False)
+
+    dump.sync_local_backup_db_to_remote_host(args, 'root', '/tmp/test-key', remote_ip, '2222')
+
+    ssh_command, rsync_command = commands[-2:]
+    assert 'root@%s' % remote_ip in shlex.split(ssh_command)
+    rsync_args = shlex.split(rsync_command)
+    expected_target = 'root@%s:%s' % (rsync_host, dump.remote_backup_dir)
+    assert rsync_args[-1] == expected_target
+    assert rsync_command.endswith("'%s'" % expected_target)
+    assert [arg for arg in rsync_args if arg.startswith('--bwlimit=')] == (
+        [] if bwlimit is None else ['--bwlimit=%s' % bwlimit])
 
 
 def test_check_ip_port_uses_ipv6_socket_for_ipv6(monkeypatch):
