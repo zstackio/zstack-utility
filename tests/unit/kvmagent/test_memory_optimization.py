@@ -542,8 +542,8 @@ def test_a_failed_drain_reports_the_service_reason(host, monkeypatch):
     monkeypatch.setattr(plugin, '_executor_error', lambda unit, default: 'DRAIN_RESERVE_UNQUALIFIED')
     result = apply(plugin, 9, desired(control='drained'))
     assert result['status'] == 'Failed' and result['reasonCode'] == 'DRAIN_RESERVE_UNQUALIFIED'
-    # The failed step is cleared, so a resend of the same generation tries it again.
-    assert apply(plugin, 9, desired(control='drained'))['reasonCode'] == 'DRAINING'
+    # The failed step is cleared, so a resend of the same generation tries it again, still saying why.
+    assert apply(plugin, 9, desired(control='drained'))['reasonCode'] == 'DRAIN_RESERVE_UNQUALIFIED'
     assert world['started'][-1][:2] == ('zstack-memory-drain-9', '--drain')
 
 
@@ -1301,3 +1301,49 @@ def test_a_service_switch_is_named_not_a_bare_boolean(host):
             plugin._set_writeback(wrong)
     assert len(service.calls) == calls, 'a refused switch changes nothing on the service'
     assert cpu['efficiency_enabled'] is False
+
+
+def test_a_capacity_drain_refused_for_lack_of_memory_keeps_its_reason_while_retrying(host, monkeypatch):
+    plugin, service, world = host
+    service.efficiency = True
+    reason = 'MAINTENANCE_RESTORE_RESERVE_OR_NATIVE_QUALIFICATION'
+    assert apply(plugin, 7, desired(logical=8 << 30))['reasonCode'] == 'DRAINING'
+    world['executors']['zstack-memory-drain-7'] = ('exited', 1)
+    monkeypatch.setattr(plugin, '_executor_error', lambda unit, default: reason)
+    refused = apply(plugin, 7, desired(logical=8 << 30))
+    assert (refused['status'], refused['reasonCode']) == ('Failed', reason)
+    # The retries in between (restarting the service, waiting for the pool, draining again) say why.
+    world['executors'].pop('zstack-memory-drain-7', None)
+    service.pool, service.maintenance = None, True
+    for _ in range(3):
+        retry = apply(plugin, 7, desired(logical=8 << 30))
+        assert retry['reasonCode'] == reason, retry
+    # Once the drain goes through, the reason is gone.
+    world['executors']['zstack-memory-drain-7'] = ('exited', 0)
+    world['drained'] = {'state': MemoryOptimizationPlugin.DRAINED, 'pool_generation': POOL}
+    world['unit'] = 'inactive'
+    after = apply(plugin, 7, desired(logical=8 << 30))
+    assert after['reasonCode'] != reason, after
+
+
+def test_a_newer_configuration_does_not_inherit_an_older_drain_refusal(host, monkeypatch):
+    plugin, service, world = host
+    plugin._record_maintenance_block(7, 'MAINTENANCE_RESTORE_RESERVE_OR_NATIVE_QUALIFICATION')
+    service.pool = None
+    result = apply(plugin, 8, desired())
+    assert result['reasonCode'] == 'WAITING_FOR_POOL', result
+    assert plugin._maintenance_block() is None
+    plugin._record_maintenance_block(8, 'X_REASON')
+    service.pool = POOL
+    assert apply(plugin, 8, desired())['status'] == 'Succeeded'
+    assert plugin._maintenance_block() is None
+
+
+def test_the_drain_refusal_record_is_kept_when_the_agent_starts(tmp_path):
+    operations = tmp_path / 'operations'
+    operations.mkdir()
+    (operations / 'maintenance-block').write_text('{}')
+    plugin = MemoryOptimizationPlugin(service_call=FakeService())
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(operations)})
+    plugin._retire_legacy_records()
+    assert os.listdir(str(operations)) == ['maintenance-block']
