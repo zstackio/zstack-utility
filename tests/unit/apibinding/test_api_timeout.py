@@ -4,6 +4,7 @@ import json
 import sys
 import types
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -17,6 +18,7 @@ class CreateDataVolumeFromVolumeSnapshotAction:
 
     def __init__(self, timeout=None):
         self.timeout = timeout
+        self.session = types.SimpleNamespace(uuid="unit-session")
 
 
 def inventory_types():
@@ -74,6 +76,8 @@ def wire(monkeypatch, api, initial, results=()):
 def test_server_timeout_allows_completion_after_old_default(api, monkeypatch):
     action = CreateDataVolumeFromVolumeSnapshotAction()
     client = api.Api(result_path='/zstack/api/result/', curl=True)
+    print_curl = Mock()
+    monkeypatch.setattr(api.http, 'print_curl_command', print_curl, raising=False)
     calls = wire(monkeypatch, api, processing(apiTimeout=10800000),
                  [processing(), processing(), done()])
     name, event = client.async_call_wait_for_complete(action, interval=900000,
@@ -81,11 +85,23 @@ def test_server_timeout_allows_completion_after_old_default(api, monkeypatch):
     assert name == EVENT
     assert event.success and event.inventory.uuid == 'created-volume'
     assert calls['sleep'] == [900.0] * 3
-    assert calls['get'] == [(client.api_result_url + RESULT_UUID, {'print_curl': True})] * 3
+    poll_headers = {'test-header': 'kept', 'Authorization': 'OAuth unit-session'}
+    assert calls['get'] == [(client.api_result_url + RESULT_UUID, {'headers': poll_headers})] * 3
     assert len(calls['post']) == 1
+    assert all(args[2]['Authorization'] == 'OAuth <sessionUuid>' for args, _ in print_curl.call_args_list)
+    assert print_curl.call_count == 3
     assert calls['post'][0][2] == {'fail_soon': True, 'print_curl': True, 'headers': {'test-header': 'kept'}}
     assert 'timeout' not in json.loads(calls['post'][0][1])[action.FULL_NAME]
     assert action.timeout is None
+
+
+def test_pending_result_requires_session(api, monkeypatch):
+    action = CreateDataVolumeFromVolumeSnapshotAction()
+    action.session = None
+    calls = wire(monkeypatch, api, processing())
+    with pytest.raises(api.ApiError, match='session'):
+        api.Api().async_call_wait_for_complete(action)
+    assert not calls['get']
 
 
 @pytest.mark.parametrize('client_timeout,server_timeout', [(900000, 10800000), (2700000, 900000), (-1, 10800000)])
