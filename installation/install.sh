@@ -2261,12 +2261,13 @@ iz_install_key_manager(){
         fi
     fi
 
-    if systemctl list-unit-files crypto-daemon.service 2>/dev/null | grep -q '^crypto-daemon.service'; then
-        systemctl enable crypto-daemon.service >>$ZSTACK_INSTALL_LOG 2>&1 && systemctl start crypto-daemon.service >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
-    if systemctl list-unit-files key-tool.service 2>/dev/null | grep -q '^key-tool.service'; then
-        systemctl enable key-tool.service >>$ZSTACK_INSTALL_LOG 2>&1 && systemctl start key-tool.service >>$ZSTACK_INSTALL_LOG 2>&1
-    fi
+    local service
+    for service in crypto-daemon.service key-tool.service; do
+        if systemctl list-unit-files "$service" 2>/dev/null | grep -q "^$service"; then
+            systemctl enable "$service" || echo "WARNING: failed to enable $service"
+            systemctl start "$service" || echo "WARNING: failed to start $service"
+        fi
+    done
     pass
 } >>$ZSTACK_INSTALL_LOG 2>&1
 

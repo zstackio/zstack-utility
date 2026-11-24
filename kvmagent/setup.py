@@ -10,7 +10,7 @@ install_requires = [
     "python-cephlibs",
     "setuptools>=65.5.1",
 ]
-if platform.machine() == 'x86_64':
+if platform.machine() in ('x86_64', 'aarch64'):
     install_requires.append("grpcio==1.83.0")
     install_requires.append("protobuf==3.20.3")
     install_requires.append("typing_extensions==4.16.0")
