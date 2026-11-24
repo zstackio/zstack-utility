@@ -233,7 +233,8 @@ class UploadParam(object):
 
 
 class UploadTask(object):
-    def __init__(self, imageUuid, installPath, dstPath, tmpPath):
+    def __init__(self, imageUuid, installPath, dstPath, tmpPath, agent):
+        self.agent = agent
         self.completed = False
         self.imageUuid = imageUuid
         self.installPath = installPath
@@ -366,10 +367,11 @@ def get_boundary(entity):
     return ib.decode('ascii')
 
 
-def get_image_format_from_header(ioctx, image_name):
+def get_image_format_from_header(agent, pool, image_name):
     qcow2_length = 0x9007
-    ifo = ImageFileObject(rbd.Image(ioctx, image_name))
-    buf = ifo.read(qcow2_length)
+    with agent.rados_client.get_ioctx(pool) as ioctx, rbd.Image(ioctx, image_name) as image:
+        ifo = ImageFileObject(image)
+        buf = ifo.read(qcow2_length)
     return get_image_format_from_buf(buf)
 
 
@@ -463,8 +465,8 @@ def stream_body(entity, boundary, param, task, ioctx):
 
 
 @AsyncThread
-def complete_upload(task, ioctx):
-    # type: (UploadTask, rados.Ioctx) -> None
+def complete_upload(task, pool):
+    # type: (UploadTask, str) -> None
     try:
         file_format = linux.get_img_fmt('rbd:' + task.tmpPath)
     except Exception as e:
@@ -502,7 +504,7 @@ def complete_upload(task, ioctx):
         raise Exception(task.lastError)
 
     _, img_name = task.dstPath.split('/')
-    task.image_format = get_image_format_from_header(ioctx, img_name)
+    task.image_format = get_image_format_from_header(task.agent, pool, img_name)
     task.success()
 
 
@@ -527,8 +529,10 @@ class ImageFileObject(object):
         self.offset = min(self.offset + len(content), self.size)
 
     def close(self):
-        self.image.close()
-        logger.debug("%s closed" % str(self.image))
+        image, self.image = self.image, None
+        if image is not None:
+            image.close()
+            logger.debug("%s closed" % str(image))
 
 # ------------------------------------------------------------------ #
 
@@ -587,37 +591,11 @@ class CephAgent(object):
         self.http_server.register_async_uri(self.GET_LOCAL_FILE_SIZE, self.get_local_file_size)
         self.http_server.register_async_uri(self.MIGRATE_IMAGE_PATH, self.migrate_image, cmd=CephToCephMigrateImageCmd())
 
-        self.cluster = None
-        self.ioctx = {}
-        self.op_lock = threading.Lock()
-
-    def get_ioctx(self, pool_name):
-        # type: (str) -> rados.Ioctx
-
-        if pool_name in self.ioctx:
-            return self.ioctx[pool_name]
-
-        with self.op_lock:
-            if not self.cluster:
-                self.cluster = rados.Rados(conffile=self.CEPH_CONF_PATH)
-                self.cluster.connect()
-
-            self.ioctx[pool_name] = self.cluster.open_ioctx(pool_name)
-
-        return self.ioctx[pool_name]
+        self.rados_client = ceph.RadosClient(self.CEPH_CONF_PATH)
 
     def reconnect_cluster(self):
-        with self.op_lock:
-            origin_cluster = self.cluster
-            cluster = rados.Rados(conffile=self.CEPH_CONF_PATH)
-            cluster.connect()
-            self.cluster = cluster
-
-            if origin_cluster:
-                origin_cluster.shutdown()
-                logger.debug("reconnect rados cluster. shutdown before cluster.")
-            else:
-                logger.debug("connected to rados cluster.")
+        self.rados_client.reconnect()
+        logger.debug("reconnected rados cluster.")
 
     def _get_capacity(self):
         o = shell.call('ceph df -f json')
@@ -878,8 +856,7 @@ class CephAgent(object):
 
         if task.image_completing:
             pool, img_name = task.dstPath.split('/')
-            ioctx = self.get_ioctx(pool)
-            complete_upload(task, ioctx)
+            complete_upload(task, pool)
 
 
     @staticmethod
@@ -939,18 +916,17 @@ class CephAgent(object):
             self._fail_task(task, 'unexpected post form')
 
         pool, _ = task.tmpPath.split('/')
-        ioctx = self.get_ioctx(pool)
-
-        try:
-            stream_body(entity, boundary, param, task, ioctx)
-        except cherrypy.HTTPError:
-            raise
-        except Exception as e:
-            if str(e).lstrip() != 'timed out':
-                shell.run('rbd rm %s' % task.tmpPath)
-                self._fail_task(task, str(e))
-            if param.slice_offset == 0:
-                shell.run('rbd rm %s' % task.tmpPath)
+        with self.rados_client.get_ioctx(pool) as ioctx:
+            try:
+                stream_body(entity, boundary, param, task, ioctx)
+            except cherrypy.HTTPError:
+                raise
+            except Exception as e:
+                if str(e).lstrip() != 'timed out':
+                    shell.run('rbd rm %s' % task.tmpPath)
+                    self._fail_task(task, str(e))
+                if param.slice_offset == 0:
+                    shell.run('rbd rm %s' % task.tmpPath)
 
 
     def _prepare_upload(self, cmd):
@@ -974,7 +950,7 @@ class CephAgent(object):
         tmp_image_name = 'tmp-%s' % image_name
         tmpPath = '%s/%s' % (pool, tmp_image_name)
 
-        task = UploadTask(imageUuid, cmd.installPath, dstPath, tmpPath)
+        task = UploadTask(imageUuid, cmd.installPath, dstPath, tmpPath, self)
         self.upload_tasks.add_task(task)
         ImageUploadDaemon(task).start()
 
@@ -1254,38 +1230,46 @@ class CephAgent(object):
         if isinstance(image_name, str):
             image_name = codecs.decode(image_name.encode('unicode_escape'), 'unicode_escape')
 
-        ioctx = self.get_ioctx(pool_name)
-        try:
-            token = ioctx.read(image_name + "-export")
+        with self.rados_client.get_ioctx(pool_name) as ioctx:
+            try:
+                token = ioctx.read(image_name + "-export")
+            except rados.ObjectNotFound:
+                rsp.status = 404
+                return "Image not found."
+
             if isinstance(token, bytes):
                 token = token.decode()
             if 'token' not in kwargs or token != kwargs['token']:
                 rsp.status = 403
                 return "Forbidden"
-        except rados.ObjectNotFound:
-            rsp.status = 404
-            return "Image not found."
 
-        image_file_obj = ImageFileObject(rbd.Image(ioctx, image_name, read_only=True))
+        download_context = self.rados_client.get_ioctx(pool_name)
+        ioctx = download_context.__enter__()
+        image_file_obj = None
 
-        rsp.headers['Content-Type'] = 'application/x-download'
+        def close_download():
+            try:
+                if image_file_obj is not None:
+                    image_file_obj.close()
+            finally:
+                download_context.__exit__(None, None, None)
 
-        req_close = req.close
-
-        # cherrypy cannot ensure file obj closed every time. so hack it in request close.
-        def all_close():
-            req_close()
-            image_file_obj.close()
-
-        req.close = all_close
-        return _serve_fileobj(image_file_obj, 'application/x-download', image_file_obj.size)
+        try:
+            image_file_obj = ImageFileObject(rbd.Image(ioctx, image_name, read_only=True))
+            rsp.headers['Content-Type'] = 'application/x-download'
+            body = _serve_fileobj(image_file_obj, 'application/x-download', image_file_obj.size)
+            req.hooks.attach('on_end_request', close_download, failsafe=True)
+            return body
+        except BaseException:
+            close_download()
+            raise
 
     @replyerror
     def add_export_token(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool, image_name = self._parse_install_path(cmd.installPath)
-        ioctx = self.get_ioctx(pool)
-        ioctx.write_full(image_name + "-export", cmd.token)
+        with self.rados_client.get_ioctx(pool) as ioctx:
+            ioctx.write_full(image_name + "-export", cmd.token)
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -1295,11 +1279,11 @@ class CephAgent(object):
     def remove_export_token(self, req):
         cmd = jsonobject.loads(req[http.REQUEST_BODY])
         pool, image_name = self._parse_install_path(cmd.installPath)
-        ioctx = self.get_ioctx(pool)
-        try:
-            ioctx.remove_object(image_name + "-export")
-        except rados.ObjectNotFound:
-            pass
+        with self.rados_client.get_ioctx(pool) as ioctx:
+            try:
+                ioctx.remove_object(image_name + "-export")
+            except rados.ObjectNotFound:
+                pass
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)
@@ -1358,11 +1342,11 @@ class CephAgent(object):
         linux.wait_callback_success(delete_image, interval=5, timeout=30, ignore_exception_in_callback=True)
 
         pool, image_name = self._parse_install_path(cmd.installPath)
-        ioctx = self.get_ioctx(pool)
-        try:
-            ioctx.remove_object(image_name + "-export")
-        except rados.ObjectNotFound:
-            pass
+        with self.rados_client.get_ioctx(pool) as ioctx:
+            try:
+                ioctx.remove_object(image_name + "-export")
+            except rados.ObjectNotFound:
+                pass
 
         rsp = AgentResponse()
         self._set_capacity_to_response(rsp)

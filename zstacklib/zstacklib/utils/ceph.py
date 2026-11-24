@@ -3,6 +3,8 @@
 @author: lining
 '''
 import os
+import threading
+from contextlib import contextmanager
 
 import zstacklib.utils.jsonobject as jsonobject
 from zstacklib.utils import shell
@@ -34,6 +36,59 @@ QEMU_NBD_SOCKET_PREFIX = "qemu-nbd-nbd"
 NBD_DEV_PREFIX = "/dev/nbd"
 SUPPORT_DEFER_DELETING = None
 from zstacklib.utils.version import NumericVersion
+
+
+class RadosClient(object):
+    def __init__(self, conffile):
+        self._conffile = conffile
+        self._current_connection = None
+        self._refcount_by_connection = {}
+        self._lock = threading.Lock()
+
+    def _connect(self):
+        import rados
+        connection = rados.Rados(conffile=self._conffile)
+        try:
+            connection.connect()
+        except:
+            connection.shutdown()
+            raise
+        return connection
+
+    def _close_unused(self):
+        with self._lock:
+            connections_to_close = [
+                connection for connection, refcount in self._refcount_by_connection.items()
+                if connection is not self._current_connection and refcount == 0
+            ]
+            for connection in connections_to_close:
+                del self._refcount_by_connection[connection]
+        for connection in connections_to_close:
+            connection.shutdown()
+
+    @contextmanager
+    def get_ioctx(self, pool_name):
+        with self._lock:
+            if self._current_connection is None:
+                self._current_connection = self._connect()
+                self._refcount_by_connection[self._current_connection] = 0
+            borrowed_connection = self._current_connection
+            self._refcount_by_connection[borrowed_connection] += 1
+        try:
+            with borrowed_connection.open_ioctx(pool_name) as ioctx:
+                yield ioctx
+        finally:
+            with self._lock:
+                self._refcount_by_connection[borrowed_connection] -= 1
+            self._close_unused()
+
+    def reconnect(self):
+        new_connection = self._connect()
+        with self._lock:
+            self._current_connection = new_connection
+            self._refcount_by_connection[new_connection] = 0
+        self._close_unused()
+
 
 def get_fsid(conffile='/etc/ceph/ceph.conf'):
     import rados

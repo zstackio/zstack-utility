@@ -12,7 +12,6 @@ import urllib.parse
 import rados
 import rbd
 import queue
-import threading
 
 import zstacklib.utils.daemon as daemon
 import zstacklib.utils.jsonobject as jsonobject
@@ -439,37 +438,11 @@ class CephAgent(plugin.TaskManager):
 
         self.imagestore_client = ImageStoreClient()
 
-        self.cluster = None
-        self.ioctx = {}
-        self.op_lock = threading.Lock()
-
-    def get_ioctx(self, pool_name):
-        # type: (str) -> rados.Ioctx
-
-        if pool_name in self.ioctx:
-            return self.ioctx[pool_name]
-
-        with self.op_lock:
-            if not self.cluster:
-                self.cluster = rados.Rados(conffile=self.CEPH_CONF_PATH)
-                self.cluster.connect()
-
-            self.ioctx[pool_name] = self.cluster.open_ioctx(pool_name)
-
-        return self.ioctx[pool_name]
+        self.rados_client = ceph.RadosClient(self.CEPH_CONF_PATH)
 
     def reconnect_cluster(self):
-        with self.op_lock:
-            origin_cluster = self.cluster
-            cluster = rados.Rados(conffile=self.CEPH_CONF_PATH)
-            cluster.connect()
-            self.cluster = cluster
-
-            if origin_cluster:
-                origin_cluster.shutdown()
-                logger.debug("reconnect rados cluster. shutdown before cluster.")
-            else:
-                logger.debug("connected to rados cluster.")
+        self.rados_client.reconnect()
+        logger.debug("reconnected rados cluster.")
 
     def _init_third_party_ceph(self):
         if not ceph.is_xsky():
