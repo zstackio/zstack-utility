@@ -9,7 +9,6 @@ from kvmagent.plugins.nvram import nvram_common, nvram_sblk, nvram_local, nvram_
 from kvmagent.plugins.vms import vm_host_file
 
 from zstacklib.utils import bash
-from zstacklib.utils import linux
 from zstacklib.utils import log
 
 logger = log.get_logger(__name__)
@@ -57,10 +56,6 @@ class NvRamVmExtensions(object):
         if not self.vm_uuid:
             logger.debug("skip nvram cleanup: cannot determine vm_uuid from install path %s" % self.nvram_install_path)
             return
-
-        # if save in nvram/{vm_uuid}.fd, it will be deleted
-        fd_path = "/var/lib/libvirt/qemu/nvram/%s.fd" % self.vm_uuid
-        linux.rm_file_checked(fd_path)
 
         # for NvRam host file
         NvRamHostFile().cleanup(self.vm_uuid)

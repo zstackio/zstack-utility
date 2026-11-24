@@ -13622,9 +13622,8 @@ host side snapshot files chian:
                 vm._undefine_for_firmware_cleanup()
                 if get_vm_by_uuid_no_retry(vm_uuid, False):
                     raise kvmagent.KvmError('vm[uuid:%s] still has a libvirt domain; keep its firmware flash' % vm_uuid)
-            if firmware_path == legacy_path:
-                self.clean_vm_firmware_flash(vm_uuid)
-            else:
+            self.clean_vm_firmware_flash(vm_uuid)
+            if firmware_path != legacy_path:
                 extension = nvram.NvRamVmExtensions()
                 extension.vm_uuid = vm_uuid
                 extension.cleanup()

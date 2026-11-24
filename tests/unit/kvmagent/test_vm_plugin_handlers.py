@@ -318,6 +318,7 @@ class TestCleanFirmwareFlashHandler:
         vm_plugin.get_vm_by_uuid_no_retry = MagicMock(return_value=None)
         monkeypatch.setattr(vm_plugin.linux, 'find_vm_pid_by_uuid', MagicMock(return_value=None))
         extension = MagicMock()
+        monkeypatch.setattr(plugin, 'clean_vm_firmware_flash', MagicMock())
         monkeypatch.setattr(vm_plugin.nvram, 'build_nvram_fd_path',
                             lambda uuid, managed=False: 'managed.fd' if managed else 'old.fd')
         monkeypatch.setattr(vm_plugin.nvram, 'NvRamVmExtensions', MagicMock(return_value=extension))
@@ -329,6 +330,7 @@ class TestCleanFirmwareFlashHandler:
         assert rsp['success'] is True
         assert rsp.get('cleanupCompleted') is True, 'successful cleanup must explicitly acknowledge completion'
         assert extension.vm_uuid == '0123456789abcdef0123456789abcdef'
+        plugin.clean_vm_firmware_flash.assert_called_once_with(extension.vm_uuid)
         extension.cleanup.assert_called_once_with()
 
     @pytest.mark.parametrize('cleanup_inactive_domain', [False, True])
@@ -4180,12 +4182,14 @@ class TestVmStartCmdXmlBuild:
         cmd.secureBoot = False
 
         with patch.object(vm_plugin.kvmagent, 'get_host_yum_release', return_value=yum_release), \
+                patch.object(vm_plugin.linux, 'rm_file_checked') as remove, \
                 patch.object(vm_plugin.nvram_secure_boot, 'prepare_secure_boot_nvram') as prepare:
             root = ET.fromstring(self._build_start_vm_xml(cmd))
 
         assert root.findtext('os/loader') == '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd'
         assert root.find('os/nvram').get('template') == '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'
         prepare.assert_not_called()
+        remove.assert_not_called()
 
     def test_tpm_without_secure_boot_registers_nvram_with_secure_boot_off(self):
         cmd = self._build_start_cmd()
