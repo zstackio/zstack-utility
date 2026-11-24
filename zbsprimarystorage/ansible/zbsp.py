@@ -122,6 +122,9 @@ set_selinux("state=disabled", host_post_info)
 
 
 # name: make sure MDS has access to storage resources
+command = ('if [ ! -e /etc/zbs/client.conf ] && [ ! -L /etc/zbs/client.conf ] && rpm -q libcbd >/dev/null; '
+           'then mkdir -p /etc/zbs && touch /etc/zbs/client.conf; fi')
+run_remote_command(command, host_post_info, setup_yum0=False)
 deploy_info = shallow_copy(host_post_info)
 deploy_info.environment = dict(host_post_info.environment, ZBS_MDS_PASSWORD=wrap_var(str(host_post_info.remote_pass)))
 command = ('[ -f /usr/local/bin/zbsadm ] && /usr/local/bin/zbsadm client deploy '
