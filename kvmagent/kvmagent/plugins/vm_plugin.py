@@ -4263,7 +4263,8 @@ class Vm(object):
 
     def _undefine_for_firmware_cleanup(self):
         try:
-            self.domain.undefineFlags(getattr(libvirt, 'VIR_DOMAIN_UNDEFINE_KEEP_NVRAM', 1 << 3))
+            flags = self._get_undefine_flags(keep_nvram=True, include_cleanup_flags=False)
+            self.domain.undefineFlags(flags | getattr(libvirt, 'VIR_DOMAIN_UNDEFINE_KEEP_NVRAM', 1 << 3))
             return
         except libvirt.libvirtError as error:
             if (error.get_error_code() != libvirt.VIR_ERR_INVALID_ARG
@@ -4393,7 +4394,8 @@ class Vm(object):
             raise kvmagent.KvmError('failed to stop vm, timeout after 60 secs')
 
     def destroy(self):
-        self.stop(strategy='cold', keep_nvram=False)
+        managed_nvram = nvram.build_nvram_fd_path(self.uuid, True) != nvram.build_nvram_fd_path(self.uuid)
+        self.stop(strategy='cold', keep_nvram=managed_nvram)
 
     def pause(self, timeout=5):
         def loop_suspend(_):
@@ -13584,8 +13586,7 @@ host side snapshot files chian:
         linux.rm_file_checked(fpath)
 
     @staticmethod
-    def _check_vm_firmware_flash(vm_uuid):
-        fpath = '/var/lib/libvirt/qemu/nvram/%s.fd' % vm_uuid
+    def _check_vm_firmware_flash(fpath):
         if not os.path.exists(fpath):
             return
         check = shell.ShellCmd("timeout 10 lsof -Fc -- '%s'" % fpath)
@@ -13593,8 +13594,8 @@ host side snapshot files chian:
         if check.stdout:
             raise linux.VolumeInUseError('file %s is still opened: %s' % (fpath, ' '.join(check.stdout.splitlines())))
         if check.return_code != 1 or check.stderr:
-            raise kvmagent.KvmError('cannot check firmware file for vm[uuid:%s]: lsof exit %s'
-                                   % (vm_uuid, check.return_code))
+            raise kvmagent.KvmError('cannot check firmware file %s: lsof exit %s'
+                                   % (fpath, check.return_code))
 
     @kvmagent.replyerror
     def clean_firmware_flash(self, req):
@@ -13613,14 +13614,20 @@ host side snapshot files chian:
                     raise kvmagent.KvmError('vm[uuid:%s] still has a libvirt domain; keep its firmware flash' % vm_uuid)
                 if not vm.is_powered_off():
                     raise kvmagent.KvmError('vm[uuid:%s] is not powered off; keep its firmware flash' % vm_uuid)
-            self._check_vm_firmware_flash(vm_uuid)
+            legacy_path = nvram.build_nvram_fd_path(vm_uuid)
+            firmware_path = nvram.build_nvram_fd_path(vm_uuid, True)
+            for path in {legacy_path, firmware_path}:
+                self._check_vm_firmware_flash(path)
             if vm:
                 vm._undefine_for_firmware_cleanup()
                 if get_vm_by_uuid_no_retry(vm_uuid, False):
                     raise kvmagent.KvmError('vm[uuid:%s] still has a libvirt domain; keep its firmware flash' % vm_uuid)
-            extension = nvram.NvRamVmExtensions()
-            extension.vm_uuid = vm_uuid
-            extension.cleanup()
+            if firmware_path == legacy_path:
+                self.clean_vm_firmware_flash(vm_uuid)
+            else:
+                extension = nvram.NvRamVmExtensions()
+                extension.vm_uuid = vm_uuid
+                extension.cleanup()
             rsp.cleanupCompleted = True
 
         return jsonobject.dumps(rsp)

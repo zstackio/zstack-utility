@@ -133,11 +133,18 @@ class FirmwareCleanupTest(unittest.TestCase):
         self.os = types.SimpleNamespace(**vars(os))
         self.os.path = types.SimpleNamespace(**vars(os.path))
         self.os.path.exists = Mock(return_value=False)
-        self.scope = dict(libvirt=self.libvirt, linux=self.linux, logger=Mock(),
+        self.nvram = types.SimpleNamespace(build_nvram_fd_path=lambda uuid, managed=False:
+                                           '/var/lib/libvirt/qemu/nvram/%s.fd' % uuid)
+        self.scope = dict(libvirt=self.libvirt, linux=self.linux, logger=Mock(), nvram=self.nvram,
+            tpm=types.SimpleNamespace(VIRSH_SUPPORT_KEEP_TPM=False), VIR_DOMAIN_UNDEFINE_KEEP_TPM=64,
             kvmagent=types.SimpleNamespace(KvmError=RuntimeError, AgentResponse=lambda: types.SimpleNamespace(success=True)),
             os=self.os, shell=self.shell, re=re, etree=etree,
             lock=types.SimpleNamespace(NamedLock=lock_scope["NamedLock"]))
         self.stop = production_method("Vm", "stop", self.scope)
+
+    @staticmethod
+    def device_info(uuid):
+        return dict(nicInfos=[], virtualDeviceInfoList=[], memBalloonInfo=None, vmXml=None, edkRpm=None)
 
     def vm(self, **kwargs):
         domain = Domain(**kwargs)
@@ -213,6 +220,16 @@ class FirmwareCleanupTest(unittest.TestCase):
         self.assertFalse(vm.domain.defined)
         self.assertTrue(vm.domain.flags[-1] & self.libvirt.VIR_DOMAIN_UNDEFINE_NVRAM)
         self.assertFalse(vm.domain.flags[-1] & self.libvirt.VIR_DOMAIN_UNDEFINE_KEEP_NVRAM)
+
+    def test_destroy_preserves_managed_nvram_and_tpm(self):
+        vm = self.vm()
+        self.nvram.build_nvram_fd_path = lambda uuid, managed=False: 'managed.fd' if managed else 'old.fd'
+        self.scope['tpm'].VIRSH_SUPPORT_KEEP_TPM = True
+        vm.stop = types.MethodType(self.stop, vm)
+        production_method("Vm", "destroy", self.scope)(vm)
+        self.assertTrue(vm.domain.flags[-1] & self.libvirt.VIR_DOMAIN_UNDEFINE_KEEP_NVRAM)
+        self.assertTrue(vm.domain.flags[-1] & 64)
+        self.assertFalse(vm.domain.flags[-1] & self.libvirt.VIR_DOMAIN_UNDEFINE_NVRAM)
 
     def cleanup(self, identifier="a" * 32, domain=None, cleanup_inactive_domain=None):
         command = {"vmUuid": identifier}
@@ -492,14 +509,15 @@ class FirmwareCleanupTest(unittest.TestCase):
             self.scope.update(http=types.SimpleNamespace(REQUEST_BODY="body"),
                 jsonobject=types.SimpleNamespace(loads=lambda text: types.SimpleNamespace(**json.loads(text)),
                     dumps=lambda value: json.dumps(vars(value))),
-                StartVmResponse=lambda: types.SimpleNamespace(success=True, virtualizerInfo={}),
+                StartVmResponse=lambda: types.SimpleNamespace(success=True, virtualizerInfo={}, virtualDeviceInfoList=[]),
                 get_vm_by_uuid_no_retry=lambda *args: domain[0] if domain else None)
             self.linux.rm_file_checked = remove_file
             self.linux.find_vm_pid_by_uuid = Mock(side_effect=lambda uuid: "123" if domain else None)
             self.linux.enable_process_coredump = Mock()
             self.linux.set_vm_priority = Mock()
             plugin = types.SimpleNamespace(_record_operation=Mock(), VM_OP_START="Start", _start_vm=start_vm,
-                get_vm_device_info=lambda identifier: ([], [], None), collect_vm_virtualizer_info=Mock())
+                get_vm_device_info=self.device_info, collect_vm_virtualizer_info=Mock(),
+                _register_vm_host_file_monitor=Mock())
             plugin.clean_vm_firmware_flash = production_method("VmPlugin", "clean_vm_firmware_flash", self.scope)
             self.attach_file_check(plugin)
             clean = production_method("VmPlugin", "clean_firmware_flash", self.scope)
@@ -587,12 +605,13 @@ class FirmwareCleanupTest(unittest.TestCase):
                 self.scope.update(http=types.SimpleNamespace(REQUEST_BODY="body"),
                     jsonobject=types.SimpleNamespace(loads=lambda text: types.SimpleNamespace(**json.loads(text)),
                         dumps=lambda value: json.dumps(vars(value))),
-                    StartVmResponse=lambda: types.SimpleNamespace(success=True, virtualizerInfo={}),
+                    StartVmResponse=lambda: types.SimpleNamespace(success=True, virtualizerInfo={}, virtualDeviceInfoList=[]),
                     get_vm_by_uuid=lookup, delVnicFromOvsByVmUuidIfExist=Mock(),
                     ovs=types.SimpleNamespace(isVmUseOpenvSwitch=lambda uuid: True,
                         getOvsCtl=lambda **kwargs: types.SimpleNamespace(destoryNicBackend=destroy_backend)))
                 plugin = types.SimpleNamespace(_record_operation=Mock(), VM_OP_START="Start", _start_vm=start_vm,
-                    kill_vm=kill, get_vm_device_info=lambda uuid: ([], [], None), collect_vm_virtualizer_info=Mock())
+                    kill_vm=kill, get_vm_device_info=self.device_info, collect_vm_virtualizer_info=Mock(),
+                    _register_vm_host_file_monitor=Mock())
                 stop_handler = production_method("VmPlugin", "_stop_vm", self.scope)
                 start_handler = production_method("VmPlugin", "start_vm", self.scope)
                 command = types.SimpleNamespace(uuid=identifier, type="force", timeout=10)

@@ -152,37 +152,14 @@ class TestUndefineFlagsKeepTpm(unittest.TestCase):
                          "VIR_DOMAIN_UNDEFINE_KEEP_TPM should be 1<<6 == 64")
 
 
-class TestVmPluginCodeFix(unittest.TestCase):
-    """
-    Verify that the fixed vm_plugin code actually uses raw state check.
-    We check the source code change by inspecting the loop_shutdown body.
-    """
-
-    def test_loop_shutdown_source_contains_vir_domain_shutoff_check(self):
-        """
-        The fix adds a raw state check in loop_shutdown. Verify the source
-        contains the explicit SHUTOFF constant comparison, not just VM_STATE_SHUTDOWN.
-        """
-        import inspect
-        import kvmagent.plugins.vm_plugin as vm_module
-        source = inspect.getsource(vm_module.Vm.stop)
-        # The fixed code should contain VIR_DOMAIN_SHUTOFF (the constant) in stop
-        self.assertIn(
-            'VIR_DOMAIN_SHUTOFF',
-            source,
-            "vm_plugin.Vm.stop must reference VIR_DOMAIN_SHUTOFF for the raw state check"
-        )
-        # The fixed code should NOT use wait_for_state_change(VM_STATE_SHUTDOWN) for shutdown
-        # (it now uses raw domain.info() check instead)
-        # Count occurrences: original had 2 (loop_shutdown + loop_destroy), fix removes them
-        wfsc_shutdown_count = source.count(
-            'wait_for_state_change(self.VM_STATE_SHUTDOWN)'
-        )
-        self.assertEqual(
-            wfsc_shutdown_count, 0,
-            "loop_shutdown and loop_destroy must not use wait_for_state_change(VM_STATE_SHUTDOWN) "
-            "after the fix; found {} occurrences".format(wfsc_shutdown_count)
-        )
+class TestVmPowerState(unittest.TestCase):
+    def test_powered_off_requires_shutoff(self):
+        from unittest.mock import Mock
+        vm = Vm.__new__(Vm)
+        vm.domain = Mock()
+        for state, powered_off in [(Vm.VIR_DOMAIN_SHUTDOWN, False), (Vm.VIR_DOMAIN_SHUTOFF, True)]:
+            vm.domain.info.return_value = (state, 0, 0, 0, 0)
+            self.assertEqual(vm.is_powered_off(), powered_off)
 
 
 if __name__ == '__main__':

@@ -318,6 +318,8 @@ class TestCleanFirmwareFlashHandler:
         vm_plugin.get_vm_by_uuid_no_retry = MagicMock(return_value=None)
         monkeypatch.setattr(vm_plugin.linux, 'find_vm_pid_by_uuid', MagicMock(return_value=None))
         extension = MagicMock()
+        monkeypatch.setattr(vm_plugin.nvram, 'build_nvram_fd_path',
+                            lambda uuid, managed=False: 'managed.fd' if managed else 'old.fd')
         monkeypatch.setattr(vm_plugin.nvram, 'NvRamVmExtensions', MagicMock(return_value=extension))
 
         req = _make_req({'vmUuid': '0123456789abcdef0123456789abcdef'})
