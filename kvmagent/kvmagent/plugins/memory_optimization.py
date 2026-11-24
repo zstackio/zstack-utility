@@ -690,10 +690,18 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         host_uuid = command.get('hostUuid') if isinstance(command, dict) else None
         try:
             self._check_host(command)
+            unsupported = self._writeback_unsupported()
             if command.get('action') == 'prepare':
+                if unsupported:
+                    raise Rejected(unsupported[0])
                 return self._reply(self._prepare_writeback(command))
-            result = {'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid,
-                      'state': self._writeback_inventory(host_uuid)}
+            if unsupported:
+                # The Host's own verdict, not a disk list it cannot have.
+                state = {'hostUuid': host_uuid, 'status': 'UNSUPPORTED', 'reasons': unsupported,
+                         'preparationReasons': unsupported, 'candidates': []}
+            else:
+                state = self._writeback_inventory(host_uuid)
+            result = {'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid, 'state': state}
         except Rejected as exc:
             result = {'success': False, 'status': 'Failed', 'reasonCode': exc.reason,
                       'state': {}, 'hostUuid': host_uuid}
@@ -701,6 +709,19 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             result = {'success': False, 'status': 'Failed', 'reasonCode': 'WRITEBACK_INVENTORY_FAILED',
                       'reason': str(exc), 'state': {}, 'hostUuid': host_uuid}
         return self._reply(result)
+
+    def _writeback_unsupported(self):
+        """WRITEBACK_UNSUPPORTED and its cause when the Host is known not to support writeback, else None."""
+        capabilities = self.discover_capabilities()
+        if capabilities.get('writeback') is not False:
+            return None
+        if capabilities.get('supported') is False:
+            cause = capabilities.get('reasonCode')
+        elif capabilities.get('zram') is False:
+            cause = capabilities.get('zramReasonCode')
+        else:
+            cause = None
+        return ['WRITEBACK_UNSUPPORTED', cause or 'ZRAM_WRITEBACK_UNAVAILABLE']
 
     # ------------------------------------------------------------ service
 
