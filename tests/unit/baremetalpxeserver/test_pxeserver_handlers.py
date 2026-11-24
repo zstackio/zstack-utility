@@ -5,6 +5,7 @@ import json
 import sys
 import os
 import pytest
+from types import SimpleNamespace
 from typing import cast
 from unittest.mock import MagicMock, patch, mock_open, call
 
@@ -95,10 +96,25 @@ class TestPxeEcho:
 # ---------------------------------------------------------------------------
 @pytest.mark.baremetalpxeserver
 class TestPxeInit:
-    @patch("builtins.open", mock_open())
-    def test_init_success(self):
+    @pytest.mark.parametrize(("ftp_home", "nobody_home", "expected_user"), [
+        (".", ".", "ftp"),
+        (None, ".", "nobody"),
+        ("missing", ".", "nobody"),
+        (None, "missing", None),
+        (None, None, None),
+    ])
+    @patch.object(module, "open", create=True, new_callable=mock_open)
+    def test_init_anonymous_ftp_account(self, mocked_open, tmp_path, monkeypatch, ftp_home, nobody_home, expected_user):
         agent = _make_agent()
         _mock_capacity(agent)
+
+        accounts = {name: SimpleNamespace(pw_dir=str(tmp_path / home))
+                    for name, home in (("ftp", ftp_home), ("nobody", nobody_home)) if home is not None}
+        monkeypatch.setattr("pwd.getpwnam", accounts.__getitem__)
+        config = tmp_path / "vsftpd.conf"
+        config.write_text("previous config")
+        agent.VSFTPD_CONF_PATH = config
+        mocked_open.side_effect = lambda path, mode: config.open(mode) if path == config else mocked_open.return_value
 
         # Mock static helpers
         agent._get_ip_address = MagicMock(return_value="192.168.1.10")
@@ -130,7 +146,17 @@ class TestPxeInit:
             "managementPort": 8080,
         }))
         rsp = _load_rsp(result)
+        if expected_user is None:
+            assert rsp["success"] is False
+            assert "ftp or nobody" in rsp["error"]
+            assert config.read_text() == "previous config"
+            mocked_open.assert_not_called()
+            agent._stop_pxe_server.assert_not_called()
+            agent._start_pxe_server.assert_not_called()
+            return
+
         assert rsp["success"] is True
+        assert "ftp_username=" + expected_user in config.read_text().splitlines()
         agent._stop_pxe_server.assert_called_once()
         agent._start_pxe_server.assert_called_once()
 
@@ -138,6 +164,7 @@ class TestPxeInit:
     def test_init_writes_bracketed_ipv6_management_proxy(self, mocked_open):
         agent = _make_agent()
         _mock_capacity(agent)
+        agent._get_anonymous_ftp_user = MagicMock(return_value="ftp")
 
         agent._get_ip_address = MagicMock(return_value="192.168.1.10")
         agent._get_mac_address = MagicMock(return_value="aa:bb:cc:dd:ee:ff")

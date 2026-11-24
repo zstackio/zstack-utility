@@ -3,6 +3,7 @@ __author__ = 'frank'
 import os
 import os.path
 import pprint
+import pwd
 import shutil
 import socket
 import fcntl
@@ -240,6 +241,17 @@ class PxeServerAgent(object):
     def _is_belong_to_same_subnet(addr1, addr2, netmask):
         return IPAddress(addr1) in IPNetwork("%s/%s" % (addr2, netmask))
 
+    @staticmethod
+    def _get_anonymous_ftp_user():
+        for username in ("ftp", "nobody"):
+            try:
+                user = pwd.getpwnam(username)
+            except KeyError:
+                continue
+            if os.path.isdir(user.pw_dir):
+                return username
+        raise PxeServerError("anonymous FTP requires a system account (ftp or nobody) with an existing home directory")
+
     @reply_error
     def echo(self, req):
         logger.debug('get echoed')
@@ -263,6 +275,7 @@ class PxeServerAgent(object):
 
         # get pxe server capacity
         self._set_capacity_to_response(rsp)
+        ftp_username = self._get_anonymous_ftp_user()
 
         # init dnsmasq.conf
         dhcp_conf = """interface={DHCP_INTERFACE}
@@ -306,6 +319,7 @@ dhcp-hostsdir={DHCP_HOSTS_DIR}
 
         # init vsftpd.conf
         vsftpd_conf = """anonymous_enable=YES
+ftp_username={FTP_USERNAME}
 anon_root={VSFTPD_ANON_ROOT}
 local_enable=YES
 write_enable=YES
@@ -319,7 +333,7 @@ userlist_enable=YES
 xferlog_enable=YES
 xferlog_std_format=YES
 xferlog_file={VSFTPD_LOG_PATH}
-""".format(VSFTPD_ANON_ROOT=self.VSFTPD_ROOT_PATH,
+""".format(FTP_USERNAME=ftp_username, VSFTPD_ANON_ROOT=self.VSFTPD_ROOT_PATH,
            VSFTPD_LOG_PATH=self.VSFTPD_LOG_PATH)
         with open(self.VSFTPD_CONF_PATH, 'w') as f:
             f.write(vsftpd_conf)
