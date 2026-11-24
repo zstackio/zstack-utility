@@ -139,6 +139,8 @@ def test_completion_and_error_semantics(api, monkeypatch, immediate, success, ex
     response = done(success)
     calls = wire(monkeypatch, api, response if immediate else processing(apiTimeout=server_timeout), [response])
     action = CreateDataVolumeFromVolumeSnapshotAction(client_timeout)
+    if immediate:
+        action.session = None
     if not success and exception_on_error:
         with pytest.raises(api.ApiError) as error:
             api.Api().async_call_wait_for_complete(action, exception_on_error=exception_on_error)
