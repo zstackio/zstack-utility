@@ -218,3 +218,115 @@ def test_a_report_of_another_schema_shows_the_quality_of_this_scrape(accounting)
     assert value('host_zram_vm_saved_bytes') == []
     assert accounting(None, 'unavailable')('host_zram_accounting_sample_info', schema_version='unknown',
                                            quality='unavailable') == [1]
+
+
+
+@pytest.fixture
+def hot_collect():
+    import math
+    from collections import defaultdict
+    path = Path(__file__).resolve().parents[3] / 'kvmagent/kvmagent/plugins/prometheus.py'
+    tree = ast.parse(path.read_text())
+    nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == 'collect_hot_memory_statistics']
+    scope = dict(GaugeMetricFamily=GaugeMetricFamily,
+                 math=SimpleNamespace(isinf=math.isinf, isnan=math.isnan), re=re, time=time,
+                 defaultdict=defaultdict, linux=SimpleNamespace(read_file=lambda path: 'hot-boot'))
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), 'exec'), scope)
+    return scope['collect_hot_memory_statistics']
+
+
+def hot_memory_fixture():
+    return {
+        'schema_version': 1, 'source': 'page_idle_thp_head_v1', 'interval_seconds': 600, 'quality': 'native',
+        'vms': [{
+            'identity': {'uuid': '01234567-89ab-cdef-0123-456789abcdef', 'host_boot_id': 'hot-boot',
+                         'instance_generation': 'instance-a', 'cgroup_inode': 10, 'start_time': 20},
+            'quality': 'native', 'sampled_at': 950, 'window_start': 890, 'window_end': 950, 'window_seconds': 60,
+            'hot_memory_bytes': 3 * 1024**2, 'hot_4k_bytes': 1024**2, 'hot_thp_bytes': 2 * 1024**2,
+            'observed_resident_bytes': 4 * 1024**2, 'unknown_bytes': 12 * 1024**2, 'shared_bytes': 1024**2,
+            'zero_bytes': 0, 'nonresident_bytes': 11 * 1024**2, 'changed_bytes': 0,
+        }],
+    }
+
+
+def test_hot_memory_keeps_observation_time_and_spec_denominator(hot_collect):
+    report = hot_memory_fixture()
+    metrics = hot_collect(report, {'0123456789abcdef0123456789abcdef':
+                            {'memory_bytes': 32 * 1024**2, 'start_time': 20}}, now=1000)
+    samples = {sample.name: sample.value for family in metrics for sample in family.samples}
+    assert samples['host_vm_hot_memory_ratio'] == 3 / 32.0
+    assert samples['host_vm_hot_memory_sample_timestamp_seconds'] == 950
+    assert samples['host_vm_hot_memory_thp_bytes'] == 2 * 1024**2
+    assert samples['host_vm_hot_memory_unknown_bytes'] == 12 * 1024**2
+
+
+@pytest.mark.parametrize('change', ['expired', 'wrong_boot', 'no_spec', 'bad_window', 'duplicate', 'null_hot', 'malformed_identity', 'nan', 'infinite', 'identity_changed', 'large_integer'])
+def test_invalid_hot_memory_is_absent_never_zero(hot_collect, change):
+    report = hot_memory_fixture()
+    specs = {'0123456789abcdef0123456789abcdef':
+             {'memory_bytes': 32 * 1024**2, 'start_time': 20}}
+    now = 1000
+    row = report['vms'][0]
+    if change == 'expired':
+        now = 2151
+    elif change == 'wrong_boot':
+        row['identity']['host_boot_id'] = 'old'
+    elif change == 'no_spec':
+        specs = {}
+    elif change == 'bad_window':
+        row['window_start'] = 940
+    elif change == 'duplicate':
+        report['vms'].append(row.copy())
+    elif change == 'null_hot':
+        row['hot_memory_bytes'] = None
+    elif change == 'malformed_identity':
+        row['identity'] = 'broken'
+    elif change in ('nan', 'infinite'):
+        row['hot_memory_bytes'] = float('nan' if change == 'nan' else 'inf')
+    elif change == 'identity_changed':
+        specs['0123456789abcdef0123456789abcdef']['start_time'] = 21
+    elif change == 'large_integer':
+        row['unknown_bytes'] = 10**400
+    metrics = hot_collect(report, specs, now=now)
+    samples = {sample.name: sample.value for family in metrics for sample in family.samples}
+    assert 'host_vm_hot_memory_bytes' not in samples
+    assert 'host_vm_hot_memory_ratio' not in samples
+
+
+@pytest.mark.parametrize('balloon_kib', [16 * 1024**2, 24 * 1024**2])
+def test_hot_memory_spec_ignores_balloon_target_and_hotplug_ceiling(monkeypatch, balloon_kib):
+    import sys
+    from contextlib import closing
+    from xml.etree import ElementTree
+
+    # Exercise the production XML reader with two live balloon targets. The
+    # configured RAM stays 32 GiB and the 1 TiB hotplug ceiling is not a spec.
+    domain_xml = ('<domain><memory unit="KiB">33554432</memory>'
+                  '<currentMemory unit="KiB">%s</currentMemory>'
+                  '<maxMemory unit="KiB">1073741824</maxMemory></domain>') % balloon_kib
+
+    def loads(value):
+        return SimpleNamespace(**{node.tag: SimpleNamespace(unit_=node.get('unit'), text_=node.text)
+                                  for node in ElementTree.fromstring(value)})
+
+    uuid = '01234567-89ab-cdef-0123-456789abcdef'
+    active = SimpleNamespace(isActive=lambda: True, XMLDesc=lambda flags: domain_xml, UUIDString=lambda: uuid)
+    stopped = SimpleNamespace(isActive=lambda: False)
+    closed = []
+    conn = SimpleNamespace(listAllDomains=lambda flags: [active, stopped], close=lambda: closed.append(True))
+    monkeypatch.setitem(sys.modules, 'libvirt', SimpleNamespace(openReadOnly=lambda uri: conn))
+    monkeypatch.setitem(sys.modules, 'zstacklib.utils', SimpleNamespace(
+        linux=SimpleNamespace(get_vm_pid=lambda vm: '1234'), xmlobject=SimpleNamespace(loads=loads)))
+    path = Path(__file__).resolve().parents[3] / 'kvmagent/kvmagent/plugins/prometheus.py'
+    tree = ast.parse(path.read_text())
+    names = {'_hot_memory_process_start_time', '_hot_memory_vm_specs'}
+    nodes = [node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name in names]
+    stat_fields = 'S ' + '1 ' * 18 + '42'
+    def fake_open(path, mode):
+        assert path == '/proc/1234/stat'
+        return __import__('io').StringIO('1234 (qemu-system-x86) ' + stat_fields)
+    scope = dict(closing=closing, open=fake_open, re=re)
+    exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), 'exec'), scope)
+    assert scope['_hot_memory_vm_specs']() == {uuid.replace('-', ''):
+        {'memory_bytes': 32 * 1024**3, 'start_time': 42}}
+    assert closed == [True]

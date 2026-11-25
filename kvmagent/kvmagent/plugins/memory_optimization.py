@@ -183,6 +183,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     KSM_PAGES_TO_SCAN = 2000
     KSM_SLEEP_MILLIS = 20
     MANAGED_ZRAM_UNIT = 'zram-memory.service'
+    MANAGED_HOT_MEMORY_UNIT = 'zstack-hotmem.service'
+    HOT_MEMORY_CONFIG = '/etc/zram-memory/hotmem.json'
     # ZRAM is the Host's swap; at swappiness 0 (some distributions' default) reclaim moves no VM memory.
     SWAPPINESS_PATH = '/proc/sys/vm/swappiness'
     SYS_BLOCK_PATH = '/sys/block'
@@ -515,6 +517,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """Converge the host to the desired configuration; safe to resend."""
         generation = command.get('generation') if isinstance(command, dict) else None
         result = {'generation': generation}
+        hot_memory = None
+        hot_memory_error = None
         try:
             self._check_host(command)
             if isinstance(generation, bool) or not isinstance(generation, INTEGER_TYPES) or generation < 1:
@@ -528,7 +532,32 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 if known and generation < max(known):
                     raise Rejected('STALE_GENERATION')
                 self._record_applied_generation(generation, 'accepted-generation')
-                self._converge(desired, generation)
+                try:
+                    self._converge(desired, generation)
+                finally:
+                    # Independent observation must not gate KSM/ZRAM or hide their result.
+                    # Keep its outcome in the existing observed-state map.
+                    try:
+                        self._converge_hot_memory(desired.get('hotMemory') or {})
+                        hot_memory = {'success': True, 'status': 'Succeeded'}
+                    except Converging as exc:
+                        hot_memory_error = exc
+                        hot_memory = {'success': True, 'status': 'Converging', 'reasonCode': exc.reason,
+                                      'retryAfterSeconds': exc.retry_after}
+                    except Rejected as exc:
+                        hot_memory_error = exc
+                        hot_memory = {'success': False, 'status': 'Failed', 'reasonCode': exc.reason}
+                    except Exception as exc:
+                        logger.warn('hot-memory apply did not complete: %s' % exc)
+                        hot_memory_error = Rejected('HOT_MEMORY_APPLY_FAILED')
+                        hot_memory = {'success': False, 'status': 'Failed',
+                                      'reasonCode': 'HOT_MEMORY_APPLY_FAILED', 'reason': str(exc)}
+                # A service that is still starting or stopping is asked again shortly, as
+                # before. One that is not installed or does not start is reported in the
+                # state and does not fail the generation: KSM and ZRAM have converged, and
+                # a Host without the observer must not be shown as failed for them.
+                if isinstance(hot_memory_error, Converging):
+                    raise hot_memory_error
                 self._record_applied_generation(generation)
             result.update({'success': True, 'status': 'Succeeded'})
         except Converging as exc:
@@ -552,6 +581,9 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             result['state'] = self._observe()
         except Exception as exc:
             result['state'] = {'reason': str(exc)}
+        if hot_memory is not None:
+            observed = result['state'].get('hotMemory')
+            result['state']['hotMemory'] = dict(observed if isinstance(observed, dict) else {}, **hot_memory)
         return result
 
     @staticmethod
@@ -561,14 +593,19 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         desired = {'control': value['control']}
         for section, fields in (('ksm', ('enabled', 'zeroPagesEnabled')),
                                 ('zram', ('enabled', 'logicalCapacityBytes', 'ramLimitBytes')),
-                                ('writeback', ('enabled',))):
+                                ('writeback', ('enabled',)),
+                                ('hotMemory', ('enabled', 'interval'))):
             given = value.get(section) or {}
             if not isinstance(given, dict):
                 raise Rejected('INVALID_DESIRED_CONFIGURATION')
             desired[section] = {}
             for field in fields:
                 item = given.get(field)
-                if field.endswith('Bytes'):
+                if section == 'hotMemory' and field == 'interval':
+                    if item is not None and (isinstance(item, bool) or not isinstance(item, INTEGER_TYPES) or
+                                             not 300 <= item <= 86400):
+                        raise Rejected('INVALID_DESIRED_CONFIGURATION')
+                elif field.endswith('Bytes'):
                     if item is not None and (isinstance(item, bool) or not isinstance(item, INTEGER_TYPES) or
                                              item <= 0 or item % 4096):
                         raise Rejected('INVALID_DESIRED_CONFIGURATION')
@@ -1223,6 +1260,13 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             state['ksm'] = self._observe_ksm()
         except Exception as exc:
             state['ksm'] = {'reason': str(exc)}
+        observer = self._unit_properties(self.MANAGED_HOT_MEMORY_UNIT, 'LoadState', 'ActiveState')
+        service_state = 'unknown'
+        if observer.get('LoadState') == 'not-found':
+            service_state = 'absent'
+        elif observer.get('LoadState') == 'loaded':
+            service_state = observer.get('ActiveState') or 'unknown'
+        state['hotMemory'] = {'serviceState': service_state}
         unit = self._service_unit_state() if self._managed_service_installed() else 'absent'
         zram = {'serviceState': unit}
         state['zram'] = zram
@@ -1409,6 +1453,72 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             # A backend prepared before its identity was kept, or on another disk: record it while it is active.
             self._writeback_inventory(self._load_host_uuid())
         self._converge_service(desired, generation, control)
+
+    def _run_hot_memory_command(self, command, unit, starting):
+        try:
+            self._bounded_command_output(command, 30)
+        except RuntimeError:
+            state = self._unit_properties(unit, 'ActiveState', 'SubState')
+            active, sub = state.get('ActiveState'), state.get('SubState')
+            if starting and active == 'active' and sub == 'running':
+                return
+            if not starting and active in ('inactive', 'failed'):
+                return
+            if starting and active in ('inactive', 'failed'):
+                raise Rejected('HOT_MEMORY_SERVICE_START_FAILED')
+            if not starting and active == 'active' and sub == 'running':
+                raise Rejected('HOT_MEMORY_SERVICE_STOP_FAILED')
+            raise Converging('HOT_MEMORY_SERVICE_STARTING' if starting
+                             else 'HOT_MEMORY_SERVICE_STOPPING')
+
+    def _converge_hot_memory(self, desired):
+        enabled = desired.get('enabled')
+        if enabled is None:
+            return
+        unit = self.MANAGED_HOT_MEMORY_UNIT
+        state = self._unit_properties(unit, 'LoadState', 'ActiveState', 'UnitFileState')
+        if state.get('LoadState') != 'loaded':
+            if not enabled:
+                # Not installed, masked or unreadable: there is nothing to turn off, except
+                # an observer left running after its package was removed.
+                if state.get('ActiveState') == 'active':
+                    self._run_hot_memory_command(['systemctl', 'stop', unit], unit, False)
+                return
+            raise Rejected('HOT_MEMORY_SERVICE_NOT_INSTALLED' if state.get('LoadState') == 'not-found'
+                           else 'HOT_MEMORY_SERVICE_STATE_UNKNOWN')
+        active = state.get('ActiveState')
+        if not enabled:
+            if active not in ('inactive', 'failed') or state.get('UnitFileState') == 'enabled':
+                self._run_hot_memory_command(['systemctl', 'disable', '--now', unit], unit, False)
+            if self._unit_properties(unit, 'ActiveState').get('ActiveState') not in ('inactive', 'failed'):
+                raise Converging('HOT_MEMORY_SERVICE_STOPPING')
+            return
+        interval = desired.get('interval') or 600
+        config = {}
+        try:
+            with open(self.HOT_MEMORY_CONFIG, 'r') as stream:
+                config = json.load(stream)
+        except (IOError, OSError) as exc:
+            if exc.errno != errno.ENOENT:
+                raise
+        if not isinstance(config, dict):
+            raise Rejected('HOT_MEMORY_CONFIG_INVALID')
+        changed = config.get('interval_seconds') != interval
+        if changed:
+            config['interval_seconds'] = interval
+            self._atomic_write(self.HOT_MEMORY_CONFIG,
+                               json.dumps(config, sort_keys=True, indent=2).encode('utf-8') + b'\n')
+        if active == 'failed':
+            self._bounded_command_output(['systemctl', 'reset-failed', unit], 30)
+        if active != 'active' or state.get('UnitFileState') != 'enabled':
+            self._run_hot_memory_command(['systemctl', 'enable', '--now', unit], unit, True)
+        if changed and active == 'active':
+            self._run_hot_memory_command(['systemctl', 'restart', unit], unit, True)
+        current = self._unit_properties(unit, 'ActiveState', 'SubState')
+        if current.get('ActiveState') == 'activating':
+            raise Converging('HOT_MEMORY_SERVICE_STARTING')
+        if current.get('ActiveState') != 'active' or current.get('SubState') != 'running':
+            raise Rejected('HOT_MEMORY_SERVICE_START_FAILED')
 
     def _is_drained(self):
         native = self._drain_check()
