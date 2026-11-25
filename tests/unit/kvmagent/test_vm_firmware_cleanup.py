@@ -10,7 +10,7 @@ import weakref
 import tempfile
 import unittest
 from unittest.mock import Mock
-from lxml import etree
+from xml.etree import ElementTree
 
 SOURCE = pathlib.Path(__file__).parents[3] / "kvmagent" / "kvmagent" / "plugins" / "vm_plugin.py"
 TREE = ast.parse(SOURCE.read_text())
@@ -105,7 +105,7 @@ class LegacyDomain(Domain):
         if flags & ~7:
             raise self.unsupported_error
         self.remove_saved_state(flags)
-        nvram = etree.fromstring(self.xml).find("./os/nvram")
+        nvram = ElementTree.fromstring(self.xml).find("./os/nvram")
         if nvram is not None and self.firmware.exists():
             if not flags & 4:
                 raise LibvirtError("cannot delete inactive domain with nvram", 55)
@@ -138,7 +138,7 @@ class FirmwareCleanupTest(unittest.TestCase):
         self.scope = dict(libvirt=self.libvirt, linux=self.linux, logger=Mock(), nvram=self.nvram,
             tpm=types.SimpleNamespace(VIRSH_SUPPORT_KEEP_TPM=False), VIR_DOMAIN_UNDEFINE_KEEP_TPM=64,
             kvmagent=types.SimpleNamespace(KvmError=RuntimeError, AgentResponse=lambda: types.SimpleNamespace(success=True)),
-            os=self.os, shell=self.shell, re=re, etree=etree,
+            os=self.os, shell=self.shell, re=re, etree=ElementTree,
             lock=types.SimpleNamespace(NamedLock=lock_scope["NamedLock"]))
         self.stop = production_method("Vm", "stop", self.scope)
 
@@ -174,14 +174,14 @@ class FirmwareCleanupTest(unittest.TestCase):
         self.addCleanup(directory.cleanup)
         firmware = pathlib.Path(directory.name) / ("a" * 32 + ".fd")
         firmware.write_bytes(b"existing EFI boot entries")
-        tree = etree.fromstring('<domain><uuid>aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa</uuid>'
+        tree = ElementTree.fromstring('<domain><uuid>aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa</uuid>'
                                 '<os><type>hvm</type></os><devices><graphics type="vnc" '
                                 'passwd="test-only-password"/></devices></domain>')
         if not bios:
             os_node = tree.find("os")
-            etree.SubElement(os_node, "loader", readonly="yes", type="pflash").text = "/firmware/code.fd"
-            etree.SubElement(os_node, "nvram").text = "/var/lib/libvirt/qemu/nvram/" + "a" * 32 + ".fd"
-        domain = LegacyDomain(etree.tostring(tree).decode(), **faults)
+            ElementTree.SubElement(os_node, "loader", readonly="yes", type="pflash").text = "/firmware/code.fd"
+            ElementTree.SubElement(os_node, "nvram").text = "/var/lib/libvirt/qemu/nvram/" + "a" * 32 + ".fd"
+        domain = LegacyDomain(ElementTree.tostring(tree).decode(), **faults)
         domain.firmware = firmware
         vm = self.vm()
         vm.domain, vm.domain_xml = domain, domain.original_xml
@@ -281,9 +281,9 @@ class FirmwareCleanupTest(unittest.TestCase):
         for path in ["/var/lib/libvirt/qemu/nvram/" + "b" * 32 + ".fd", "", "/tmp/elsewhere.fd"]:
             with self.subTest(path=path):
                 vm, firmware = self.legacy_vm()
-                tree = etree.fromstring(vm.domain.xml)
+                tree = ElementTree.fromstring(vm.domain.xml)
                 tree.find("./os/nvram").text = path
-                vm.domain.xml = etree.tostring(tree).decode()
+                vm.domain.xml = ElementTree.tostring(tree).decode()
                 with self.assertRaises((RuntimeError, LibvirtError)):
                     self.cleanup(domain=vm, cleanup_inactive_domain=True)
                 self.assertTrue(vm.domain.defined)
