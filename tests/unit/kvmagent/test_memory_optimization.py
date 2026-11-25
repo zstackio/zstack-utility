@@ -14,6 +14,7 @@ from kvmagent.plugins import memory_optimization_ksm_native as ksm_native
 from kvmagent.plugins.memory_optimization import Converging, MemoryOptimizationPlugin, Rejected
 from kvmagent.plugins import memory_writeback_backends as backends
 from kvmagent.plugins import memory_writeback_maintenance as maintenance
+from kvmagent.plugins import memory_swap_disks
 
 HOST = '1' * 32
 POOL = 'a' * 64
@@ -897,7 +898,9 @@ def test_only_a_possible_candidate_is_probed_for_signatures():
     volumes = [{'name': '/dev/mapper/vg-lv%d' % i, 'kname': 'dm-%d' % i, 'type': 'lvm', 'size': 1 << 30,
                 'maj:min': '253:%d' % i} for i in range(300)]
     lsblk = {'blockdevices': [{'name': '/dev/vdb', 'kname': 'vdb', 'type': 'disk', 'size': 1 << 30,
-                               'maj:min': '252:16', 'serial': 'disk-a', 'tran': 'virtio'}] + volumes}
+                               'maj:min': '252:16', 'serial': 'disk-a', 'tran': 'virtio',
+                               'children': [{'name': '/dev/vdb1', 'kname': 'vdb1', 'type': 'part',
+                                             'maj:min': '252:17', 'size': 1 << 29}]}] + volumes}
     probed = []
 
     def runner(argv, timeout=5):
@@ -917,16 +920,20 @@ def test_only_a_possible_candidate_is_probed_for_signatures():
             return False
 
         def listdir(self, path):
+            if path == '/dev/disk/by-id':
+                return ['virtio-disk-a-part1']
             raise OSError(2, path)
 
         def realpath(self, path):
-            return path
+            return '/dev/vdb1' if path == '/dev/disk/by-id/virtio-disk-a-part1' else path
 
         def stat(self, path):
             raise OSError(2, path)
 
         lstat = stat
-    backends.probe_writeback_backends(HOST, runner=runner, filesystem=Filesystem())
+    result = backends.probe_writeback_backends(HOST, runner=runner, filesystem=Filesystem())
+    partition = next(c for c in result['candidates'] if c['device'] == '/dev/vdb1')
+    assert partition['byIdPath'] == '/dev/disk/by-id/virtio-disk-a-part1'
     # 300 logical volumes are ineligible anyway; a signature probe each would outlast the MN call.
     assert len([path for path in probed if path.startswith('/dev/mapper/')]) == 0
 
@@ -1301,3 +1308,145 @@ def test_a_service_switch_is_named_not_a_bare_boolean(host):
             plugin._set_writeback(wrong)
     assert len(service.calls) == calls, 'a refused switch changes nothing on the service'
     assert cpu['efficiency_enabled'] is False
+class FakeSwapDisks(object):
+    def __init__(self, refuse=None):
+        self.calls, self.refuse = [], refuse
+
+    def inventory(self):
+        self.calls.append(('inventory',))
+        return {'status': 'NOT_CONFIGURED'}
+
+    def prepare(self, candidate_id, overwrite):
+        self.calls.append(('prepare', candidate_id, overwrite))
+        if self.refuse:
+            raise memory_swap_disks.Rejected(self.refuse, {'devices': ['/dev/zram0']})
+        return {'status': 'ACTIVE'}
+
+    def disable(self):
+        self.calls.append(('disable',))
+        return {'status': 'NOT_CONFIGURED'}
+
+
+def swap_disk_request(plugin, **command):
+    command.setdefault('hostUuid', HOST)
+    return json.loads(plugin.swap_disks({module.http.REQUEST_BODY: json.dumps(command)}))
+
+
+@pytest.mark.parametrize('command,call,status', [
+    ({}, ('inventory',), 'NOT_CONFIGURED'),
+    ({'action': 'prepare', 'candidateId': 'candidate:x', 'overwrite': True}, ('prepare', 'candidate:x', True), 'ACTIVE'),
+    ({'action': 'prepare', 'candidateId': 'candidate:x', 'overwrite': 'yes'}, ('prepare', 'candidate:x', False), 'ACTIVE'),
+    ({'action': 'disable'}, ('disable',), 'NOT_CONFIGURED'),
+])
+def test_swap_disk_requests_reach_the_swap_disk_with_the_zram_service_stopped(host, monkeypatch, command, call, status):
+    plugin, _, world = host
+    world['unit'] = 'inactive'
+    disks = FakeSwapDisks()
+    monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: disks)
+    result = swap_disk_request(plugin, **command)
+    assert result['success'] is True and result['state']['status'] == status and disks.calls == [call]
+
+
+def test_a_swap_disk_is_not_prepared_while_the_zram_service_runs(host, monkeypatch):
+    plugin, _, world = host
+    disks = FakeSwapDisks()
+    monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: disks)
+    result = swap_disk_request(plugin, action='prepare', candidateId='candidate:x')
+    assert result['success'] is False and result['reasonCode'] == 'MEMORY_SERVICE_NOT_STOPPED' and disks.calls == []
+
+
+def test_a_refused_swap_disk_change_reports_its_reason_and_details(host, monkeypatch):
+    plugin, _, world = host
+    world['unit'] = 'failed'
+    monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: FakeSwapDisks('OTHER_SWAP_ACTIVE'))
+    result = swap_disk_request(plugin, action='prepare', candidateId='candidate:x')
+    assert (result['success'], result['reasonCode'], result['details']) == (False, 'OTHER_SWAP_ACTIVE', {'devices': ['/dev/zram0']})
+
+
+def test_a_swap_disk_request_for_another_host_or_action_is_refused(host, monkeypatch):
+    plugin, _, _ = host
+    disks = FakeSwapDisks()
+    monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: disks)
+    assert swap_disk_request(plugin, hostUuid='f' * 32)['reasonCode'] == 'HOST_IDENTITY_UNKNOWN'
+    assert swap_disk_request(plugin, action='format')['reasonCode'] == 'INVALID_SWAP_DISK_ACTION'
+    assert disks.calls == []
+
+
+@pytest.mark.parametrize('backend,configured,unit,expected', [
+    ('swap', False, 'active', 'SWAP_DISK_NOT_CONFIGURED'),
+    ('swap', True, 'unknown', 'MEMORY_SERVICE_NOT_STOPPED'),
+    ('swap', True, 'inactive', 'Succeeded'),
+    ('zram', True, 'inactive', 'SWAP_DISK_ALREADY_CONFIGURED'),
+])
+def test_changing_the_backend_preserves_the_previous_disk(host, monkeypatch, backend, configured, unit, expected):
+    plugin, service, world = host
+    world['unit'] = unit
+    disks = FakeSwapDisks()
+    disks.current = lambda: {'reasons': []} if configured else None
+    def restore():
+        if configured:
+            disks.calls.append(('restore',))
+        return configured
+    disks.restore = restore
+    monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: disks)
+    want = desired(zram=None)
+    want['reclaim'] = {'backend': backend}
+    reply = apply(plugin, 1, want)
+    assert reply.get('reasonCode', reply['status']) == expected
+    assert disks.calls == ([('restore',)] if expected == 'Succeeded' else [])
+    assert service.actions() == []
+
+
+@pytest.mark.parametrize('pool,recorded,reset,maintenance,reasons,expected', [
+    (None, False, True, False, [], 'Succeeded'),
+    (POOL, False, True, False, [], 'MEMORY_SERVICE_NOT_STOPPED'),
+    (None, True, True, False, [], 'MEMORY_SERVICE_NOT_STOPPED'),
+    (None, False, False, False, [], 'MEMORY_SERVICE_NOT_STOPPED'),
+    (None, False, True, True, [], 'HOST_OPERATION_IN_PROGRESS'),
+    (None, False, True, False, ['SWAP_DISK_IDENTITY_MISMATCH'], 'SWAP_DISK_IDENTITY_MISMATCH'),
+])
+def test_swap_policy_after_boot_only_stops_an_empty_service(host, monkeypatch, pool, recorded, reset,
+                                                          maintenance, reasons, expected):
+    plugin, service, world = host
+    service.pool, service.maintenance = pool, maintenance
+    world['zram_reset'] = reset
+    monkeypatch.setattr(plugin, '_no_recorded_pool', lambda: not recorded)
+    disks = FakeSwapDisks()
+    disks.current = lambda: {'reasons': reasons}
+    restored = []
+    def restore():
+        restored.append(world['unit'])
+        return True
+    disks.restore = restore
+    monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: disks)
+    want = desired(zram=False)
+    want['reclaim'] = {'backend': 'swap'}
+
+    reply = apply(plugin, 1, want)
+
+    assert reply.get('reasonCode', reply['status']) == expected
+    if expected == 'Succeeded':
+        assert restored == ['inactive']
+        assert service.paused
+    else:
+        assert world['unit'] == 'active' and restored == [] and not service.paused
+
+
+def test_the_swap_disk_record_is_kept_when_the_agent_starts(tmp_path):
+    operations = tmp_path / 'operations'
+    operations.mkdir()
+    (operations / 'swap-disk').write_text('{}')
+    plugin = MemoryOptimizationPlugin(service_call=FakeService())
+    plugin.configure({'hostUuid': HOST, 'operationDir': str(operations)})
+    plugin._retire_legacy_records()
+    assert os.listdir(str(operations)) == ['swap-disk']
+
+
+def test_the_swap_disk_keeps_the_configured_writeback_disk_reserved(host, tmp_path):
+    plugin, _, _ = host
+    config = json.loads((tmp_path / 'config.json').read_text())
+    config['backend'] = {'device': '/dev/nvme0n1'}
+    (tmp_path / 'config.json').write_text(json.dumps(config))
+    disks = plugin._swap_disk_manager(HOST)
+    assert disks.writeback_device == '/dev/nvme0n1'
+    assert disks.record_path == str(tmp_path / 'operations' / 'swap-disk')

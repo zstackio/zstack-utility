@@ -29,6 +29,7 @@ except ImportError:  # pragma: no cover - Python 2 deployment baseline
 
 from kvmagent import kvmagent
 from kvmagent.plugins.memory_writeback_backends import eligible, probe_writeback_backends, writeback_ready
+from kvmagent.plugins import memory_swap_disks
 from kvmagent.plugins.memory_writeback_maintenance import (
     build_backend_maintenance_request, read_backend_maintenance_status)
 from kvmagent.plugins.memory_optimization_ksm_native import (
@@ -167,6 +168,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
     VM_EFFICIENCY_PATH = '/memory/optimization/vm-efficiency'
     ACCOUNTING_PATH = '/memory/optimization/accounting'
     WRITEBACK_BACKENDS_PATH = '/memory/optimization/writeback-backends'
+    SWAP_DISKS_PATH = '/memory/optimization/swap-disks'
 
     DEFAULT_SOCKET = '/run/zram-efficiency-admission/control.sock'
     DEFAULT_MONITOR_SOCKET = '/run/zram-efficiency-admission/monitor.sock'
@@ -180,6 +182,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         '/usr/lib/systemd/system/ksmtuned.service')
     # The persistent identifiers of the disk serving as the writeback backend.
     BACKEND_IDENTITY = 'backend-identity'
+    # The disk-swap backend's swap disk this Agent prepared.
+    SWAP_DISK_RECORD = 'swap-disk'
     KSM_PAGES_TO_SCAN = 2000
     KSM_SLEEP_MILLIS = 20
     MANAGED_ZRAM_UNIT = 'zram-memory.service'
@@ -247,6 +251,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     def start(self):
         self._retire_legacy_records()
+        try:
+            with self._host_lock():
+                self._swap_disk_manager(self._load_host_uuid()).restore()
+        except Exception as exc:
+            logger.warning('Cannot restore managed swap disk at Agent startup: %s', exc)
         server = kvmagent.get_http_server()
         for path, handler in (
                 (self.STATE_PATH, self.state),
@@ -254,7 +263,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                 (self.MIGRATION_HOLD_PATH, self.migration_hold),
                 (self.VM_EFFICIENCY_PATH, self.vm_efficiency),
                 (self.ACCOUNTING_PATH, self.accounting),
-                (self.WRITEBACK_BACKENDS_PATH, self.writeback_backends)):
+                (self.WRITEBACK_BACKENDS_PATH, self.writeback_backends),
+                (self.SWAP_DISKS_PATH, self.swap_disks)):
             server.register_async_uri(path, handler)
 
     def stop(self):
@@ -264,7 +274,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         """Move an earlier Agent's operation journal aside; nothing reads it now."""
         legacy = [name for name in self._listdir(self.operation_dir)
                   if name not in ('applied-generation', 'accepted-generation', self.BACKEND_IDENTITY,
-                                  self.HOST_LOCK, 'executors')]
+                                  self.SWAP_DISK_RECORD, self.HOST_LOCK, 'executors')]
         if not legacy:
             return
         target = '%s-legacy-%d' % (self.operation_dir, int(time.time()))
@@ -534,8 +544,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         except Converging as exc:
             result.update({'success': True, 'status': 'Converging', 'reasonCode': exc.reason,
                            'retryAfterSeconds': exc.retry_after})
-        except Rejected as exc:
+        except (Rejected, memory_swap_disks.Rejected) as exc:
             result.update({'success': False, 'status': 'Failed', 'reasonCode': exc.reason})
+            details = getattr(exc, 'details', None)
+            if details:
+                result['details'] = details
         except Exception as exc:
             logger.warn('memory optimisation apply did not complete: %s' % exc)
             reason = str(exc)
@@ -559,6 +572,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         if not isinstance(value, dict) or value.get('control') not in ('active', 'paused', 'drained'):
             raise Rejected('INVALID_DESIRED_CONFIGURATION')
         desired = {'control': value['control']}
+        if 'reclaim' in value:
+            reclaim = value['reclaim']
+            if not isinstance(reclaim, dict) or reclaim.get('backend') not in ('zram', 'swap'):
+                raise Rejected('INVALID_DESIRED_CONFIGURATION')
+            desired['reclaim'] = {'backend': reclaim['backend']}
         for section, fields in (('ksm', ('enabled', 'zeroPagesEnabled')),
                                 ('zram', ('enabled', 'logicalCapacityBytes', 'ramLimitBytes')),
                                 ('writeback', ('enabled',))):
@@ -665,6 +683,43 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             result = {'success': False, 'status': 'Failed', 'reasonCode': 'WRITEBACK_INVENTORY_FAILED',
                       'reason': str(exc), 'state': {}, 'hostUuid': host_uuid}
         return self._reply(result)
+
+    def swap_disks(self, req):
+        """The disk-swap backend's swap disk: query, prepare (candidateId, overwrite) or disable."""
+        command = self._request_body(req)
+        host_uuid = command.get('hostUuid') if isinstance(command, dict) else None
+        try:
+            self._check_host(command)
+            action = command.get('action') or 'query'
+            disks = self._swap_disk_manager(host_uuid)
+            if action == 'query':
+                state = disks.inventory()
+            elif action in ('prepare', 'disable'):
+                with self._host_lock(self._lock_wait(command)):
+                    if action == 'prepare':
+                        if self._managed_service_installed() and self._service_unit_state() not in ('inactive', 'failed'):
+                            # The ZRAM service runs only for ZRAM; it is drained and stopped first.
+                            raise Rejected('MEMORY_SERVICE_NOT_STOPPED')
+                        state = disks.prepare(command.get('candidateId'), command.get('overwrite') is True)
+                    else:
+                        state = disks.disable()
+            else:
+                raise Rejected('INVALID_SWAP_DISK_ACTION')
+            result = {'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid, 'state': state}
+        except (Rejected, memory_swap_disks.Rejected) as exc:
+            result = {'success': False, 'status': 'Failed', 'reasonCode': exc.reason, 'state': {},
+                      'hostUuid': host_uuid}
+            if getattr(exc, 'details', None):
+                result['details'] = exc.details
+        except Exception as exc:
+            logger.error('Host[%s] swap disk request failed: %s\n%s' % (host_uuid, exc, traceback.format_exc()))
+            result = {'success': False, 'status': 'Failed', 'reasonCode': 'SWAP_DISK_REQUEST_FAILED',
+                      'reason': str(exc), 'state': {}, 'hostUuid': host_uuid}
+        return self._reply(result)
+
+    def _swap_disk_manager(self, host_uuid):
+        return memory_swap_disks.SwapDisks(host_uuid, os.path.join(self.operation_dir, self.SWAP_DISK_RECORD),
+                                           writeback_device=self._previous_backend_device())
 
     # ------------------------------------------------------------ service
 
@@ -1249,6 +1304,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             except Exception as exc:
                 zram['reason'] = str(exc)
         state['control'] = self._observed_control(unit, zram)
+        try:
+            disk = self._swap_disk_manager(self._load_host_uuid()).current()
+            if disk and not disk['reasons'] and unit in ('inactive', 'failed', 'absent'):
+                state['reclaim'] = {'backend': 'swap'}
+            elif disk:
+                state['reclaim'] = {'reasons': disk['reasons'] or ['MEMORY_SERVICE_NOT_STOPPED']}
+            elif zram.get('poolGeneration'):
+                state['reclaim'] = {'backend': 'zram'}
+        except Exception as exc:
+            state['reclaim'] = {'reason': str(exc)}
         state['managed'] = unit == 'active'
         state['vms'], state['inventoryComplete'] = self._complete_vm_inventory(native_vms)
         return state
@@ -1367,6 +1432,40 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise Rejected('WRITEBACK_REQUIRES_ZRAM')
         control = desired['control']
         self._converge_ksm(desired['ksm'], control)
+        backend = (desired.get('reclaim') or {}).get('backend')
+        if backend:
+            disks = self._swap_disk_manager(self._load_host_uuid())
+            if backend == 'swap' and control == 'active':
+                # Keep a working ZRAM pool until the administrator selects a swap disk.
+                unit = self._service_unit_state() if self._managed_service_installed() else 'inactive'
+                if unit not in ('inactive', 'failed'):
+                    disk = disks.current()
+                    if not disk:
+                        raise Converging('SWAP_DISK_NOT_CONFIGURED', 60)
+                    if disk['reasons'] not in ([], ['SWAP_DISK_NOT_ENABLED']):
+                        raise Rejected(disk['reasons'][0])
+                    if unit == 'starting':
+                        raise Converging('SERVICE_STARTING')
+                    # At boot systemd may start the daemon even on a Host using disk swap.
+                    if unit != 'active' or not self._no_recorded_pool() or not self._zram_device_reset():
+                        raise Rejected('MEMORY_SERVICE_NOT_STOPPED')
+                    status = self._service('status')
+                    pool = status.get('host_zram') or {}
+                    if (pool.get('pool_generation', 'unknown') or
+                            not (pool.get('reason') or '').startswith('NO_QUALIFIED_MANAGED_POOL')):
+                        raise Rejected('MEMORY_SERVICE_NOT_STOPPED')
+                    if (status.get('maintenance_blocks_activation') is not False or
+                            (status.get('lifecycle') or {}).get('migrationHolds') or status.get('pending_operations')):
+                        raise Converging('HOST_OPERATION_IN_PROGRESS')
+                    self._stop_service_without_pool()
+                    if self._service_unit_state() not in ('inactive', 'failed'):
+                        raise Converging('SERVICE_STOPPING')
+                if disks.restore():
+                    return
+                raise Converging('SWAP_DISK_NOT_CONFIGURED', 60)
+            if backend == 'zram' and disks.current():
+                # Changing an inherited default must not erase a host's configured disk.
+                raise Converging('SWAP_DISK_ALREADY_CONFIGURED', 60)
         if not self._managed_service_installed():
             return
         if not self._managed_service_never_used():
@@ -1918,7 +2017,8 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         'expectedPoolGeneration': command.get('expectedPoolGeneration'),
                         'backendCapacityBytes': command.get('backendCapacityBytes'),
                         'resetConfirmed': command.get('resetConfirmed')})
-                    self._stop_service_without_pool(inventory)
+                    if inventory.get('poolGeneration') == 'none' and self._service_unit_state() == 'active':
+                        self._stop_service_without_pool()
                     self._start_backend_maintenance(request)
                     reply.update({'success': True, 'status': 'Succeeded',
                                   'state': {'maintenance': self._receipt('backend')}})
@@ -1952,13 +2052,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             ((device and item.get('device') == device) or (path and item.get('path') == path))
             for item in self._writeback_inventory(host_uuid).get('candidates') or [])
 
-    def _stop_service_without_pool(self, inventory):
-        """A service without a pool holds no VM memory; stop it for the offline step, as a drain does."""
-        if inventory.get('poolGeneration') != 'none' or self._service_unit_state() != 'active':
-            return
+    def _stop_service_without_pool(self):
+        """Pause the service and verify it still has no pool before stopping it."""
         self._service('lifecycle-pause', {'action': 'pause'})
         self._set_efficiency(self._service('host-cpu-state'), EfficiencyMode.DISABLED)
-        if (self._service('status').get('host_zram') or {}).get('pool_generation'):
+        if (self._service('status').get('host_zram') or {}).get('pool_generation', 'unknown'):
             raise Rejected('MEMORY_SERVICE_NOT_STOPPED')
         self._bounded_command_output(['systemctl', 'stop', self.MANAGED_ZRAM_UNIT], 60)
 
