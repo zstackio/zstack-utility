@@ -50,7 +50,8 @@ class VmLifecycleWithoutNicsTest(unittest.TestCase):
         self.destroy_vm = load_method(VM_PLUGIN, 'VmPlugin', 'destroy_vm', namespace)
         self.stop_vm = load_method(VM_PLUGIN, 'VmPlugin', 'stop_vm', namespace)
         self.plugin = Boundary(_record_operation=lambda uuid, op: None, VM_OP_DESTROY='destroy', VM_OP_STOP='stop',
-                               _stop_vm=lambda cmd: self.events.append('stop'), _dump=lambda uuid: None)
+                               _stop_vm=lambda cmd: self.events.append('stop'), _dump=lambda uuid: None,
+                               clean_vm_firmware_flash=lambda uuid: self.events.append(('clean_firmware', uuid)))
 
     def loads(self, body):
         values = json.loads(body)
@@ -62,9 +63,10 @@ class VmLifecycleWithoutNicsTest(unittest.TestCase):
         return self.destroy_vm(self.plugin, {'body': json.dumps(body)})
 
     def test_directly_destroy_without_nics_succeeds(self):
-        rsp = self.run_destroy({'uuid': '164ca253505549f89350b619c362b114'})
+        vm_uuid = '164ca253505549f89350b619c362b114'
+        rsp = self.run_destroy({'uuid': vm_uuid})
         self.assertTrue(rsp.success)
-        self.assertEqual(['destroy'], self.events)
+        self.assertEqual(['destroy', ('clean_firmware', vm_uuid)], self.events)
 
     def test_stop_without_nics_succeeds(self):
         rsp = self.stop_vm(self.plugin, {'body': json.dumps({'uuid': '0b42630f37d8417480eced62ad89719f', 'type': 'cold'})})
@@ -76,6 +78,7 @@ class VmLifecycleWithoutNicsTest(unittest.TestCase):
         self.assertTrue(rsp.success)
         self.assertEqual('destroy', self.events[0])
         self.assertEqual(1, len([event for event in self.events if event[0] == 'vrouter']))
+        self.assertEqual(('clean_firmware', 'a' * 32), self.events[-1])
 
 
 if __name__ == '__main__':
