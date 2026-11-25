@@ -9911,7 +9911,7 @@ class VmPlugin(kvmagent.KvmAgent):
         vm = get_vm_by_uuid(uuid)
         nicInfos = []
         virtualDeviceInfoList = []
-        memBalloonInfo = ""
+        memBalloonInfo = None
         edkRpm = ""
 
         for iface in vm.domain_xmlobject.devices.get_child_node_as_list('interface'):

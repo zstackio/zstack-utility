@@ -178,6 +178,7 @@ def test_same_mac_multi_nic_device_info_update_and_detach():
     <domain type='kvm'>
       <name>vm-same-mac</name>
       <uuid>11111111111111111111111111111111</uuid>
+      <os><type>hvm</type></os>
       <devices>
         <interface type='bridge'>
           <mac address='fa:11:22:33:44:55'/>
@@ -219,7 +220,9 @@ def test_same_mac_multi_nic_device_info_update_and_detach():
     plugin = vm_plugin.VmPlugin.__new__(vm_plugin.VmPlugin)
     plugin.config = {}
     with patch('kvmagent.plugins.vm_plugin.get_vm_by_uuid', return_value=vm):
-        nic_infos, _, _ = plugin.get_vm_device_info(vm.uuid)
+        device_info = plugin.get_vm_device_info(vm.uuid)
+    assert device_info['memBalloonInfo'] is None
+    nic_infos = device_info['nicInfos']
     assert len(nic_infos) == 3
     assert nic_infos[0].nicInternalName == 'vnic1.0'
     assert nic_infos[0].deviceAddress.slot == '0x03'
