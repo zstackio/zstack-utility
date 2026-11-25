@@ -21,6 +21,12 @@ import traceback
 import errno
 import fcntl
 import shutil
+import ctypes
+import hashlib
+import mmap
+import struct
+import sys
+import cherrypy
 from contextlib import closing, contextmanager
 try:
     import http.client as stdlib_http
@@ -155,9 +161,10 @@ class Converging(Exception):
 
 class Rejected(Exception):
     """The host refused the change; its current state is kept."""
-    def __init__(self, reason):
+    def __init__(self, reason, details=None):
         Exception.__init__(self, reason)
         self.reason = reason
+        self.details = details
 
 
 class MemoryOptimizationPlugin(kvmagent.KvmAgent):
@@ -221,6 +228,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         self.service_binary = '/usr/local/libexec/zram-efficiency'
         self.zram_config_path = self.ZRAM_CONFIG
         self.zram_config_template_path = self.ZRAM_CONFIG_TEMPLATE
+        self._swap_direct_type_cache = None
+        self._swap_direct_capability_cache = None
+        self._swap_direct_libvirt_cache = None
+        self._swap_direct_unproven_cache = None
+        self._swap_direct_digest_cache = {}
 
     def configure(self, config):
         # KvmRESTService shares this dict with HostPlugin, whose connect
@@ -247,6 +259,10 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
 
     def start(self):
         self._retire_legacy_records()
+        self._restore_ksm_tuning("agent-startup")
+        # The daemon stops through CherryPy's SIGTERM handler, not KvmRESTService.stop().
+        # Restore before the HTTP server waits for its worker threads to drain.
+        cherrypy.engine.subscribe('stop', self.stop, priority=0)
         server = kvmagent.get_http_server()
         for path, handler in (
                 (self.STATE_PATH, self.state),
@@ -258,7 +274,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             server.register_async_uri(path, handler)
 
     def stop(self):
-        pass
+        self._restore_ksm_tuning('agent-stop')
+
+    def _restore_ksm_tuning(self, reason):
+        if not self._service_available():
+            return  # The service restores its durable record on its next start.
+        try:
+            with self._host_lock():
+                self._service('ksm-recovery', {'action': 'restore-ksm-recovery', 'reason': reason})
+        except Exception as exc:
+            logger.warning('KSM temporary tuning recovery failed during %s; record retained: %s', reason, exc)
 
     def _retire_legacy_records(self):
         """Move an earlier Agent's operation journal aside; nothing reads it now."""
@@ -504,8 +529,472 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             host_uuid = self._check_host(command)
         except Rejected as exc:
             return self._reply({'success': False, 'status': 'Failed', 'reasonCode': exc.reason, 'state': {}})
-        return self._reply({'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid,
-                            'state': self._observe()})
+        # VM configuration reads must not discover/account every VM and pool.
+        single_vm = command.get('vmMemoryState') is True or command.get('vmIdentity') is True
+        state = {} if single_vm else self._observe()
+        if command.get('vmIdentity') is True:
+            # A binding needs this VM's current instance only.
+            vm_uuid = command.get('resourceUuid')
+            try:
+                if not self._valid_identifier(vm_uuid):
+                    raise Rejected('VM_IDENTITY_REQUIRED')
+                fresh = self._service('vm-identities', {'vm_uuids': [vm_uuid]})
+                identity = next((value for key, value in (fresh.get('identities') or {}).items()
+                                 if _product_vm_uuid(key) == vm_uuid), {})
+                if identity.get('instance_generation'):
+                    state['vms'] = {vm_uuid: {'instanceGeneration': identity['instance_generation']}}
+            except Exception as exc:
+                logger.warning('VM[%s] identity is unknown: %s', vm_uuid, exc)
+        elif command.get('vmMemoryState') is True and not self._service_available():
+            # No memory optimization service on this Host (another OS or architecture):
+            # page sharing is set when the VM starts, as before.
+            state['vmMemoryState'] = {'supported': False, 'reasonCode': 'KSM_RUNTIME_UNSUPPORTED_NEXT_START'}
+        elif command.get('vmMemoryState') is True:
+            vm_uuid = command.get('resourceUuid')
+            try:
+                if not self._valid_identifier(vm_uuid):
+                    raise Rejected('VM_IDENTITY_REQUIRED')
+                policy = self._service('vm-policy-state', resource=vm_uuid)
+                previous = policy.get('identity') or {}
+                old = previous.get('instance_generation')
+                if not old or _product_vm_uuid(previous.get('uuid')) != vm_uuid:
+                    raise RuntimeError('VM_IDENTITY_UNKNOWN')
+                try:
+                    proof = self._vm_ksm_backend(vm_uuid)
+                except Rejected as exc:
+                    if exc.reason != 'KSM_RUNTIME_UNSUPPORTED_NEXT_START':
+                        raise
+                    proof = None
+                fresh = self._service('vm-identities', {'vm_uuids': [vm_uuid]})
+                identity = next((value for key, value in (fresh.get('identities') or {}).items()
+                                 if _product_vm_uuid(key) == vm_uuid), {})
+                if identity.get('instance_generation') != old or (proof is not None and
+                        (identity.get('pid') != proof['pid'] or str(identity.get('start_time')) != proof['startTime'])):
+                    raise RuntimeError('INSTANCE_GENERATION_CONFLICT')
+                # The policy GET may fall back to a sampled identity. Only the
+                # live identity lookup above can confirm its binding evidence,
+                # including when QEMU lacks the online merge capability.
+                state['vms'] = {vm_uuid: {'instanceGeneration': old,
+                                         'binding_generation': policy.get('binding_generation'),
+                                         'binding_mode': policy.get('binding_mode')}}
+                state['vmMemoryState'] = dict(proof, supported=True, instanceGeneration=old) if proof is not None else {
+                    'supported': False, 'reasonCode': 'KSM_RUNTIME_UNSUPPORTED_NEXT_START'}
+            except Exception as exc:
+                state.pop('vms', None)  # Never confirm a binding for a replaced/unknown process.
+                state['vmMemoryState'] = {'reasonCode': 'VM_MEMORY_STATE_UNKNOWN', 'reason': str(exc)}
+        if command.get('swapDirectResult') is True and state.get('inventoryComplete') \
+                and command.get('resourceUuid') in (state.get('vms') or {}):
+            from zstacklib.utils import qmp
+            result = qmp.execute_qmp_command(command['resourceUuid'], 'query-migrate', raise_exception=False)
+            state['swapDirectResult'] = result.get('x-swap-direct') if isinstance(result, dict) else None
+        if command.get('swapDirectPreflight') is True:
+            try:
+                with self._host_lock(self._lock_wait(command)):
+                    state['swapDirect'] = self._swap_direct_preflight(command, state)
+            except Exception as exc:
+                state['swapDirect'] = {'supported': False, 'reasonCode': getattr(exc, 'reason', 'SWAP_DIRECT_PREFLIGHT_FAILED'),
+                                       'reason': str(exc)}
+        return self._reply({'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid, 'state': state})
+
+    # Pages out one private page and prints the swap type its pagemap entry shows.
+    SWAP_TYPE_PROBE = (
+        "import ctypes, mmap, struct, time\n"
+        "libc = ctypes.CDLL('libc.so.6', use_errno=True)\n"
+        "page = mmap.mmap(-1, 4096, flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS)\n"
+        "page.write(b'memtier-probe' * 100)\n"
+        "address = ctypes.addressof(ctypes.c_char.from_buffer(page))\n"
+        "result = 'NOT_SWAPPED'\n"
+        "for _ in range(50):\n"
+        "    if libc.madvise(ctypes.c_void_p(address), ctypes.c_size_t(4096), 21) != 0:\n"
+        "        result = 'MADVISE_FAILED'\n"
+        "        break\n"
+        "    with open('/proc/self/pagemap', 'rb') as stream:\n"
+        "        stream.seek(address // 4096 * 8)\n"
+        "        entry = struct.unpack('Q', stream.read(8))[0]\n"
+        "    if entry & (1 << 62):\n"
+        "        result = str(entry & 0x1f)\n"
+        "        break\n"
+        "    time.sleep(0.05)\n"
+        "print(result)\n")
+
+    @classmethod
+    def _probe_swap_type(cls):
+        """Prototype lab.py probe: page out one private 4KiB page and read its swap type.
+
+        It runs in a child moved to the root cgroup: the agent itself may be kept out of
+        swap (MemorySwapMax=0 protects management processes), and then its own page could
+        never be paged out.
+        """
+        try:
+            output = cls._bounded_command_output(
+                ['/bin/sh', '-c', 'echo $$ > /sys/fs/cgroup/cgroup.procs 2>/dev/null; exec "$0" -c "$1"',
+                 sys.executable, cls.SWAP_TYPE_PROBE], 10).strip()
+        except (OSError, RuntimeError, subprocess.CalledProcessError):
+            raise Rejected('SWAP_DIRECT_PROBE_NOT_SWAPPED')
+        if output == 'MADVISE_FAILED':
+            raise Rejected('SWAP_DIRECT_PROBE_MADVISE_FAILED')
+        if not re.match(r'^[0-9]+\Z', output):
+            raise Rejected('SWAP_DIRECT_PROBE_NOT_SWAPPED')
+        return int(output)
+
+    def _swap_direct_backing_pages(self, pid, memory_bytes, device, rdev, swap_type, proc='/proc'):
+        """Conservative preparation-only estimate; never faults guest memory in.
+
+        This prototype's GET returns EAGAIN for a written-back object before
+        issuing backend IO. Only unchanged swapped PTEs in the unique anonymous
+        guest-size mapping count. Unsupported layouts/identity changes yield 0.
+        """
+        root = os.path.join(proc, str(pid))
+        try:
+            with open(os.path.join(root, 'stat')) as stream:
+                identity = stream.read().rsplit(')', 1)[1].split()[19]
+            with open(os.path.join(root, 'maps')) as stream:
+                maps = stream.read()
+            ranges = []
+            for line in maps.splitlines():
+                fields = line.split()
+                start, end = [int(value, 16) for value in fields[0].split('-')]
+                if len(fields) == 5 and fields[1] == 'rw-p' and fields[4] == '0' and end - start == memory_bytes:
+                    ranges.append((start, end))
+            if len(ranges) != 1:
+                return 0, 'guest_mapping_unconfirmed'
+            start, end = ranges[0]
+            count, scanned = 0, 0
+            deadline = time.time() + 20
+            scratch = ctypes.create_string_buffer(4096)
+            with _Descriptor(device, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC) as fd, \
+                    open(os.path.join(root, 'pagemap'), 'rb') as pagemap:
+                if os.fstat(fd).st_rdev != rdev:
+                    return 0, 'device_changed'
+                address = start
+                while address < end and time.time() < deadline:
+                    pages = min(8192, (end - address) // 4096)
+                    pagemap.seek(address // 4096 * 8)
+                    raw = pagemap.read(pages * 8)
+                    entries = struct.unpack('=%dQ' % pages, raw)
+                    swapped = [(i, entry) for i, entry in enumerate(entries)
+                               if entry & (1 << 62) and entry & 31 == swap_type]
+                    for offset in range(0, len(swapped), 512):
+                        group = swapped[offset:offset + 512]
+                        objs = ctypes.create_string_buffer(40 * len(group))
+                        for i, (_, entry) in enumerate(group):
+                            struct.pack_into('=QQQIIiI', objs, i * 40, (entry >> 5) & ((1 << 50) - 1),
+                                             ctypes.addressof(scratch), 0, 4096, 0, 0, 0)
+                        batch = bytearray(struct.pack('=QII32s', ctypes.addressof(objs), len(group), 0, b''))
+                        fcntl.ioctl(fd, 0xc0305aa0, batch, True)
+                        done = struct.unpack('=QII32s', batch)[2]
+                        pagemap.seek(address // 4096 * 8)
+                        current = struct.unpack('=%dQ' % pages, pagemap.read(pages * 8))
+                        for i, (index, entry) in enumerate(group[:done]):
+                            result = struct.unpack_from('=QQQIIiI', objs, i * 40)[5]
+                            if result == -errno.EAGAIN and current[index] == entry:
+                                count += 1
+                    address += pages * 4096
+                    scanned += pages
+            with open(os.path.join(root, 'stat')) as stream:
+                if stream.read().rsplit(')', 1)[1].split()[19] != identity:
+                    return 0, 'process_changed'
+            with open(os.path.join(root, 'maps')) as stream:
+                current_maps = stream.read()
+            # Other QEMU mappings may grow; the admitted guest range must remain.
+            expected = next(line for line in maps.splitlines() if line.startswith('%x-%x ' % (start, end)))
+            if expected not in current_maps.splitlines():
+                return 0, 'guest_mapping_changed'
+            return count, 'native_get_pagemap' if address == end else 'native_get_pagemap_partial'
+        except (IOError, OSError, ValueError, IndexError, struct.error, StopIteration):
+            return 0, 'estimate_unavailable'
+
+    @staticmethod
+    def _swap_direct_process_generation(pid, emulator=None):
+        if not pid or int(pid) <= 0:
+            raise Rejected('SWAP_DIRECT_PROCESS_IDENTITY_UNKNOWN')
+        with open('/proc/%s/stat' % pid) as stream:
+            generation = (int(pid), stream.read().rsplit(')', 1)[1].split()[19])
+        if emulator:
+            for path in ('/proc/%s/exe' % pid, emulator):
+                value = os.stat(path)
+                generation += ((value.st_dev, value.st_ino, value.st_size, value.st_mtime, value.st_ctime),)
+        return generation
+
+    @staticmethod
+    def _swap_direct_kernel_abi(device, device_stat):
+        # GET/PUT with nr=0 proves the ABI without reading or writing any pages.
+        batch = bytearray(struct.pack('=QII32s', 0, 0, 0, b''))
+        with _Descriptor(device, os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC) as fd:
+            if os.fstat(fd).st_rdev != device_stat.st_rdev:
+                raise Rejected('SWAP_DIRECT_DEVICE_CHANGED')
+            fcntl.ioctl(fd, 0xc0305aa0, batch, True)
+            fcntl.ioctl(fd, 0xc0305aa1, batch, True)
+
+    # Seconds a read-only monitor query may take. A VM whose monitor is busy (it is being
+    # migrated, say) or stuck is skipped, not waited for.
+    QMP_READ_TIMEOUT = 10
+
+    def _file_sha256(self, path):
+        """The digest of an executable, computed once for each file identity."""
+        value = os.stat(path)
+        key = (value.st_dev, value.st_ino, value.st_size, value.st_mtime, value.st_ctime)
+        cached = self._swap_direct_digest_cache.get(key)
+        if cached is None:
+            digest = hashlib.sha256()
+            with open(path, 'rb') as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                    digest.update(chunk)
+            if len(self._swap_direct_digest_cache) >= 16:
+                self._swap_direct_digest_cache.clear()
+            cached = self._swap_direct_digest_cache[key] = digest.hexdigest()
+        return cached
+
+    # A pool holding less than this tells too little about how well guest memory compresses.
+    SWAP_DIRECT_POOL_RATIO_MIN_BYTES = 64 << 20
+
+    @classmethod
+    def _swap_direct_cold_pool_bytes(cls, cold_bytes, mm_stat):
+        """Pool memory the destination needs for these cold pages: they arrive compressed, so
+        this pool's own ratio of memory used to data stored, plus a quarter; never more than
+        the pages themselves."""
+        original, used = mm_stat[0], mm_stat[2]
+        if original < cls.SWAP_DIRECT_POOL_RATIO_MIN_BYTES:
+            return cold_bytes
+        return min(cold_bytes, (cold_bytes * used * 5 + original * 4 - 1) // (original * 4))
+
+    def _swap_direct_qemu(self, conn, vm_uuid=None):
+        from zstacklib.utils import qmp
+        from xml.etree import ElementTree
+
+        digest = self._file_sha256
+        # Callers may hold the Host lock: unresponsive monitors must not keep it for long.
+        deadline = linux.monotime() + 3 * self.QMP_READ_TIMEOUT
+        # A QEMU that did not answer (busy with a migration, say) proves nothing either way.
+        unanswered = False
+        for domain in conn.listAllDomains(0):
+            name = _product_vm_uuid(domain.UUIDString())
+            if not domain.isActive() or (vm_uuid and name != vm_uuid):
+                continue
+            if linux.monotime() > deadline:
+                unanswered = True
+                break
+            pid = linux.get_vm_pid(name)
+            if not pid:
+                continue
+            emulator = ElementTree.fromstring(domain.XMLDesc(0)).findtext('devices/emulator')
+            if not emulator:
+                continue
+            generation = self._swap_direct_process_generation(pid, emulator)
+            actual_hash = digest('/proc/%s/exe' % pid)
+            if actual_hash != digest(emulator):
+                continue
+            parameters = qmp.execute_qmp_command(name, 'query-migrate-parameters', raise_exception=False,
+                                                 command_timeout=self.QMP_READ_TIMEOUT)
+            caps = qmp.execute_qmp_command(name, 'query-migrate-capabilities', raise_exception=False,
+                                           command_timeout=self.QMP_READ_TIMEOUT) if isinstance(parameters, dict) else None
+            if not isinstance(parameters, dict) or not isinstance(caps, list):
+                unanswered = True
+                continue
+            if 'x-swap-direct-type' not in parameters \
+                    or 'x-swap-direct-zobj' not in parameters \
+                    or not any(isinstance(c, dict) and c.get('capability') == 'x-swap-direct' for c in (caps or [])):
+                continue
+            if generation != self._swap_direct_process_generation(pid, emulator):
+                raise Rejected('SWAP_DIRECT_QEMU_IDENTITY_CHANGED')
+            return ({'qemuSha256': actual_hash, 'probeVmUuid': name,
+                     '_pid': pid, '_emulator': emulator, '_generation': generation}, domain)
+        # Only a QEMU that answered without the protocol is worth remembering.
+        raise Rejected('SWAP_DIRECT_RUNNING_QEMU_BUSY' if unanswered else 'SWAP_DIRECT_RUNNING_QEMU_PROTOCOL_UNCONFIRMED')
+
+    def _swap_direct_running_qemus(self, conn):
+        """The running QEMU processes and their executables: while none has changed,
+        asking them again proves nothing new."""
+        from xml.etree import ElementTree
+        found = []
+        for domain in conn.listAllDomains(0):
+            if not domain.isActive():
+                continue
+            pid = linux.get_vm_pid(_product_vm_uuid(domain.UUIDString()))
+            try:
+                emulator = ElementTree.fromstring(domain.XMLDesc(0)).findtext('devices/emulator')
+                if pid and emulator:
+                    found.append(self._swap_direct_process_generation(pid, emulator))
+            except (IOError, OSError, ValueError, IndexError, Rejected):
+                continue
+        return tuple(sorted(found))
+
+    @staticmethod
+    def _swap_direct_guest_memory(domain):
+        """QEMU moves only private anonymous 4 KiB guest memory directly.
+
+        A VM with huge pages, file or memfd memory, or shared memory is refused
+        here, so that it migrates the ordinary way instead of failing in QEMU.
+        """
+        from xml.etree import ElementTree
+        root = ElementTree.fromstring(domain.XMLDesc(0))
+        backing = root.find('memoryBacking')
+        source = backing.find('source') if backing is not None else None
+        access = backing.find('access') if backing is not None else None
+        if backing is not None and (backing.find('hugepages') is not None
+                                    or (source is not None and source.get('type') in ('file', 'memfd'))
+                                    or (access is not None and access.get('mode') == 'shared')):
+            raise Rejected('SWAP_DIRECT_GUEST_MEMORY_UNSUPPORTED')
+        if any(cell.get('memAccess') == 'shared' for cell in root.findall('cpu/numa/cell')) \
+                or any(device.get('model') in ('nvdimm', 'virtio-pmem') for device in root.findall('devices/memory')):
+            raise Rejected('SWAP_DIRECT_GUEST_MEMORY_UNSUPPORTED')
+
+    def _swap_direct_preflight(self, command, state, estimate_backing=True):
+        """Explicit experimental preflight, never part of periodic observation.
+
+        libvirt's cookie and incoming QEMU perform the final peer protocol/FD
+        checks before transferring RAM. Here we verify the held native pool and
+        a running QEMU with the exact executable the destination will launch.
+        """
+        import libvirt
+
+        if platform.machine() != 'x86_64' or os.sysconf('SC_PAGE_SIZE') != 4096:
+            raise Rejected('SWAP_DIRECT_PAGE_SIZE_UNSUPPORTED')
+        status = self._service('status')
+        pool = status.get('host_zram') or {}
+        generation = pool.get('pool_generation')
+        if not generation or generation != command.get('poolGeneration') or not state.get('bootId'):
+            raise Rejected('SWAP_DIRECT_POOL_IDENTITY_CHANGED')
+        holds = (status.get('lifecycle') or {}).get('migrationHolds') or []
+        if not any(h.get('operation_id') == command.get('operationUuid') and h.get('pool_generation') == generation for h in holds):
+            raise Rejected('SWAP_DIRECT_MIGRATION_HOLD_MISSING')
+        # A cache read by the MN may predate a reboot or pool replacement.
+        # Re-evaluate the Host gate against this observation before device access.
+        capability = self._swap_direct_capability(state)
+        if capability.get('supported') is not True:
+            raise Rejected(capability.get('reasonCode') or 'SWAP_DIRECT_HOST_CAPABILITY_UNCONFIRMED')
+        device = pool.get('device')
+        if not isinstance(device, STRING_TYPES) or not re.match(r'^/dev/zram[0-9]+\Z', device) \
+                or self._read_service_config().get('device') != device:
+            raise Rejected('SWAP_DIRECT_MANAGED_DEVICE_REQUIRED')
+        with open(self.PROC_SWAPS_PATH) as stream:
+            swaps = [line.split() for line in stream.readlines()[1:] if line.strip()]
+        if len(swaps) != 1 or swaps[0][0] != device:
+            raise Rejected('SWAP_DIRECT_EXCLUSIVE_ZRAM_REQUIRED')
+        device_stat = os.lstat(device)
+        if not stat.S_ISBLK(device_stat.st_mode):
+            raise Rejected('SWAP_DIRECT_BLOCK_DEVICE_REQUIRED')
+        base = os.path.join(self.SYS_BLOCK_PATH, os.path.basename(device))
+        with open(os.path.join(base, 'comp_algorithm')) as stream:
+            selected = re.findall(r'\[([A-Za-z0-9_-]{1,31})\]', stream.read())
+        if len(selected) != 1:
+            raise Rejected('SWAP_DIRECT_COMPRESSOR_UNKNOWN')
+        backend = (pool.get('backend') or {}).get('identity') or {}
+        with open(os.path.join(base, 'backing_dev')) as stream:
+            backing = stream.read().strip()
+        # A pool without a writeback disk moves only compressed objects; one with a
+        # disk must be the disk the service prepared in this boot.
+        if backing == 'none':
+            backend = {}
+        elif not backend or backend.get('boot_id') != state['bootId']:
+            raise Rejected('SWAP_DIRECT_BACKEND_IDENTITY_UNKNOWN')
+        source = command.get('swapDirectSource') is True
+        if not source:
+            # This experimental profile admits the full guest RAM plus enough
+            # native pool/backend capacity for every currently swapped page.
+            try:
+                memory_bytes = int(command['swapDirectMemoryBytes'])
+                cold_bytes = int(command['swapDirectColdBytes'])
+                # Cold pages arrive compressed: the pool needs about the source's estimate,
+                # the whole size when the source gave none.
+                cold_pool_bytes = int(command.get('swapDirectColdPoolBytes') or cold_bytes)
+                if memory_bytes <= 0 or cold_bytes < 0 or not 0 <= cold_pool_bytes <= cold_bytes:
+                    raise ValueError('invalid source sizes')
+                swap_free = (int(swaps[0][2]) - int(swaps[0][3])) * 1024
+                with open('/proc/meminfo') as stream:
+                    mem_available = next(int(line.split()[1]) * 1024 for line in stream if line.startswith('MemAvailable:'))
+                with open(os.path.join(base, 'mm_stat')) as stream:
+                    mm = [int(value) for value in stream.read().split()]
+                writeback_pages = int(command.get('swapDirectWritebackPages') or 0)
+                if writeback_pages < 0:
+                    raise ValueError('invalid writeback pages')
+                if backend:
+                    with open(os.path.join(base, 'bd_stat')) as stream:
+                        backing_used = int(stream.read().split()[0]) * 4096
+                    backing_free = int(backend['capacity_bytes']) - 4096 - backing_used
+            except (KeyError, ValueError, IndexError, StopIteration):
+                raise Rejected('SWAP_DIRECT_CAPACITY_UNKNOWN')
+            if not backend and writeback_pages:
+                # Written-back pages go straight to the destination's writeback disk.
+                raise Rejected('SWAP_DIRECT_DESTINATION_WRITEBACK_REQUIRED')
+            if mem_available < memory_bytes or swap_free < cold_bytes \
+                    or (backend and backing_free < cold_bytes) \
+                    or (mm[3] > 0 and mm[3] - mm[2] < cold_pool_bytes):
+                raise Rejected('SWAP_DIRECT_DESTINATION_CAPACITY_INSUFFICIENT')
+        self._swap_direct_kernel_abi(device, device_stat)
+        cache_key = (state['bootId'], generation, device_stat.st_rdev, device_stat.st_ino)
+        if not self._swap_direct_type_cache or self._swap_direct_type_cache[0] != cache_key:
+            self._swap_direct_type_cache = (cache_key, self._probe_swap_type())
+        source = command.get('swapDirectSource') is True
+        vm_uuid = command.get('resourceUuid')
+        if not state.get('inventoryComplete'):
+            raise Rejected('SWAP_DIRECT_VM_IDENTITY_UNKNOWN')
+        identity = (state.get('vms') or {}).get(vm_uuid) or {}
+        if source and (not command.get('expectedInstanceGeneration') or
+                       identity.get('instanceGeneration') != command['expectedInstanceGeneration']):
+            raise Rejected('SWAP_DIRECT_VM_IDENTITY_CHANGED')
+        if not source and vm_uuid in (state.get('vms') or {}):
+            raise Rejected('SWAP_DIRECT_DESTINATION_VM_PRESENT')
+
+        with closing(libvirt.openReadOnly('qemu:///system')) as conn:
+            libvirt_version = conn.getLibVersion()
+            proof, domain = self._swap_direct_qemu(conn, vm_uuid if source else None)
+            pid = proof.pop('_pid')
+            proof.pop('_emulator')
+            proof.pop('_generation')
+            if source:
+                self._swap_direct_guest_memory(domain)
+                with open('/proc/%s/status' % pid) as stream:
+                    cold_bytes = next(int(line.split()[1]) * 1024 for line in stream if line.startswith('VmSwap:'))
+                memory_bytes = domain.maxMemory() * 1024
+                with open(os.path.join(base, 'mm_stat')) as stream:
+                    mm = [int(value) for value in stream.read().split()]
+                proof.update(memoryBytes=str(memory_bytes), coldBytes=str(cold_bytes),
+                             coldPoolBytes=str(self._swap_direct_cold_pool_bytes(cold_bytes, mm)))
+                if estimate_backing and not backend:
+                    # Nothing can be written back without a writeback disk.
+                    proof.update(backingPages='0', backingEstimate='no_backing_device')
+                elif estimate_backing:
+                    pages, quality = self._swap_direct_backing_pages(pid, memory_bytes, device,
+                                                                    device_stat.st_rdev, self._swap_direct_type_cache[1])
+                    proof.update(backingPages=str(pages), backingEstimate=quality)
+        backend = dict((key, str(value) if isinstance(value, INTEGER_TYPES) and not isinstance(value, bool) else value)
+                       for key, value in backend.items())
+        return dict(proof, supported=True, protocol=1, hostUuid=self._load_host_uuid(), bootId=state['bootId'],
+                    kernelRelease=platform.release(), libvirtVersion=libvirt_version,
+                    poolGeneration=generation, instanceGeneration=identity.get('instanceGeneration'),
+                    device=int(os.path.basename(device)[4:]), rdev=str(device_stat.st_rdev),
+                    swapType=self._swap_direct_type_cache[1], compressor=selected[0], backendIdentity=backend)
+
+    def prepare_swap_direct(self, vm_uuid, request):
+        """Recheck the local prepared identity and use libvirt's typed-parameter path."""
+        if not isinstance(request, dict) or not self._valid_identifier(request.get('operationUuid')):
+            raise Rejected('SWAP_DIRECT_OPERATION_REQUIRED')
+        source = request.get('source') or {}
+        destination = request.get('destination') or {}
+        if source.get('hostUuid') != self._load_host_uuid():
+            raise Rejected('SWAP_DIRECT_SOURCE_HOST_MISMATCH')
+        query = {'resourceUuid': vm_uuid, 'operationUuid': request['operationUuid'], 'swapDirectSource': True,
+                 'poolGeneration': source.get('poolGeneration'),
+                 'expectedInstanceGeneration': source.get('instanceGeneration')}
+        with self._host_lock():
+            actual = self._swap_direct_preflight(query, self._observe(), estimate_backing=False)
+        for key in ('bootId', 'poolGeneration', 'instanceGeneration', 'device', 'rdev', 'swapType',
+                    'compressor', 'qemuSha256', 'backendIdentity'):
+            if actual.get(key) != source.get(key):
+                raise Rejected('SWAP_DIRECT_PREPARED_IDENTITY_CHANGED:%s' % key)
+        if destination.get('supported') is not True or source['compressor'] != destination.get('compressor'):
+            raise Rejected('SWAP_DIRECT_PEER_NOT_PREPARED')
+        params = {'x-swap-direct': True, 'x-swap-direct-compressor': source['compressor']}
+        for side, info in (('source', source), ('dest', destination)):
+            for field, key, maximum in (('type', 'swapType', 31), ('device', 'device', 65535), ('rdev', 'rdev', (1 << 64) - 1)):
+                value = info.get(key)
+                if isinstance(value, float) and value.is_integer():
+                    value = int(value)
+                if isinstance(value, bool) or not re.match(r'^(0|[1-9][0-9]*)\Z', str(value)) or not 0 <= int(value) <= maximum:
+                    raise Rejected('SWAP_DIRECT_INVALID_DEVICE_IDENTITY')
+                params['x-swap-direct-%s-%s' % (side, field)] = int(value)
+        return params
 
     @kvmagent.replyerror
     def apply_request(self, req):
@@ -584,10 +1073,15 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             self._check_host(command)
             with self._host_lock(self._lock_wait(command)):
                 try:
-                    result = self._service('migration-hold', {
-                        'action': command.get('holdAction', 'acquire'),
-                        'operation_id': command.get('operationUuid'),
-                        'pool_generation': command.get('poolGeneration', '')})
+                    request = {'action': command.get('holdAction', 'acquire'),
+                               'operation_id': command.get('operationUuid'),
+                               'pool_generation': command.get('poolGeneration', '')}
+                    pages = int(command.get('writebackPages') or 0)
+                    # Only a cold-page direct destination asks for a writeback quota. A service
+                    # without that field rejects it, so an ordinary hold must not carry it.
+                    if request['action'] == 'acquire' and pages > 0:
+                        request['writeback_pages'] = pages
+                    result = self._service('migration-hold', request)
                 except Rejected as exc:
                     if exc.reason == 'MIGRATION_HOLD_WAITING_FOR_IN_FLIGHT':
                         # A reclaim runs for a few seconds; the hold is taken between two of them.
@@ -621,19 +1115,257 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             generation = command.get('expectedInstanceGeneration')
             if not self._valid_identifier(vm_uuid) or not isinstance(generation, STRING_TYPES) or not generation:
                 raise Rejected('VM_IDENTITY_REQUIRED')
+            if command.get('action') == 'set-ksm':
+                result = self._vm_ksm(command)
+                reply.update({'success': True, 'status': 'Succeeded', 'state': result})
+                return self._reply(reply)
             participation = command.get('participation') or 'allow'
             # Platform allow/inherit is the service's durable auto rule; deny excludes the VM.
             mode = 'deny' if participation == 'deny' else 'auto'
             result = self._service('vm-policy', {'expected_instance_generation': generation,
                                                  'mode': mode, 'cpu_rule': command.get('cpuRule')},
                                    resource=vm_uuid)
-            reply.update({'success': True, 'status': 'Succeeded', 'state': result})
+            actual = self._service('vm-policy-state', resource=vm_uuid)
+            if actual.get('instance_generation') != generation or actual.get('mode') != mode:
+                raise Rejected('VM_POLICY_READBACK_MISMATCH')
+            reply.update({'success': True, 'status': 'Succeeded', 'state': actual})
         except Rejected as exc:
             reply.update({'success': False, 'status': 'Failed', 'reasonCode': exc.reason, 'state': {}})
+            if exc.details is not None:
+                reply['reason'] = exc.details
         except Exception as exc:
             reply.update({'success': False, 'status': 'Failed', 'reasonCode': 'VM_POLICY_FAILED',
                           'reason': str(exc), 'state': {}})
         return self._reply(reply)
+
+    def _vm_ksm_backend(self, vm_uuid):
+        """Discover the running domain's actual RAM backends; never guess an ID."""
+        import libvirt
+        from zstacklib.utils import qmp
+        from xml.etree import ElementTree
+        with closing(libvirt.openReadOnly(None)) as conn:
+            domain = conn.lookupByUUIDString('%s-%s-%s-%s-%s' %
+                                             (vm_uuid[:8], vm_uuid[8:12], vm_uuid[12:16],
+                                              vm_uuid[16:20], vm_uuid[20:]))
+            if not domain.isActive():
+                raise Rejected('VM_NOT_RUNNING')
+            xml = ElementTree.fromstring(domain.XMLDesc(0))
+            domain_id = domain.ID()
+            pid = linux.get_vm_pid(vm_uuid)
+            if not pid:
+                raise Rejected('VM_IDENTITY_UNKNOWN')
+            with open('/proc/%s/stat' % pid) as stream:
+                start_time = stream.read().rsplit(')', 1)[1].split()[19]
+            memory = qmp.execute_qmp_command(vm_uuid, 'query-memdev', raise_exception=False)
+            children = qmp.execute_qmp_command(vm_uuid, 'qom-list', path='/objects', raise_exception=False)
+            if not isinstance(memory, list) or not memory or not isinstance(children, list):
+                raise Rejected('KSM_RUNTIME_UNSUPPORTED_NEXT_START')
+            names = set(item.get('name') for item in children
+                        if str(item.get('type', '')).startswith('child<memory-backend-'))
+            backends = []
+            for item in memory:
+                name = item.get('id')
+                if not isinstance(name, STRING_TYPES) or not re.match(r'^[A-Za-z0-9_.-]+\Z', name) or name not in names:
+                    raise Rejected('KSM_RUNTIME_UNSUPPORTED_NEXT_START')
+                path = '/objects/' + name
+                properties = qmp.execute_qmp_command(vm_uuid, 'qom-list', path=path, raise_exception=False)
+                if not isinstance(properties, list) or not any(p.get('name') == 'merge' and p.get('type') == 'bool'
+                                                             for p in properties):
+                    raise Rejected('KSM_RUNTIME_UNSUPPORTED_NEXT_START')
+                merge = qmp.execute_qmp_command(vm_uuid, 'qom-get', path=path, property='merge')
+                if not isinstance(merge, bool):
+                    raise Rejected('KSM_RUNTIME_READBACK_UNKNOWN')
+                backends.append({'path': path, 'merge': merge})
+            with open('/proc/%s/stat' % pid) as stream:
+                if stream.read().rsplit(')', 1)[1].split()[19] != start_time or domain.ID() != domain_id:
+                    raise Rejected('INSTANCE_GENERATION_CONFLICT')
+            return {'pid': int(pid), 'startTime': start_time, 'domainId': domain_id,
+                    'liveNoSharePages': xml.find('memoryBacking/nosharepages') is not None, 'backends': backends}
+
+    @staticmethod
+    def _mem_available(proc='/proc'):
+        with open(os.path.join(proc, 'meminfo')) as stream:
+            return next(int(line.split()[1]) * 1024 for line in stream if line.startswith('MemAvailable:'))
+
+    @staticmethod
+    def _vm_ksm_headroom(pid, start_time, proc='/proc', count_merged=False):
+        """Use a conservative mapping bound before a bounded, non-faulting scan.
+
+        RSS excludes shared zero mappings on supported kernels. The complete
+        mergeable VMA size bounds those too, without reading pagemap or flags.
+        With count_merged the merged pages are always counted.
+        """
+        from array import array
+        # Python 2 lacks array('Q'); unsigned long is 64-bit on supported Linux hosts.
+        if os.sysconf('SC_PAGE_SIZE') != 4096 or array('L').itemsize != 8:
+            raise Rejected('KSM_UNMERGE_ESTIMATE_UNSUPPORTED')
+        root = os.path.join(proc, str(pid))
+        started = linux.monotime()
+        with open(os.path.join(root, 'smaps')) as stream:
+            ranges, current = [], None
+            for line in stream:
+                if re.match(r'^[0-9a-f]+-[0-9a-f]+ ', line):
+                    current = tuple(int(v, 16) for v in line.split()[0].split('-'))
+                elif line.startswith('VmFlags:') and 'mg' in line.split()[1:] and current:
+                    if current[1] < 1 << 63:
+                        ranges.append(current)
+        with open(os.path.join(root, 'stat')) as stream:
+            if stream.read().rsplit(')', 1)[1].split()[19] != start_time:
+                raise Rejected('INSTANCE_GENERATION_CONFLICT')
+        available = MemoryOptimizationPlugin._mem_available(proc)
+        upper = sum(end - start for start, end in ranges)
+        required = upper * 3 // 2 + 4 * 1024 ** 3
+        if available > required and not count_merged:
+            # These mechanism-specific counters were not measured on this path.
+            return {'ksmBytes': None, 'zeroPageBytes': None, 'unmergeUpperBoundBytes': upper,
+                    'availableBytes': available, 'requiredBytes': required}
+        budget = min(120, max(20, (upper * 2 + 1024 ** 3 - 1) // 1024 ** 3))
+        deadline = started + budget
+        total_pages, scanned = upper // 4096, 0
+        ksm_pages, zero_pages = 0, 0
+        cache = {}
+        with open(os.path.join(root, 'pagemap'), 'rb') as pagemap, open(os.path.join(proc, 'kpageflags'), 'rb') as flags:
+            for start, end in ranges:
+                for begin in range(start // 4096, end // 4096, 8192):
+                    if linux.monotime() > deadline:
+                        raise Rejected('KSM_UNMERGE_ESTIMATE_TIMEOUT', 'scanned=%d/%d pages (%.2f%%), budget=%ds' %
+                                       (scanned, total_pages, scanned * 100.0 / max(1, total_pages), budget))
+                    count = min(8192, end // 4096 - begin)
+                    pagemap.seek(begin * 8)
+                    raw = pagemap.read(count * 8)
+                    if len(raw) != count * 8:
+                        raise Rejected('KSM_UNMERGE_ESTIMATE_UNAVAILABLE')
+                    # Group physical lookups within this block, retaining all aliases.
+                    present = sorted(entry & ((1 << 55) - 1) for entry in struct.unpack('=%dQ' % count, raw)
+                                     if entry & (1 << 63))
+                    for pfn in present:
+                        if not pfn:
+                            raise Rejected('KSM_UNMERGE_ESTIMATE_UNAVAILABLE')
+                        index = pfn // 1024
+                        block = cache.get(index)
+                        if block is None:
+                            if len(cache) >= 256:
+                                cache.clear()
+                            flags.seek(index * 8192)
+                            raw_flags = flags.read(8192)
+                            if not raw_flags or len(raw_flags) % 8:
+                                raise Rejected('KSM_UNMERGE_ESTIMATE_UNAVAILABLE')
+                            block = array('L', raw_flags)
+                            cache[index] = block
+                        try:
+                            value = block[pfn % 1024]
+                        except IndexError:
+                            raise Rejected('KSM_UNMERGE_ESTIMATE_UNAVAILABLE')
+                        if value & (1 << 21):
+                            ksm_pages += 1
+                        elif value & (1 << 24):
+                            zero_pages += 1
+                    scanned += count
+        if linux.monotime() > deadline:
+            raise Rejected('KSM_UNMERGE_ESTIMATE_TIMEOUT', 'scanned=%d/%d pages (%.2f%%), budget=%ds' %
+                           (scanned, total_pages, scanned * 100.0 / max(1, total_pages), budget))
+        with open(os.path.join(root, 'stat')) as stream:
+            if stream.read().rsplit(')', 1)[1].split()[19] != start_time:
+                raise Rejected('INSTANCE_GENERATION_CONFLICT')
+        available = MemoryOptimizationPlugin._mem_available(proc)
+        merged = (ksm_pages + zero_pages) * 4096
+        required = merged * 3 // 2 + 4 * 1024 ** 3
+        return {'ksmBytes': ksm_pages * 4096, 'zeroPageBytes': zero_pages * 4096,
+                'unmergeUpperBoundBytes': merged, 'availableBytes': available, 'requiredBytes': required}
+
+    # Turning page sharing off stops the guest while its merged pages are copied back:
+    # about a second for each GiB merged (2.1 s for 2 GiB measured on the supported
+    # kernel). More than this is refused; the setting can be changed with the VM stopped.
+    KSM_UNMERGE_ONLINE_LIMIT_BYTES = 10 * 1024 ** 3
+
+    def _vm_ksm(self, command):
+        vm_uuid = command['resourceUuid']
+        enabled = command.get('ksmEnabled')
+        if not isinstance(enabled, bool):
+            raise Rejected('KSM_BOOLEAN_REQUIRED')
+        generation = command['expectedInstanceGeneration']
+
+        def identity():
+            reply = self._service('vm-identities', {'vm_uuids': [vm_uuid]})
+            found = next((v for k, v in (reply.get('identities') or {}).items()
+                          if _product_vm_uuid(k) == vm_uuid), {})
+            if found.get('instance_generation') != generation or _product_vm_uuid(found.get('uuid')) != vm_uuid:
+                raise Rejected('INSTANCE_GENERATION_CONFLICT')
+            return found
+
+        # The evidence is read without the Host lock: the unmerge estimate can scan for
+        # up to two minutes, and migrations of other VMs must not wait behind it.
+        current_identity = identity()
+        proof = self._vm_ksm_backend(vm_uuid)
+        if current_identity.get('pid') != proof['pid'] or str(current_identity.get('start_time')) != proof['startTime']:
+            raise Rejected('INSTANCE_GENERATION_CONFLICT')
+        changing = [item for item in proof['backends'] if item['merge'] != enabled]
+        if not changing:
+            return dict(proof, applied=True)
+        operation = command.get('operationUuid')
+        if not self._valid_identifier(operation):
+            raise Rejected('KSM_OPERATION_REQUIRED')
+        if not enabled:
+            headroom = self._vm_ksm_headroom(proof['pid'], proof['startTime'])
+            limit = self.KSM_UNMERGE_ONLINE_LIMIT_BYTES
+            if headroom.get('ksmBytes') is None and headroom.get('unmergeUpperBoundBytes', 0) > limit:
+                # The mapping size bounds the memory needed, not the pause: count the merged pages.
+                headroom = self._vm_ksm_headroom(proof['pid'], proof['startTime'], count_merged=True)
+            proof['headroom'] = headroom
+            if headroom['availableBytes'] <= headroom['requiredBytes']:
+                raise Rejected('KSM_UNMERGE_INSUFFICIENT_MEMORY: available=%d required>%d' %
+                               (headroom['availableBytes'], headroom['requiredBytes']))
+            if headroom.get('unmergeUpperBoundBytes', 0) > limit:
+                raise Rejected('KSM_UNMERGE_PAUSE_TOO_LONG: merged=%d limit=%d' %
+                               (headroom['unmergeUpperBoundBytes'], limit))
+        with self._host_lock(min(15, self._lock_wait(command))):
+            return self._vm_ksm_apply(command, enabled, identity, current_identity, proof, changing)
+
+    def _vm_ksm_apply(self, command, enabled, identity, current_identity, proof, changing):
+        """The short step under the Host lock: recheck, fence the recovery, change QEMU."""
+        from zstacklib.utils import qmp
+        vm_uuid, generation, operation = command['resourceUuid'], command['expectedInstanceGeneration'], command['operationUuid']
+        active = (self._service('status').get('lifecycle') or {}).get('ksmRecovery') or {}
+        pending = active and active.get('phase') not in ('Restored', 'Invalidated')
+        if pending and (not enabled or _product_vm_uuid(active.get('vm_uuid')) != vm_uuid
+                        or active.get('instance_generation') != generation):
+            # Refused before the setting is saved: another VM owns this Host's recovery.
+            raise Rejected('KSM_RECOVERY_HOST_BUSY')
+        if not enabled:
+            # Memory may have been taken while the estimate ran.
+            available = self._mem_available()
+            if available <= proof['headroom']['requiredBytes']:
+                raise Rejected('KSM_UNMERGE_INSUFFICIENT_MEMORY: available=%d required>%d' %
+                               (available, proof['headroom']['requiredBytes']))
+        if pending:
+            self._service('ksm-recovery', {'action': 'restore-ksm-recovery',
+                                          'operation_id': active['operation_id'], 'reason': 'cancelled'})
+        recovery = {'operation_id': operation, 'vm_uuid': current_identity['uuid'], 'instance_generation': generation}
+        prepared = False
+        try:
+            # Fence the whole two-minute recovery window before changing QEMU.
+            if not enabled:
+                self._service('ksm-recovery', dict(recovery, action='prepare-ksm-recovery'))
+                prepared = True
+            identity()
+            check = self._vm_ksm_backend(vm_uuid)
+            if any(check[key] != proof[key] for key in ('pid', 'startTime', 'domainId', 'backends')):
+                raise Rejected('INSTANCE_GENERATION_CONFLICT')
+            for item in changing:
+                qmp.execute_qmp_command(vm_uuid, 'qom-set', path=item['path'], property='merge', value=enabled)
+                if qmp.execute_qmp_command(vm_uuid, 'qom-get', path=item['path'], property='merge') is not enabled:
+                    raise Rejected('KSM_RUNTIME_READBACK_MISMATCH')
+            identity()
+            if prepared:
+                self._service('ksm-recovery', dict(recovery, action='activate-ksm-recovery'))
+            return dict(self._vm_ksm_backend(vm_uuid), applied=True, headroom=proof.get('headroom'))
+        except Exception:
+            if prepared:
+                try:
+                    self._service('ksm-recovery', dict(recovery, action='restore-ksm-recovery', reason='operation-failed'))
+                except Exception as exc:
+                    logger.warning('KSM operation failed and tuning recovery is pending: %s', exc)
+            raise
 
     @kvmagent.replyerror
     def accounting(self, req):
@@ -679,6 +1411,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         'backend-maintenance': ('GET', '/v1/backend-maintenance', False),
         'zram-pool-maintenance': ('GET', '/v1/zram-pool-maintenance', False),
         'vm-identities': ('POST', '/v1/vm-identities', True),
+        'ksm-recovery': ('POST', '/v1/lifecycle', True),
         'lifecycle-pause': ('POST', '/v1/lifecycle/pause', True),
         'lifecycle-activate-maintenance': ('POST', '/v1/lifecycle/activate-maintenance', True),
         'migration-hold': ('POST', '/v1/migration-hold', True),
@@ -688,6 +1421,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         'capacity': ('PUT', '/v1/zram/config', True),
         'host-cpu': ('PUT', '/v1/efficiency/policy', True),
         'vm-policy': ('PUT', '/v1/vms/%s/efficiency', True),
+        'vm-policy-state': ('GET', '/v1/vms/%s/efficiency', False),
     }
 
     def _call_local_service(self, action, command):
@@ -1211,6 +1945,101 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             raise Converging('%s_MAINTENANCE_STATUS_UNKNOWN' % kind.upper())
         return receipt
 
+    def _swap_direct_capability(self, state):
+        """Cache Host evidence, independently of migration holds and VM page scans."""
+        import libvirt
+        from xml.etree import ElementTree
+        boot = state.get('bootId')
+        pool = (state.get('zram') or {}).get('poolGeneration')
+        capability = {'supported': False, 'bootId': boot, 'poolGeneration': pool}
+        if not boot or not pool:
+            capability['reasonCode'] = ('SWAP_DIRECT_HOST_IDENTITY_UNKNOWN' if not boot else
+                                        'SWAP_DIRECT_MANAGED_POOL_REQUIRED')
+            self._swap_direct_capability_cache = None
+            return capability
+        try:
+            if platform.machine() != 'x86_64' or os.sysconf('SC_PAGE_SIZE') != 4096:
+                raise Rejected('SWAP_DIRECT_PAGE_SIZE_UNSUPPORTED')
+            native = (state.get('zram') or {}).get('pool') or {}
+            if native.get('pool_generation') != pool:
+                raise Rejected('SWAP_DIRECT_POOL_IDENTITY_CHANGED')
+            daemon = self._swap_direct_process_generation(linux.get_libvirtd_pid())
+            key = (boot, pool, daemon)
+            if boot != self._current_boot_id():
+                raise Rejected('SWAP_DIRECT_HOST_IDENTITY_UNKNOWN')
+            cached = self._swap_direct_capability_cache
+            if cached is not None and cached[0] == key:
+                proof = cached[2]
+                try:
+                    current = proof is None or proof['_generation'] == self._swap_direct_process_generation(
+                        proof['_pid'], proof['_emulator'])
+                except (IOError, OSError, ValueError, IndexError, Rejected):
+                    current = False
+                if current:
+                    return dict(cached[1])
+            self._swap_direct_capability_cache = None
+            proof = None
+            with closing(libvirt.openReadOnly('qemu:///system')) as conn:
+                marker = self._swap_direct_libvirt_cache
+                if marker is not None and marker[0] == key:
+                    marked = marker[1]
+                else:
+                    root = ElementTree.fromstring(conn.getCapabilities())
+                    hosts = root.findall('host')
+                    features = root.findall('host/migration_features')
+                    markers = root.findall('host/migration_features/zstack_swap_direct')
+                    marked = (root.tag == 'capabilities' and len(hosts) == 1 and len(features) == 1
+                              and len(markers) == 1 and markers[0].attrib == {'version': '1'}
+                              and len(markers[0]) == 0)
+                    if boot != self._current_boot_id() or daemon != self._swap_direct_process_generation(linux.get_libvirtd_pid()):
+                        raise Rejected('SWAP_DIRECT_LIBVIRT_IDENTITY_CHANGED')
+                    # A missing QEMU later must not discard this daemon's proof.
+                    self._swap_direct_libvirt_cache = (key, marked)
+                if not marked:
+                    capability['reasonCode'] = 'SWAP_DIRECT_LIBVIRT_CAPABILITY_UNCONFIRMED'
+                else:
+                    device = native.get('device')
+                    if not isinstance(device, STRING_TYPES) or not re.match(r'^/dev/zram[0-9]+\Z', device) \
+                            or self._read_service_config().get('device') != device:
+                        raise Rejected('SWAP_DIRECT_MANAGED_DEVICE_REQUIRED')
+                    device_stat = os.lstat(device)
+                    if not stat.S_ISBLK(device_stat.st_mode):
+                        raise Rejected('SWAP_DIRECT_BLOCK_DEVICE_REQUIRED')
+                    try:
+                        self._swap_direct_kernel_abi(device, device_stat)
+                    except (IOError, OSError) as exc:
+                        if exc.errno != errno.ENOTTY:
+                            raise
+                        capability['reasonCode'] = 'SWAP_DIRECT_KERNEL_ABI_UNSUPPORTED'
+                    else:
+                        # The same running QEMUs that did not prove the protocol are not asked
+                        # again at every observation; a new or restarted one is, and so are all
+                        # after ten minutes (a monitor may only have been busy).
+                        running = self._swap_direct_running_qemus(conn)
+                        unproven = self._swap_direct_unproven_cache
+                        if unproven is not None and unproven[:2] == (key, running) \
+                                and linux.monotime() - unproven[2] < 600:
+                            raise Rejected('SWAP_DIRECT_RUNNING_QEMU_PROTOCOL_UNCONFIRMED')
+                        try:
+                            proof, _ = self._swap_direct_qemu(conn)
+                        except Rejected as exc:
+                            if exc.reason == 'SWAP_DIRECT_RUNNING_QEMU_PROTOCOL_UNCONFIRMED':
+                                self._swap_direct_unproven_cache = (key, running, linux.monotime())
+                            raise
+                        self._swap_direct_unproven_cache = None
+                        capability.update(supported=True, reasonCode=None)
+            if boot != self._current_boot_id() or daemon != self._swap_direct_process_generation(linux.get_libvirtd_pid()):
+                raise Rejected('SWAP_DIRECT_LIBVIRT_IDENTITY_CHANGED')
+            self._swap_direct_capability_cache = (key, dict(capability), proof)
+        except Exception as exc:
+            # Unknown evidence (including no usable running QEMU) is retried by
+            # the next ordinary Host observation, without creating a new timer.
+            self._swap_direct_capability_cache = None
+            capability.update(supported=False, reasonCode=(str(exc) if isinstance(exc, Rejected) else
+                                                          'SWAP_DIRECT_HOST_CAPABILITY_UNKNOWN'))
+        return capability
+
+
     def _observe(self):
         """Report the host as it is; unknown values are omitted, never zero."""
         state = {'bootId': self._current_boot_id(), 'sampleTime': int(time.time() * 1000),
@@ -1251,6 +2080,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         state['control'] = self._observed_control(unit, zram)
         state['managed'] = unit == 'active'
         state['vms'], state['inventoryComplete'] = self._complete_vm_inventory(native_vms)
+        state['capabilities']['swapDirect'] = self._swap_direct_capability(state)
         return state
 
     def _observed_control(self, unit, zram):
@@ -1606,6 +2436,11 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             pool = (status.get('host_zram') or {}).get('pool_generation')
             if not pool and not self._no_recorded_pool():
                 raise Rejected('DRAIN_POOL_IDENTITY_UNKNOWN')
+            if (status.get('lifecycle') or {}).get('migrationHolds'):
+                # A VM is migrating to or from this Host. Withdrawing the pool's swap
+                # now would fail a cold-page direct migration that is putting pages
+                # into it; the drain starts once the migration has released its hold.
+                raise Converging('MIGRATION_IN_PROGRESS')
             self._service('lifecycle-pause', {'action': 'pause'})
             self._set_efficiency(self._service('host-cpu-state'), EfficiencyMode.DISABLED)
             if not pool:
