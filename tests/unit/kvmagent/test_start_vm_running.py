@@ -44,10 +44,11 @@ class StartVmRunningTest(unittest.TestCase):
         self.stale_pid = ''
         self.xml_exists = False
         self.pid_error = None
-        self.destroy_error = None
+        self.stop_error = None
         self.cmd = Boundary(vmInstanceUuid='4519defc71ce4d9ba12b7caeb6891a1e', vmName='test_vm_default_name',
-                            memorySnapshotPath=None, addons=None, timeout=60, createPaused=False, nics=[])
-        self.old_vm = Boundary(state='Running', get_name=lambda: self.cmd.vmName, destroy=self.destroy)
+                            memorySnapshotPath=None, addons=None, useHugePage=False,
+                            timeout=60, createPaused=False, nics=[])
+        self.old_vm = Boundary(state='Running', get_name=lambda: self.cmd.vmName, stop=self.stop)
         self.new_vm = Boundary(start=self.start)
         self.plugin = Boundary(_prepare_ebtables_for_mocbr=lambda cmd: self.events.append(('prepare', cmd)))
         namespace = {
@@ -77,10 +78,10 @@ class StartVmRunningTest(unittest.TestCase):
         self.events.append(('pid_file', uuid))
         return self.stale_pid
 
-    def destroy(self):
-        self.events.append(('destroy',))
-        if self.destroy_error:
-            raise self.destroy_error
+    def stop(self, strategy, undefine):
+        self.events.append(('stop', strategy, undefine))
+        if self.stop_error:
+            raise self.stop_error
 
     def factory(self, cmd):
         self.events.append(('factory', cmd))
@@ -108,7 +109,7 @@ class StartVmRunningTest(unittest.TestCase):
     def test_running_without_process_cleans_domain_before_starting(self):
         self.pid = ''
         self.run_start()
-        self.assertEqual(self.lookup_events() + [('destroy',)] + self.start_events(), self.events)
+        self.assertEqual(self.lookup_events() + [('stop', 'cold', False)] + self.start_events(), self.events)
 
     def test_stale_pid_file_cannot_suppress_recovery(self):
         self.pid = ''
@@ -116,36 +117,36 @@ class StartVmRunningTest(unittest.TestCase):
         self.xml_exists = True
         self.run_start()
         expected = [('pid_file', self.cmd.vmInstanceUuid)] + self.lookup_events()
-        self.assertEqual(expected + [('destroy',)] + self.start_events(), self.events)
+        self.assertEqual(expected + [('stop', 'cold', False)] + self.start_events(), self.events)
 
     def test_missing_domain_starts_without_cleanup(self):
         self.old_vm = None
         self.run_start()
         self.assertEqual(self.lookup_events(False) + self.start_events(), self.events)
 
-    def test_non_running_domain_keeps_existing_destroy_path(self):
+    def test_non_running_domain_is_stopped_without_undefining_it(self):
         self.old_vm.state = 'Shutdown'
         self.run_start()
-        self.assertEqual(self.lookup_events(False) + [('destroy',)] + self.start_events(), self.events)
+        self.assertEqual(self.lookup_events(False) + [('stop', 'cold', False)] + self.start_events(), self.events)
 
     def test_cleanup_failure_propagates_without_creating_vm(self):
         self.pid = ''
-        self.destroy_error = KvmError('domain cleanup timed out')
+        self.stop_error = KvmError('domain cleanup timed out')
         with self.assertRaises(KvmError) as raised:
             self.run_start()
-        self.assertIs(self.destroy_error, raised.exception)
-        self.assertEqual(self.lookup_events() + [('destroy',)], self.events)
+        self.assertIs(self.stop_error, raised.exception)
+        self.assertEqual(self.lookup_events() + [('stop', 'cold', False)], self.events)
 
     def test_retry_recovers_after_cleanup_failure(self):
         self.pid = ''
-        self.destroy_error = KvmError('domain cleanup timed out')
+        self.stop_error = KvmError('domain cleanup timed out')
         with self.assertRaises(KvmError):
             self.run_start()
-        self.assertEqual(self.lookup_events() + [('destroy',)], self.events)
-        self.destroy_error = None
+        self.assertEqual(self.lookup_events() + [('stop', 'cold', False)], self.events)
+        self.stop_error = None
         del self.events[:]
         self.run_start()
-        self.assertEqual(self.lookup_events() + [('destroy',)] + self.start_events(), self.events)
+        self.assertEqual(self.lookup_events() + [('stop', 'cold', False)] + self.start_events(), self.events)
 
     def test_pid_query_error_does_not_authorize_cleanup(self):
         self.pid_error = ShellError('process query failed')
