@@ -8,10 +8,13 @@ the Agent's operation directory.
 """
 
 import json
+import logging
 import os
 import re
 
 from kvmagent.plugins.memory_writeback_backends import probe_writeback_backends, _run_command
+
+logger = logging.getLogger(__name__)
 
 SWAP_LABEL = 'zstack-swap'
 FSTAB = '/etc/fstab'
@@ -24,11 +27,13 @@ SIGNATURE_REASON = 'EXISTING_FILESYSTEM_OR_PARTITION_SIGNATURE'
 LONG_COMMAND_SECONDS = 3600
 
 
+def _nvme_disk(device):
+    return re.sub(r'^(/dev/nvme\d+n\d+)p\d+\Z', r'\1', str(device or ''))
+
+
 def _same_disk(first, second):
     """Whether two NVMe devices are the same disk or a disk and one of its partitions."""
-    def disk(device):
-        return re.sub(r'^(/dev/nvme\d+n\d+)p\d+\Z', r'\1', str(device or ''))
-    return bool(first and second) and disk(first) == disk(second)
+    return bool(first and second) and _nvme_disk(first) == _nvme_disk(second)
 
 
 class Rejected(Exception):
@@ -52,6 +57,11 @@ class _LocalFiles(object):
         if os.path.exists(path):
             os.chmod(temporary, os.stat(path).st_mode & 0o7777)
         os.rename(temporary, path)
+
+    def write_kernel(self, path, value):
+        # procfs/sysfs attributes cannot be replaced by renaming a temporary file.
+        with open(path, 'w') as stream:
+            stream.write(value + '\n')
 
     def remove(self, path):
         try:
@@ -210,7 +220,7 @@ class SwapDisks(object):
             raise Rejected('SWAP_DISK_CANDIDATE_NOT_ELIGIBLE', {'reasons': chosen['reasons']})
         device = chosen['byIdPath']
         record = {'stage': 'PREPARING', 'device': chosen['device'], 'byIdPath': chosen['byIdPath'], 'serial': chosen['serial'],
-                  'wwn': chosen['wwn'], 'capacityBytes': chosen['capacityBytes'], 'uuid': None}
+                  'wwn': chosen['wwn'], 'capacityBytes': chosen['capacityBytes'], 'uuid': None, 'originalTuning': {}}
         # Recorded before the disk changes: an interrupted preparation is a fault that disable cleans up.
         self._save(record)
         if chosen['state'] == 'NEEDS_OVERWRITE_CONFIRMATION':
@@ -224,6 +234,7 @@ class SwapDisks(object):
         self._must(['swapon', '--discard', device])
         record['stage'] = 'ACTIVE'
         self._save(record)
+        self._tune(record, chosen['device'])
         return self.inventory()
 
     def disable(self):
@@ -255,6 +266,10 @@ class SwapDisks(object):
         if signature == record['uuid']:
             if not self._matching_candidate(record, self.files.realpath(path), self.probe(self.host_uuid) or {}):
                 raise Rejected('SWAP_DISK_IDENTITY_MISMATCH')
+        if record.get('originalTuning'):
+            # A helper may have replaced the inactive signature. Only restore host settings in that case.
+            self._tune(record, device if signature == record['uuid'] else None, restoring=True)
+        if signature == record['uuid']:
             self._must(['wipefs', '-a', '-t', 'swap', path])
         self._set_boot_entry(None)
         self.files.remove(self.record_path)
@@ -292,15 +307,86 @@ class SwapDisks(object):
         device = disk['device']
         path = record.get('byIdPath')
         candidate = self._matching_candidate(record, device, probe)
-        if device in swaps:
-            return True
-        checked = self._candidate(candidate, None, self._zram_backing_devices())
-        if checked['state'] not in ('AVAILABLE', 'NEEDS_OVERWRITE_CONFIRMATION'):
-            raise Rejected('SWAP_DISK_CANDIDATE_NOT_ELIGIBLE', {'reasons': checked['reasons']})
-        if self._signature(path) != uuid:
-            raise Rejected('SWAP_DISK_SIGNATURE_MISMATCH')
-        self._must(['swapon', '--discard', path])
+        if device not in swaps:
+            checked = self._candidate(candidate, None, self._zram_backing_devices())
+            if checked['state'] not in ('AVAILABLE', 'NEEDS_OVERWRITE_CONFIRMATION'):
+                raise Rejected('SWAP_DISK_CANDIDATE_NOT_ELIGIBLE', {'reasons': checked['reasons']})
+            if self._signature(path) != uuid:
+                raise Rejected('SWAP_DISK_SIGNATURE_MISMATCH')
+            self._must(['swapon', '--discard', path])
+        # Older Agent versions prepared disks without taking ownership of host tuning.
+        if 'originalTuning' in record:
+            self._tune(record, device)
         return True
+
+    def _tune(self, record, device, restoring=False):
+        original = record.get('originalTuning', {})
+        knobs = [('watermark_scale_factor', '/proc/sys/vm/watermark_scale_factor', '200')]
+        if restoring:
+            minimum = original.get('min_free_kbytes')
+        else:
+            # The validated guide specifies 1/2/3 GiB at 64/128/256 GB; leave smaller hosts alone.
+            try:
+                total = next((int(line.split()[1]) * 1024 for line in self.files.read('/proc/meminfo').splitlines()
+                              if line.startswith('MemTotal:')), 0)
+            except (IOError, OSError, ValueError, IndexError) as exc:
+                logger.warning('Cannot determine swap memory reserve: %s', exc)
+                total = 0
+            minimum = next((str(size << 20) for gb, size in ((256, 3), (128, 2), (64, 1))
+                            if total >= gb * 10 ** 9), None)
+        if minimum:
+            knobs.append(('min_free_kbytes', '/proc/sys/vm/min_free_kbytes', minimum))
+        if device and NVME_DEVICE.match(device):
+            queue = '/sys/block/%s/queue/' % os.path.basename(_nvme_disk(device))
+            knobs.extend([('scheduler', queue + 'scheduler', 'mq-deadline'),
+                          ('nr_requests', queue + 'nr_requests', '64')])
+
+        def current(name, path):
+            value = self.files.read(path).strip()
+            if name == 'scheduler':
+                for token in value.split():
+                    if token.startswith('[') and token.endswith(']'):
+                        return token[1:-1]
+                if value == 'none':
+                    return value
+                raise ValueError('invalid scheduler: %s' % value)
+            return str(int(value))
+
+        # Capture queue depth before switching scheduler, which can reset it.
+        if not restoring:
+            saved = dict(original)
+            for name, path, _ in knobs:
+                if name not in saved:
+                    try:
+                        saved[name] = current(name, path)
+                    except (IOError, OSError, ValueError) as exc:
+                        logger.warning('Cannot read swap tuning %s: %s', path, exc)
+            if saved != original:
+                record['originalTuning'] = saved
+                try:
+                    self._save(record)
+                except (IOError, OSError) as exc:
+                    logger.warning('Cannot save original swap tuning: %s', exc)
+                    return
+                original = saved
+        for name, path, target in knobs:
+            if name not in original or (name == 'scheduler' and 'nr_requests' not in original):
+                continue
+            try:
+                actual = current(name, path)
+                if restoring:
+                    target = original[name]
+                elif name in ('watermark_scale_factor', 'min_free_kbytes'):
+                    target = str(max(int(original[name]), int(actual), int(target)))
+                if actual != target:
+                    self.files.write_kernel(path, target)
+                    if current(name, path) != target:
+                        raise ValueError('expected %s after write' % target)
+            except (IOError, OSError, ValueError) as exc:
+                if restoring:
+                    # Keep the signature and original values so disable can be retried.
+                    raise Rejected('SWAP_DISK_COMMAND_FAILED', {'command': path, 'stderr': str(exc)})
+                logger.warning('Cannot apply swap tuning %s: %s', path, exc)
 
     def _set_boot_entry(self, uuid):
         """Keep exactly one marked fstab line, for this signature; None removes it."""
