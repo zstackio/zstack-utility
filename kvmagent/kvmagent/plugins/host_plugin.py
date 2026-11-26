@@ -54,6 +54,14 @@ DIST_NAME = kvmagent.get_host_distribution()
 # FIXME(py3): remove it
 DIST_NAME = 'centos' if DIST_NAME == 'helix' else DIST_NAME
 
+try:
+    import grpc
+    from kvmagent.keyagent import key_agent_pb2
+    from kvmagent.keyagent import key_agent_pb2_grpc
+    KEY_AGENT_GRPC_AVAILABLE = True
+except Exception:
+    KEY_AGENT_GRPC_AVAILABLE = False
+
 host_arch = platform.machine()
 IS_AARCH64 = host_arch == 'aarch64'
 IS_MIPS64EL = host_arch == 'mips64el'
@@ -93,6 +101,21 @@ PCI_CONFIG_PATH = '/etc/pci_config'
 KVMAGENT_VERSION_PATH = '/var/lib/zstack/kvmagent_version'
 KVMAGENT_SHUTDOWN_PATH = '/var/lib/zstack/kvm/shutdown_vm'
 KVMAGENT_SHUTDOWN_INIT_PATH = '/etc/init.d/shutdown_vm'
+
+KEY_AGENT_UNIX_SOCKET = 'unix:///var/run/key-agent/key-agent.sock'
+KEY_AGENT_ERR_KEYS_NOT_ON_DISK = 'KEY_AGENT_KEYS_NOT_ON_DISK'
+KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH = 'KEY_AGENT_KEY_FILES_INTEGRITY_MISMATCH'
+KEY_AGENT_ERR_SECRET_NOT_FOUND = 'KEY_AGENT_SECRET_NOT_FOUND'
+
+KEY_AGENT_SUPPORTED_SECRET_PURPOSES = ('vtpm',)
+
+
+def is_valid_key_agent_secret_purpose(purpose):
+    """True if purpose is in KEY_AGENT_SUPPORTED_SECRET_PURPOSES."""
+    if not purpose:
+        return False
+    return purpose in KEY_AGENT_SUPPORTED_SECRET_PURPOSES
+
 
 BOND_MODE_ACTIVE_0 = "balance-rr"
 BOND_MODE_ACTIVE_1 = "active-backup"
@@ -1677,6 +1700,13 @@ class HostPlugin(kvmagent.KvmAgent):
     ECHO_PATH = '/host/echo'
     FACT_PATH = '/host/fact'
     PING_PATH = "/host/ping"
+    CREATE_ENVELOPE_KEY_PATH = '/host/key/envelope/createEnvelopeKey'
+    ROTATE_ENVELOPE_KEY_PATH = '/host/key/envelope/rotateEnvelopeKey'
+    GET_ENVELOPE_PUBLIC_KEY_PATH = '/host/key/envelope/getEnvelopePublicKey'
+    CHECK_ENVELOPE_KEY_PATH = '/host/key/envelope/checkEnvelopeKey'
+    ENSURE_SECRET_PATH = '/host/key/envelope/ensureSecret'
+    GET_SECRET_PATH = '/host/key/envelope/getSecret'
+    DELETE_SECRET_PATH = '/host/key/envelope/deleteSecret'
     CHECK_FILE_ON_HOST_PATH = '/host/checkfile'
     GET_USB_DEVICES_PATH = "/host/usbdevice/get"
     SETUP_MOUNTABLE_PRIMARY_STORAGE_HEARTBEAT = "/host/mountableprimarystorageheartbeat"
@@ -1783,6 +1813,220 @@ class HostPlugin(kvmagent.KvmAgent):
                 else:
                     raise Exception('check iptables rule: %s failed' % rule)
         return True
+
+    def _create_key_via_key_agent(self):
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            return (False, None, None)
+        try:
+            if not os.path.exists('/var/run/key-agent/key-agent.sock'):
+                logger.debug('key-agent unix socket not found, skip create key')
+                return (False, None, None)
+            channel = grpc.insecure_channel(KEY_AGENT_UNIX_SOCKET)
+            try:
+                stub = key_agent_pb2_grpc.KeyAgentServiceStub(channel)
+                req = key_agent_pb2.CreateEnvelopeKeyRequest()
+                stub.CreateEnvelopeKey(req, timeout=5)
+                return (True, None, None)
+            finally:
+                channel.close()
+        except grpc.RpcError as e:
+            details = e.details() if hasattr(e, 'details') and callable(getattr(e, 'details')) else str(e)
+            logger.debug('key-agent CreateEnvelopeKey gRPC error: %s' % details)
+            if KEY_AGENT_ERR_KEYS_NOT_ON_DISK in details:
+                return (False, KEY_AGENT_ERR_KEYS_NOT_ON_DISK, details)
+            if KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH in details:
+                return (False, KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH, details)
+            return (False, None, details or str(e))
+        except Exception as e:
+            logger.debug('key-agent CreateEnvelopeKey failed: %s' % e)
+            return (False, None, None)
+
+    def _rotate_key_via_key_agent(self):
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            return (False, None, None)
+        try:
+            if not os.path.exists('/var/run/key-agent/key-agent.sock'):
+                logger.debug('key-agent unix socket not found, skip rotate key')
+                return (False, None, None)
+            channel = grpc.insecure_channel(KEY_AGENT_UNIX_SOCKET)
+            try:
+                stub = key_agent_pb2_grpc.KeyAgentServiceStub(channel)
+                req = key_agent_pb2.RotateEnvelopeKeyRequest()
+                stub.RotateEnvelopeKey(req, timeout=5)
+                return (True, None, None)
+            finally:
+                channel.close()
+        except grpc.RpcError as e:
+            details = e.details() if hasattr(e, 'details') and callable(getattr(e, 'details')) else str(e)
+            logger.debug('key-agent RotateEnvelopeKey gRPC error: %s' % details)
+            if KEY_AGENT_ERR_KEYS_NOT_ON_DISK in details:
+                return (False, KEY_AGENT_ERR_KEYS_NOT_ON_DISK, details)
+            if KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH in details:
+                return (False, KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH, details)
+            return (False, None, details or str(e))
+        except Exception as e:
+            logger.debug('key-agent RotateKey failed: %s' % e)
+            return (False, None, None)
+
+    def _get_public_key_from_key_agent(self):
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            return (None, None, None)
+        try:
+            if not os.path.exists('/var/run/key-agent/key-agent.sock'):
+                logger.debug('key-agent unix socket not found, skip get public key')
+                return (None, None, None)
+            channel = grpc.insecure_channel(KEY_AGENT_UNIX_SOCKET)
+            try:
+                stub = key_agent_pb2_grpc.KeyAgentServiceStub(channel)
+                req = key_agent_pb2.GetPublicKeyRequest()
+                resp = stub.GetPublicKey(req, timeout=5)
+                if resp and getattr(resp, 'public_key', None):
+                    pk = resp.public_key
+                    if isinstance(pk, bytes):
+                        pk = base64.b64encode(pk).decode('ascii')
+                    return (pk, None, None)
+                return (None, None, None)
+            finally:
+                channel.close()
+        except grpc.RpcError as e:
+            details = e.details() if hasattr(e, 'details') and callable(getattr(e, 'details')) else str(e)
+            logger.debug('key-agent GetPublicKey gRPC error: %s' % details)
+            if KEY_AGENT_ERR_KEYS_NOT_ON_DISK in details:
+                return (None, KEY_AGENT_ERR_KEYS_NOT_ON_DISK, details)
+            if KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH in details:
+                return (None, KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH, details)
+            return (None, None, details or str(e))
+        except Exception as e:
+            logger.debug('key-agent GetPublicKey failed: %s' % e)
+            return (None, None, None)
+
+    def _check_envelope_key_via_key_agent(self):
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            return (False, None, None)
+        try:
+            if not os.path.exists('/var/run/key-agent/key-agent.sock'):
+                logger.debug('key-agent unix socket not found, skip check envelope key')
+                return (False, None, None)
+            channel = grpc.insecure_channel(KEY_AGENT_UNIX_SOCKET)
+            try:
+                stub = key_agent_pb2_grpc.KeyAgentServiceStub(channel)
+                req = key_agent_pb2.CheckEnvelopeKeyRequest()
+                stub.CheckEnvelopeKey(req, timeout=5)
+                return (True, None, None)
+            finally:
+                channel.close()
+        except grpc.RpcError as e:
+            details = e.details() if hasattr(e, 'details') and callable(getattr(e, 'details')) else str(e)
+            logger.debug('key-agent CheckEnvelopeKey gRPC error: %s' % details)
+            if KEY_AGENT_ERR_KEYS_NOT_ON_DISK in details:
+                return (False, KEY_AGENT_ERR_KEYS_NOT_ON_DISK, details)
+            if KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH in details:
+                return (False, KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH, details)
+            return (False, None, details or str(e))
+        except Exception as e:
+            logger.debug('key-agent CheckEnvelopeKey failed: %s' % e)
+            return (False, None, None)
+
+    def _ensure_secret_via_key_agent(self, encrypted_dek, vm_uuid, purpose, key_version, description=None, usage_instance='', secret_uuid=''):
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            return (None, None, 'key_agent grpc not available')
+        try:
+            if not os.path.exists('/var/run/key-agent/key-agent.sock'):
+                logger.debug('key-agent unix socket not found, skip ensure secret')
+                return (None, None, 'key-agent socket not found')
+            channel = grpc.insecure_channel(KEY_AGENT_UNIX_SOCKET)
+            try:
+                stub = key_agent_pb2_grpc.KeyAgentServiceStub(channel)
+                req = key_agent_pb2.EnsureSecretRequest(
+                    encrypted_dek=encrypted_dek,
+                    description=description or '',
+                    vm_uuid=vm_uuid,
+                    purpose=purpose,
+                    key_version=int(key_version),
+                    usage_instance=usage_instance or '',
+                )
+                if secret_uuid and hasattr(req, 'secret_uuid'):
+                    req.secret_uuid = secret_uuid
+                resp = stub.EnsureSecret(req, timeout=5)
+                if resp and getattr(resp, 'secret_uuid', None):
+                    return (resp.secret_uuid, None, None)
+                return (None, None, 'key-agent EnsureSecret returned no secret_uuid')
+            finally:
+                channel.close()
+        except grpc.RpcError as e:
+            details = e.details() if hasattr(e, 'details') and callable(getattr(e, 'details')) else str(e)
+            logger.debug('key-agent EnsureSecret gRPC error: %s' % details)
+            if KEY_AGENT_ERR_KEYS_NOT_ON_DISK in details:
+                return (None, KEY_AGENT_ERR_KEYS_NOT_ON_DISK, details)
+            if KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH in details:
+                return (None, KEY_AGENT_ERR_KEY_FILES_INTEGRITY_MISMATCH, details)
+            return (None, None, details or str(e))
+        except Exception as e:
+            logger.debug('key-agent EnsureSecret failed: %s' % e)
+            return (None, None, str(e))
+
+    def _get_secret_via_key_agent(self, vm_uuid, key_version, purpose, usage_instance=''):
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            return (None, None, 'key_agent grpc not available')
+        try:
+            if not os.path.exists('/var/run/key-agent/key-agent.sock'):
+                logger.debug('key-agent unix socket not found, skip get secret')
+                return (None, None, 'key-agent socket not found')
+            channel = grpc.insecure_channel(KEY_AGENT_UNIX_SOCKET)
+            try:
+                stub = key_agent_pb2_grpc.KeyAgentServiceStub(channel)
+                req = key_agent_pb2.GetSecretRequest(
+                    vm_uuid=str(vm_uuid),
+                    key_version=int(key_version),
+                    purpose=purpose,
+                    usage_instance=usage_instance or '',
+                )
+                resp = stub.GetSecret(req, timeout=5)
+                if resp and getattr(resp, 'secret_uuid', None):
+                    return (resp.secret_uuid, None, None)
+                return (None, None, 'key-agent GetSecret returned no secret_uuid')
+            finally:
+                channel.close()
+        except grpc.RpcError as e:
+            details = e.details() if hasattr(e, 'details') and callable(getattr(e, 'details')) else str(e)
+            logger.debug('key-agent GetSecret gRPC error: %s' % details)
+            if e.code() == grpc.StatusCode.NOT_FOUND or KEY_AGENT_ERR_SECRET_NOT_FOUND in details:
+                return (None, KEY_AGENT_ERR_SECRET_NOT_FOUND, details or 'secret not found')
+            return (None, None, details or str(e))
+        except Exception as e:
+            logger.debug('key-agent GetSecret failed: %s' % e)
+            return (None, None, str(e))
+
+    def _delete_secret_via_key_agent(self, vm_uuid, key_version, purpose, usage_instance=''):
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            return (False, None, 'key_agent grpc not available')
+        try:
+            if not os.path.exists('/var/run/key-agent/key-agent.sock'):
+                logger.debug('key-agent unix socket not found, skip delete secret')
+                return (False, None, 'key-agent socket not found')
+            channel = grpc.insecure_channel(KEY_AGENT_UNIX_SOCKET)
+            try:
+                stub = key_agent_pb2_grpc.KeyAgentServiceStub(channel)
+                req = key_agent_pb2.DeleteSecretRequest(
+                    vm_uuid=str(vm_uuid),
+                    key_version=int(key_version),
+                    purpose=purpose,
+                    usage_instance=usage_instance or '',
+                )
+                stub.DeleteSecret(req, timeout=5)
+                return (True, None, None)
+            finally:
+                channel.close()
+        except grpc.RpcError as e:
+            details = e.details() if hasattr(e, 'details') and callable(getattr(e, 'details')) else str(e)
+            if e.code() == grpc.StatusCode.NOT_FOUND or KEY_AGENT_ERR_SECRET_NOT_FOUND in details:
+                logger.debug('key-agent DeleteSecret: not found, idempotent success (%s)' % details)
+                return (True, None, None)
+            logger.debug('key-agent DeleteSecret gRPC error: %s' % details)
+            return (False, None, details or str(e))
+        except Exception as e:
+            logger.debug('key-agent DeleteSecret failed: %s' % e)
+            return (False, None, str(e))
 
     @kvmagent.replyerror
     def connect(self, req):
@@ -1901,6 +2145,244 @@ class HostPlugin(kvmagent.KvmAgent):
                     logger.debug('can not open file %s because IOError: %s' % (
                         file_path, str(err)))
                     pass
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def create_envelope_key(self, req):
+        rsp = kvmagent.AgentResponse()
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            rsp.success = False
+            rsp.error = 'key_agent grpc not available'
+            return jsonobject.dumps(rsp)
+        success, err_code, err_msg = self._create_key_via_key_agent()
+        if err_code:
+            rsp.success = False
+            rsp.errorCode = err_code
+            rsp.error = err_msg or err_code
+            return jsonobject.dumps(rsp)
+        if success:
+            rsp.success = True
+        else:
+            rsp.success = False
+            rsp.error = 'key-agent CreateEnvelopeKey failed or key-agent not running'
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def rotate_envelope_key(self, req):
+        rsp = kvmagent.AgentResponse()
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            rsp.success = False
+            rsp.error = 'key_agent grpc not available'
+            return jsonobject.dumps(rsp)
+        success, err_code, err_msg = self._rotate_key_via_key_agent()
+        if err_code:
+            rsp.success = False
+            rsp.errorCode = err_code
+            rsp.error = err_msg or err_code
+            return jsonobject.dumps(rsp)
+        if success:
+            rsp.success = True
+        else:
+            rsp.success = False
+            rsp.error = 'key-agent RotateKey failed or key-agent not running'
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_envelope_public_key(self, req):
+        rsp = kvmagent.AgentResponse()
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            rsp.success = False
+            rsp.error = 'key_agent grpc not available'
+            return jsonobject.dumps(rsp)
+        public_key, err_code, err_msg = self._get_public_key_from_key_agent()
+        if err_code:
+            rsp.success = False
+            rsp.errorCode = err_code
+            rsp.error = err_msg or err_code
+            return jsonobject.dumps(rsp)
+        if public_key is not None:
+            rsp.success = True
+            rsp.publicKey = public_key
+        else:
+            rsp.success = False
+            rsp.error = 'key-agent GetPublicKey failed or no public key'
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def check_envelope_key(self, req):
+        rsp = kvmagent.AgentResponse()
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            rsp.success = False
+            rsp.error = 'key_agent grpc not available'
+            return jsonobject.dumps(rsp)
+        ok, err_code, err_msg = self._check_envelope_key_via_key_agent()
+        if err_code:
+            rsp.success = False
+            rsp.errorCode = err_code
+            rsp.error = err_msg or err_code
+            return jsonobject.dumps(rsp)
+        if ok:
+            rsp.success = True
+        else:
+            rsp.success = False
+            rsp.error = err_msg or 'key-agent CheckEnvelopeKey failed or key-agent not running'
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def ensure_secret(self, req):
+        rsp = kvmagent.AgentResponse()
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            rsp.success = False
+            rsp.error = 'key_agent grpc not available'
+            return jsonobject.dumps(rsp)
+        try:
+            cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        except Exception as e:
+            rsp.success = False
+            rsp.error = 'invalid request body: %s' % e
+            return jsonobject.dumps(rsp)
+        encrypted_dek_b64 = getattr(cmd, 'encryptedDek', None)
+        vm_uuid = getattr(cmd, 'vmUuid', None)
+        purpose = getattr(cmd, 'purpose', None)
+        key_version = getattr(cmd, 'keyVersion', None)
+        description = getattr(cmd, 'description', None) or ''
+        usage_instance = str(getattr(cmd, 'usageInstance', '') or '').strip()
+        secret_uuid = str(getattr(cmd, 'secretUuid', '') or '').strip()
+        if not is_valid_key_agent_secret_purpose(purpose):
+            rsp.success = False
+            rsp.error = 'unsupported purpose: %s (supported: %s)' % (purpose, ','.join(KEY_AGENT_SUPPORTED_SECRET_PURPOSES))
+            return jsonobject.dumps(rsp)
+        if not encrypted_dek_b64 or not vm_uuid or not purpose or key_version is None or not usage_instance:
+            rsp.success = False
+            rsp.error = 'missing encryptedDek, vmUuid, purpose, keyVersion or usageInstance (non-empty)'
+            return jsonobject.dumps(rsp)
+        if type(key_version) is not int or key_version < 0:
+            rsp.success = False
+            rsp.error = 'invalid keyVersion (must be non-negative int)'
+            return jsonobject.dumps(rsp)
+        normalized_b64 = encrypted_dek_b64.strip()
+        vm_uuid = str(vm_uuid)
+        purpose = str(purpose)
+        if secret_uuid:
+            try:
+                uuid.UUID(secret_uuid)
+            except Exception:
+                rsp.success = False
+                rsp.error = 'invalid secretUuid (must be UUID format)'
+                return jsonobject.dumps(rsp)
+        if not re.match(r'^[A-Za-z0-9+/]+={0,2}$', normalized_b64) or len(normalized_b64) % 4 != 0:
+            rsp.success = False
+            rsp.error = 'encryptedDek must be valid base64'
+            return jsonobject.dumps(rsp)
+        try:
+            encrypted_dek = base64.b64decode(normalized_b64)
+            enc_again = base64.b64encode(encrypted_dek)
+            if not isinstance(enc_again, str):
+                enc_again = enc_again.decode('ascii')
+            if enc_again.rstrip('=') != normalized_b64.rstrip('='):
+                raise ValueError('non-canonical base64 input')
+        except Exception as e:
+            rsp.success = False
+            rsp.error = 'encryptedDek must be base64: %s' % e
+            return jsonobject.dumps(rsp)
+        secret_uuid, err_code, err_msg = self._ensure_secret_via_key_agent(
+            encrypted_dek, vm_uuid, purpose, key_version, description, usage_instance, secret_uuid,
+        )
+        if secret_uuid:
+            rsp.success = True
+            rsp.secretUuid = secret_uuid
+        else:
+            rsp.success = False
+            if err_code:
+                rsp.errorCode = err_code
+                rsp.error = err_msg or err_code
+            else:
+                rsp.error = err_msg or 'key-agent EnsureSecret failed or no secret_uuid'
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def get_secret(self, req):
+        rsp = kvmagent.AgentResponse()
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            rsp.success = False
+            rsp.error = 'key_agent grpc not available'
+            return jsonobject.dumps(rsp)
+        try:
+            cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        except Exception as e:
+            rsp.success = False
+            rsp.error = 'invalid request body: %s' % e
+            return jsonobject.dumps(rsp)
+        vm_uuid = getattr(cmd, 'vmUuid', None)
+        purpose = getattr(cmd, 'purpose', None)
+        key_version = getattr(cmd, 'keyVersion', None)
+        usage_instance = str(getattr(cmd, 'usageInstance', '') or '').strip()
+        if not is_valid_key_agent_secret_purpose(purpose):
+            rsp.success = False
+            rsp.error = 'unsupported purpose: %s (supported: %s)' % (purpose, ','.join(KEY_AGENT_SUPPORTED_SECRET_PURPOSES))
+            return jsonobject.dumps(rsp)
+        if not vm_uuid or key_version is None or not usage_instance:
+            rsp.success = False
+            rsp.error = 'missing vmUuid, keyVersion or usageInstance (non-empty)'
+            return jsonobject.dumps(rsp)
+        if type(key_version) is not int or key_version < 0:
+            rsp.success = False
+            rsp.error = 'invalid keyVersion (must be non-negative int)'
+            return jsonobject.dumps(rsp)
+        secret_uuid, err_code, err_msg = self._get_secret_via_key_agent(
+            str(vm_uuid), key_version, str(purpose), usage_instance)
+        if secret_uuid:
+            rsp.success = True
+            rsp.secretUuid = secret_uuid
+        else:
+            rsp.success = False
+            if err_code:
+                rsp.errorCode = err_code
+                rsp.error = err_msg or err_code
+            else:
+                rsp.error = err_msg or 'key-agent GetSecret failed'
+        return jsonobject.dumps(rsp)
+
+    @kvmagent.replyerror
+    def delete_secret(self, req):
+        rsp = kvmagent.AgentResponse()
+        if not KEY_AGENT_GRPC_AVAILABLE:
+            rsp.success = False
+            rsp.error = 'key_agent grpc not available'
+            return jsonobject.dumps(rsp)
+        try:
+            cmd = jsonobject.loads(req[http.REQUEST_BODY])
+        except Exception as e:
+            rsp.success = False
+            rsp.error = 'invalid request body: %s' % e
+            return jsonobject.dumps(rsp)
+        vm_uuid = getattr(cmd, 'vmUuid', None)
+        purpose = getattr(cmd, 'purpose', None)
+        key_version = getattr(cmd, 'keyVersion', None)
+        usage_instance = str(getattr(cmd, 'usageInstance', '') or '').strip()
+        if not is_valid_key_agent_secret_purpose(purpose):
+            rsp.success = False
+            rsp.error = 'unsupported purpose: %s (supported: %s)' % (purpose, ','.join(KEY_AGENT_SUPPORTED_SECRET_PURPOSES))
+            return jsonobject.dumps(rsp)
+        if not vm_uuid or key_version is None or not usage_instance:
+            rsp.success = False
+            rsp.error = 'missing vmUuid, keyVersion or usageInstance (non-empty)'
+            return jsonobject.dumps(rsp)
+        if type(key_version) is not int or key_version < 0:
+            rsp.success = False
+            rsp.error = 'invalid keyVersion (must be non-negative int)'
+            return jsonobject.dumps(rsp)
+        ok, err_code, err_msg = self._delete_secret_via_key_agent(
+            str(vm_uuid), key_version, str(purpose), usage_instance)
+        if ok:
+            rsp.success = True
+        else:
+            rsp.success = False
+            if err_code:
+                rsp.errorCode = err_code
+                rsp.error = err_msg or err_code
+            else:
+                rsp.error = err_msg or 'key-agent DeleteSecret failed'
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror
@@ -5469,6 +5951,13 @@ done
             self.RECONCILE_VM_HA_ENABLED_METADATA_LIVE_PATH, self.reconcile_vm_ha_enabled_metadata_live)
         http_server.register_async_uri(
             self.GET_BLOCK_DEVICES_PATH, self.get_block_devices)
+        http_server.register_async_uri(self.CREATE_ENVELOPE_KEY_PATH, self.create_envelope_key)
+        http_server.register_async_uri(self.ROTATE_ENVELOPE_KEY_PATH, self.rotate_envelope_key)
+        http_server.register_async_uri(self.GET_ENVELOPE_PUBLIC_KEY_PATH, self.get_envelope_public_key)
+        http_server.register_async_uri(self.CHECK_ENVELOPE_KEY_PATH, self.check_envelope_key)
+        http_server.register_async_uri(self.ENSURE_SECRET_PATH, self.ensure_secret)
+        http_server.register_async_uri(self.GET_SECRET_PATH, self.get_secret)
+        http_server.register_async_uri(self.DELETE_SECRET_PATH, self.delete_secret)
 
         self.heartbeat_timer = {}
         filepath = r'/etc/libvirt/qemu/networks/autostart/default.xml'

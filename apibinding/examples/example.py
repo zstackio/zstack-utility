@@ -27,7 +27,8 @@ def api_call(session_uuid, api_id, api_content):
 
     job_uuid = rsp["uuid"]
     def query_until_done():
-        conn.request("GET", "/zstack/api/result/%s" % job_uuid)
+        conn.request("GET", "/zstack/api/result/%s" % job_uuid,
+                     headers={"Authorization": "OAuth %s" % session_uuid})
         response = conn.getresponse()
         if response.status != 200:
             raise Exception("failed to query API result, %s, %s" % (response.status, response.reason))

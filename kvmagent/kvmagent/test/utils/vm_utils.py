@@ -76,6 +76,8 @@ startVmCmdBody = {
             "queueNum": 1
         }
     }],
+    "tpm": None,
+    "nvRam": None,
     "timeout": 300,
     "addons": {
         "channel": {

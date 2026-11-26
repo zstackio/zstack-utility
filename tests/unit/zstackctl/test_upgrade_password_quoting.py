@@ -108,6 +108,7 @@ def _setup_upgrade_environment(monkeypatch, tmp_path, password):
     flyway.parent.mkdir(parents=True)
     _make_recorder(flyway)
     (zstack_home / 'WEB-INF/classes/db/upgrade').mkdir(parents=True)
+    (zstack_home / 'WEB-INF/classes/db/upgrade-rest').mkdir()
 
     ui_migrate_dir = tmp_path / 'ui-migrate'
     ui_migrate_dir.mkdir()
@@ -124,6 +125,7 @@ def _setup_upgrade_environment(monkeypatch, tmp_path, password):
     monkeypatch.setattr(ctl.ctl, 'ZSTACK_UI_DB_MIGRATE_SH', str(ui_migrate_script))
     monkeypatch.setattr(ctl.Ctl, 'ZSTACK_UI_DB_MIGRATE', str(ui_migrate_dir))
     monkeypatch.setattr(ctl.ctl, 'get_db_url', lambda: 'jdbc:mysql://127.0.0.1:3306/zstack')
+    monkeypatch.setattr(ctl.ctl, 'read_property', {}.get)
     monkeypatch.setattr(ctl.ctl, 'get_ui_db_url', lambda: 'jdbc:mysql://127.0.0.1:3306/zstack_ui')
     monkeypatch.setattr(
         ctl.ctl,
@@ -202,7 +204,12 @@ def test_upgrade_db_preserves_complex_password_for_every_client(monkeypatch, tmp
     assert mysqldump_args
     assert mysql_args
     assert flyway_args
-    assert all('-p%s' % password in args for args in mysqldump_args)
+    for args in mysqldump_args:
+        if 'zstack_rest' in args:
+            assert '--password=%s' % password in args
+        else:
+            assert '-p%s' % password in args
+    assert any('-url=jdbc:mysql://localhost:3306/zstack_rest' in args for args in flyway_args)
     assert all('-p%s' % password in args for args in mysql_args)
     assert all('-password=%s' % password in args for args in flyway_args)
     assert '-p%s' % password in _recorded_args(arg_log, 'mysqlcheck')[0]

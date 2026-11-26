@@ -592,6 +592,7 @@ declare -a upgrade_params_array=(
     '5.3.52,-DupgradeModelServiceYaml5352=true'
     "5.5.6,-DupgradeLoadBalancerRedirectRule=true"
     '5.5.22,-DupgradeDGpuMemoryQuota=true'
+    '5.5.38,-DupgradeCustomizedRoleTpmPermission=true'
 )
 #other than the upon params_array, this one could be persisted in zstack.properties
 declare -a upgrade_persist_params_array=(
@@ -1917,8 +1918,10 @@ upgrade_zstack(){
     do_config_deploy_mode
 
     # configure deploy_mode if it is zsv
-    zstack-ctl show_configuration | grep 'deploy_mode' | grep zsv >/dev/null 2>&1
-    [ $? -eq 0 ] && show_spinner iz_upgrade_zsphere_tools
+    if zstack-ctl show_configuration | grep 'deploy_mode' | grep zsv >/dev/null 2>&1; then
+        show_spinner iz_upgrade_zsphere_tools
+    fi
+    show_spinner iz_install_key_manager
 
     # update consoleProxyCertFile if necessary
     update_console_proxy_cert_file
@@ -2238,6 +2241,36 @@ install_system_libs(){
         show_spinner ia_install_python_gcc_db
     fi
 }
+
+iz_install_key_manager(){
+    if [ "$BASEARCH" != 'x86_64' ] && [ "$BASEARCH" != 'aarch64' ]; then
+        return
+    fi
+    trap 'traplogger $LINENO "$BASH_COMMAND" $?'  DEBUG
+    if [ ! -z "$ZSTACK_YUM_REPOS" ]; then
+        yum --disablerepo="*" --enablerepo="$ZSTACK_YUM_REPOS" clean metadata >/dev/null 2>&1
+        yum --disablerepo="*" --enablerepo="$ZSTACK_YUM_REPOS" list key-manager >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+            echo "key-manager check failed or package not found in repo $ZSTACK_YUM_REPOS" >>$ZSTACK_INSTALL_LOG
+            return
+        fi
+        echo yum install --disablerepo="*" --enablerepo="$ZSTACK_YUM_REPOS" -y key-manager >>$ZSTACK_INSTALL_LOG
+        yum install --disablerepo="*" --enablerepo="$ZSTACK_YUM_REPOS" -y key-manager >>$ZSTACK_INSTALL_LOG 2>&1
+        if [ $? -ne 0 ]; then
+            fail "failed to install key-manager from repo(s) $ZSTACK_YUM_REPOS"
+        fi
+    fi
+
+    local service
+    for service in crypto-daemon.service key-tool.service; do
+        if systemctl list-unit-files "$service" 2>/dev/null | grep -q "^$service"; then
+            systemctl enable "$service" || echo "WARNING: failed to enable $service"
+            systemctl start "$service" || echo "WARNING: failed to start $service"
+        fi
+    done
+    pass
+} >>$ZSTACK_INSTALL_LOG 2>&1
+
 
 is_enable_chronyd(){
     echo_subtitle "Enable chronyd"
@@ -2872,6 +2905,7 @@ install_zstack(){
     if [ x"$ZSV_INSTALL" = x"y" ]; then
         show_spinner iz_install_zsphere_tools
     fi
+    show_spinner iz_install_key_manager
 }
 
 install_db(){

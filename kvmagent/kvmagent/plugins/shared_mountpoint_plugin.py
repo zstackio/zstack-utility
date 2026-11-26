@@ -541,14 +541,18 @@ class SharedMountPointPrimaryStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname)
 
-        if cmd.backingFile:
-            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installPath, cmd)
-        else:
-            linux.qcow2_create_with_cmd(cmd.installPath, cmd.size, cmd)
+        if cmd.volumeFormat == "raw":
+            linux.raw_create(cmd.installPath, cmd.size)
+            logger.debug('successfully create empty raw volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
+        else:  # cmd.volumeFormat == "qcow2"
+            if cmd.backingFile:
+                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installPath, cmd)
+            else:
+                linux.qcow2_create_with_cmd(cmd.installPath, cmd.size, cmd)
+            logger.debug('successfully create empty qcow2 volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
 
-        logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installPath))
-        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installPath)
+        rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.mountPoint)
         return jsonobject.dumps(rsp)
 
     @kvmagent.replyerror

@@ -117,6 +117,16 @@ def _make_vm_plugin():
     return plugin
 
 
+def _make_vm_device_info(nic_infos=None, virtual_device_info=None, mem_balloon_info=None):
+    return {
+        'nicInfos': nic_infos or [],
+        'virtualDeviceInfoList': virtual_device_info or [],
+        'memBalloonInfo': mem_balloon_info,
+        'vmXml': '<domain/>',
+        'edkRpm': '',
+    }
+
+
 @pytest.mark.kvmagent
 class TestMigrateVmFalseFailure:
     def test_destination_running_confirms_false_migration_failure(self, monkeypatch):
@@ -307,7 +317,11 @@ class TestCleanFirmwareFlashHandler:
         plugin = _make_vm_plugin()
         vm_plugin.get_vm_by_uuid_no_retry = MagicMock(return_value=None)
         monkeypatch.setattr(vm_plugin.linux, 'find_vm_pid_by_uuid', MagicMock(return_value=None))
-        plugin.clean_vm_firmware_flash = MagicMock()
+        extension = MagicMock()
+        monkeypatch.setattr(plugin, 'clean_vm_firmware_flash', MagicMock())
+        monkeypatch.setattr(vm_plugin.nvram, 'build_nvram_fd_path',
+                            lambda uuid, managed=False: 'managed.fd' if managed else 'old.fd')
+        monkeypatch.setattr(vm_plugin.nvram, 'NvRamVmExtensions', MagicMock(return_value=extension))
 
         req = _make_req({'vmUuid': '0123456789abcdef0123456789abcdef'})
         result = plugin.clean_firmware_flash(req)
@@ -315,7 +329,9 @@ class TestCleanFirmwareFlashHandler:
 
         assert rsp['success'] is True
         assert rsp.get('cleanupCompleted') is True, 'successful cleanup must explicitly acknowledge completion'
-        plugin.clean_vm_firmware_flash.assert_called_once_with('0123456789abcdef0123456789abcdef')
+        assert extension.vm_uuid == '0123456789abcdef0123456789abcdef'
+        plugin.clean_vm_firmware_flash.assert_called_once_with(extension.vm_uuid)
+        extension.cleanup.assert_called_once_with()
 
     @pytest.mark.parametrize('cleanup_inactive_domain', [False, True])
     def test_domain_absent_with_qemu_pid_returns_cleanup_error(self, monkeypatch, cleanup_inactive_domain):
@@ -684,7 +700,7 @@ class TestSyncVmDeviceinfoHandler:
         plugin = _make_vm_plugin()
         mock_vm = MagicMock()
         vm_plugin.get_vm_by_uuid = MagicMock(return_value=mock_vm)
-        plugin.get_vm_device_info = MagicMock(return_value=(['nic'], ['dev'], None))
+        plugin.get_vm_device_info = MagicMock(return_value=_make_vm_device_info(['nic'], ['dev']))
         plugin.collect_vm_virtualizer_info = MagicMock()
         vm_plugin.pci.get_pci_passthrough_mapping = MagicMock(return_value={'host': 'guest'})
         vm_plugin.pci.get_mdev_passthrough_mapping = MagicMock(return_value={'mdev': 'info'})
@@ -3106,8 +3122,9 @@ class TestStartVmHandler:
         plugin = _make_vm_plugin()
         plugin._record_operation = MagicMock()
         plugin._start_vm = MagicMock()
-        plugin.get_vm_device_info = MagicMock(return_value=([], [], None))
+        plugin.get_vm_device_info = MagicMock(return_value=_make_vm_device_info())
         plugin.collect_vm_virtualizer_info = MagicMock()
+        plugin._register_vm_host_file_monitor = MagicMock()
         vm_plugin.linux.find_vm_pid_by_uuid = MagicMock(return_value=123)
         vm_plugin.linux.enable_process_coredump = MagicMock()
         vm_plugin.linux.set_vm_priority = MagicMock()
@@ -3779,6 +3796,7 @@ class TestVmStartCmdXmlBuild:
 
         orig_tostring = vm_plugin.etree.tostring
         with patch('os.path.exists', return_value=True), \
+                patch.object(vm_plugin.kvmagent, 'get_host_os_type', return_value='redhat'), \
                 patch.object(vm_plugin, 'parse_url', side_effect=_real_parse_url), \
                 patch.object(vm_plugin, 'xrange', range, create=True), \
                 patch.object(vm_plugin, 'range', self._RangeCompat), \
@@ -4127,6 +4145,85 @@ class TestVmStartCmdXmlBuild:
         assert '<hugepages' not in xml_str
         assert '<access mode="shared"' not in xml_str
         assert '<source type="memfd"' not in xml_str
+
+    def _prepare_secure_boot_nvram_calls(self, cmd, yum_release='h84r'):
+        with patch.object(vm_plugin.kvmagent, 'get_host_yum_release', return_value=yum_release), \
+                patch.object(vm_plugin.nvram_secure_boot, 'prepare_secure_boot_nvram') as prepare:
+            self._build_start_vm_xml(cmd)
+        return prepare.call_args_list
+
+    @pytest.mark.parametrize('yum_release', ['h84r', 'ky10sp3', 'ky10sp3.2403', 'alinux4'])
+    def test_uefi_secure_boot_prepares_nvram_from_ovmf_template(self, yum_release):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = True
+
+        assert self._prepare_secure_boot_nvram_calls(cmd, yum_release) == [
+            call('/var/lib/libvirt/qemu/nvram/vm-uuid-host-files/vm-uuid.fd',
+                 '/usr/share/edk2/ovmf/OVMF_VARS.fd', True)
+        ]
+
+    def test_secure_boot_nvram_is_not_prepared_when_restoring_memory_snapshot(self):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = True
+        cmd.memorySnapshotPath = '/var/lib/zstack/memory-snapshot/vm-uuid'
+
+        assert self._prepare_secure_boot_nvram_calls(cmd) == []
+
+    def test_secure_boot_nvram_is_not_prepared_for_uefi_with_csm(self):
+        cmd = self._build_start_cmd()
+        cmd.bootMode = 'UEFI_WITH_CSM'
+        cmd.secureBoot = True
+
+        assert self._prepare_secure_boot_nvram_calls(cmd) == []
+
+    @pytest.mark.parametrize('yum_release', ['h84r', 'ky10sp3', 'ky10sp3.2403', 'alinux4'])
+    def test_plain_uefi_uses_legacy_firmware(self, yum_release):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = False
+
+        with patch.object(vm_plugin.kvmagent, 'get_host_yum_release', return_value=yum_release), \
+                patch.object(vm_plugin.linux, 'rm_file_checked') as remove, \
+                patch.object(vm_plugin.nvram_secure_boot, 'prepare_secure_boot_nvram') as prepare:
+            root = ET.fromstring(self._build_start_vm_xml(cmd))
+
+        assert root.findtext('os/loader') == '/usr/share/edk2.git/ovmf-x64/OVMF_CODE-pure-efi.fd'
+        assert root.find('os/nvram').get('template') == '/usr/share/edk2.git/ovmf-x64/OVMF_VARS-pure-efi.fd'
+        prepare.assert_not_called()
+        remove.assert_not_called()
+
+    def test_tpm_without_secure_boot_registers_nvram_with_secure_boot_off(self):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = False
+        cmd.tpm = jsonobject.loads('{"installPath": "/var/lib/libvirt/swtpm/vm-uuid"}')
+
+        assert self._prepare_secure_boot_nvram_calls(cmd) == [
+            call('/var/lib/libvirt/qemu/nvram/vm-uuid-host-files/vm-uuid.fd',
+                 '/usr/share/edk2/ovmf/OVMF_VARS.fd', False)
+        ]
+
+    @pytest.mark.parametrize('secure_boot, boot_mode, video_type, expected', [
+        (True, 'UEFI', 'virtio', ['virtio']),
+        (False, 'UEFI', 'virtio', ['virtio']),
+        (True, 'UEFI_WITH_CSM', 'virtio', ['virtio']),
+        (False, 'Legacy', 'virtio', ['virtio']),
+        (True, 'UEFI', 'qxl', ['qxl', 'qxl']),
+        (True, 'UEFI', 'vga', ['vga']),
+    ])
+    def test_vm_uses_requested_video_model(self, secure_boot, boot_mode, video_type, expected):
+        cmd = self._build_start_cmd()
+        cmd.secureBoot = secure_boot
+        cmd.bootMode = boot_mode
+        cmd.videoType = video_type
+        with patch.object(vm_plugin, 'HOST_ARCH', 'x86_64'), \
+                patch.object(vm_plugin.nvram_secure_boot, 'prepare_secure_boot_nvram'):
+            root = ET.fromstring(self._build_start_vm_xml(cmd))
+
+        models = root.findall('devices/video/model')
+        assert [model.get('type') for model in models] == expected
+        if secure_boot and boot_mode == 'UEFI':
+            assert root.find('os/loader').text == '/usr/share/edk2/ovmf/OVMF_CODE.secboot.fd'
+            assert root.find('os/nvram/source').text.endswith('/vm-uuid.fd')
+        assert root.find('{http://libvirt.org/schemas/domain/qemu/1.0}capabilities') is None
 
     def test_from_start_vm_cmd_builds_xml_with_features(self):
         vm_plugin.ovs.OvsDpdkSupportVnic = []

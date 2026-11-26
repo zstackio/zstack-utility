@@ -1,0 +1,66 @@
+syntax = "proto3";
+package keyagent.v1;
+
+service KeyAgentService {
+  rpc CreateEnvelopeKey(CreateEnvelopeKeyRequest) returns (CreateEnvelopeKeyResponse);
+  rpc RotateEnvelopeKey(RotateEnvelopeKeyRequest) returns (RotateEnvelopeKeyResponse);
+  rpc GetPublicKey(GetPublicKeyRequest) returns (GetPublicKeyResponse);
+  rpc CheckEnvelopeKey(CheckEnvelopeKeyRequest) returns (CheckEnvelopeKeyResponse);
+  rpc EnsureSecret(EnsureSecretRequest) returns (EnsureSecretResponse);
+  rpc GetSecret(GetSecretRequest) returns (GetSecretResponse);
+  rpc DeleteSecret(DeleteSecretRequest) returns (DeleteSecretResponse);
+}
+
+message CreateEnvelopeKeyRequest {}
+
+message CreateEnvelopeKeyResponse {
+  bool created = 1;
+}
+
+message RotateEnvelopeKeyRequest {}
+
+message RotateEnvelopeKeyResponse {}
+
+message GetPublicKeyRequest {}
+
+message GetPublicKeyResponse {
+  bytes public_key = 1;
+}
+
+message CheckEnvelopeKeyRequest {}
+
+message CheckEnvelopeKeyResponse {}
+
+message EnsureSecretRequest {
+  bytes encrypted_dek = 1;
+  string description = 2;
+  string vm_uuid = 3;
+  string purpose = 4;
+  int32 key_version = 5;
+  string usage_instance = 6;
+  string secret_uuid = 7;
+}
+
+message EnsureSecretResponse {
+  string secret_uuid = 1;
+}
+
+message GetSecretRequest {
+  string vm_uuid = 1;
+  int32 key_version = 2;
+  string purpose = 3;
+  string usage_instance = 4;
+}
+
+message GetSecretResponse {
+  string secret_uuid = 1;
+}
+
+message DeleteSecretRequest {
+  string vm_uuid = 1;
+  int32 key_version = 2;
+  string purpose = 3;
+  string usage_instance = 4;
+}
+
+message DeleteSecretResponse {}

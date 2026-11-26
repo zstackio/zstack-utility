@@ -7,6 +7,7 @@ import traceback
 import zstacklib.utils.uuidhelper as uuidhelper
 from kvmagent import kvmagent
 from kvmagent.plugins.imagestore import ImageStoreClient
+from kvmagent.plugins.nvram import nvram
 from zstacklib.utils import jsonobject
 from zstacklib.utils import qcow2
 from zstacklib.utils import linux
@@ -699,7 +700,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
 
         @rollback.rollbackable
         def _0():
-            linux.rm_file_force(cmd.insallPath)
+            linux.rm_file_force(cmd.installPath)
         _0()
 
         t_shell = traceable_shell.get_shell(cmd)
@@ -888,9 +889,9 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
             rsp.success = False
             return jsonobject.dumps(rsp)
 
+        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         logger.debug('successfully create empty volume[uuid:%s, size:%s] at %s' % (cmd.volumeUuid, cmd.size, cmd.installUrl))
         rsp.totalCapacity, rsp.availableCapacity = self._get_disk_capacity(cmd.storagePath)
-        rsp.size, rsp.actualSize = linux.qcow2_size_and_actual_size(cmd.installUrl)
         return jsonobject.dumps(rsp)
 
     def do_create_empty_volume(self, cmd):
@@ -898,10 +899,13 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         if not os.path.exists(dirname):
             os.makedirs(dirname)
 
-        if cmd.backingFile:
-            linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
-        else:
-            linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
+        if cmd.volumeFormat == "raw":
+            linux.raw_create(cmd.installUrl, cmd.size)
+        else:  # default: cmd.volumeFormat == "qcow2"
+            if cmd.backingFile:
+                linux.qcow2_create_with_backing_file_and_cmd(cmd.backingFile, cmd.installUrl, cmd, cmd.size)
+            else:
+                linux.qcow2_create_with_cmd(cmd.installUrl, cmd.size, cmd)
 
     @kvmagent.replyerror
     def create_volume_with_backing(self, req):
@@ -944,6 +948,7 @@ class LocalStoragePlugin(kvmagent.KvmAgent):
         rsp = AgentResponse()
         if cmd.path:
             try:
+                nvram.cleanup_nvram_links_if_needed(cmd.path)
                 kvmagent.deleteImage(cmd.path)
             except linux.VolumeInUseError:
                 rsp.success = False
