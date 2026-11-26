@@ -143,6 +143,44 @@ class HostFactResponse(kvmagent.AgentResponse):
         self.iscsiInitiatorName = None
         self.deployMode = None
         self.cpuFeatureMd5 = None
+        self.swapDevices = None
+
+
+def get_swap_devices(swaps_path='/proc/swaps'):
+    """Active swap devices as 'path|type|sizeBytes|priority', or None if unreadable/invalid."""
+    try:
+        with open(swaps_path) as fd:
+            lines = fd.readlines()
+    except (IOError, OSError, UnicodeError) as e:
+        logger.warn("cannot read %s: %s" % (swaps_path, e))
+        return None
+
+    if not lines or lines[0].split() != ['Filename', 'Type', 'Size', 'Used', 'Priority']:
+        logger.warn("invalid swap table header in %s" % swaps_path)
+        return None
+
+    devices = []
+    for line in lines[1:]:
+        fields = line.split()
+        if not fields:
+            continue
+        if len(fields) < 5:
+            logger.warn("invalid swap table row in %s" % swaps_path)
+            return None
+        if ';' in fields[0] or '|' in fields[0]:
+            logger.warn("swap path cannot be represented in %s" % swaps_path)
+            return None
+        try:
+            size_kib = int(fields[2])
+            priority = int(fields[4])
+        except ValueError as e:
+            logger.warn("invalid swap size or priority in %s: %s" % (swaps_path, e))
+            return None
+        if size_kib < 0:
+            logger.warn("negative swap size in %s" % swaps_path)
+            return None
+        devices.append('|'.join([fields[0], fields[1], str(size_kib * 1024), str(priority)]))
+    return ';'.join(devices)
 
 
 class SetupMountablePrimaryStorageHeartbeatCmd(kvmagent.AgentCommand):
@@ -1875,6 +1913,11 @@ class HostPlugin(kvmagent.KvmAgent):
         rsp.cpuArchitecture = platform.machine()
         rsp.uptime = shell.call('uptime -s').strip()
         rsp.iscsiInitiatorName = linux.get_iscsi_initiator_name()
+        try:
+            rsp.swapDevices = get_swap_devices()
+        except Exception as e:
+            logger.warn("failed to collect swap devices: %s" % e)
+            rsp.swapDevices = None
 
         if not IS_LOONGARCH64:
             libvirtCapabilitiesList = []

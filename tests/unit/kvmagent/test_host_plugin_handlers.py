@@ -280,6 +280,63 @@ class TestHostPluginFact:
             assert rsp['success'] is True
             assert rsp['qemuImgVersion'] == '4.2.0'
 
+    def test_fact_survives_swap_collection_failure(self, monkeypatch):
+        plugin = _make_plugin()
+        from zstacklib.utils import linux, qemu, shell
+
+        monkeypatch.setattr(host_plugin.platform, 'freedesktop_os_release',
+                            lambda: {'ID': 'centos', 'VERSION_ID': '7.9'})
+        monkeypatch.setattr(host_plugin.platform, 'machine', lambda: 'aarch64')
+        monkeypatch.setattr(host_plugin, 'IS_AARCH64', True)
+        monkeypatch.setattr(host_plugin, 'IS_LOONGARCH64', True)
+        monkeypatch.setattr(host_plugin.network_ipv6, 'collect_reportable_agent_addresses',
+                            lambda *args, **kwargs: [])
+        monkeypatch.setattr(host_plugin, 'get_swap_devices',
+                            lambda: (_ for _ in ()).throw(RuntimeError('swap read failed')))
+        monkeypatch.setattr(plugin, '_get_host_cpu_model', lambda: 'test-cpu')
+        monkeypatch.setattr(plugin, '_get_cpu_cache', lambda: [])
+        monkeypatch.setattr(plugin, '_collect_ipmi_info', lambda rsp: None)
+        monkeypatch.setattr(plugin, 'IS_YUM', False, raising=False)
+        monkeypatch.setattr(linux, 'get_libvirt_package_version', lambda: '6.0.0')
+        monkeypatch.setattr(linux, 'get_iscsi_initiator_name', lambda: '')
+        monkeypatch.setattr(linux, 'get_socket_num', lambda: 1)
+        monkeypatch.setattr(qemu, 'get_version_from_exe_file', lambda path: '4.2.0')
+        monkeypatch.setattr(qemu, 'get_path', lambda: '/usr/bin/qemu')
+        monkeypatch.setattr(host_plugin.misc, 'isHyperConvergedHost', lambda: False)
+
+        def shell_call(command, *args, **kwargs):
+            if 'qemu-img --version' in command:
+                return '4.2.0\n'
+            if 'uptime -s' in command:
+                return '2026-01-01\n'
+            if 'max MHz' in command:
+                return '2500'
+            if 'per socket' in command:
+                return '2'
+            if 'per core' in command:
+                return '1'
+            if 'Model name' in command:
+                return 'Test CPU'
+            return ''
+
+        class FakeShellCmd:
+            def __init__(self, *args, **kwargs):
+                self.return_code = 1
+                self.stdout = ''
+
+            def __call__(self, *args, **kwargs):
+                return None
+
+        monkeypatch.setattr(shell, 'call', shell_call)
+        monkeypatch.setattr(shell, 'run', lambda *args, **kwargs: 1)
+        monkeypatch.setattr(shell, 'ShellCmd', FakeShellCmd)
+
+        rsp = json.loads(plugin.fact(_make_req()))
+
+        assert rsp['success'] is True
+        assert rsp.get('swapDevices') is None
+        assert rsp['qemuImgVersion'] == '4.2.0'
+
 
 @pytest.mark.kvmagent
 class TestHostPluginShutdownHost:
@@ -2015,3 +2072,39 @@ class TestHostPluginNumaTopologyDeep:
         assert rsp['topology']['0']['cpus'] == ['0', '1', '3']
         assert rsp['topology']['0']['size'] == 2048 * 1024
         assert rsp['topology']['0']['free'] == 1024 * 1024
+
+
+class TestGetSwapDevices:
+    def test_reports_each_active_swap(self, tmp_path):
+        swaps = tmp_path / 'swaps'
+        swaps.write_text(
+            "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"
+            "/dev/nvme0n1p1                          partition\t250057724\t1024\t\t-2\n"
+            "/swapfile                               file\t\t1048572\t\t0\t\t-3\n"
+            "/dev/zram0                              partition\t8192\t0\t\t100\n")
+
+        assert host_plugin.get_swap_devices(str(swaps)) == \
+            '/dev/nvme0n1p1|partition|256059109376|-2;/swapfile|file|1073737728|-3;/dev/zram0|partition|8388608|100'
+
+    def test_no_swap_is_empty(self, tmp_path):
+        swaps = tmp_path / 'swaps'
+        swaps.write_text("Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n")
+
+        assert host_plugin.get_swap_devices(str(swaps)) == ''
+
+    def test_unreadable_is_unknown(self, tmp_path):
+        assert host_plugin.get_swap_devices(str(tmp_path / 'missing')) is None
+
+    @pytest.mark.parametrize('row', [
+        '/dev/bad partition 1024',
+        '/dev/bad partition invalid-size 0 -1',
+        '/tmp/swap;backup file 1024 0 -1',
+        '/swapfile file -1024 0 -1',
+    ])
+    def test_malformed_swap_data_is_unknown(self, tmp_path, row):
+        swaps = tmp_path / 'swaps'
+        swaps.write_text(
+            "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n"
+            + row + "\n")
+
+        assert host_plugin.get_swap_devices(str(swaps)) is None

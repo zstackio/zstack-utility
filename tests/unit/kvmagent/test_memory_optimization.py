@@ -1345,6 +1345,37 @@ def test_swap_disk_requests_reach_the_swap_disk_with_the_zram_service_stopped(ho
     monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: disks)
     result = swap_disk_request(plugin, **command)
     assert result['success'] is True and result['state']['status'] == status and disks.calls == [call]
+    if not command:
+        assert 'swapDevices' not in result['state']
+
+
+@pytest.mark.parametrize('swap_devices', [None, '', '/dev/nvme0n1p1|partition|1024|-2'])
+def test_swap_disk_mutations_report_the_latest_swap_devices(host, monkeypatch, swap_devices):
+    host_plugin = SimpleNamespace(get_swap_devices=lambda: swap_devices)
+    monkeypatch.setitem(sys.modules, 'kvmagent.plugins.host_plugin', host_plugin)
+    plugin, _, world = host
+    world['unit'] = 'inactive'
+    disks = FakeSwapDisks()
+    monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: disks)
+
+    result = swap_disk_request(plugin, action='disable')
+
+    assert result['success'] is True and result['status'] == 'Succeeded'
+    assert result['state'].get('swapDevices') == swap_devices
+    assert disks.calls == [('disable',)]
+
+
+def test_swap_device_collection_failure_does_not_fail_a_completed_disk_operation(host, monkeypatch):
+    host_plugin = SimpleNamespace(get_swap_devices=lambda: (_ for _ in ()).throw(IOError('proc swaps unavailable')))
+    monkeypatch.setitem(sys.modules, 'kvmagent.plugins.host_plugin', host_plugin)
+    plugin, _, world = host
+    world['unit'] = 'inactive'
+    monkeypatch.setattr(plugin, '_swap_disk_manager', lambda host_uuid: FakeSwapDisks())
+
+    result = swap_disk_request(plugin, action='disable')
+
+    assert result['success'] is True and result['status'] == 'Succeeded'
+    assert result['state'].get('swapDevices') is None
 
 
 def test_a_swap_disk_is_not_prepared_while_the_zram_service_runs(host, monkeypatch):
