@@ -349,9 +349,11 @@ def _candidate_fingerprint(boot_id, row, device, by_id, serial, sys_path, sys_in
     return hashlib.sha256(raw.encode('utf-8')).hexdigest(), identity
 
 
-def _by_id_matches_serial(path, serial):
+def _by_id_matches_serial(path, serial, is_partition):
     """Match a serial as a complete by-id suffix, not an arbitrary substring."""
     basename = os.path.basename(path).lower()
+    if is_partition:
+        basename = re.sub(r'-part[0-9]+\Z', '', basename)
     serial = str(serial).strip().lower()
     return bool(serial and (basename.endswith('-' + serial) or
                             basename.endswith('_' + serial)))
@@ -630,7 +632,7 @@ def probe_writeback_backends(host_uuid=None, service_backend=None, service_confi
                 pass
         # Require a by-id alias that actually carries the hardware serial.
         by_id_path = next((path for path in links
-                           if serial and _by_id_matches_serial(path, serial)), '')
+                           if serial and _by_id_matches_serial(path, serial, row.get('type') == 'part')), '')
         sys_path = _sysfs_path(filesystem, row.get('major_minor'))
         sys_stat = None
         if sys_path:
