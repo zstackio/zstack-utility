@@ -703,6 +703,12 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         state = disks.prepare(command.get('candidateId'), command.get('overwrite') is True)
                     else:
                         state = disks.disable()
+                    try:
+                        from kvmagent.plugins.host_plugin import get_swap_devices
+                        state['swapDevices'] = get_swap_devices()
+                    except Exception as exc:
+                        logger.warn('failed to collect swap devices after %s on Host[%s]: %s' %
+                                    (action, host_uuid, exc))
             else:
                 raise Rejected('INVALID_SWAP_DISK_ACTION')
             result = {'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid, 'state': state}
