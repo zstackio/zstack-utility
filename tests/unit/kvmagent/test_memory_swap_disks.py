@@ -27,6 +27,10 @@ class Host(object):
         self.swaps = dict(swaps or {})  # device -> used KiB
         self.signatures = dict(signatures or {})  # device -> swap UUID ('' for another signature)
         self.files = {'/etc/fstab': 'UUID=root / xfs defaults 0 0\n'}
+        self.queue = '/sys/block/nvme0n1/queue/'
+        self.files.update({'/proc/sys/vm/min_free_kbytes': '65536', '/proc/sys/vm/watermark_scale_factor': '10',
+                           self.queue + 'scheduler': '[none] mq-deadline', self.queue + 'nr_requests': '128'})
+        self.mem_total_kib = 268435456
         self.mem_available_kib = mem_available_kib
         self.links = {BY_ID: DEV}
         self.zram_backing = {}  # zram device name -> backing_dev
@@ -51,13 +55,21 @@ class Host(object):
             rows += ['%s partition 1000 %d -2' % (d, used) for d, used in sorted(self.swaps.items())]
             return '\n'.join(rows) + '\n'
         if path == '/proc/meminfo':
-            return 'MemTotal: 268435456 kB\nMemAvailable: %d kB\n' % self.mem_available_kib
+            return 'MemTotal: %d kB\nMemAvailable: %d kB\n' % (self.mem_total_kib, self.mem_available_kib)
         if path not in self.files:
             raise IOError(2, 'missing')
         return self.files[path]
 
     def write(self, path, text):
         self.files[path] = text
+
+    def write_kernel(self, path, value):
+        assert path in self.files
+        if path.endswith('/scheduler'):
+            self.files[path] = '[none] mq-deadline' if value == 'none' else 'none [mq-deadline]'
+            self.files[self.queue + 'nr_requests'] = '256'
+        else:
+            self.files[path] = value
 
     def remove(self, path):
         self.files.pop(path, None)
@@ -349,3 +361,85 @@ def test_agent_refuses_an_unproven_swap_disk_on_boot(failure, reason):
         disks(host).restore()
     assert error.value.reason == reason
     assert not ran(host, 'swapon') and not ran(host, 'mkswap') and not ran(host, 'wipefs')
+
+@pytest.mark.parametrize('memory_kib,minimum', [(32 << 20, '65536'), (65337320, '1048576'),
+                                                (128 << 20, '2097152'), (256 << 20, '3145728')])
+def test_swap_tuning_survives_reconnect_and_restores_original_values(memory_kib, minimum):
+    host = Host()
+    host.mem_total_kib = memory_kib
+    manager = disks(host)
+    original = dict(host.files)
+    manager.prepare('candidate:' + DEV, False)
+    assert host.files['/proc/sys/vm/min_free_kbytes'] == minimum
+    assert host.files['/proc/sys/vm/watermark_scale_factor'] == '200'
+    assert host.files[host.queue + 'scheduler'] == 'none [mq-deadline]'
+    assert host.files[host.queue + 'nr_requests'] == '64'
+    host.files.update(original)
+    assert disks(host).restore()
+    assert host.files[host.queue + 'nr_requests'] == '64'
+    assert host.files['/proc/sys/vm/min_free_kbytes'] == minimum
+    manager.disable()
+    assert host.files == original
+
+
+def test_tuning_restores_only_the_host_after_an_inactive_disk_signature_changes():
+    host = active_host()
+    host.swaps.clear()
+    host.signatures[DEV] = 'new-owner'
+    host.files[host.queue + 'nr_requests'] = '72'
+    disks(host).disable()
+    assert host.files['/proc/sys/vm/watermark_scale_factor'] == '10'
+    assert host.files[host.queue + 'nr_requests'] == '72'
+
+
+def test_failed_tuning_restore_can_be_retried_before_erasing_the_signature():
+    host = active_host()
+    manager = disks(host)
+    del host.files[host.queue + 'nr_requests']
+    # Keep scheduler at its original setting so changing it cannot recreate the missing attribute.
+    host.files[host.queue + 'scheduler'] = '[none] mq-deadline'
+    with pytest.raises(swap.Rejected):
+        manager.disable()
+    assert host.signatures[DEV] == SIG and manager.record_path in host.files
+    host.files[host.queue + 'nr_requests'] = '64'
+    manager.disable()
+    assert host.files[host.queue + 'nr_requests'] == '128'
+
+def test_managed_partition_tunes_its_parent_queue_and_keeps_higher_watermark():
+    host = Host([candidate(device=DEV + 'p1')])
+    host.links[BY_ID] = DEV + 'p1'
+    host.files['/proc/sys/vm/watermark_scale_factor'] = '350'
+    host.files[host.queue + 'nr_requests'] = '96'
+    manager = disks(host)
+    manager.prepare('candidate:' + DEV + 'p1', False)
+    assert host.files[host.queue + 'nr_requests'] == '64'
+    assert host.files['/proc/sys/vm/watermark_scale_factor'] == '350'
+    host.files['/proc/sys/vm/watermark_scale_factor'] = '450'
+    manager.disable()
+    assert host.files['/proc/sys/vm/watermark_scale_factor'] == '350'
+    assert host.files[host.queue + 'nr_requests'] == '96'
+
+
+def test_older_managed_disk_restores_swap_without_adopting_host_tuning():
+    host = active_host()
+    manager = disks(host)
+    record = json.loads(host.files[manager.record_path])
+    del record['originalTuning']
+    host.files[manager.record_path] = json.dumps(record)
+    host.files['/proc/sys/vm/watermark_scale_factor'] = '23'
+    host.files[host.queue + 'nr_requests'] = '96'
+    host.swaps.clear()
+    host.candidates = [candidate(reasons=[swap.SIGNATURE_REASON])]
+    assert manager.restore() and DEV in host.swaps
+    assert manager.restore()
+    manager.disable()
+    assert host.files[host.queue + 'nr_requests'] == '96'
+    assert host.files['/proc/sys/vm/watermark_scale_factor'] == '23'
+
+
+def test_unreadable_queue_depth_leaves_scheduler_unchanged():
+    host = Host()
+    del host.files[host.queue + 'nr_requests']
+    disks(host).prepare('candidate:' + DEV, False)
+    assert DEV in host.swaps and host.files[host.queue + 'scheduler'] == '[none] mq-deadline'
+    assert host.files['/proc/sys/vm/watermark_scale_factor'] == '200'
