@@ -728,13 +728,14 @@ class NetworkPlugin(kvmagent.KvmAgent):
         if enableSnooping and kvmagent.get_host_distribution() == 'kylin':
             # An undersized MDB can disable snooping and block host reconnect.
             settings.insert(0, ('hash_max', '4096'))
+            settings.insert(0, ('hash_elasticity', '16'))
 
         for name, value in settings:
             path = '%s/%s' % (bridgePath, name)
             try:
                 if os.path.exists(path):
                     current = linux.read_file_strip(path)
-                    if name == 'hash_max' and int(current) >= int(value):
+                    if name in ('hash_max', 'hash_elasticity') and int(current) >= int(value):
                         continue
                     if isinstance(current, (str, type(u''))) and current == value:
                         continue

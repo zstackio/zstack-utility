@@ -1871,7 +1871,7 @@ class TestNetworkPluginKylinMulticastCapacity:
     def state(self, monkeypatch):
         plugin = _make_plugin()
         module = importlib.import_module("kvmagent.plugins.network_plugin")
-        values = {"hash_max": "512", "multicast_snooping": "0", "multicast_querier": "0"}
+        values = {"hash_max": "512", "hash_elasticity": "4", "multicast_snooping": "0", "multicast_querier": "0"}
         def write_file(path, value):
             values[path.rsplit("/", 1)[1]] = value
             return path
@@ -1883,15 +1883,19 @@ class TestNetworkPluginKylinMulticastCapacity:
         monkeypatch.setattr(module.time, "sleep", write.sleep)
         return plugin, values, write
 
-    @pytest.mark.parametrize("hash_max, snooping, querier", [
-        ("512", "0", True), ("512", "1", True), ("4096", "0", True),
-        ("8192", "0", True), ("512", "0", False)])
-    def test_capacity_and_reconnect(self, state, hash_max, snooping, querier):
+    @pytest.mark.parametrize("hash_max, elasticity, snooping, querier", [
+        ("512", "4", "0", True), ("512", "4", "1", True), ("4096", "4", "0", True),
+        ("8192", "4", "0", True), ("512", "4", "0", False),
+        ("4096", "16", "0", True), ("8192", "32", "0", True)])
+    def test_capacity_and_reconnect(self, state, hash_max, elasticity, snooping, querier):
         plugin, values, write = state
         values["hash_max"], values["multicast_snooping"] = hash_max, snooping
+        values["hash_elasticity"] = elasticity
         cmd = SimpleNamespace(bridgeName="br0", enableMulticastSnooping=True, enableMulticastQuerier=querier)
         plugin._configure_bridge_multicast(cmd)
         expected = []
+        if int(elasticity) < 16:
+            expected.append(call(self.bridge_path + "hash_elasticity", "16"))
         if int(hash_max) < 4096:
             expected.append(call(self.bridge_path + "hash_max", "4096"))
             expected.append(call.sleep(1))
@@ -1914,18 +1918,22 @@ class TestNetworkPluginKylinMulticastCapacity:
         plugin._configure_bridge_multicast(SimpleNamespace(
             bridgeName="br0", enableMulticastSnooping=snooping, enableMulticastQuerier=True))
         assert values["hash_max"] == "512"
+        assert values["hash_elasticity"] == "4"
         write.sleep.assert_not_called()
         if snooping is None:
             legacy.assert_called_once_with("br0", 0, 0)
         else:
             assert values["multicast_snooping"] == str(int(snooping))
 
-    def test_hash_write_failure(self, state):
-        plugin, _, write = state
+    @pytest.mark.parametrize("attribute, value", [("hash_max", "4096"), ("hash_elasticity", "16")])
+    def test_hash_write_failure(self, state, attribute, value):
+        plugin, values, write = state
+        if attribute == "hash_max":
+            values["hash_elasticity"] = "16"
         write.side_effect = lambda path, value: None
-        with pytest.raises(Exception, match=r"bridge\[br0\] hash_max to 4096"):
+        with pytest.raises(Exception, match=r"bridge\[br0\] %s to %s" % (attribute, value)):
             plugin._configure_bridge_multicast(SimpleNamespace(bridgeName="br0", enableMulticastSnooping=True))
-        write.assert_called_once_with(self.bridge_path + "hash_max", "4096")
+        write.assert_called_once_with(self.bridge_path + attribute, value)
         write.sleep.assert_not_called()
 
 
