@@ -36,7 +36,7 @@ class ZnsProxyPackageTest(unittest.TestCase):
         source = os.path.join(self.workspace, "zstack-zns")
         os.makedirs(source)
         with open(os.path.join(source, "go.mod"), "w") as stream:
-            stream.write("module example.com/zstack-zns\n\ngo 1.24\n")
+            stream.write("module example.com/zstack-zns\n\ngo 1.26\n")
         with open(os.path.join(source, "Makefile"), "w") as stream:
             stream.write(
                 "zns-proxy:\n"
@@ -84,23 +84,23 @@ class ZnsProxyPackageTest(unittest.TestCase):
 
     def test_build_fails_when_zns_source_is_missing(self):
         result = self._run_ant(
-            self._write_go("go1.24.0"),
+            self._write_go("go1.26.0"),
             ["build-zstack-zns-proxy"],
         )
 
         self.assertNotEqual(0, result.returncode, result.stdout)
         self.assertIn("zstack-zns", result.stdout)
 
-    def test_build_fails_when_go_is_not_1_24(self):
+    def test_build_fails_when_go_is_not_1_26(self):
         self._create_zns_source()
 
         result = self._run_ant(
-            self._write_go("go1.23.9"),
+            self._write_go("go1.24.12"),
             ["build-zstack-zns-proxy"],
         )
 
         self.assertNotEqual(0, result.returncode, result.stdout)
-        self.assertIn("requires Go 1.24", result.stdout)
+        self.assertIn("requires Go 1.26", result.stdout)
         self.assertFalse(
             os.path.exists(
                 os.path.join(
@@ -115,7 +115,7 @@ class ZnsProxyPackageTest(unittest.TestCase):
     def test_build_assemble_and_verify_proxy_only_package(self):
         source = self._create_zns_source()
         result = self._run_ant(
-            self._write_go("go1.24.12"),
+            self._write_go("go1.26.11"),
             [
                 "build-zstack-zns-proxy",
                 "assemble-zstack-zns-proxy",
@@ -124,7 +124,7 @@ class ZnsProxyPackageTest(unittest.TestCase):
         )
 
         self.assertEqual(0, result.returncode, result.stdout)
-        self.assertIn("zstack-zns Go toolchain: go version go1.24.12", result.stdout)
+        self.assertIn("zstack-zns Go toolchain: go version go1.26.11", result.stdout)
         commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"], cwd=source, universal_newlines=True
         ).strip()
@@ -190,7 +190,7 @@ class ZnsProxyPackageTest(unittest.TestCase):
             with open(assembled_manifest, "w") as stream:
                 json.dump(invalid_manifest, stream)
             guard_result = self._run_ant(
-                self._write_go("go1.24.12"),
+                self._write_go("go1.26.11"),
                 ["verify-zstack-zns-proxy-package"],
             )
             self.assertNotEqual(0, guard_result.returncode, guard_result.stdout)
@@ -202,7 +202,7 @@ class ZnsProxyPackageTest(unittest.TestCase):
         with open(forbidden, "w") as stream:
             stream.write("must be rejected\n")
         guard_result = self._run_ant(
-            self._write_go("go1.24.12"),
+            self._write_go("go1.26.11"),
             ["verify-zstack-zns-proxy-package"],
         )
         self.assertNotEqual(0, guard_result.returncode, guard_result.stdout)
