@@ -11,6 +11,8 @@
 from __future__ import annotations
 """Handler-level unit tests for kvmagent.plugins.vm_plugin."""
 import json
+import time
+import threading
 import socket
 import tempfile
 import urllib.parse
@@ -28,6 +30,154 @@ from kvmagent.plugins import vm_plugin
 def _make_req(body_dict=None):
     body = json.dumps(body_dict or {})
     return {http.REQUEST_BODY: body, http.REQUEST_HEADER: {}}
+
+
+@pytest.mark.parametrize('direct, transfer_fails', [(False, False), (True, False), (True, True),
+                                                    (True, 'refused'), (True, 'deregister-fails'), (True, 'recheck'),
+                                                    (True, 'cancelled'), (True, 'unknown'), (True, 'dest-error'), (True, 'baseline-unknown'), (True, 'stale')])
+@pytest.mark.parametrize('dest_xml', [None, '<domain/>'])
+def test_migration_uses_existing_uri_path_and_captures_completed_cold_stats(monkeypatch, direct, transfer_fails, dest_xml):
+    from types import SimpleNamespace
+
+    class Daemon:
+        def __init__(self, *args): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(vm_plugin, 'plugin', SimpleNamespace(TaskDaemon=Daemon))
+    monkeypatch.setattr(vm_plugin, 'get_task_stage', lambda cmd: None, raising=False)
+    monkeypatch.setattr(vm_plugin, 'get_timeout', lambda cmd: 60, raising=False)
+    reporter = MagicMock()
+    monkeypatch.setattr(vm_plugin, 'Report', reporter, raising=False)
+    monkeypatch.setattr(vm_plugin, 'get_exact_percent', lambda value, stage: value, raising=False)
+    monkeypatch.setattr(vm_plugin, 'get_libvirt_major_version', lambda: 8)
+    monkeypatch.setattr(vm_plugin, 'check_mirror_jobs', lambda *args: None)
+    monkeypatch.setattr(vm_plugin, 'linux', MagicMock(
+        get_host_name=lambda: 'source-host', get_fs_type=lambda path: 'block',
+        wait_callback_success=lambda *args, **kwargs: True))
+    libvirt = MagicMock()
+    for index, name in enumerate(('LIVE', 'PEER2PEER', 'UNDEFINE_SOURCE', 'PERSIST_DEST', 'UNSAFE')):
+        setattr(libvirt, 'VIR_MIGRATE_' + name, 1 << index)
+    for name in ('URI', 'DEST_XML', 'BANDWIDTH'):
+        setattr(libvirt, 'VIR_MIGRATE_PARAM_' + name, name.lower())
+    monkeypatch.setattr(vm_plugin, 'libvirt', libvirt)
+    optimizer = MagicMock()
+    optimizer.prepare_swap_direct.return_value = {'x-swap-direct': True, 'x-swap-direct-source-type': 3,
+                                                'x-swap-direct-dest-type': 7}
+    service = MagicMock()
+    service.plugin_rgty.get_plugin.return_value = optimizer
+    monkeypatch.setattr(vm_plugin.kvmagent, 'new_rest_service', lambda: service, raising=False)
+    vm = MagicMock(uuid='3' * 32, state=vm_plugin.Vm.VM_STATE_RUNNING)
+    vm._build_domain_new_xml.return_value = ([], dest_xml)
+    vm.list_blk_sources.return_value = ['/dev/mock-volume']
+    vm._is_vm_migrate_without_dirty_bitmap.return_value = False
+    cmd = SimpleNamespace(vmUuid=vm.uuid, migrateFromDestination=False, srcHostIp='192.0.2.1',
+                          destHostIp='192.0.2.2', destHostManagementIp=None, useTls=False,
+                          bandwidth=64, disks=None, downTime=None, autoConverge=False,
+                          xbzrle=False, storageMigrationPolicy=None,
+                          swapDirect={'operationUuid': 'operation'} if direct else None)
+    final = {'x-swap-direct.managed': True, 'x-swap-direct.backing-pages-sent': 128, 'data_total': 1}
+    # libvirt's prefix is dropped: both ends report the counters under QEMU's names
+    counters = {'managed': True, 'backing-pages-sent': 128}
+    callbacks = []
+    conn = vm.domain.connect.return_value
+    conn.domainEventRegisterAny.side_effect = lambda domain, event, callback, opaque: callbacks.append(callback) or 9
+    # query-migrate before the attempt, then after a failed one. QEMU may
+    # represent its initial NONE state as an empty object; None means no baseline.
+    sent = ({'status': 'failed'} if transfer_fails == 'unknown' else
+            {'status': 'failed', 'error-desc': "x-swap-direct: RAM block 'pc.ram' is not private anonymous 4KiB memory"}
+            if transfer_fails == 'dest-error' else
+            {'status': 'failed', 'ram': {'transferred': 4096 if transfer_fails is True else 0}})
+    if transfer_fails == 'stale':
+        before = {'status': 'failed', 'ram': {'transferred': 0}}
+    elif transfer_fails in ('baseline-unknown', 'refused', 'deregister-fails'):
+        before = None
+    else:
+        before = {}
+    qmp_answers = [before]
+    sampled_active = threading.Event()
+    def query_migrate(*args, **kwargs):
+        answer = qmp_answers.pop(0) if qmp_answers else sent
+        if isinstance(answer, dict) and answer.get('status') == 'active' and (answer.get('ram') or {}).get('transferred'):
+            sampled_active.set()
+        return answer
+    monkeypatch.setattr(vm_plugin.qmp, 'execute_qmp_command', MagicMock(side_effect=query_migrate), raising=False)
+    if transfer_fails == 'cancelled':
+        # memory went out, then the migration was cancelled: QEMU no longer reports its RAM statistics
+        def cancelled_mid_transfer(*args):
+            sent.clear()
+            sent.update({'status': 'active', 'ram': {'transferred': 4096}})
+            assert sampled_active.wait(3), 'migration watcher did not sample transferred RAM'
+            sent.clear()
+            sent.update({'status': 'cancelled'})
+            raise RuntimeError('operation aborted: migration out job: canceled by client')
+        vm.domain.migrateToURI3.side_effect = cancelled_mid_transfer
+        with pytest.raises(RuntimeError, match='canceled by client'):
+            vm_plugin.Vm.migrate(vm, cmd)
+        vm.domain.migrateToURI2.assert_not_called()
+        assert getattr(cmd, 'swapDirectStats', None) is None
+        return
+    if transfer_fails in ('refused', 'deregister-fails'):
+        # This exact source-side QEMU error is raised by ram_swap_direct_take_fds
+        # before qmp_migrate opens the socket; it proves that no RAM was sent.
+        detail = "x-swap-direct: RAM block 'pc.ram' is not private anonymous 4KiB memory"
+        libvirt_error = type('LibvirtError', (Exception,), {})
+        monkeypatch.setattr(vm_plugin.libvirt, 'libvirtError', libvirt_error)
+        error = "internal error: unable to execute QEMU command 'migrate': %s" % detail
+        vm.domain.migrateToURI3.side_effect = libvirt_error(error)
+        if transfer_fails == 'deregister-fails':
+            conn.domainEventDeregisterAny.side_effect = [libvirt_error('deregister failed'), None]
+        vm_plugin.Vm.migrate(vm, cmd)
+        vm.domain.migrateToURI3.assert_called_once()
+        vm.domain.migrateToURI2.assert_called_once()
+        assert cmd.swapDirectStats == {'fallback': error}
+        callbacks[0](conn, vm.domain, final, None)
+        assert cmd.swapDirectStats == {'fallback': error}
+        assert conn.domainEventDeregisterAny.call_count == (2 if transfer_fails == 'deregister-fails' else 1)
+        conn.domainEventDeregisterAny.assert_called_with(9)
+        reporter.from_spec.assert_not_called()
+        return
+    if transfer_fails == 'recheck':
+        # the Agent's last check failed: no direct attempt at all
+        optimizer.prepare_swap_direct.side_effect = RuntimeError('SWAP_DIRECT_PREPARED_IDENTITY_CHANGED:poolGeneration')
+        vm_plugin.Vm.migrate(vm, cmd)
+        vm.domain.migrateToURI3.assert_not_called()
+        vm.domain.migrateToURI2.assert_called_once()
+        assert cmd.swapDirectStats == {'fallback': 'SWAP_DIRECT_PREPARED_IDENTITY_CHANGED:poolGeneration'}
+        conn.domainEventRegisterAny.assert_not_called()
+        return
+    if transfer_fails:
+        vm.domain.migrateToURI3.side_effect = RuntimeError('direct-transfer-failed')
+        with pytest.raises(RuntimeError, match='direct-transfer-failed'):
+            vm_plugin.Vm.migrate(vm, cmd)
+        vm.domain.migrateToURI3.assert_called_once()
+        vm.domain.migrateToURI2.assert_not_called()
+        conn.domainEventDeregisterAny.assert_called_once_with(9)
+        assert cmd.swapDirect == {'operationUuid': 'operation'}
+        return
+    vm.domain.migrateToURI3.side_effect = lambda *args: callbacks[0](conn, vm.domain, final, None)
+    vm_plugin.Vm.migrate(vm, cmd)
+    if direct:
+        vm.domain.migrateToURI3.assert_called_once()
+        vm.domain.migrateToURI2.assert_not_called()
+        params = vm.domain.migrateToURI3.call_args.args[1]
+        assert params['x-swap-direct-dest-type'] == 7
+        if dest_xml is None:
+            assert 'dest_xml' not in params
+        else:
+            assert params['dest_xml'] == dest_xml
+        assert params['bandwidth'] == 64
+        assert cmd.swapDirectStats == counters
+        conn.domainEventDeregisterAny.assert_called_once_with(9)
+        report = reporter.from_spec.return_value.progress_report.call_args
+        assert report.args[0] == '100'
+        assert json.loads(report.kwargs['detail'].data)['swapDirect'] == counters
+    else:
+        vm.domain.migrateToURI2.assert_called_once()
+        vm.domain.migrateToURI3.assert_not_called()
+        optimizer.prepare_swap_direct.assert_not_called()
+        conn.domainEventRegisterAny.assert_not_called()
+        reporter.from_spec.assert_not_called()
 
 
 @pytest.mark.parametrize('memfd, qemu_version, libvirt_version, expected', [
@@ -4751,3 +4901,38 @@ class TestVmAttachVolumeVariants:
                 volume.deviceId = vol['deviceId']
                 volume.deviceType = vol['deviceType']
                 vm._attach_data_volume(volume, addons)
+
+
+@pytest.mark.parametrize('existing', ['', '<memoryBacking><hugepages/><nosharepages/></memoryBacking>'])
+def test_migration_memory_sharing_preserves_existing_protection(existing):
+    from lxml import etree
+    vm = vm_plugin.Vm.__new__(vm_plugin.Vm)
+    original = '<domain>' + existing + '<devices/></domain>'
+    vm.get_migratable_xml = lambda: original
+    _, changed = vm._build_domain_new_xml({}, no_share_pages=True)
+    root = etree.fromstring(changed or original)
+    assert root.find('memoryBacking/nosharepages') is not None
+    if existing: assert root.find('memoryBacking/hugepages') is not None
+    vm.get_migratable_xml = lambda: etree.tostring(root, encoding='unicode')
+    _, enabled = vm._build_domain_new_xml({}, no_share_pages=False)
+    result = etree.fromstring(enabled or vm.get_migratable_xml())
+    if existing:
+        assert enabled is None
+        assert result.find('memoryBacking/nosharepages') is not None
+        assert result.find('memoryBacking/hugepages') is not None
+    else:
+        assert result.find('memoryBacking') is None
+
+
+def test_migration_preserves_hook_owned_memory_backing():
+    vm = vm_plugin.Vm.__new__(vm_plugin.Vm)
+    original = '<domain><memoryBacking><nosharepages/><access mode="private"/></memoryBacking><devices/></domain>'
+    vm.get_migratable_xml = lambda: original
+    _, changed = vm._build_domain_new_xml({}, no_share_pages=None)
+    assert changed is None
+    # Explicitly enabling sharing for a VM without a Hook only removes nosharepages.
+    from lxml import etree
+    _, changed = vm._build_domain_new_xml({}, no_share_pages=False)
+    root = etree.fromstring(changed)
+    assert root.find('memoryBacking/nosharepages') is None
+    assert root.find('memoryBacking/access').get('mode') == 'private'
