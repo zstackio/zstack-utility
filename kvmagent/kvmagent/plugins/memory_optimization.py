@@ -690,17 +690,23 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         host_uuid = command.get('hostUuid') if isinstance(command, dict) else None
         try:
             self._check_host(command)
-            unsupported = self._writeback_unsupported()
             if command.get('action') == 'prepare':
-                if unsupported:
-                    raise Rejected(unsupported[0])
                 return self._reply(self._prepare_writeback(command))
+            capabilities = self.discover_capabilities()
+            unit_state = self._service_unit_state() if self._reclaim_capability_unknown(capabilities) else None
+            unknown = self._writeback_capability_unknown_during_stop(capabilities, unit_state)
+            unsupported = self._writeback_unsupported(capabilities, unit_state)
             if unsupported:
                 # The Host's own verdict, not a disk list it cannot have.
                 state = {'hostUuid': host_uuid, 'status': 'UNSUPPORTED', 'reasons': unsupported,
                          'preparationReasons': unsupported, 'candidates': []}
             else:
                 state = self._writeback_inventory(host_uuid)
+                if unknown and not self._writeback_capability_proven(capabilities, state):
+                    reasons = list(state.get('preparationReasons') or [])
+                    if 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN' not in reasons:
+                        reasons.append('SERVICE_RECLAIM_CAPABILITY_UNKNOWN')
+                    state.update({'canPrepare': False, 'preparationReasons': reasons})
             result = {'success': True, 'status': 'Succeeded', 'hostUuid': host_uuid, 'state': state}
         except Rejected as exc:
             result = {'success': False, 'status': 'Failed', 'reasonCode': exc.reason,
@@ -710,18 +716,43 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                       'reason': str(exc), 'state': {}, 'hostUuid': host_uuid}
         return self._reply(result)
 
-    def _writeback_unsupported(self):
+    def _writeback_unsupported(self, capabilities=None, unit_state=None):
         """WRITEBACK_UNSUPPORTED and its cause when the Host is known not to support writeback, else None."""
-        capabilities = self.discover_capabilities()
+        capabilities = capabilities or self.discover_capabilities()
+        if capabilities.get('supported') is False:
+            return ['WRITEBACK_UNSUPPORTED', capabilities.get('reasonCode') or 'ZRAM_WRITEBACK_UNAVAILABLE']
+        if capabilities.get('writeback') is False and capabilities.get('zram') is False:
+            cause = capabilities.get('zramReasonCode')
+            if cause != 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN':
+                return ['WRITEBACK_UNSUPPORTED', cause or 'ZRAM_WRITEBACK_UNAVAILABLE']
+            if self._writeback_capability_unknown_during_stop(capabilities, unit_state):
+                return None
+            return ['WRITEBACK_UNSUPPORTED', cause]
+        # A drain deliberately stops the managed service. Its kernel reclaim
+        # qualification is unknown until activation, as in _converge; that is
+        # not a negative writeback verdict during offline preparation.
+        if self._writeback_capability_unknown_during_stop(capabilities, unit_state):
+            return None
         if capabilities.get('writeback') is not False:
             return None
-        if capabilities.get('supported') is False:
-            cause = capabilities.get('reasonCode')
-        elif capabilities.get('zram') is False:
-            cause = capabilities.get('zramReasonCode')
-        else:
-            cause = None
-        return ['WRITEBACK_UNSUPPORTED', cause or 'ZRAM_WRITEBACK_UNAVAILABLE']
+        return ['WRITEBACK_UNSUPPORTED', 'ZRAM_WRITEBACK_UNAVAILABLE']
+
+    @staticmethod
+    def _reclaim_capability_unknown(capabilities):
+        interfaces = capabilities.get('interfaces') or {}
+        return (capabilities.get('zramReasonCode') == 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
+                and not capabilities.get('service')
+                and interfaces.get('cgroupv2') and interfaces.get('memory_reclaim'))
+
+    def _writeback_capability_unknown_during_stop(self, capabilities, unit_state=None):
+        return (self._reclaim_capability_unknown(capabilities)
+                and (unit_state if unit_state is not None else self._service_unit_state()) in ('inactive', 'failed'))
+
+    @staticmethod
+    def _writeback_capability_proven(capabilities, inventory):
+        interfaces = capabilities.get('interfaces') or {}
+        pool_generation = inventory.get('poolGeneration')
+        return bool(interfaces.get('zram_writeback') and pool_generation not in (None, '', 'none'))
 
     # ------------------------------------------------------------ service
 
@@ -1258,6 +1289,16 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             except Exception as exc:
                 logger.error('Host[%s] reading the %s maintenance receipt from the running service failed, '
                              'reading it offline: %s\n%s' % (self._load_host_uuid(), kind, exc, traceback.format_exc()))
+        if not os.path.exists(self.service_binary):
+            state_dir = self._service_state_dir()
+            receipt_name = {'pool': 'zram-pool-maintenance/current.json',
+                            'backend': 'backend-maintenance/current.json'}[kind]
+            if state_dir is not None:
+                try:
+                    os.lstat(os.path.join(state_dir, receipt_name))
+                except OSError as exc:
+                    if exc.errno == errno.ENOENT:
+                        return {'stage': 'NOT_STARTED'}
         argument = {'pool': '--zram-pool-preparation-status', 'backend': '--backend-maintenance-status'}[kind]
         try:
             receipt = json.loads(self._bounded_command_output(
@@ -1406,9 +1447,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         interfaces = capabilities.get('interfaces') or {}
         # Only a service that is not running is asked again once it starts; a running service
         # whose answer was not understood leaves ZRAM unmanaged like any other verdict.
-        unknown = (capabilities.get('zramReasonCode') == 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
-                   and not capabilities.get('service')
-                   and interfaces.get('cgroupv2') and interfaces.get('memory_reclaim'))
+        unknown = self._reclaim_capability_unknown(capabilities)
         # What the Host cannot run stays unmanaged instead of failing the configuration;
         # the observation reports the capability and its reason.
         if not capabilities.get('ksm'):
@@ -1829,6 +1868,7 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
         reasons = []
         pool_generation = None
         unit = self._service_unit_state()
+        no_recorded_pool = self._no_recorded_pool()
         if unit == 'active':
             pool_generation = (status or {}).get('host_zram', {}).get('pool_generation') if status else None
             if pool_generation:
@@ -1839,17 +1879,25 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
             native = self._drain_check() or {}
             if native.get('state') == self.DRAINED:
                 pool_generation = native.get('pool_generation')
-            elif self._no_recorded_pool() or str(native.get('error') or '').startswith(
+            elif no_recorded_pool or str(native.get('error') or '').startswith(
                     'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT'):
                 # A check that failed proves nothing: the pool may still be recorded.
                 pool_generation = 'none'
+                state_dir = self._service_state_dir()
+                if state_dir is None:
+                    reasons.append('POOL_GENERATION_UNKNOWN')
+                elif no_recorded_pool and os.path.lexists(os.path.join(state_dir, 'capacity-effective.json')):
+                    # The native prepare safety check rejects this leftover
+                    # pool evidence when no pool record exists. Report it in
+                    # inventory before the user submits a destructive action.
+                    reasons.append('BACKEND_MAINTENANCE_POOL_ABSENCE_UNQUALIFIED')
                 if 'BACKEND_IDENTITY_CHANGED_REQUIRES_MAINTENANCE' in str(native.get('error') or ''):
                     # The prepared disk came back under another device in this boot; a reboot reclaims it.
                     reasons.append('PREPARED_BACKEND_IDENTITY_MISMATCH')
                 if not self._zram_device_reset():
                     # A first use needs the device the released pool left behind to be reset by a reboot.
                     reasons.append('BACKEND_MAINTENANCE_FIRST_USE_NOT_EMPTY')
-        if not pool_generation:
+        if not pool_generation and 'POOL_GENERATION_UNKNOWN' not in reasons:
             reasons.append('POOL_GENERATION_UNKNOWN')
         receipt = self._receipt('backend')
         # A preparation left unfinished before a reboot is set aside by the next one.
@@ -1971,7 +2019,23 @@ class MemoryOptimizationPlugin(kvmagent.KvmAgent):
                         raise Rejected('BACKEND_NOT_CURRENT')
                     reply.update({'success': True, 'status': 'Succeeded', 'state': {'maintenance': receipt}})
                 else:
+                    capabilities = self.discover_capabilities()
+                    unit_state = self._service_unit_state() if self._reclaim_capability_unknown(capabilities) else None
+                    unknown = self._writeback_capability_unknown_during_stop(capabilities, unit_state)
+                    unsupported = self._writeback_unsupported(capabilities, unit_state)
+                    if unsupported:
+                        raise Rejected(unsupported[0])
                     inventory = self._writeback_inventory(command['hostUuid'])
+                    proven = self._writeback_capability_proven(capabilities, inventory)
+                    if unknown and not proven:
+                        reasons = inventory.get('preparationReasons') or []
+                        transient = ('POOL_GENERATION_UNKNOWN', 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN')
+                        hard_reason = next((reason for reason in reasons if reason not in transient), None)
+                        if hard_reason:
+                            raise Rejected(hard_reason)
+                        reason = ('POOL_GENERATION_UNKNOWN' if 'POOL_GENERATION_UNKNOWN' in reasons
+                                  else 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN')
+                        raise Converging(reason)
                     if inventory.get('canPrepare') is not True:
                         reasons = inventory.get('preparationReasons') or []
                         raise Rejected(reasons[0] if reasons else 'BACKEND_MAINTENANCE_NOT_ELIGIBLE')
