@@ -106,10 +106,13 @@ class FakeService(object):
 def host(tmp_path, monkeypatch):
     service = FakeService()
     plugin = MemoryOptimizationPlugin(service_call=service)
+    state_dir = tmp_path / 'service-state'
+    state_dir.mkdir()
     plugin.configure({'hostUuid': HOST, 'operationDir': str(tmp_path / 'operations'),
                       'zramConfig': str(tmp_path / 'config.json')})
     (tmp_path / 'config.json').write_text(json.dumps({'managed': True, 'mode': 'reclaim',
-                                                      'resource_authorized': True, 'device': '/dev/zram0'}))
+                                                      'resource_authorized': True, 'device': '/dev/zram0',
+                                                      'state_dir': str(state_dir)}))
     world = {'unit': 'active', 'drained': None, 'executors': {}, 'started': [], 'never_used': False}
     monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {'supported': True, 'ksm': True, 'zram': True})
     monkeypatch.setattr(plugin, '_managed_service_installed', lambda: True)
@@ -1040,6 +1043,168 @@ def test_writeback_preparation_derives_its_request_and_completes_on_resend(host,
     assert len(world['started']) == 1
 
 
+def test_unknown_stopped_service_does_not_hide_candidates_or_an_applied_retry(host, monkeypatch):
+    plugin, service, world = host
+    world['unit'] = 'inactive'
+    capabilities = {'supported': True, 'ksm': True, 'zram': False, 'writeback': False,
+                    'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN', 'service': False,
+                    'interfaces': {'cgroupv2': True, 'memory_reclaim': True, 'zram_writeback': True}}
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: capabilities)
+    candidate = {'device': '/dev/vdb', 'state': 'PREPARED', 'resourceUuid': 'f' * 32}
+    monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {
+        'hostUuid': host_uuid, 'status': 'AVAILABLE', 'poolGeneration': POOL,
+        'candidates': [candidate], 'canPrepare': True, 'preparationReasons': []})
+    request_id = 'backend-20-' + OPERATION[:16]
+    service.receipts['backend'] = applied_backend_receipt(request_id)
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20,
+               'candidateId': 'candidate:' + 'd' * 64, 'operationUuid': OPERATION,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': POOL,
+               'backendCapacityBytes': 1 << 30, 'resetConfirmed': True}
+
+    listed = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps({'hostUuid': HOST})}))
+    assert listed['state']['candidates'] == [candidate]
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+    assert result['status'] == 'Succeeded', result
+    assert world['started'] == []
+
+
+def test_unknown_stopped_service_keeps_candidate_but_waits_without_prior_pool_evidence(host, monkeypatch):
+    plugin, service, world = host
+    world['unit'] = 'inactive'
+    capabilities = {'supported': True, 'ksm': True, 'zram': False, 'writeback': False,
+                    'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN', 'service': False,
+                    'interfaces': {'cgroupv2': True, 'memory_reclaim': True, 'zram_writeback': True}}
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: capabilities)
+    candidate = {'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
+                 'state': 'NEEDS_OFFLINE_PREPARATION'}
+    monkeypatch.setattr(plugin, '_writeback_inventory', lambda host_uuid: {
+        'hostUuid': host_uuid, 'status': 'AVAILABLE', 'poolGeneration': 'none',
+        'candidates': [candidate], 'canPrepare': True, 'preparationReasons': []})
+
+    listed = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps({'hostUuid': HOST})}))
+    assert listed['state']['candidates'] == [candidate]
+    assert listed['state']['canPrepare'] is False
+    assert listed['state']['preparationReasons'] == ['SERVICE_RECLAIM_CAPABILITY_UNKNOWN']
+
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20,
+               'candidateId': candidate['identity'], 'operationUuid': OPERATION,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': 'none',
+               'backendCapacityBytes': 1 << 30, 'resetConfirmed': True}
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+    assert result['status'] == 'Converging'
+    assert result['reasonCode'] == 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN'
+    assert world['started'] == []
+
+
+def test_unknown_capability_with_a_running_service_is_not_treated_as_a_drain(host, monkeypatch):
+    plugin, _, world = host
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': False, 'writeback': False,
+        'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN', 'service': True,
+        'interfaces': {'cgroupv2': True, 'memory_reclaim': True}})
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps({'hostUuid': HOST})}))
+    assert result['state']['status'] == 'UNSUPPORTED'
+    assert result['state']['reasons'] == ['WRITEBACK_UNSUPPORTED', 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN']
+
+
+def test_prepare_uses_one_service_state_snapshot_for_capability_classification(host, monkeypatch):
+    plugin, _, world = host
+    capabilities = {'supported': True, 'ksm': True, 'zram': False, 'writeback': False,
+                    'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN', 'service': False,
+                    'interfaces': {'cgroupv2': True, 'memory_reclaim': True}}
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: capabilities)
+    unit_state = Mock(side_effect=['active', 'inactive'])
+    monkeypatch.setattr(plugin, '_service_unit_state', unit_state)
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20,
+               'candidateId': 'candidate:' + 'd' * 64, 'operationUuid': OPERATION,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': 'none',
+               'backendCapacityBytes': 1 << 30, 'resetConfirmed': True}
+
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'WRITEBACK_UNSUPPORTED', result
+    assert unit_state.call_count == 1
+    assert world['started'] == []
+
+
+def test_explicitly_unsupported_host_is_rejected_when_writeback_field_is_absent(host, monkeypatch):
+    plugin, service, world = host
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': False, 'reasonCode': 'UNSUPPORTED_OS_RELEASE'})
+    result = json.loads(plugin.writeback_backends({
+        module.http.REQUEST_BODY: json.dumps({'hostUuid': HOST, 'action': 'prepare', 'generation': 1,
+                                             'operationUuid': OPERATION})}))
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'WRITEBACK_UNSUPPORTED', result
+    assert world['started'] == []
+    assert service.actions() == []
+
+
+def test_unsupported_host_without_service_or_maintenance_receipts_is_rejected(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    world['unit'] = 'absent'
+    plugin.service_binary = str(tmp_path / 'not-installed' / 'zram-efficiency')
+    monkeypatch.setattr(plugin, '_receipt', MemoryOptimizationPlugin._receipt.__get__(plugin))
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': False, 'reasonCode': 'UNSUPPORTED_OS_RELEASE'})
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 1, 'operationUuid': OPERATION}
+
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'WRITEBACK_UNSUPPORTED', result
+    assert world['started'] == []
+    assert service.actions() == []
+
+
+@pytest.mark.parametrize('candidates, expected_status, expected_reason', [
+    ([{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
+       'state': 'NEEDS_OFFLINE_PREPARATION'}], 'Converging', 'POOL_GENERATION_UNKNOWN'),
+    ([], 'Failed', 'NO_ELIGIBLE_WRITEBACK_CANDIDATE')])
+def test_pool_generation_unknown_stays_retryable_without_hiding_hard_refusals(
+        host, monkeypatch, candidates, expected_status, expected_reason):
+    plugin, service, world = host
+    world['unit'] = 'inactive'
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': False, 'writeback': False,
+        'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN', 'service': False,
+        'interfaces': {'cgroupv2': True, 'memory_reclaim': True, 'zram_writeback': True}})
+    monkeypatch.setattr(plugin, '_finish_recorded_maintenance', lambda: None)
+    monkeypatch.setattr(plugin, '_service_state_dir', lambda: None)
+    world['drained'] = {'error': 'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT'}
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': candidates})
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20,
+               'candidateId': 'candidate:' + 'd' * 64, 'operationUuid': OPERATION,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': 'none',
+               'backendCapacityBytes': 1 << 30, 'resetConfirmed': True}
+
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+
+    assert result['status'] == expected_status and result['reasonCode'] == expected_reason, result
+    assert world['started'] == []
+
+
+def test_unknown_stopped_service_preserves_the_original_native_refusal(host, monkeypatch):
+    plugin, service, world = host
+    world.update({'unit': 'inactive', 'drained': {'state': MemoryOptimizationPlugin.DRAINED,
+                                                   'pool_generation': POOL}})
+    service.receipts['backend'] = {'stage': 'FAILED_REQUIRES_REVIEW', 'request_id': 'backend-20-' + OPERATION[:16],
+                                   'host_boot_id': 'boot', 'reason': 'BACKEND_TARGET_CHANGED'}
+    monkeypatch.setattr(plugin, 'discover_capabilities', lambda: {
+        'supported': True, 'ksm': True, 'zram': False, 'writeback': False,
+        'zramReasonCode': 'SERVICE_RECLAIM_CAPABILITY_UNKNOWN', 'service': False,
+        'interfaces': {'cgroupv2': True, 'memory_reclaim': True}})
+    command = {'hostUuid': HOST, 'action': 'prepare', 'generation': 20,
+               'candidateId': 'candidate:' + 'd' * 64, 'operationUuid': OPERATION,
+               'expectedHostBootId': 'boot', 'expectedPoolGeneration': POOL,
+               'backendCapacityBytes': 1 << 30, 'resetConfirmed': True}
+
+    result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps(command)}))
+
+    assert result['status'] == 'Failed' and result['reasonCode'] == 'BACKEND_TARGET_CHANGED', result
+    assert world['started'] == []
+
+
 def test_an_apply_request_that_is_not_json_is_answered_as_failed(host):
     plugin, service, world = host
     result = json.loads(plugin.apply_request({module.http.REQUEST_BODY: '{broken'}))
@@ -1173,6 +1338,48 @@ def test_a_stopped_host_without_a_pool_says_why_it_cannot_prepare(host, monkeypa
     inventory = plugin._writeback_inventory(HOST)
     assert inventory['poolGeneration'] == 'none' and inventory['canPrepare'] is False, inventory
     assert inventory['preparationReasons'] == [reason], inventory
+
+
+def test_a_leftover_capacity_record_blocks_backend_preflight(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    state_dir = tmp_path / 'service-state'
+    state_dir.mkdir(exist_ok=True)
+    (state_dir / 'capacity-effective.json').write_text('{}')
+    config = {'managed': True, 'mode': 'reclaim', 'resource_authorized': True,
+              'device': '/dev/zram0', 'state_dir': str(state_dir)}
+    (tmp_path / 'config.json').write_text(json.dumps(config))
+    world.update({'unit': 'inactive', 'drained': {'error': 'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT'}})
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
+                        'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+
+    inventory = plugin._writeback_inventory(HOST)
+
+    assert inventory['poolGeneration'] == 'none'
+    assert inventory['canPrepare'] is False
+    assert inventory['preparationReasons'] == ['BACKEND_MAINTENANCE_POOL_ABSENCE_UNQUALIFIED']
+
+
+def test_capacity_record_does_not_block_reboot_reclaim_while_pool_record_exists(host, tmp_path, monkeypatch):
+    plugin, service, world = host
+    state_dir = tmp_path / 'service-state'
+    (state_dir / 'capacity-effective.json').write_text('{}')
+    (state_dir / 'stock-pool.json').write_text('{}')
+    config = {'managed': True, 'mode': 'reclaim', 'resource_authorized': True,
+              'device': '/dev/zram0', 'state_dir': str(state_dir)}
+    (tmp_path / 'config.json').write_text(json.dumps(config))
+    world.update({'unit': 'inactive', 'drained': {'error': 'BACKEND_RECLAIM_REQUIRED_AFTER_REBOOT'}})
+    monkeypatch.setattr(plugin, '_previous_backend_device', lambda: None)
+    monkeypatch.setattr(module, 'probe_writeback_backends', lambda host_uuid, backend, config: {
+        'candidates': [{'identity': 'candidate:' + 'd' * 64, 'device': '/dev/vdb',
+                        'state': 'NEEDS_OFFLINE_PREPARATION'}]})
+
+    inventory = plugin._writeback_inventory(HOST)
+
+    assert inventory['poolGeneration'] == 'none'
+    assert inventory['canPrepare'] is True
+    assert 'BACKEND_MAINTENANCE_POOL_ABSENCE_UNQUALIFIED' not in inventory['preparationReasons']
 
 
 @pytest.mark.parametrize('disksize, mm_stat, backing, swaps, reset', [
@@ -1361,7 +1568,7 @@ def test_a_host_without_writeback_reports_why_instead_of_failing_the_query(host,
     plugin, service, world = host
     world['unit'] = 'absent'
     monkeypatch.setattr(plugin, 'discover_capabilities', lambda: dict(capabilities))
-    monkeypatch.setattr(plugin, '_receipt', Mock(side_effect=AssertionError('no maintenance receipt for an unsupported host')))
+    monkeypatch.setattr(plugin, '_receipt', lambda kind: {'stage': 'NOT_STARTED'})
     result = json.loads(plugin.writeback_backends({module.http.REQUEST_BODY: json.dumps({'hostUuid': HOST})}))
     assert result['success'] is True and result['status'] == 'Succeeded'
     state = result['state']
