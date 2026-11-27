@@ -111,20 +111,22 @@ def collect():
     tree = ast.parse(path.read_text())
     nodes = [node for node in tree.body
              if isinstance(node, ast.FunctionDef) and node.name == 'collect_memory_optimization_statistics']
-    reads, accounted = [], []
+    reads, accounted, absent = [], [], set()
     state = {'quality': 'partial_vm_attribution'}
     scope = dict(GaugeMetricFamily=GaugeMetricFamily, PAGE_SIZE=4096, time=time, re=re,
-                 os=SimpleNamespace(listdir=lambda path: ['zram0']),
-                 _read_memory_optimization_int=lambda path: 0,
+                 os=SimpleNamespace(listdir=lambda path: ['zram0'],
+                                    path=SimpleNamespace(exists=lambda path: path not in absent)),
+                 _read_memory_optimization_int=lambda path: None if path in absent or path in state['unread'] else 0,
                  _memory_optimization_epoch=lambda devices: 'epoch-a',
                  _read_zram_saved_bytes=lambda path: reads.pop(0),
                  _accounting_report_quality=lambda value, devices, now: state['quality'],
                  collect_memory_optimization_vm_accounting=lambda value, quality: accounted.append(quality) or [])
     exec(compile(ast.fix_missing_locations(ast.Module(body=nodes, type_ignores=[])), str(path), 'exec'), scope)
 
-    def run(before, after, quality='partial_vm_attribution'):
+    def run(before, after, quality='partial_vm_attribution', missing=(), unread=()):
         reads[:] = [before, after]
-        state['quality'] = quality
+        state['quality'], state['unread'] = quality, set(unread)
+        absent.clear(); absent.update(missing)
         del accounted[:]
         samples = [s for family in scope['collect_memory_optimization_statistics'](report()) for s in family.samples]
         value = lambda name, **labels: next((s.value for s in samples if s.name == name and
@@ -330,3 +332,19 @@ def test_hot_memory_spec_ignores_balloon_target_and_hotplug_ceiling(monkeypatch,
     assert scope['_hot_memory_vm_specs']() == {uuid.replace('-', ''):
         {'memory_bytes': 32 * 1024**3, 'start_time': 42}}
     assert closed == [True]
+
+
+def test_a_kernel_without_the_zero_page_counter_reports_it_unsupported(collect):
+    value = collect(70 << 30, 70 << 30, missing=['/sys/kernel/mm/ksm/ksm_zero_pages'])
+    assert value('host_memory_optimization_metric_quality', metric='ksm_zero', quality='unsupported') == 0
+    assert value('host_memory_optimization_metric_quality', metric='ksm_zero', quality='missing') is None
+    assert value('host_ksm_zero_saved_bytes') is None
+    # Zero pages are still merged, only not counted: the KSM subtotal is incomplete, ordinary sharing is not.
+    assert value('host_memory_optimization_metric_quality', metric='ksm_total', quality='partial') == 0
+    assert value('host_memory_optimization_metric_quality', metric='ksm_ordinary', quality='observed') == 1
+
+
+def test_a_zero_page_counter_that_cannot_be_read_stays_missing(collect):
+    value = collect(70 << 30, 70 << 30, unread=['/sys/kernel/mm/ksm/ksm_zero_pages'])
+    assert value('host_memory_optimization_metric_quality', metric='ksm_zero', quality='missing') == 0
+    assert value('host_memory_optimization_metric_quality', metric='ksm_zero', quality='unsupported') is None
