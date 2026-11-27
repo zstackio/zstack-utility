@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <project name="zstack-znsproxy builder" basedir="../">
-    <property name="zstackzns.go" value="/usr/lib/golang1.24/bin/go" />
+    <property name="zstackzns.go" value="/usr/lib/golang1.26/bin/go" />
     <property name="znsproxy.bdir" location="${build.dir}/zns-proxy/" />
     <property name="znsproxy.ansible.dir" location="${ansible.dir}/znsproxy/" />
 
@@ -20,12 +20,12 @@
             <arg value="version" />
         </exec>
         <echo message="zstack-zns Go toolchain: ${zstackzns.go.version}" />
-        <condition property="zstackzns.go.is.1.24">
+        <condition property="zstackzns.go.is.1.26">
             <matches string="${zstackzns.go.version}"
-                     pattern="go1\.24(\.[0-9]+)?(\s|$)" />
+                     pattern="go1\.26(\.[0-9]+)?(\s|$)" />
         </condition>
-        <fail unless="zstackzns.go.is.1.24"
-              message="zstack-zns requires Go 1.24, got: ${zstackzns.go.version}" />
+        <fail unless="zstackzns.go.is.1.26"
+              message="zstack-zns requires Go 1.26, got: ${zstackzns.go.version}" />
 
         <exec executable="git" dir="${zstackzns.source}" failonerror="true"
               outputproperty="zstackzns.commit">
